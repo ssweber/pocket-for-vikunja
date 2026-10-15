@@ -238,7 +238,8 @@ test('a card’s header shows the project dot once, its rows leave the dot out, 
   const w = app.rowWhen(c.step, c.g);
   assert.deepEqual([w.color, /Café/.test(w.said)], [null, false], 'a card row in the card’s project shows no dot and does not announce the project, because the header does');
   assert.equal(app.rowWhen(c.step, { line: true, depth: {} }).color, '#1d6b52', 'the same task as a plain row shows the dot');
-  const far = app.show(13, task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })), f = app.rowWhen(far, c.g);
+  app.change(w => w.base(task(13, { title: 'Tables', project_id: 6, related_tasks: under(10) })));
+  const far = app.tasks[13], f = app.rowWhen(far, c.g);
   assert.deepEqual([f.color, f.said], ['#3d85c6', 'Upkeep'], 'a subtask in another project shows its own dot and announces its project');
   assert.deepEqual(app.rowMeta(far, c.g).map(m => m.text), ['Upkeep'], 'the row does not name the task above it, because the card does');
   // In search a card's rows keep their second line. It shows no project unless the subtask is in a different one. The header has the dot.
@@ -371,7 +372,7 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   const { app, parent, g } = today(actions);
   let taken = null;
   // As act does, the tick is in the outbox at once, and shows on the step's row through its op. Sending answers later.
-  const outbox = list => { app.pending = list; app.keyOps(); };
+  const outbox = list => { app.pending = list; app.change(w => w.keyOps()); };
   const act = f => { outbox([...app.pending, { kind: 'act', id: 'tick' + f.task, ...f }]); return new Promise(ok => { taken = ok; }); };
   Object.assign(app, { isRunTask: t => t.id === 10, stepRun: t => t.id === 10 ? null : 10, act, pending: [], failed: [] });
   const top = () => app.cardOf(parent, g).step.title;                        // the checklist's steps in order: Lights, Chairs, Tables
@@ -545,7 +546,7 @@ test('a checklist\'s screen reads its steps by id, so a step ticked in a list sh
   const kept = saved.get('run.50');
   assert.deepEqual([kept.shownRun.steps, kept.tasks.map(t => t.id)], [[51, 52, 53, 54], [50, 51, 52, 53, 54]], 'the saved screen is its ids and the tasks it reads');
   assert.equal(app.runView.steps[2].done, false);
-  app.edit(53, { done: true });                                            // C ticked on Today's card
+  app.change(w => w.edit(53, { done: true }));                                            // C ticked on Today's card
   assert.equal(app.runView.steps[2].done, true);
 });
 
@@ -573,7 +574,7 @@ test('a checklist is calculated once while nothing changes, and a tick recalcula
   app.clock += 1000;                                                       // a second passes
   assert.deepEqual([app.runView, worked], [v, 1], 'a second later, nothing is recalculated');
   app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // C is ticked and waiting to be sent
-  app.keyOps();
+  app.change(w => w.keyOps());
   const w = app.runView;
   assert.notEqual(w, v, 'a tick recalculates the checklist at once');
   assert.equal(worked, 2);
@@ -833,7 +834,7 @@ test('a change waiting to be sent recalculates only the rings of the checklists 
   const worked = [];
   for (const t of finished) Alpine.effect(() => { app.rowRing(t, { depth: {} }); worked.push(t.id); });
   worked.length = 0;
-  const outbox = list => { app.pending = list; app.keyOps(); flush(); };
+  const outbox = list => { app.pending = list; app.change(w => w.keyOps()); flush(); };
   outbox([{ kind: 'act', id: 'n', op: 'note', task: 999, run: 998 }]);
   assert.deepEqual(worked, [], 'a comment on another checklist recalculates no ring');
   outbox([{ kind: 'act', id: 'n', op: 'note', task: 999, run: 998 }, { kind: 'act', id: 'd', op: 'done', task: 103, run: 4 }]);

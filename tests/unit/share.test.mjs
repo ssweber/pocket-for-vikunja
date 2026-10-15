@@ -271,7 +271,7 @@ test('a parent shows its ring\'s percentage, and a bar with a segment per subtas
 const NONE = '0001-01-01T00:00:00Z';
 const shared = () => {
   const app = component(tasks, sharing, cards, runs, claims, checklists, views);
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), hiddenRows: new Set(), pendingTasks: [], clock: Date.now(), runNow: Date.now(), actTask: a => a.task });
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], perms: {}, positions: {}, projects: [], checklistIds: new Set(), pendingTasks: [], clock: Date.now(), runNow: Date.now(), actTask: a => a.task });
   return app;
 };
 test('the text shared from a task\'s sheet matches its ring, with a segment per subtask and each done one filled', () => {
@@ -300,7 +300,7 @@ test('the text shared from a checklist\'s screen matches its ring, counting a ti
   for (const x of [run, ...steps]) app.row(x);
   app.view = { groups: [], shownRun: { id: 50, steps: steps.map(s => s.id), at: null, last: null } };
   app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }];   // "Lock up" was ticked and the tick is not sent yet
-  app.keyOps();
+  app.change(w => w.keyOps());
   const ring = app.ringOf(run), head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);

@@ -13,7 +13,7 @@ import {plainReminders, reminderKey} from './actions.js';
 import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 import {seats, seatUnder} from './seat.js';
-import {copyOf, put, TASK} from './tasks.js';
+import {copyOf, TASK} from './tasks.js';
 import {haptic} from '../haptics.js';
 
 // The sheet's latest save. Saves run one after another, so its answer comes last, and only it says Saved.
@@ -249,17 +249,17 @@ export default {
      sheet shows a message with Try again, and the promise resolves to false. */
   save(patch, rebase){
     const id = this.sheet.id; if (!id) return;
-    const shown = this.edit(id, patch), mine = lastSave = {};
+    const shown = this.change(w => w.edit(id, patch)), mine = lastSave = {};
     this.sheet.savedMsg = 'Saving…';
     return this.saveTask(id, patch, rebase).then(saved => {
-      shown.ok(saved);
+      this.change(() => shown.ok(saved));
       if (mine !== lastSave || this.sheet.id !== id) return;
       const repeated = patch.done === true && !saved.done;
       this.showTask(saved); this.sheet.dirty = true; this.unsay('sheet:top');   // clear the message from an earlier failed save
       this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
       setTimeout(() => { if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = ''; }, 1500);
     }, e => {
-      shown.undo();
+      this.change(() => shown.undo());
       if (this.sheet.id === id) {
         // Only this save's fields go back (undo), so another edit made in the sheet stays.
         this.sheet.savedMsg = ''; if (this.sheetTask) this.showTask(this.sheetTask);
@@ -324,7 +324,7 @@ export default {
       const seen = e.notes ?? null;
       taskDrafts.set('desc:' + t.id, {text: v, base});
       if (here()) {
-        if (e.now) { put([e.now], TASK); this.showTask(e.now); }
+        if (e.now) { this.change(w => w.put([e.now], TASK)); this.showTask(e.now); }
         Object.assign(this.sheet, {editingDesc: true, descDraft: v, descUnsaved: true, savedMsg: '', ...seen !== null && {descConflict: seen}});
       }
       // The message appears under the notes, which stay in the box.

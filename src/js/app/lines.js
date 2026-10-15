@@ -99,8 +99,6 @@ export default {
     for (const id of Object.keys(this.lines)) this.endLine(id, true);
     for (const k of Object.keys(this.places)) this.endPlace(k, this.places[k], true);
   },
-  // Hide tasks that a waiting delete deletes (beingDeleted), unless their marked rows are waiting for the batch to clear.
-  get hiddenRows(){ return new Set(Object.keys(this.opsOn).map(Number).filter(id => !this.leaving[id] && this.beingDeleted(id))); },
 
   /* ---------- a message at a place ---------- */
   // Sheet messages are kept in the sheet, so closing the sheet removes them. A sheet that is not a task's shows its

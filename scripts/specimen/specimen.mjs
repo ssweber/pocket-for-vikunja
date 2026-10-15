@@ -399,7 +399,7 @@ document.addEventListener('alpine:init', () => Alpine.data('specimen', () => {
     this.slow = ['specimen-tick'];
     // The screen holds ids and reads the checklist and its steps from tasks. The tick shows on its step through its op.
     for (const t of [run, ...s.steps]) this.row(t);
-    this.keyOps();
+    this.change(w => w.keyOps());
     const screen = (steps, at) => { this.view.shownRun = {id: run.id, steps: steps.map(x => x.id), at, last: null}; return this.runView; };
     this.tasks[run.id].done = true;
     const finished = screen(s.steps, null).steps;

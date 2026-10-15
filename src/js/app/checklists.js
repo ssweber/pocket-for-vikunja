@@ -10,7 +10,7 @@ import {jobsFor} from './sending.js';
 import {saved} from '../lists.js';
 import {renderSeq} from './views.js';
 import {newBox, newStepBox} from './core.js';
-import {copyOf, dropCopy, put, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -202,7 +202,7 @@ export default {
   shareUrl(pid){ return `${this.server}/projects/${pid}/settings/share`; },
   async openTasks(pid){
     const at = started(), list = await allPages(`/projects/${pid}/tasks?` + new URLSearchParams({filter: 'done = false', filter_timezone: TZ, expand: 'comment_count'}));
-    put(list, TASK_COUNT, at);
+    this.change(w => w.put(list, TASK_COUNT, at));
     return list;
   },
   // Load each checklist project with its templates and open checklists.
@@ -500,9 +500,9 @@ export default {
     const under = this.sheet.subAt;
     try {
       // The sheet's step rows read each step's own copy, so each answer goes into the store.
-      for (const {key, title} of d.renames) put([await patiently(() => patchTask(+key.slice(5), {title}))], TASK);
+      for (const {key, title} of d.renames) { const got = await patiently(() => patchTask(+key.slice(5), {title})); this.change(w => w.put([got], TASK)); }
       Object.assign(r, await this.createLines(d.added, {parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs}));
-      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).then(got => put([got], TASK), e => r.problems.push(e.message));
+      for (const id of r.ids) await patiently(() => patchTask(id, {done: true})).then(got => this.change(w => w.put([got], TASK)), e => r.problems.push(e.message));
       // If the box is under a step, put the new steps after that step in the order line. Start from the order Vikunja
       // has now.
       if (under != null && r.ids.length) await patiently(() => this.saveTask(t.id, null, now => {
@@ -525,7 +525,7 @@ export default {
         this.sheet.addRows = [];
         // The steps added before it stopped are in Vikunja, so its copy of the template lists them.
         const c = copyOf(t.id), had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
-        put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: [...had, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]}}], ['related_tasks']);
+        this.change(w => w.put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: [...had, ...r.ids.map((id, k) => ({id, title: d.added[k], done: true}))]}}], ['related_tasks']));
       } else {
         // If the box was under a step, move it under the last added step.
         this.sheet.addRows = [];
@@ -600,10 +600,10 @@ export default {
     // without them.
     const own = todo.find(x => x.s.id === e.id), p = own && this.stepParsed(own.title, e.ignore);
     if (own) own.title = p.title;
-    for (const x of todo) x.shown = this.edit(x.s.id, {title: x.title});
+    this.change(w => { for (const x of todo) x.shown = w.edit(x.s.id, {title: x.title}); });
     // Save the renamed steps in order, so a step this one counts from is named first.
     try {
-      for (const x of todo) { x.shown.ok(await this.saveTask(x.s.id, {title: x.title})); x.saved = true; this.sheet.dirty = true; }
+      for (const x of todo) { const got = await this.saveTask(x.s.id, {title: x.title}); this.change(() => x.shown.ok(got)); x.saved = true; this.sheet.dirty = true; }
       if (p && (p.assignees.length || p.labels.length || p.priority)) {
         // Apply them to the existing step, the way quick add sends a line. A person who can't see the project stays in
         // the title.
@@ -624,7 +624,7 @@ export default {
         if (full && this.sheet.id === full.id) { this.showTask(full); this.loadSubPeople(full); }
       }
     } catch (err) {
-      for (const x of todo) if (!x.saved) x.shown.undo();
+      this.change(() => { for (const x of todo) if (!x.saved) x.shown.undo(); });
       this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:subtasks', cls: 'failed'});
       if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = {...e};
     }
@@ -660,9 +660,11 @@ export default {
       await patiently(() => api('/tasks/' + st.id, {method: 'DELETE'})).catch(async e => {
         if (e.status !== 404 && (!(e instanceof NetError) || await api('/tasks/' + st.id).then(() => true, x => x.status !== 404))) throw e;
       });
-      dropCopy(st.id);
       const c = copyOf(t.id);
-      put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id)}}], ['related_tasks']);
+      this.change(w => {
+        w.put([st], null);                                                  // Vikunja deleted the step
+        w.put([{id: t.id, related_tasks: {...c?.related_tasks, subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id)}}], ['related_tasks']);
+      });
       this.keepTemplate(t);
       this.sheet.dirty = true;
       this.say('Step removed', {place: 'sheet:subtasks'});
@@ -696,17 +698,17 @@ export default {
     try { steps = moved(this.subtasks); } catch (e) { this.say('Not moved: ' + e.message, {place: 'sheet:subtasks', cls: 'failed'}); return; }
     if (!steps) return;
     const box = document.getElementById('step-edit-' + st.id);
-    const shown = this.edit(t.id, {description: withOrder(t.description, steps.map(s => s.id))});   // shown in the new order straight away
+    const shown = this.change(w => w.edit(t.id, {description: withOrder(t.description, steps.map(s => s.id))}));   // shown in the new order straight away
     // Moving the row takes the focus off its box. Give the focus back before the row's focusout handler runs, so the
     // step stays open and can move again.
     if (box && box === document.activeElement) setTimeout(() => box.isConnected && box.focus({preventScroll: true}));
     this.sheet.checklistBusy = true;
     try {
       const got = await patiently(() => this.saveTask(t.id, null, now => { const s = moved(stepsOf(now)); return s && {description: withOrder(now.description, s.map(x => x.id))}; }));
-      shown.ok();
+      this.change(() => shown.ok());
       if (this.sheet.id === t.id) { this.showTask(got); this.unsay('sheet:subtasks'); }   // clear the message from an earlier failed move
       this.sheet.dirty = true;
-    } catch (e) { shown.undo(); this.say('Not moved: ' + why(e), {place: 'sheet:subtasks', cls: 'failed'}); }
+    } catch (e) { this.change(() => shown.undo()); this.say('Not moved: ' + why(e), {place: 'sheet:subtasks', cls: 'failed'}); }
     finally { this.sheet.checklistBusy = false; }
   },
 };

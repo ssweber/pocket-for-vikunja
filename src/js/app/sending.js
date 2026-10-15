@@ -8,7 +8,7 @@ import {parseCapture} from '../quickadd.js';
 import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
-import {CREATED, put, savedScreen, TASK} from './tasks.js';
+import {CREATED, savedScreen, TASK} from './tasks.js';
 
 let waitTimer;
 // Each waiting row's object, by its entry and index, kept while the row is unchanged (pendingTasks).
@@ -147,9 +147,9 @@ export default {
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
           job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { put([t], CREATED); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
+          made: t => { this.change(w => w.put([t], CREATED)); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
         // A task that arrived done, or with progress, shows that on its row (placeSent).
-        if (t.arrived) { put([t.arrived.now], TASK); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
+        if (t.arrived) { this.change(w => w.put([t.arrived.now], TASK)); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
         ids.push(item.taskId);
       }
       // A line with lines under it gets its progress from them, if any of them arrived done or with progress. This is
@@ -240,7 +240,8 @@ export default {
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
       // A subtask keeps the position it was sent with.
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
-      const row = this.show(t.id, t);
+      this.change(w => w.base(t));
+      const row = this.tasks[t.id];
       if (g) g.tasks.push(row);
       else this.view.groups.push({...(this.route.name === 'today' ? todayGroups().find(x => x.key === key) : {key, cls: '', title: 'Open'}), tasks: [row]});
       if (arrived?.done) this.arrivedDone(row, now, t);
@@ -262,11 +263,11 @@ export default {
     const said = doneText(0, 0, t.title), failed = e => this.say('Not undone: ' + e.message, {row: {id: t.id, stays: true, cls: 'failed'}});
     if (!now.done) {
       const was = made.due_date, beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
-      const shown = this.edit(t.id, {done: true, due_date: made.due_date, start_date: made.start_date, end_date: made.end_date, reminders: made.reminders});
+      const shown = this.change(w => w.edit(t.id, {done: true, due_date: made.due_date, start_date: made.start_date, end_date: made.end_date, reminders: made.reminders}));
       // The row stays done at its old date until the date is back.
-      const undo = async () => { try { await this.saveTask(t.id, {due_date: was}); } catch (e) { failed(e); } shown.undo(); this.render(); };
+      const undo = async () => { try { await this.saveTask(t.id, {due_date: was}); } catch (e) { failed(e); } this.change(() => shown.undo()); this.render(); };
       this.markRow(t.id, {kind: 'done', out: () => beyond() ? [t.id] : [], undo, said: said + '. It repeats',
-        gone: () => { shown.undo(); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
+        gone: () => { this.change(() => shown.undo()); if (beyond()) this.removeRow(t.id); else if (this.route.name === 'today') this.regroupToday(); }});
       return;
     }
     const ids = [t.id], moves = () => !!this.searchGroups(t);
@@ -348,7 +349,7 @@ export default {
     this.pending = all.filter(e => !e.failed && !sync.held.has(e.id)); this.failed = all.filter(e => e.failed);
     this.unsent = this.user ? all.length : null;
     this.keyWaiting();
-    this.keyOps();
+    this.change(w => w.keyOps());
     this.markSlow();
   },
   /* How many photos and files wait to upload for each task, by task id (`waiting.files`). Each key is written

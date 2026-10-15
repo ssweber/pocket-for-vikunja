@@ -1,6 +1,6 @@
 // The requests several ops share. Each is a stage, `(a, c) => Promise`, which app/acts.js runs with `c`: `c.send` is a
 // write with its own key, `c.read` a plain read, and `c.once` a body built once and kept in the entry.
-import {put, TASK} from '../app/tasks.js';
+import {TASK} from '../app/tasks.js';
 import {DONE_MARK, SKIP_MARK} from '../checklists.js';
 import {figurePatch} from '../progress.js';
 
@@ -26,6 +26,6 @@ export const figure = async (a, c) => {
     const body = await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
     if (!body) return;
     const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
-    put([t], TASK);
+    c.app.change(w => w.put([t], TASK));
   } catch (e) { if (e.status !== 404) throw e; }
 };

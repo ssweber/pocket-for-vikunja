@@ -122,7 +122,7 @@ export const directives = Alpine => {
 
 // The component is core.js's data plus the methods of each part. Getters are copied as getters. A spread ({...auth})
 // would call each getter once and keep its value.
-const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, acts, asks, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
+export const parts = [auth, views, tasks, actions, progress, quickadd, sending, checklists, runs, acts, asks, claims, alerts, sheet, toast, outbox, lines, leaving, sharing, cards, throwing];
 export const pocket = () => {
   const component = core();
   for (const part of parts) Object.defineProperties(component, Object.getOwnPropertyDescriptors(part));

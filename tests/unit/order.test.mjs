@@ -221,17 +221,17 @@ test('a cursor row ticked done keeps the box until the batch clears, then its ta
   assert.equal(app.capW, 'cap', 'once the task is done, the box adds a task again');
 });
 
-// The waiting ops of a delete of `ids`, as keyOps (tasks.js) writes them.
-const deleting = ids => Object.fromEntries(ids.map(id => [id, [{ op: 'delete', ids }]]));
+// A delete of `ids` waiting in the outbox, put on its tasks as the outbox does (keyOps, tasks.js). No ids: nothing waits.
+const deleting = (app, ids) => { app.pending = ids.length ? [{ kind: 'act', id: 'd' + ids, op: 'delete', task: ids[0], ids, items: [] }] : []; app.change(w => w.keyOps()); };
 test('the cursor never points at a row that has left the list', async () => {
   const { app, van, chairs, tables, lights } = projectList();
   // A deleted row leaves the lists while its Restore message shows, so the highlight moves to the task it was under. Restoring the row doesn't move the highlight back.
   app.aim(chairs);
-  app.opsOn = deleting([11]);
+  deleting(app, [11]);
   assert.equal(app.capW, 'cap', 'until the cursor is checked, nothing is highlighted and the box adds a task');
   app.keepAim();
   assert.deepEqual([app.lit, app.capTarget], [{ 10: true }, { to: 'Pack the van', after: '' }]);
-  app.opsOn = {};
+  deleting(app, []);
   app.keepAim();
   assert.deepEqual(app.lit, { 10: true }, 'restoring the row does not highlight it again');
   // A task marked done somewhere other than its tick on this list (its sheet, or the web app) behaves the same way.
@@ -247,10 +247,10 @@ test('the cursor never points at a row that has left the list', async () => {
   assert.deepEqual([app.cursor, app.lit, app.capW], [null, {}, 'cap']);
   // If the parent task is deleted along with the row, there is no task to move the highlight to.
   app.aim(chairs);
-  app.opsOn = deleting([10, 11, 12]);
+  deleting(app, [10, 11, 12]);
   app.keepAim();
   assert.deepEqual([app.cursor, app.lit], [null, {}]);
-  app.opsOn = {};
+  deleting(app, []);
   // A row moved up or down among its siblings has not left the list. It stays highlighted, and the next subtask goes
   // after it at its new position, here between it and Load chairs. A moved task stays highlighted as well.
   Object.assign(app, { act: async () => ({ status: 'sent' }), saveProject(){} });

@@ -48,7 +48,8 @@ export default {
     // would wait until Pocket is hidden.
     ids = ids.filter(x => marks.get(x)?.kind !== 'deleted');
     const m = {id, kind, ids, out, undo, gone, going: false};
-    for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); this.leaving[x] = kind; }
+    for (const x of ids) { const old = marks.get(x); if (old && old !== m) this.dropMark(old, x); marks.set(x, m); }
+    this.change(w => { for (const x of ids) w.leave(x, kind); });
     if (said) this.said = said;
     batch.mark();
     if (kind === 'done') tops.mark();
@@ -60,12 +61,12 @@ export default {
   holdRow(id, kind){
     const s = of(this);
     if (s.marks.has(id) || s.early.has(id)) return () => {};
-    this.leaving[id] = kind;
+    this.change(w => w.leave(id, kind));
     let answered;
     s.early.set(id, new Promise(ok => { answered = ok; }));
     return () => {
       s.early.delete(id);
-      if (!s.marks.has(id)) { delete this.leaving[id]; this.show(id); }
+      if (!s.marks.has(id)) this.change(w => w.leave(id));
       answered();
     };
   },
@@ -107,7 +108,7 @@ export default {
      done stays as it was while marked (show, tasks.js). Stops the batch timer when no marks remain. */
   dropMark(m, only){
     const {marks, batch} = of(this);
-    for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); delete this.leaving[x]; this.show(x); }
+    this.change(w => { for (const x of only === undefined ? m.ids : [only]) if (marks.get(x) === m) { marks.delete(x); w.leave(x); } });
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },

@@ -9,10 +9,10 @@ import globals from 'globals';
 // for the rule replaces the first, and 'off' would turn off every selector in a file. restricted(file) leaves out the
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
-const STORE = 'Only show() in src/js/app/tasks.js writes a task\'s row. Lay a save over it with edit(), or put() what Vikunja answered.';
+const STORE = 'Write the store inside this.change(w => …) with its writers (src/js/app/tasks.js). w.edit() lays a save over a row, w.put() writes what Vikunja answered, and w.leave() marks a row leaving.';
 // A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
-// The sheet's task and a checklist's are rows too (sheetTask, runTask).
-const ROW = "MemberExpression[object.type='ThisExpression'][property.name=/^(tasks|sheetTask|runTask)$/]";
+// The sheet's task and a checklist's are rows too (sheetTask, runTask). show() reads the leaving marks too.
+const ROW = "MemberExpression[object.type='ThisExpression'][property.name=/^(tasks|sheetTask|runTask|leaving)$/]";
 // this.sheet.task and this.view.run, where the sheet and a checklist's screen kept their own copies of tasks.
 const HELD = (a, b) => `MemberExpression[object.type='MemberExpression'][object.object.type='ThisExpression'][object.property.name='${a}'][property.name='${b}']`;
 const BY_ID = "The sheet and a checklist's screen hold ids. Read this.sheet.id or this.sheetTask, and this.view.shownRun or this.runTask (tasks.js).";
@@ -31,6 +31,7 @@ const RESTRICTED = [
   { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },
+  { selector: "MemberExpression[object.type='ThisExpression'][property.name='opsOn']", message: "Read a task's waiting ops with this.opsOf(id) (tasks.js).", allow: ['src/js/app/tasks.js'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],

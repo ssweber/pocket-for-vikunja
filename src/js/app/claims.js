@@ -4,7 +4,7 @@ import {comesRound, parseStep} from '../checklists.js';
 import {saved} from '../lists.js';
 import {claimsOnSlide} from '../progress.js';
 import {OPS} from '../ops/index.js';
-import {copyOf, put, started} from './tasks.js';
+import {copyOf, started} from './tasks.js';
 
 const loading = new Set();                       // usernames whose picture is being fetched
 const tried = new Map();                         // username -> when the last picture request failed
@@ -45,7 +45,7 @@ export default {
      redraws only that task's rows. A row's own assignees already have the claims. A sheet's subtask has its people
      from loadSubPeople, apart from the store, and needs them laid over. Laying a claim twice changes nothing. */
   peopleOf(id, base){
-    const claims = (this.opsOn[id] || []).filter(a => a.op === 'claim' || a.op === 'unclaim');
+    const claims = this.opsOf(id).filter(a => a.op === 'claim' || a.op === 'unclaim');
     let list = claims.reduce((t, a) => OPS[a.op].apply(t, a), {assignees: base || []}).assignees;
     if (this.slideClaim[id] && this.user && !list.some(u => u.id === this.user.id)) list = [...list, this.user];
     return list;
@@ -77,7 +77,7 @@ export default {
       const at = started(), list = await allPages('/tasks?' + new URLSearchParams({filter: `id in ${ids.join(', ')}`}));
       if (this.sheet !== mine) return;
       for (const s of list) { this.sheet.subPeople[s.id] = s.assignees || []; this.sheet.subLabels[s.id] = s.labels || []; }
-      put(list.filter(s => copyOf(s.id)), ['assignees'], at);
+      this.change(w => w.put(list.filter(s => copyOf(s.id)), ['assignees'], at));
     } catch (e) {
       if (!(e instanceof NetError) || this.sheet !== mine) return;
       for (const id of ids) if (copyOf(id)?.assignees) this.sheet.subPeople[id] ??= copyOf(id).assignees;

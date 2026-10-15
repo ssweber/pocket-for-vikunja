@@ -395,7 +395,7 @@ test('waiting claims and files are kept by task, and only that task\'s row is up
   const asked = {}, seen = {};
   for (const id of [5, 6]) Alpine.effect(() => { asked[id] = (asked[id] || 0) + 1; seen[id] = [app.peopleOf(id, [priya]).map(u => u.username), app.waiting.files[id] || 0]; });
   const act = (task, op) => ({ kind: 'act', id: op + task, task, op, user: me.id, who: me, items: [] });
-  const outbox = list => { app.pending = list; app.keyOps(); app.keyWaiting(); flush(); };
+  const outbox = list => { app.pending = list; app.change(w => w.keyOps()); app.keyWaiting(); flush(); };
   outbox([act(5, 'claim')]);
   assert.deepEqual([seen[5], asked], [[['priya', 'alex'], 0], { 5: 2, 6: 1 }], 'a waiting claim shows you on the task, and the other row is not updated');
   outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }]);

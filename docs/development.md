@@ -85,8 +85,8 @@ How Pocket looks and responds to touch follows the nine rules in [`design-rules.
 change against them, and say where it bends one. The code's own rules:
 
 1. **One object for each task.** Every list's rows are the objects in `tasks`, by id, so a change shows on all of a
-   task's rows at once. Only `show(id)` (tasks.js) writes them. It lays the waiting ops and the saves still running
-   over Vikunja's copy, which reads and answers write by field with `put`.
+   task's rows at once. Only `show(id)` (tasks.js) writes them. Every write to what it reads happens inside
+   `change()`, which shows each task it touched once. `put` is the one writer of Vikunja's copies.
 2. **One row, everywhere.** `markup/task-row.html` is the row in every list, on a card, in a sheet and on a
    checklist's screen. The list's options object `g` (`screenRows`, `lists.js`) says what the row shows there. The
    gesture code cannot reach `g`, so the row writes the gestures it allows on itself (`data-gestures`). Each place

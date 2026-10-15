@@ -13,7 +13,7 @@ import {listViewOf} from '../order.js';
 import {haptic} from '../haptics.js';
 import {tickFeel} from '../progress.js';
 import {shared} from './core.js';
-import {put, putting, savedScreen, savesRunning, started, TASK_COUNT, TASK_COUNT_REACTIONS} from './tasks.js';
+import {putting, savedScreen, savesRunning, started, TASK_COUNT, TASK_COUNT_REACTIONS} from './tasks.js';
 
 export let renderSeq = 0;
 let behindTimer, preloadTimer, preloading = false, drawSeq = 0, nearEnd = null, searched = '';
@@ -530,7 +530,7 @@ export default {
       return {tasks: list.slice(from, from + n), total: list.length, skip: 0};
     }
     const at = started(), {items: list, total} = await partOf(path, from, n);
-    put(list, TASK_COUNT, at);
+    this.change(w => w.put(list, TASK_COUNT, at));
     const tasks = this.withoutTemplates(list, true);
     return {tasks, total, skip: list.length - tasks.length};
   },
@@ -651,7 +651,7 @@ export default {
   /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */
   async foundDone(s, from, n = FOUND_PART){
     const at = started(), {items: list, total} = await partOf('/tasks?' + new URLSearchParams({q: s, filter: 'done = true', filter_timezone: TZ, sort_by: 'done_at', order_by: 'desc', expand: 'comment_count'}), from, n);
-    put(list, TASK_COUNT, at);
+    this.change(w => w.put(list, TASK_COUNT, at));
     const tasks = this.withoutTemplates(list);
     return {tasks, list, total, skip: list.length - tasks.length};
   },

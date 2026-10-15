@@ -66,7 +66,7 @@ test('each op\'s apply shows its change: a tick with the user\'s ✅, a skip wit
    stage leaves it alone. Swiping a subtask on Today and then its parent did this. */
 test('a deleted subtask\'s figure stage skips a parent that a waiting delete deletes', async () => {
   const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 3 }] } }]), app = component(tasks);
-  app.opsOn = { 1: [{ op: 'delete', id: 'd1', task: 1, ids: [1] }] };
+  app.pending = [{ kind: 'act', op: 'delete', id: 'd1', task: 1, ids: [1], items: [] }]; app.change(w => w.keyOps());
   const a = { id: 'd2', op: 'delete', task: 2, ids: [2], up: 1, stage: 1 };
   await figure(a, stageContext(a, app).start());
   assert.deepEqual(v.requests, [], 'the parent is neither read nor written');

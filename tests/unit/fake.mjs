@@ -129,8 +129,9 @@ export function component(...parts){
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
   };
   const byId = Object.getOwnPropertyDescriptors(tasks);
-  // What every part reads from the store.
-  Object.defineProperties(c, { sheetTask: byId.sheetTask, runTask: byId.runTask, subRow: byId.subRow, withOps: byId.withOps, beingDeleted: byId.beingDeleted });
+  // What every part reads from the store, and change(), the one way to write it.
+  Object.defineProperties(c, { sheetTask: byId.sheetTask, runTask: byId.runTask, subRow: byId.subRow, withOps: byId.withOps, opsOf: byId.opsOf, beingDeleted: byId.beingDeleted,
+    change: byId.change, shownAs: byId.shownAs, removeRow: byId.removeRow, hiddenRows: byId.hiddenRows });
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   dropCopies();
   setApp(c);

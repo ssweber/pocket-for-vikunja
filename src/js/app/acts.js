@@ -7,7 +7,7 @@ import {actTaskId, held, heldTasks, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7} from '
 import {saved} from '../lists.js';
 import {notKnown, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
-import {put, TASK} from './tasks.js';
+import {TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -105,7 +105,7 @@ export default {
         a.stage++;
         await c.save();
       }
-      this.answered(a, c.task, c.comment);
+      this.change(w => w.answered(a, c.task, c.comment));
       if (a.op === 'claim' || a.op === 'unclaim') this.claimSent(a);
       if (a.op === 'position') this.positionSent(a);
       await sync.remove(a.id);
@@ -124,7 +124,7 @@ export default {
       if (a.op === 'position' && !unknown) error.drop = true;
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && op.saved) error.saved = op.saved;
-      if (c.task) put([c.task], TASK);
+      if (c.task) this.change(w => w.put([c.task], TASK));
       if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
       error.what = op.refused(a, a.label || this.actTitle(a.task));
       // Reload after a permanent rejection when no retry remains queued.

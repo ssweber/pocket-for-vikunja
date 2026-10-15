@@ -14,7 +14,7 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
-import {copyOf, dropCopy, put, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
+import {copyOf, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -153,7 +153,7 @@ export default {
       const kids = j.runId ? await api('/tasks/' + j.runId).then(t => (t.related_tasks?.subtask || []).map(s => s.id), e => { if (e.status === 404) return []; throw e; }) : [];
       for (const id of [...new Set([...j.steps.map(s => s.taskId).filter(Boolean), ...kids]), j.runId].filter(Boolean)) {
         await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-        this.forget(id);
+        this.change(w => w.forget(id));
       }
       await sync.remove(j.id);
       return {...none, status: 'sent', changed: 0};
@@ -221,7 +221,7 @@ export default {
       const saving = shared.saveChain.then(() => api(`/tasks/${run.id}/assignees/bulk`, {method: 'PUT', body: {assignees: e.forIds.map(id => ({id}))}}));
       shared.saveChain = saving.catch(() => {});
       await saving;
-      put([{id: run.id, assignees: who}], ['assignees']); this.saveRun();
+      this.change(w => w.put([{id: run.id, assignees: who}], ['assignees'])); this.saveRun();
       this.say(this.forText({assignees: who}).replace(/^For/, 'Now for'), {place: 'sheet:top'});
     } catch (err) { e.forIds = was; this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {place: 'sheet:top', cls: 'failed'}); }
   },
@@ -239,7 +239,7 @@ export default {
       for (const sid of new Set([...(t.related_tasks?.subtask || []).map(s => s.id), ...also]))
         await patiently(() => api('/tasks/' + sid, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await patiently(() => api('/tasks/' + id, {method: 'DELETE'}));
-      this.forget(id);
+      this.change(w => w.forget(id));
       if (this.sheet.id === id) Object.assign(this.sheet, {editingDesc: false, commentDraft: ''});
       if (!quiet) {
         const ids = new Set([id, ...(t.related_tasks?.subtask || []).map(s => s.id)]);
@@ -255,7 +255,7 @@ export default {
   // Load a checklist with each step's reactions (who did it), notes and photos.
   async loadRun(seq, id){
     const at = started(), run = await allComments(await api(`/tasks/${id}?expand=comments`).catch(e => { if (e.status === 404) e.runGone = true; throw e; }));
-    put([run], TASK_COMMENTS, at);
+    this.change(w => w.put([run], TASK_COMMENTS, at));
     if (this.projects.length && !this.isRunTask(run)) throw new ApiError(404, 'This task isn\'t a started checklist. Open it from its project instead.');
     /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
        push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
@@ -341,7 +341,7 @@ export default {
       const skipper = skippedBy(s), done = s.done, skipped = !!skipper, pct = Math.round((s.percent_done || 0) * 100);
       // The step waits while a tick, a skip or an untick of it is in the outbox. It looks waiting (slow) once the last
       // of them has waited long enough.
-      const tick = (this.opsOn[s.id] || []).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
+      const tick = this.opsOf(s.id).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
       let doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       // Compare whole seconds because tick replies include nanoseconds but later task reads do not.
@@ -680,7 +680,7 @@ export default {
     const run = this.view.shownRun?.id;
     try {
       await patiently(() => api('/tasks/' + s.id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
-      dropCopy(s.id);
+      this.change(w => w.put([s], null));                                  // Vikunja deleted the step
       if (run) this.writeFigure(run).catch(() => {});                      // recompute the checklist's stored progress without this step
       await sync.lock(async () => { for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id); });
       this.refreshPending();
@@ -727,7 +727,7 @@ export default {
   async refreshRunTask(id){
     try {
       const at = started(), t = await allComments(await api(`/tasks/${id}?expand=reactions&expand=comments`));
-      put([t], TASK_REACTIONS_COMMENTS, at);
+      this.change(w => w.put([t], TASK_REACTIONS_COMMENTS, at));
       this.saveRun();
     } catch {}
   },

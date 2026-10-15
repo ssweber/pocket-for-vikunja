@@ -3,7 +3,8 @@ import { component, fakeVikunja } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import tasks, { copyOf, put, putting, SAVED, started, TASK, TASK_COUNT, TASK_COUNT_REACTIONS, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, putting, SAVED, started, TASK, TASK_COUNT, TASK_COUNT_REACTIONS, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { app as current } from '../../src/js/util.js';
 import acts from '../../src/js/app/acts.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -17,8 +18,10 @@ import { OPS } from '../../src/js/ops/index.js';
 import { saved } from '../../src/js/lists.js';
 import { sync } from '../../src/js/sync.js';
 
-// A read as a screen's load makes it: started, answered, then put into Vikunja's copies.
-const read = (list, asked = TASK) => put(list, asked, started());
+// A read as a screen's load makes it: started, answered, then put into Vikunja's copies, inside a change.
+const read = (list, asked = TASK) => current.change(w => w.put(list, asked, started()));
+// An answer, or a read that started at `at`, put into Vikunja's copies.
+const put = (list, asked, at) => current.change(w => w.put(list, asked, at));
 
 test('a task read again is the same object and shows what Vikunja has now', () => {
   const app = component(tasks);
@@ -41,6 +44,67 @@ test('a task read again has only its changed fields written, so an unchanged row
   assert.equal(t.related_tasks.subtask[0].done, true);
 });
 
+/* Every write to the store happens inside change(), which shows each task it touched once when it ends. A writer kept
+   from a change, or an edit's ok and undo called later, throws outside one. */
+test('a writer called outside a change throws', () => {
+  const app = component(tasks);
+  let kept;
+  app.change(w => { kept = w; });
+  assert.throws(() => kept.put([{ id: 1, title: 'Call Jo' }], TASK), /inside change/);
+  const e = app.change(w => w.edit(1, { title: 'Call Jo' }));
+  assert.throws(() => e.ok({ id: 1, title: 'Call Jo' }), /inside change/);
+  assert.throws(() => app.change(async w => w.edit(1, {})), /Await the request first/, 'a change must not wait for anything');
+  assert.equal(copyOf(1), undefined);
+});
+
+test('several writes to one task in one change show it once, with only their end result', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Wipe the menus', due_date: '2026-10-08T09:00:00Z' }]);
+  const t = app.row(copyOf(1)), written = [];
+  app.tasks[1] = new Proxy(t, { set(o, k, v){ written.push([k, v]); o[k] = v; return true; } });
+  app.change(w => {
+    w.edit(1, { title: 'Wipe every menu' });
+    w.put([{ id: 1, due_date: '2026-10-09T09:00:00Z' }], ['due_date']);
+    w.edit(1, { title: 'Wipe the menus today' });
+    assert.equal(t.title, 'Wipe the menus', 'nothing shows before the change ends');
+  });
+  assert.deepEqual(written, [['title', 'Wipe the menus today'], ['due_date', '2026-10-09T09:00:00Z']], 'each field is written once');
+});
+
+test('a change inside a change joins it, and the task shows once the outer change ends', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Wipe the menus', done: false }]);
+  const t = app.row(copyOf(1));
+  app.change(w => {
+    app.change(inner => inner.edit(1, { title: 'Wipe every menu' }));
+    assert.equal(t.title, 'Wipe the menus', 'the inner change ending shows nothing');
+    w.edit(1, { done: true });
+  });
+  assert.deepEqual([t.title, t.done], ['Wipe every menu', true]);
+});
+
+test('a change that throws still shows what it wrote, and the error goes on', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Wipe the menus' }]);
+  const t = app.row(copyOf(1));
+  assert.throws(() => app.change(w => { w.edit(1, { title: 'Wipe every menu' }); throw new Error('Vikunja refused it'); }), /Vikunja refused it/);
+  assert.equal(t.title, 'Wipe every menu');
+  app.change(w => w.edit(1, { done: true }));
+  assert.equal(t.done, true, 'the next change shows its writes when it ends');
+});
+
+/* A deleted task's copy goes through put like any answer, so its answer time is recorded. A read that started before
+   the delete then leaves it deleted. */
+test('forget records an answer time, so a read in flight doesn\'t bring the task back', () => {
+  const app = component(tasks);
+  read([{ id: 1, title: 'Call Jo' }]);
+  app.row(copyOf(1));
+  const at = started();
+  app.change(w => w.forget(1));
+  put([{ id: 1, title: 'Call Jo' }], TASK, at);
+  assert.deepEqual([copyOf(1), app.rowTask(1)], [undefined, null]);
+});
+
 /* show(id) stacks three layers: Vikunja's copy, the waiting ops applied through each op's `apply`, then the direct
    saves still running (edit), oldest first. The test adds an op that renames a task to the registry. */
 test('a row shows Vikunja\'s copy, then its waiting ops, then the saves still running, and stays one object', () => {
@@ -49,12 +113,12 @@ test('a row shows Vikunja\'s copy, then its waiting ops, then the saves still ru
   try {
     read([{ id: 1, title: 'Wipe the menus', due_date: '2026-10-08T09:00:00Z', priority: 1 }]);
     const t = app.row(copyOf(1));
-    app.pending = [{ kind: 'act', id: 'r1', task: 1, op: 'rename', title: 'Wipe every menu', items: [] }]; app.keyOps();
-    const due = app.edit(1, { due_date: '2026-10-09T09:00:00Z', title: 'Wipe the menus today' });
+    app.pending = [{ kind: 'act', id: 'r1', task: 1, op: 'rename', title: 'Wipe every menu', items: [] }]; app.change(w => w.keyOps());
+    const due = app.change(w => w.edit(1, { due_date: '2026-10-09T09:00:00Z', title: 'Wipe the menus today' }));
     assert.deepEqual([t.title, t.due_date, t.priority], ['Wipe the menus today', '2026-10-09T09:00:00Z', 1], 'a save laid over the op wins');
-    due.undo();
+    app.change(() => due.undo());
     assert.deepEqual([t.title, t.due_date], ['Wipe every menu', '2026-10-08T09:00:00Z'], 'without the save, the op shows over the copy');
-    app.pending = []; app.keyOps();
+    app.pending = []; app.change(w => w.keyOps());
     assert.equal(t.title, 'Wipe the menus', 'without the op, the row is Vikunja\'s copy');
     assert.equal(app.tasks[1], t, 'every change was written into the same object');
   } finally { delete OPS.rename; }
@@ -85,13 +149,13 @@ test('a save shows on the row at once, its answer replaces it, and a failed save
   read([{ id: 1, title: 'Order cups', due_date: '2026-10-08T09:00:00Z', priority: 1, updated: 'a' }]);
   const t = app.row(copyOf(1)), shown = [];
   app.tasks[1] = new Proxy(t, { set(o, k, v){ shown.push([k, v]); o[k] = v; return true; } });
-  const due = app.edit(1, { due_date: '2026-10-09T09:00:00Z' }), title = app.edit(1, { title: 'Order lids' });
+  const due = app.change(w => w.edit(1, { due_date: '2026-10-09T09:00:00Z' })), title = app.change(w => w.edit(1, { title: 'Order lids' }));
   assert.deepEqual([t.due_date, t.title], ['2026-10-09T09:00:00Z', 'Order lids']);
-  due.ok({ id: 1, title: 'Order cups', due_date: '2026-10-09T09:00:00Z', priority: 1, updated: 'b' });
+  app.change(() => due.ok({ id: 1, title: 'Order cups', due_date: '2026-10-09T09:00:00Z', priority: 1, updated: 'b' }));
   assert.deepEqual([t.due_date, t.title, t.updated, copyOf(1).due_date], ['2026-10-09T09:00:00Z', 'Order lids', 'b', '2026-10-09T09:00:00Z'],
     'the first answer brings the new date, and the title still being saved stays');
   assert.equal(shown.filter(([k]) => k === 'title').length, 1, 'the title was written once, and never back to the old one');
-  title.undo();
+  app.change(() => title.undo());
   assert.deepEqual([t.title, t.due_date], ['Order cups', '2026-10-09T09:00:00Z'], 'a failed save puts back its own field only');
 });
 
@@ -103,7 +167,7 @@ test('the sheet reads its task\'s row by id, so a change made in a list shows in
   const t = app.row(copyOf(1));
   app.sheet = { id: 1 };
   assert.equal(app.sheetTask, t, 'the sheet and the list read one object');
-  app.edit(1, { done: true });
+  app.change(w => w.edit(1, { done: true }));
   assert.equal(app.sheetTask.done, true, 'a tick in the list shows in the sheet');
   read([{ id: 1, title: 'Call Jo back' }]);
   assert.equal(app.sheetTask.title, 'Call Jo back', 'and so does a read');
@@ -117,7 +181,7 @@ test('two saves in flight on one task: the first answer does not flicker the sec
   read([v.task(1)]);
   const t = app.row(copyOf(1));
   app.tasks[1] = new Proxy(t, { set(o, k, x){ if (k === 'title') seen.push(x); o[k] = x; return true; } });
-  const save = (fields) => { const e = app.edit(1, fields); return app.saveTask(1, fields).then(got => e.ok(got), x => { e.undo(); throw x; }); };
+  const save = (fields) => { const e = app.change(w => w.edit(1, fields)); return app.saveTask(1, fields).then(got => app.change(() => e.ok(got)), x => { app.change(() => e.undo()); throw x; }); };
   await Promise.all([save({ due_date: '2026-10-09T09:00:00Z' }), save({ title: 'Order lids' })]);
   assert.deepEqual(seen, ['Order lids'], 'the title is written once');
   assert.deepEqual([t.title, t.due_date], ['Order lids', '2026-10-09T09:00:00Z']);
@@ -148,9 +212,9 @@ test('a task leaving done keeps every field until its batch clears, then shows V
   const app = component(tasks, leaving);
 
   read([{ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-10T09:00:00Z', repeat_after: 86400 }]);
-  const t = app.row(copyOf(1)), ticked = app.edit(1, { done: true });
+  const t = app.row(copyOf(1)), ticked = app.change(w => w.edit(1, { done: true }));
   app.markRow(1, { kind: 'done' });
-  ticked.ok({ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 });
+  app.change(() => ticked.ok({ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 }));
   read([{ id: 1, title: 'Water them', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 }]);
   assert.deepEqual([t.done, t.due_date, t.title], [true, '2026-10-10T09:00:00Z', 'Water the plants'], 'the answer and a later read wait');
   await app.clearBatch(true);
@@ -162,7 +226,7 @@ test('a deleted task is removed from every list and forgotten', () => {
   const app = component(tasks), t = app.row({ id: 1, title: 'Call Jo' }), other = app.row({ id: 2, title: 'Buy milk' });
   put([{ id: 1, title: 'Call Jo' }], TASK);
   app.view.groups = [{ key: 'overdue', tasks: [t] }, { key: 'today', tasks: [other, t] }];
-  app.forget(1);
+  app.change(w => w.forget(1));
   assert.deepEqual(app.view.groups.map(g => g.tasks.map(x => x.id)), [[], [2]]);
   assert.equal(app.rowTask(1), null);
   assert.equal(copyOf(1), undefined);
@@ -199,7 +263,7 @@ test('a saved screen holds Vikunja\'s copy of each task, not a waiting op\'s eff
   const app = component(tasks, views), copy = { id: 1, title: 'Wipe the menus', done: false, project_id: 7, updated: '2026-10-15T09:00:00Z' };
   read([copy], TASK_COUNT);
   const t = app.row(copy);
-  app.edit(1, { done: true });                   // as tickRunStep does, until the outbox sends the tick
+  app.change(w => w.edit(1, { done: true }));    // as tickRunStep does, until the outbox sends the tick
   Object.assign(app, { route: { name: 'project', id: 7 }, positions: {} });
   app.view = { groups: [{ key: 'open', tasks: [t] }], project: { id: 7, title: 'Cafe' }, listView: null };
   app.saveProject();
@@ -222,12 +286,12 @@ test('a task as it will be is Vikunja\'s copy with its waiting ops applied in or
   const app = component(tasks), copy = { id: 2, title: 'Mop the floor', done: false, percent_done: 0 };
   put([copy], TASK);
   app.pending = [act(2, 'progress', { pct: 30 }), act(3, 'done'), act(2, 'progress', { pct: 60 }), act(2, 'done')];
-  app.keyOps();
+  app.change(w => w.keyOps());
   assert.deepEqual(app.opsOn[2].map(e => e.id), ['progress230', 'progress260', 'done2'], 'a task\'s ops in the order they will be sent');
   assert.deepEqual(app.shownAs(2), { id: 2, title: 'Mop the floor', done: true, done_at: undefined, percent_done: 0.6 }, 'the later progress wins');
   assert.deepEqual(copyOf(2), { id: 2, title: 'Mop the floor', done: false, percent_done: 0 });
   assert.equal(app.shownAs(3), null, 'a task with no copy from Vikunja has nothing to apply its ops to');
-  app.pending = []; app.keyOps();
+  app.pending = []; app.change(w => w.keyOps());
   assert.equal(app.shownAs(2), copyOf(2), 'with nothing waiting, the task is Vikunja\'s copy');
 });
 
@@ -236,7 +300,7 @@ test('a task as it will be is Vikunja\'s copy with its waiting ops applied in or
 test('a change to one task\'s waiting ops leaves the other tasks\' ops as the same objects', c => {
   const { Alpine, flush } = watching(c), app = Alpine.reactive(component(tasks)), asked = { 5: 0, 6: 0 };
   for (const id of [5, 6]) Alpine.effect(() => { asked[id]++; void app.opsOn[id]; });
-  const outbox = list => { app.pending = list; app.keyOps(); flush(); };
+  const outbox = list => { app.pending = list; app.change(w => w.keyOps()); flush(); };
   outbox([act(5, 'done'), act(6, 'progress', { pct: 40 })]);
   const six = Alpine.raw(app).opsOn[6];
   outbox([act(5, 'done'), act(5, 'note'), act(6, 'progress', { pct: 40 })]);
@@ -274,13 +338,13 @@ test('a task\'s rows show each waiting op through its apply as it joins or leave
     for (const id of [1, 2]) { read([{ id, title: 'Task ' + id, done: false }]); app.row({ id, title: 'Task ' + id, done: false, comment_count: 2 }); }
     const rows = [app.tasks[1], app.tasks[2]];
     app.pending = [act(1, 'rename', { title: 'Renamed' }), act(2, 'done')];
-    app.keyOps();
+    app.change(w => w.keyOps());
     assert.deepEqual(rows.map(x => [x.title, x.done, x.comment_count]), [['Renamed', false, 2], ['Task 2', true, 2]],
       'each row is Vikunja\'s copy with its op applied, and keeps the field the copy lacks');
     assert.deepEqual([app.tasks[1], app.tasks[2]], rows, 'each task is still one object');
-    app.pending = [act(2, 'done')]; app.keyOps();
+    app.pending = [act(2, 'done')]; app.change(w => w.keyOps());
     assert.equal(rows[0].title, 'Task 1', 'once the op stops waiting, the row is Vikunja\'s copy again');
-    app.answered({ ...act(2, 'done') }, { id: 2, title: 'Task 2', done: true });
+    app.change(w => w.answered({ ...act(2, 'done') }, { id: 2, title: 'Task 2', done: true }));
     assert.deepEqual([rows[1].done, copyOf(2).done, app.opsOn[2]], [true, true, undefined], 'an answered tick goes into Vikunja\'s copy and onto its rows');
   } finally { delete OPS.rename; }
 });
@@ -291,12 +355,12 @@ test('a tick sent as an op shows until the op is answered or leaves the outbox',
   const app = component(tasks);
   read([{ id: 1, title: 'Wipe the menus', done: false }, { id: 2, title: 'Mop the floor', done: false }]);
   const [one, two] = [1, 2].map(id => app.row(copyOf(id))), seen = [];
-  app.pending = [act(1, 'done'), act(2, 'done')]; app.keyOps();
+  app.pending = [act(1, 'done'), act(2, 'done')]; app.change(w => w.keyOps());
   app.tasks[1] = new Proxy(one, { set(o, k, v){ seen.push([k, v]); o[k] = v; return true; } });
   assert.deepEqual([one.done, two.done], [true, true]);
-  app.answered(act(1, 'done'), { id: 1, title: 'Wipe the menus', done: true });
+  app.change(w => w.answered(act(1, 'done'), { id: 1, title: 'Wipe the menus', done: true }));
   assert.deepEqual([one.done, seen], [true, []], 'the answer replaces the op without the row changing');
-  app.pending = []; app.keyOps();
+  app.pending = []; app.change(w => w.keyOps());
   assert.deepEqual([one.done, two.done], [true, false], 'dropped from the outbox, the tick is gone from its row');
 });
 
@@ -324,8 +388,8 @@ test('an op answered while a late read is in flight keeps its change', () => {
   const app = component(tasks), me = { id: 1, username: 'alex' };
   read([{ id: 1, title: 'Wipe the menus', done: false, assignees: [] }]);
   const t = app.row(copyOf(1)), at = started(), claim = act(1, 'claim', { user: 1, who: me });
-  app.pending = [claim]; app.keyOps();
-  app.answered(claim, null);
+  app.pending = [claim]; app.change(w => w.keyOps());
+  app.change(w => w.answered(claim, null));
   put([{ id: 1, title: 'Wipe the menus', done: false, assignees: [] }], TASK, at);
   assert.deepEqual([t.assignees, copyOf(1).assignees], [[me], [me]], 'the late read is ignored');
 });
@@ -339,11 +403,11 @@ test('a waiting delete takes its tasks out of their parent\'s subtasks, once it 
   const van = app.row(copyOf(1)), kids = () => van.related_tasks.subtask.map(s => s.id);
   const del = { kind: 'act', op: 'delete', id: 'del2', user: 1, task: 2, ids: [2], up: 1, at: new Date().toISOString(), items: [] };
   sync.held.add(del.id); await sync.add(del, []);
-  app.keyOps();
+  app.change(w => w.keyOps());
   assert.deepEqual([app.beingDeleted(2), kids()], [true, [2, 3]], 'held for Restore, the row hides and the parent still lists it');
-  sync.held.delete(del.id); app.pending = [del]; app.keyOps();
+  sync.held.delete(del.id); app.pending = [del]; app.change(w => w.keyOps());
   assert.deepEqual([app.beingDeleted(2), kids(), copyOf(1).related_tasks.subtask.length], [true, [3], 2], 'once it is sent, the parent no longer lists it, and Vikunja\'s copy is as it was');
-  await sync.remove(del.id); app.pending = []; app.keyOps();
+  await sync.remove(del.id); app.pending = []; app.change(w => w.keyOps());
   assert.deepEqual([app.beingDeleted(2), kids()], [false, [2, 3]], 'a delete that leaves the outbox unsent brings it back');
 });
 
@@ -354,9 +418,9 @@ test('a failed tick of one subtask puts it back while another subtask\'s edit is
   read([{ id: 1, title: 'Closing up', related_tasks: { subtask: steps } }]);
   const p = app.row(copyOf(1)), shown = () => p.related_tasks.subtask.map(s => [app.subRow(s).title, app.subRow(s).done]);
   app.subRows(p);
-  const ticked = app.edit(2, { done: true }); app.edit(3, { title: 'Sweep up' });
+  const ticked = app.change(w => w.edit(2, { done: true })); app.change(w => w.edit(3, { title: 'Sweep up' }));
   assert.deepEqual(shown(), [['Mop', true], ['Sweep up', false]]);
-  ticked.undo();
+  app.change(() => ticked.undo());
   assert.deepEqual(shown(), [['Mop', false], ['Sweep up', false]], 'the failed tick is gone, and the rename still shows');
   assert.deepEqual(p.related_tasks.subtask, steps, 'the parent\'s list of its subtasks is as Vikunja gave it');
 });
@@ -368,8 +432,8 @@ test('a late read of a template leaves a step renamed since as it is', () => {
   read([{ id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } }]);
   const tpl = app.row(copyOf(1));
   app.subRows(tpl);
-  const at = started(), renamed = app.edit(2, { title: 'Mop the floor' });
-  renamed.ok({ id: 2, title: 'Mop the floor' });
+  const at = started(), renamed = app.change(w => w.edit(2, { title: 'Mop the floor' }));
+  app.change(() => renamed.ok({ id: 2, title: 'Mop the floor' }));
   put([{ id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } }, { id: 2, title: 'Mop' }], TASK, at);
   assert.deepEqual([app.subRow(tpl.related_tasks.subtask[0]).title, copyOf(2).title], ['Mop the floor', 'Mop the floor']);
 });
@@ -381,7 +445,7 @@ test('a read in flight does not bring back a task deleted meanwhile', () => {
   read([{ id: 1, title: 'Call Jo' }, { id: 2, title: 'Buy milk' }]);
   app.row(copyOf(1)); app.row(copyOf(2));
   const landing = putting(TASK);
-  app.forgetTree([1]);
+  app.change(w => w.forgetTree([1]));
   const list = landing([{ id: 1, title: 'Call Jo' }, { id: 2, title: 'Buy milk' }]);
   assert.deepEqual([list.map(t => t.id), copyOf(1), app.rowTask(1)], [[2], undefined, null]);
 });
@@ -390,7 +454,7 @@ test('a read in flight does not bring back a task deleted meanwhile', () => {
    no copy would otherwise leave the sheet blank. */
 test('a read of a task with no copy is taken, though an op on it was answered since the read started', () => {
   const app = component(tasks), at = started();
-  app.answered(act(3, 'claim', { user: 1 }), null);
+  app.change(w => w.answered(act(3, 'claim', { user: 1 }), null));
   put([{ id: 3, title: 'Wipe the till', assignees: [{ id: 1 }] }], TASK, at);
   assert.equal(copyOf(3)?.title, 'Wipe the till');
 });
@@ -407,7 +471,7 @@ test('a subtask ticked in its parent\'s sheet redraws its own row only', c => {
   const ran = { list: 0, 2: 0, 3: 0, 4: 0 };
   Alpine.effect(() => { ran.list++; void app.subtasks; });
   for (const id of [2, 3, 4]) Alpine.effect(() => { ran[id]++; const s = app.subtasks.find(x => x.id === id); void [s.done, s.title]; });
-  const ticked = app.edit(3, { done: true }); flush();
-  ticked.ok({ id: 3, title: 'Load 3', done: true }); flush();
+  const ticked = app.change(w => w.edit(3, { done: true })); flush();
+  app.change(() => ticked.ok({ id: 3, title: 'Load 3', done: true })); flush();
   assert.deepEqual(ran, { list: 1, 2: 1, 3: 2, 4: 1 }, 'the tick and its answer ran the ticked row once, and nothing else');
 });
