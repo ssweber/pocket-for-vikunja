@@ -15,6 +15,7 @@
     "test:smoke": "node tests/smoke.mjs",
     "test:checklists": "node tests/checklists.mjs",
     "test:steptimes": "node tests/steptimes.mjs",
+    "test:relay": "node tests/relay.mjs",
     "test:local": "node scripts/dev.mjs --test",
     "demo": "node scripts/demo.mjs",
     "specimen": "node scripts/specimen.mjs",

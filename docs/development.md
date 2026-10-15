@@ -18,6 +18,7 @@ src/           the app's code. npm run build turns it into pocket/app/index.html
   vendor/      Alpine as published, patched for long lists (see Upgrading the libraries)
 pocket/        the plugin, as it is installed in Vikunja's plugins folder
   main.go      serves app/ at /api/v1/plugins/pocket/
+  relay.go     passes Pocket's writes on to Vikunja's API, so a write sent twice is made once
   app/         the built app, Alpine and chrono, and sw.js, the service worker that lets Pocket open offline
 tests/         the end-to-end tests, helpers.mjs (what they share), and unit/ (the tests that need no browser)
 scripts/       build.mjs, dev.mjs (a local Vikunja), check.mjs (what lint checks besides ESLint), demo.mjs (the
@@ -181,6 +182,7 @@ with a test in the file for its area:
 - `tests/offline.mjs`: with the connection cut, Pocket opens, queues, and sends once the connection is back.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side, signing in and out on either.
 - `tests/steptimes.mjs`: the plugin's step times, through the API only.
+- `tests/relay.mjs`: the plugin's relay, through the API only. A write sent twice with one key is made once.
 
 The tests delete what they create, except the labels `pocket-smoke` and `template`, which a Task Management token
 cannot delete. The checklists test needs a token that can create and update projects and add reactions.
@@ -250,6 +252,9 @@ cannot delete. The checklists test needs a token that can create and update proj
   it from the start (`hintSeen(context)`). A new browser context in a test needs it too.
 - **Low Power Mode on an iPhone** animates a width at half the frame rate of a transform. Desktop Chrome cannot show
   this. Rule 7 exists because of it.
+- **Vikunja evaluates every `.go` file in `pocket/` into one package,** in name order. A file can use what an earlier
+  file defines, but can't import a package an earlier file imports ("redeclared in this block"). `relay.go` relies on
+  `main.go`'s imports.
 - **Never run `npm run build` while tests run.** A changed page makes the open copies reload in the middle of a test.
 - **Never stop processes by name** (`taskkill /IM`, `pkill`). That closes the user's own Chrome and Node. Stop only
   what you started, by PID, or the `pocket-dev` containers.

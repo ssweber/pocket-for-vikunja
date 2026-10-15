@@ -111,7 +111,7 @@ if (process.argv.includes('--test')) {
   // Run the unit tests first, since they take a second, then each test file in turn. Each file's time is printed at the
   // end, so a slow file is easy to see.
   const ROOT = fileURLToPath(new URL('..', import.meta.url));
-  const results = ['tests/unit/*.test.mjs', 'tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/checklists.mjs', 'tests/steptimes.mjs'].map(test => {
+  const results = ['tests/unit/*.test.mjs', 'tests/parse.mjs', 'tests/smoke.mjs', 'tests/session.mjs', 'tests/offline.mjs', 'tests/checklists.mjs', 'tests/steptimes.mjs', 'tests/relay.mjs'].map(test => {
     const start = Date.now();
     const { status } = run(process.execPath, test.includes('*') ? ['--test', '--test-reporter=spec', test] : [test], { cwd: ROOT, env, stdio: 'inherit', allowFail: true });
     return { test, status, secs: Math.round((Date.now() - start) / 1000) };

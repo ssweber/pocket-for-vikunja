@@ -59,7 +59,8 @@ And beyond the draft:
   `Idempotency-Unknown: true`. The outbox shows that entry as failed, for the user to send or drop. The window is a few
   milliseconds on the server, against today's window of any dropped connection.
 - **The relay decides how long keys are kept,** 30 days for now, and refuses an expired key instead of running it.
-  Every key is a UUIDv7, which holds the time it was made. A key older than the relay keeps keys gets 409 with
+  Every key starts with a UUIDv7, which holds the time it was made, and may have more after it
+  (`<uuidv7>:<stage>:<part>`, part 1). A key that doesn't start with one gets 400. A key older than the relay keeps keys gets 409 with
   `Idempotency-Unknown: true`, as for the gap. So does a key made more than a day in the future, by a phone whose
   clock is wrong. The outbox has no rule about age of its own, and the relay can change how long it keeps keys
   without breaking old entries. A phone's clock that is a day slow can still slip a key past the check. That margin
@@ -67,42 +68,42 @@ And beyond the draft:
 - **The table, `pocket_relay`,** is plain SQL that SQLite, Postgres and MySQL accept. A Go struct would be a type Yaegi
   makes at runtime, and xorm may not read it. It holds each stored answer, which includes task content, for 30 days.
 
-### The spike
+### The spike: passed
 
-The relay is on the branch `spike/relay`: `pocket/relay.go`, checked by `scripts/spike-relay.mjs` against
-`npm run dev`. The script checks that:
+Run on 2026-10-15 against Vikunja 2.7.0, on Postgres and on SQLite. Every check passed. The checks are now
+`tests/relay.mjs`, which `test:local` runs:
 
 1. a relayed create makes a task;
 2. the same key gets the stored answer and makes no second task;
-3. five requests with one key at the same moment make one task;
+3. five requests with one key at the same moment make one task, and the others get 409 or the stored answer;
 4. a reused key gets 422, and a missing key 400;
 5. a project the user can't write to is refused, the refusal is replayed, and nothing is created;
 6. events fire: a mention in the description notifies the mentioned user;
-7. a repeating task ticked twice with one key moves on one day, not two.
+7. a repeating task ticked twice with one key moves on one day, not two;
+8. a key older than 30 days, or from 2 days ahead, gets 409 with `Idempotency-Unknown`, and makes nothing. A key that
+   isn't a UUIDv7 gets 400, and a key with a stage and part after its UUID is accepted.
 
-`relay.go` doesn't refuse an old or a future key yet. Add that to `relayWrite`, and an eighth check to the script: a
-key older than the relay keeps keys, and a key from the future, both get 409 with `Idempotency-Unknown`, and nothing
-is created.
-
-`relay.go` defines no `NewPlugin`, which `main.go` does. If Vikunja's loader wants one in every file, `relay.go` fails
-to load and Vikunja's log says so. Check 1 catches that.
-
-Pocket signs in only with Vikunja's own session (part 6), so whether an API token can reach a plugin route doesn't
-matter. The script's last note, which reports that, can be ignored.
-
-`relay.go` type-checks against stand-ins for Vikunja's packages, but hasn't run inside Vikunja. Run the spike first,
-on SQLite and on Postgres.
+The first run didn't load: Vikunja evaluates every `.go` file into one package, so `relay.go`'s second import of
+`net/http` was "redeclared". `relay.go` now imports only what `main.go` doesn't (see Yaegi below).
 
 ### Traps in the relay
 
-- **Rate limits.** With `ratelimit.kind: ip`, every relayed request comes from 127.0.0.1 and shares one limit. Check
-  how Vikunja counts a relayed request, and say in the guide what to set.
+- **Rate limits.** Vikunja's are off unless `ratelimit.enabled` is set. With `ratelimit.kind: user`, the default, a
+  relayed write counts twice against its user: once at the relay and once at `/api/v2`. With `ratelimit.kind: ip`,
+  every relayed request reaches `/api/v2` from 127.0.0.1, so all users share one limit there. The guide says to use
+  `user`, and to allow for the doubling.
+- **Two shapes of refusal.** Vikunja's v2 refusals carry their reason in `detail`. The relay's own (400, 409, 422) carry
+  it in `message`, as echo writes them. `api()` reads `detail`, then `message`.
 - **Where Vikunja listens.** The relay reaches Vikunja at `service.unixsocket` if set, or else `service.interface`,
   with `0.0.0.0` read as 127.0.0.1. A Vikunja that serves TLS itself needs `https` here.
 - **MySQL's `TEXT`** holds 64 KB. A large answer, such as a task with many comments, needs `MEDIUMTEXT` there.
 - **Body size.** The relay accepts 50 MB, so attachments can go through it. A reverse proxy in front may allow less.
-- **Yaegi.** Only what `pkg/yaegi_symbols` exposes can be called, plus Go's standard library. Each file in `pocket/` is
-  evaluated on its own, in name order, so a file can't use a name another file defines unless that file comes first.
+- **Yaegi.** Only what `pkg/yaegi_symbols` exposes can be called, plus Go's standard library. Vikunja evaluates every
+  `.go` file in `pocket/` into one package, in name order (`pkg/plugins/yaegi/loader.go`). A file can use what an
+  earlier file defines, but can't import a package an earlier file imports. So `relay.go` uses `main.go`'s imports,
+  and if `main.go` stops importing one of them, `relay.go` stops loading. `test:local` fails then, because `dev.mjs`
+  checks that the plugin loaded. Vikunja asks for `NewPlugin` once, from `main.go`, and for the routes and the table
+  from `relay.go`.
 
 ## 1. Every change is an op, sent through the outbox
 
@@ -440,10 +441,9 @@ and `npm run test:local`. Each phase that moves an op adds a case to `tests/offl
 reload Pocket, reconnect, and check Vikunja's copy. It also sends each request of the op twice with its key, and
 checks that Vikunja changed once.
 
-0. **The spike.** Run `scripts/spike-relay.mjs` on the `spike/relay` branch, on SQLite and on Postgres. Record the
-   results here. If a check fails, stop and rethink part 0 before going on. Then bring `relay.go` onto `dev` as the
-   plugin's relay (`git checkout origin/spike/relay -- pocket/relay.go`), and delete the branch. Don't merge the
-   branch: its copies of the files in `docs/design/` are older than dev's.
+0. **The spike.** Done on 2026-10-15, on the branch `single-code-paths`: `relay.go` and `tests/relay.mjs` came from
+   `spike/relay` as files, not by merging that branch, whose copies of `docs/design/` are older. Delete `spike/relay`
+   once this branch is merged.
 1. **Ground.** Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The
    writes lint rule with the full allowlist. The store's core (part 7) in `app/tasks.js`: Vikunja's copies, the
    waiting ops and the memo, with each op's answer written into the copies. Only the ops built from here on read it.
