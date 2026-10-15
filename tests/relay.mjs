@@ -94,6 +94,11 @@ try {
   const days = Math.round((Date.parse((await v2('GET', `/tasks/${rep.json.id}`, me)).json?.due_date) - due.getTime()) / 864e5);
   check('a repeating task ticked twice with one key moves on one day', days === 1 && tick2.replayed, `moved ${days} day(s)`);
 
+  // An answer over 64 KB is stored and replayed. MySQL's TEXT would cut it off (relay.go uses LONGTEXT there).
+  const k5 = newKey(), big = {title: `Relay big ${run}`, description: '<p>' + 'x'.repeat(100e3) + '</p>'};
+  const large = keep(await relay('POST', `/projects/${team.id}/tasks`, me, big, k5)), largeAgain = await relay('POST', `/projects/${team.id}/tasks`, me, big, k5);
+  check('an answer over 64 KB is stored and replayed whole', large.status === 201 && largeAgain.replayed && largeAgain.text === large.text, brief(largeAgain));
+
   // A key older than the relay keeps answers, or from a clock a day fast, isn't run.
   const title8 = `Relay old key ${run}`;
   const old = keep(await relay('POST', `/projects/${team.id}/tasks`, me, {title: title8}, newKey(Date.now() - 31 * 864e5)));

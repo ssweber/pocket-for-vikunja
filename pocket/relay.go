@@ -55,14 +55,19 @@ func (r *relay) Init() error     { return nil }
 func (r *relay) Shutdown() error { return nil }
 
 // Plain SQL that SQLite, Postgres and MySQL all accept. A Go struct for xorm would be a type Yaegi defines at runtime,
-// and xorm may not read those.
+// and xorm may not read those. MySQL's TEXT holds 64 KB, too little for a task with long notes, so it gets LONGTEXT.
+// Postgres has no LONGTEXT, and its TEXT has no limit, as SQLite's has none.
 func (r *relay) Migrations() []*xormigrate.Migration {
 	return []*xormigrate.Migration{{
 		ID:          "pocket-20261014-relay-keys",
 		Description: "Pocket: remember the answer to each keyed write, so a retry isn't made twice.",
 		Migrate: func(tx *xorm.Engine) error {
+			text := "TEXT"
+			if tx.DriverName() == "mysql" {
+				text = "LONGTEXT"
+			}
 			_, err := tx.Exec("CREATE TABLE pocket_relay (user_id BIGINT NOT NULL, op_key VARCHAR(255) NOT NULL, fingerprint VARCHAR(64) NOT NULL, " +
-				"state INT NOT NULL, code INT NOT NULL, content_type VARCHAR(255) NOT NULL, body TEXT NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, op_key))")
+				"state INT NOT NULL, code INT NOT NULL, content_type VARCHAR(255) NOT NULL, body " + text + " NOT NULL, created BIGINT NOT NULL, PRIMARY KEY (user_id, op_key))")
 			return err
 		},
 		Rollback: func(tx *xorm.Engine) error {

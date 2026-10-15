@@ -142,13 +142,13 @@ npm run dev
 ```
 
 This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456` on Postgres, with the plugin loaded from `pocket/`,
-step times on and a mock single sign-on provider, and prints Pocket's address. `DB=sqlite npm run dev` (or
-`test:local`) runs Vikunja on SQLite instead. The containers are `pocket-dev`, `pocket-dev-sso` and `pocket-dev-db`.
-The next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. `dev` shares a project called
-Team with `bob`, and its default project with `carol`, so a task there shows **+ me**. The tests rely on that, so
-against your own Vikunja, share the test account's default project with someone. `npm run dev` rebuilds the page as
-`src/` changes, so an edit shows when you reload. Ctrl+C stops the rebuilding. Vikunja keeps running. After changing
-`main.go`, run `npm run dev` again.
+step times on and a mock single sign-on provider, and prints Pocket's address. `DB=sqlite npm run dev` (or `test:local`)
+runs Vikunja on SQLite instead, and `DB=mysql` on MySQL. The containers are `pocket-dev`, `pocket-dev-sso` and
+`pocket-dev-db`. The next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. `dev` shares a
+project called Team with `bob`, and its default project with `carol`, so a task there shows **+ me**. The tests rely on
+that, so against your own Vikunja, share the test account's default project with someone. `npm run dev` rebuilds the
+page as `src/` changes, so an edit shows when you reload. Ctrl+C stops the rebuilding. Vikunja keeps running. After
+changing `main.go`, run `npm run dev` again.
 
 ## Tests
 
