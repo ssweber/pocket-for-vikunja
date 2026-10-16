@@ -489,7 +489,7 @@ export default {
     if (!files.length || !t) return;
     const at = ['sheet:files', 'step'], big = this.tooBig(files);                // where messages go: a task's sheet, or a checklist step's card
     if (big) { this.say(big, {place: at, cls: 'failed'}); return; }
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, items: [], files: files.map(fileEntry)};
+    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), taskId: t.id, files: files.map(fileEntry)};
     const {kept, full} = await sync.add(entry, files); this.refreshPending();
     const r = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();

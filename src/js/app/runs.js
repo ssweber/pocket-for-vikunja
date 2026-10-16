@@ -94,7 +94,7 @@ export default {
     });
     const who = st.people.filter(u => st.forIds.includes(u.id));
     // tick is the template's due date when this start ticks the template (tickOf). The new checklist is due then too.
-    const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), items: [], files: [], template: st.template, name: st.name.trim(),
+    const entry = {id: randomId(), kind: 'run', user: this.user?.id, at: start.toISOString(), files: [], template: st.template, name: st.name.trim(),
       for: (who.length ? who : [this.user]).map(u => ({id: u.id, username: u.username, name: u.name || ''})), steps, tick: this.tickOf(st.template), fails: 0};
     st.busy = true;
     this.starting = {id: entry.id, done: 0, total: 6 + steps.length * 3};
@@ -637,7 +637,7 @@ export default {
     if (!r || !run) return;
     // If the step to insert before is itself waiting to be sent, use the step that one goes before.
     if (typeof fields.before === 'string') fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
-    const entry = {id: uuid7(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], fails: 0,
+    const entry = {id: uuid7(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), files: [], fails: 0,
       run: r.id, runTitle: run.title, project: run.project_id, from: null, tpl: null, ...fields};
     const {kept, full} = await sync.add(entry, []);
     this.refreshPending();

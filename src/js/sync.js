@@ -9,9 +9,10 @@ import {repeats} from './dates.js';
    - an op (`kind: 'act'`, `op`), sent through its stages. A line typed in an add box is an `add` op (ops/add.js):
      {id, kind, op: 'add', batch, raw, p, pid, under, over, parent, ups, files, ...its stages}. `p` is the line as parsed
      when it was typed, so "tomorrow" keeps meaning the day after it was typed. The photos added with a list are on its
-     first line.
+     first line until its task is made.
    - a checklist's start (`kind: 'run'`) or a step inserted in one (`kind: 'step'`).
-   - files added from a task's sheet: {id, user, at, taskId, files: [{key, name, size, type, ...}]}.
+   - files for a task: {id, user, at, taskId, files: [{key, name, size, type, ...}]}, added from its sheet, or with the
+     line that made it.
    An entry with `items` and no `kind` or `taskId` is a capture an older Pocket saved. The sender removes it.
 
    Entries, file bytes and the tasks Pocket has added live in IndexedDB. An entry and its files are saved together or
@@ -60,7 +61,7 @@ export const sync = {
     try {
       await this.reload();
       // A claim lasts a day, or while an entry still waits for its task: a line under a line, or an op on a new step.
-      const day = Date.now() - 86400000, named = new Set([...this.entries.values()].flatMap(e => [e.task, e.under, e.after, ...e.ups || []])
+      const day = Date.now() - 86400000, named = new Set([...this.entries.values()].flatMap(e => [e.task, e.under, e.after, ...e.ups || [], ...e.above || []])
         .filter(k => typeof k === 'string').map(k => k.replace(/^pending-/, '')));
       const claims = await this.tx(['claims'], 'readonly', s => s('claims').getAll()), kept = c => c.at > day || named.has(c.key);
       for (const c of claims) if (kept(c)) this.claimed.set(c.id, c);
@@ -76,7 +77,7 @@ export const sync = {
   },
   changed(){ this.channel?.postMessage('changed'); },
   // This user's entries, oldest first, so changes are sent in the order they were made (a tick, then its untick).
-  all(user){ return [...this.entries.values()].filter(e => e.user === user).sort((a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0)); },
+  all(user){ return [...this.entries.values()].filter(e => e.user === user).sort(older); },
 
   // Save a new entry and its files together. Returns {kept, full}. `kept` says whether it reached the database, and
   // `full` whether the phone is out of space.
@@ -96,22 +97,33 @@ export const sync = {
       return {kept: false, full: e?.name === 'QuotaExceededError'};
     }
   },
-  // Save an entry's progress, and delete the bytes of files it has finished with (`drop`), in one transaction.
-  async save(entry, drop = []){
-    this.entries.set(entry.id, entry);
+  // Save an entry's progress and any new entries it made (`more`), and delete the bytes of files it has finished with
+  // (`drop`), in one transaction.
+  async save(entry, drop = [], more = []){
+    const all = [entry, ...more];
+    for (const e of all) this.entries.set(e.id, e);
     for (const k of drop) this.bytes.delete(k);
-    if (this.volatile.has(entry.id)) return;
+    if (this.volatile.has(entry.id)) { for (const e of more) this.volatile.add(e.id); return; }
     try {
-      await this.tx(['files', 'outbox'], 'readwrite', s => { for (const k of drop) s('files').delete(k); s('outbox').put(plain(entry)); });
+      await this.tx(['files', 'outbox'], 'readwrite', s => { for (const k of drop) s('files').delete(k); for (const e of all) s('outbox').put(plain(e)); });
       this.changed();
-    } catch { this.volatile.add(entry.id); }                                 // no space now, so keep it in memory
+    } catch { for (const e of all) this.volatile.add(e.id); }               // no space now, so keep it in memory
   },
-  async remove(id){
-    const e = this.entries.get(id), keys = (e?.files || []).map(f => f.key);
+  /* Remove an entry. For a line whose task is made, the task's id (`task`) takes the place of the line's waiting id in
+     every entry that names it, in the same transaction. So a line under it keeps its parent in every tab. */
+  async remove(id, task = null){
+    const e = this.entries.get(id), keys = (e?.files || []).map(f => f.key), name = 'pending-' + id;
     this.entries.delete(id); this.volatile.delete(id);
     for (const k of keys) this.bytes.delete(k);
-    try { await this.tx(['files', 'outbox'], 'readwrite', s => { for (const k of keys) s('files').delete(k); s('outbox').delete(id); }); this.changed(); }
-    catch {}
+    if (task != null) for (const x of this.entries.values()) named(x, name, task);
+    try {
+      await this.tx(['files', 'outbox'], 'readwrite', s => {
+        for (const k of keys) s('files').delete(k);
+        s('outbox').delete(id);
+        if (task != null) s('outbox').getAll().onsuccess = r => { for (const x of r.target.result) if (named(x, name, task)) s('outbox').put(x); };
+      });
+      this.changed();
+    } catch {}
   },
   async drop(fn){ for (const e of [...this.entries.values()]) if (fn(e)) await this.remove(e.id); },
   // The entry to send from. It is the database's copy, which another tab may have changed. Null if that tab sent it.
@@ -128,9 +140,8 @@ export const sync = {
     try { const v = await this.tx(['files'], 'readonly', s => s('files').get(key)); return v ? new File([v.data], v.name, {type: v.type}) : null; }
     catch { return null; }
   },
-  /* Remember which entry or line each task Pocket added in the last day was added for. A retry of a checklist's copy
-     then never takes a task made for another entry for its own copy (findCopy), and taskOf turns a waiting id into
-     the task's id. */
+  /* Remember which entry or line each task Pocket added was added for. A retry of a checklist's copy then never takes
+     a task made for another entry for its own copy (findCopy), and taskOf turns a waiting id into the task's id. */
   claim(id, key){
     const c = {id, key, at: Date.now()};
     this.claimed.set(id, c);
@@ -147,6 +158,15 @@ export const sync = {
 sync.ready = sync.start();
 // A copy of an entry that the database can store. Parts of an entry can be Alpine's reactive proxies, which it can't.
 const plain = o => JSON.parse(JSON.stringify(o));
+// Put task id `id` where entry `e` names waiting id `name`. Returns whether anything changed.
+function named(e, name, id){
+  let changed = false;
+  for (const k of ['task', 'under', 'after']) if (e[k] === name) { e[k] = id; changed = true; }
+  for (const k of ['ups', 'above']) if (e[k]?.includes(name)) { e[k] = e[k].map(x => x === name ? id : x); changed = true; }
+  return changed;
+}
+// The order entries are sent in (all).
+export const older = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 export const NO_ROOM = 'This phone\'s storage is full, so Pocket can\'t save this for later. Keep Pocket open until it is sent.';
 export const KEPT = ' It is saved. Tap the warning sign at the top to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
@@ -349,11 +369,11 @@ const holds = e => e.op === 'add' ? ['pending-' + e.id, ...e.taskId ? [e.taskId]
 // tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).flatMap(holds));
 export const hold = (e, stopped) => { for (const k of holds(e)) stopped.add(k); };
-// Whether act `e` waits behind a failed act (`stopped`, from heldTasks). A line waits for the line it goes under, and
-// then the lines under it wait too.
+// Whether act `e` waits behind a failed act (`stopped`, from heldTasks). A line waits only for a failed line it goes
+// under, never for another op on its parent. Then the lines under it wait too.
 export const waits = (e, stopped) => {
   if (e.op !== 'add') return stopped.has(e.task);
-  const w = stopped.has(e.under);
+  const w = typeof e.under === 'string' && stopped.has(e.under);
   if (w) stopped.add('pending-' + e.id);
   return w;
 };

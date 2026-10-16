@@ -720,7 +720,7 @@ export default {
     const n = tree.length - 1;
     // The deletion's last stage updates the progress of the parent that stays.
     const up = this.parentIdOf(t);
-    const entry = {id: uuid7(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), items: [], files: [], stage: 0, fails: 0,
+    const entry = {id: uuid7(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), files: [], stage: 0, fails: 0,
       run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS, ...typeof up === 'number' && !tree.includes(up) && {up}};
     sync.held.add(entry.id);
     const added = sync.add(entry, []);

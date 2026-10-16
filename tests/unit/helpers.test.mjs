@@ -105,9 +105,10 @@ test('each typed line is an add op that names the line it goes under, its projec
   assert.deepEqual(ops.map(o => [o.under, o.over, o.pid]), [[null, null, 5], [id[0], 'A', 6], [id[1], 'a1', 6], [null, null, 5], [id[3], 'B', 5]],
     'a line goes to the project of the line it is under');
   assert.deepEqual(ops.map(o => o.ups), [[], [], [id[1], id[0]], [], [id[3]]], 'the last line under a parent writes its progress, deepest first');
+  assert.deepEqual(ops.map(o => o.above), [[], [id[0]], [id[1], id[0]], [], [id[3]]], 'each line knows the parents above it whose progress is written');
   // In a subtask box, every line goes to the parent's project, and the last line writes the parent's progress.
   const parent = { id: 9, project_id: 7, title: 'Pack the van' }, subs = addLines([{ raw: 'x', p: p('x'), under: null }, { raw: 'y', p: p('y'), under: 0 }], { parent });
-  assert.deepEqual(subs.map(o => [o.under, o.over, o.pid, o.ups]), [[9, 'Pack the van', 7, []], ['pending-' + subs[0].id, 'x', 7, [9]]]);
+  assert.deepEqual(subs.map(o => [o.under, o.over, o.pid, o.ups, o.above]), [[9, 'Pack the van', 7, [], [9]], ['pending-' + subs[0].id, 'x', 7, [9], [9]]]);
 });
 
 test('a box\'s lines become an entry\'s items, a line with no title left is dropped, and lines under it move up a level', () => {

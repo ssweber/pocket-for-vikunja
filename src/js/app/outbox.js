@@ -1,12 +1,11 @@
 // The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
 import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
-import {sendState, sync, uuid7} from '../sync.js';
+import {older, sendState, sync, uuid7} from '../sync.js';
 import {OPS} from '../ops/index.js';
 import {UNKNOWN} from '../messages.js';
 import {copyOf} from './tasks.js';
 
-const byWhen = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 const whenText = at => {
   const d = new Date(at), today = d.toDateString() === new Date().toDateString();
   return d.toLocaleString([], today ? {hour: 'numeric', minute: '2-digit'} : {weekday: 'short', hour: 'numeric', minute: '2-digit'});
@@ -18,7 +17,7 @@ export default {
      message, and a retry or drop action, where they apply. */
   get outboxRows(){
     const rows = [];
-    for (const e of [...this.failed, ...this.pending].sort(byWhen)) {
+    for (const e of [...this.failed, ...this.pending].sort(older)) {
       const when = whenText(e.at);
       if (e.kind === 'run') {
         const what = (e.cancelled ? 'Cancelling the start of ' : 'Starting ') + e.template.title;
@@ -26,12 +25,12 @@ export default {
       } else if (e.kind === 'step') {
         const text = e.cancelled ? `Removing ${quoted(e.title)}, because its insert was cancelled` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
         rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
-      } else if (e.kind === 'act' && !(e.op === 'add' && e.stage >= OPS.add.stages.length)) {   // a line whose task is made waits only for its photos
+      } else if (e.kind === 'act') {
         // A change the relay can't vouch for wasn't refused, so its reason stands alone. A line is cancelled as its
-        // waiting row's Cancel does it, until its task is made.
+        // waiting row's Cancel does it, until its first request is sent.
         const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why;
         rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
-          drop: e.failed ? ['dropAct', e.id] : e.op === 'add' ? (e.taskId ? null : ['cancelPending', e.id]) : e.sent ? null : ['dropAct', e.id]});
+          drop: e.failed ? ['dropAct', e.id] : e.sent ? null : [e.op === 'add' ? 'cancelPending' : 'dropAct', e.id]});
       }
       // The photos and files of a line, or added from a task's sheet.
       const to = copyOf(e.taskId)?.title || e.p?.title;
@@ -92,29 +91,31 @@ export default {
       const e = await sync.fresh(id);
       if (!e?.failed) return;
       delete e.failed; delete e.fixed; e.fails = 0; e.key = uuid7();
+      // A line made now writes the progress of every parent above it, which its batch may have written without it.
+      if (e.above?.length) e.ups = e.above;
       await sync.save(e);
     });
     this.refreshPending();
     await this.flush();
   },
   /* Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
-     The lines under a dropped line wait behind it, so they are refused, and their text goes back to their box. */
+     The lines under a dropped line wait behind it, so they are refused, and their text goes back to their box. The
+     photos of a line whose task isn't made go back to quick add. */
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a || !confirm(`Don't send it? ${OPS[a.op].dropped(a, a.label || this.actTitle(a.task))}`)) return;
-    let gone = false, started = false;
-    const under = [];
+    let gone = false, started = false, under = [], photos = [];
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
       if (!e.failed && e.sent) { started = true; return; }
+      if (e.op === 'add') { photos = await this.photosOf([e]); under = await this.dropUnder('pending-' + id, e.user); await this.passUps(e, under); }
       await sync.remove(id);
-      const names = new Set(['pending-' + id]);
-      for (const x of sync.all(e.user)) if (x.op === 'add' && names.has(x.under)) { names.add('pending-' + x.id); under.push(x); await sync.remove(x.id); }
     });
     this.refreshPending();
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
+    if (photos.length && !a.parent) this.capPhotos = [...this.capPhotos, ...photos];
     if (a.op === 'add') this.linesBack(under, said); else this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
     this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});

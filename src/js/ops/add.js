@@ -149,7 +149,9 @@ export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figure
    project it names, or else to the project of the line it is under, or else to `pid`. In a subtask box (`parent`),
    every line goes to the parent's project unless it names one. `over` is the title of what the line goes under, for
    Waiting to send and its Cancel button. `ups` are the parents whose progress the line writes (figures). The task the
-   box adds to always gets its progress written, and a line only when a line under it arrives done or with progress. */
+   box adds to always gets its progress written, and a line only when a line under it arrives done or with progress.
+   `above` are the parents above the line whose progress the batch writes. A line sent by Try again writes them all
+   (retryAct), because the batch may have written them before the line was made. */
 export function addLines(items, {pid = null, parent = null}){
   const id = items.map(() => uuid7()), to = [], ups = items.map(() => []), n = items.length;
   const out = items.map((x, i) => {
@@ -167,5 +169,6 @@ export function addLines(items, {pid = null, parent = null}){
     if (needs[i]) ups[last].push('pending-' + id[i]);
   }
   if (parent && n) ups[n - 1].push(parent.id);
+  out.forEach((o, i) => { o.above = []; for (let k = items[i].under; k !== null; k = items[k].under) if (needs[k]) o.above.push('pending-' + id[k]); if (parent) o.above.push(parent.id); });
   return out;
 }

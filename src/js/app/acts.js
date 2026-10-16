@@ -16,6 +16,14 @@ export const nextN = () => ++actCount;
    records after a day. */
 let ticks = null;
 export const keptTicks = () => ticks ||= saved.get('ticks') || {};
+/* Once a line's task is made, its photos still waiting move to an entry of their own, as a task's sheet makes one, in
+   the save that records the task. So a photo that Vikunja keeps refusing never holds back the ops after the line. */
+const filesOut = a => {
+  if (a.op !== 'add' || !a.taskId || !a.files?.some(f => !f.sent)) return [];
+  const f = {id: uuid7(), user: a.user, at: a.at, n: a.n, taskId: a.taskId, files: a.files.filter(x => !x.sent)};
+  a.files = []; a.filed = f.id;
+  return [f];
+};
 
 /* What a stage is given to make its requests. `send` is a write with the next key: the entry's key, the stage's index,
    and the part, counted from 0 each time the stage runs. So a stage sent again after a lost reply sends each request
@@ -59,7 +67,7 @@ export default {
   actEntry(fields){
     const me = this.user;
     return {id: uuid7(), kind: 'act', user: me?.id, who: me && {id: me.id, username: me.username, name: me.name || ''}, at: new Date().toISOString(), n: nextN(),
-      items: [], files: [], stage: 0, fails: 0, run: this.view.shownRun?.id, label: this.actTitle(fields.task), ...fields};
+      files: [], stage: 0, fails: 0, run: this.view.shownRun?.id, label: this.actTitle(fields.task), ...fields};
   },
   // Save `entries` in the outbox, the first with `files`, and show them at once. Returns whether all of them reached
   // the database (`kept`), and whether the phone is out of space (`full`).
@@ -85,7 +93,8 @@ export default {
       for (const e of all) {
         if (e.failed || waits(e, stopped)) {                                 // waits behind an earlier action Vikunja refused
           if (e.id !== id) continue;
-          this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”. Tap the warning sign at the top to try that change again.`, {place: 'step', cls: 'failed'});
+          // The add box and flush say what became of a line.
+          if (e.op !== 'add') this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”. Tap the warning sign at the top to try that change again.`, {place: 'step', cls: 'failed'});
           last = {status: 'offline', reached: true};
           break;
         }
@@ -106,8 +115,8 @@ export default {
     return {...last, all: out};
   },
   /* Send an act's stages from where an earlier try stopped, saving the entry after each. An add also gives the tasks it
-     made (`tasks`, for placeSent) and its problems, and uploads its photos once its task is made. When Vikunja refuses
-     an add, it and the later lines of its batch leave the outbox (refuseLines). */
+     made (`tasks`, for placeSent) and its problems, and uploads its photos once it is sent (`filesWait` while they
+     wait). When Vikunja refuses an add, it and the later lines of its batch leave the outbox (refuseLines). */
   async sendAct(a){
     const op = OPS[a.op], c = stageContext(a, this), add = a.op === 'add', none = {ids: [], tasks: [], problems: add ? a.problems ||= [] : [], uploaded: 0};
     const got = () => ({...none, ids: add && a.stage >= op.stages.length ? [a.taskId] : [], projectId: a.projectId});
@@ -118,11 +127,13 @@ export default {
     }
     try {
       // Wait for the real id of an offline step, or of the line this line goes under. Reject a step's action if the
-      // step was never created. A line whose line is gone becomes a task of its own, as Cancel makes it.
+      // step was never created. A line whose line is gone without a task leaves with the lines under it, and their
+      // text goes back to their box, as after Don't send it.
       for (const k of ['task', 'under']) if (typeof a[k] === 'string') {
         const key = a[k].replace(/^pending-/, ''), id = sync.taskOf(key);
         if (!id && sync.entries.has(key)) return {...got(), status: 'offline', reached: true};
         if (!id && k === 'task') throw new ApiError(404, 'the step it was for couldn\'t be added');
+        if (!id) { this.linesBack(await this.dropUnder(a[k], a.user), {}); return {...none, status: 'gone'}; }
         a[k] = id; await c.save();
       }
       // A request that gets no answer may still have reached Vikunja, and after it the act can't be dropped. So an act
@@ -136,17 +147,18 @@ export default {
       while (a.stage < op.stages.length) {
         await patiently(() => op.stages[a.stage](a, c.start()));
         a.stage++;
-        await c.save();
+        await sync.save(a, [], filesOut(a));
       }
       this.change(w => w.answered(a, c.task, c.comment));
       if (a.op === 'position') this.positionSent(a);
-      const uploaded = add ? await this.sendFiles(a, a.taskId, none.tasks) : (await sync.remove(a.id), 0);
+      await sync.remove(a.id, add ? a.taskId : null);
+      // A line's photos upload now, from their own entry. If Vikunja is busy they wait there, and the add box says so.
+      const f = add && a.filed ? await sync.fresh(a.filed) : null, files = f ? await this.sendFileEntry(f, none.tasks) : null;
       if (!a.run && a.op === 'note' && this.sheet.id === a.task) this.loadComments(a.task);   // a comment from a task's sheet
       if (a.op !== 'finish' && a.op !== 'reopen' && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-      return {...got(), status: 'sent', changed: add ? 0 : 1, uploaded};
+      return {...got(), status: 'sent', changed: add ? 0 : 1, uploaded: files?.uploaded || 0, problems: [...none.problems, ...files?.problems || []], filesWait: files?.status === 'offline'};
     } catch (error) {
-      // A file Vikunja was busy with (sendFile) waits too.
-      if (passing(error) || error.again || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))) {
+      if (passing(error) || (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))) {
         await c.save();
         return {...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401};
       }
@@ -181,9 +193,17 @@ export default {
      them, and the task the box added to (`parent`). Runs inside the outbox's lock. */
   async refuseLines(a){
     const rest = sync.all(a.user).filter(e => e.op === 'add' && e.batch === a.batch && (e.id === a.id || (!e.sent && (e.n || 0) > (a.n || 0))));
-    const photos = (await Promise.all(rest.flatMap(e => (e.files || []).filter(f => !f.sent).map(f => sync.file(f.key))))).filter(Boolean);
-    for (const e of rest) await sync.remove(e.id);
+    const photos = await this.photosOf(rest);
+    for (const e of rest) await sync.remove(e.id, e.taskId ?? null);
     return {unsent: rest.filter(e => !e.taskId).map(e => e.raw), photos, parent: a.parent || null};
+  },
+  // The photos waiting on `lines`, read before the lines leave the outbox and their bytes with them.
+  async photosOf(lines){ return (await Promise.all(lines.flatMap(e => (e.files || []).filter(f => !f.sent).map(f => sync.file(f.key))))).filter(Boolean); },
+  // Remove the lines under waiting id `name`, at every level, and return them. Runs inside the outbox's lock.
+  async dropUnder(name, user){
+    const names = new Set([name]), out = [];
+    for (const x of sync.all(user)) if (x.op === 'add' && names.has(x.under)) { names.add('pending-' + x.id); out.push(x); await sync.remove(x.id); }
+    return out;
   },
   /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so
      the message can preserve it. */

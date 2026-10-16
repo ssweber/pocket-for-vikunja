@@ -33,6 +33,7 @@ const adding = t => {
   const app = component(tasks, actions, leaving, quickadd, parts);
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], positions: {}, projects: [], canWrite: () => true, cap: { text: '' }, capPhotos: [], endPlace(){} });
   app.view = { groups: todayGroups(), route: '' };
+  app.toasts.push({ msg: '' });                                             // act() reads the last message
   return app;
 };
 // A line as an add box reads it (itemsOf). `p` is what was read from the line, and `under` is the index of the line it
@@ -319,8 +320,8 @@ test('an entry an older Pocket saved, with all its lines in one entry, is remove
 });
 
 test('cancelling a waiting line moves the lines under it to its parent, and a message says so', async t => {
-  const v = fakeVikunja(), app = adding(t);
-  v.trouble = () => 'offline';
+  fakeVikunja(); const app = adding(t);
+  app.offline = true;                                                       // so no line is sent, and each can be cancelled
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
   await send(app, e);
   const [van, load, stack, tables] = e.entries.map(x => x.id), under = () => sync.all(1).map(x => [x.raw, x.under]);
@@ -404,6 +405,137 @@ test('a parent\'s progress is written once, by the last line under it, after sub
   const figures = id => v.requests.filter(x => x.method === 'PATCH' && x.path === '/tasks/' + id && 'percent_done' in x.body).map(x => [x.key.split(':')[0], x.body.percent_done]);
   assert.deepEqual([figures(101), figures(9)], [[[e.entries[1].id, 1]], [[e.entries[2].id, 0.5]]],
     'Legs writes Chairs, the line it is under, and Tables, the last line, writes Pack the van once');
+});
+
+const photo = () => new File([new Uint8Array([1, 2, 3])], 'van.jpg', { type: 'image/jpeg' });
+const withPhoto = (app, e) => { const es = opsOf(app, e); es[0].files = [{ key: 'k' + es[0].id, name: 'van.jpg', size: 3, type: 'image/jpeg', tried: false, sent: false }]; return es; };
+test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines and ticks after it are sent', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 7, title: 'Wipe the till', project_id: 5 }]), app = adding(t), e = entry([line('Pack the van'), line('Load chairs')]);
+  v.trouble = r => r.path.endsWith('/attachments') ? 503 : null;
+  const r = shown(app, await app.sendLines(withPhoto(app, e), [photo()]));
+  assert.deepEqual([r.status, r.ids], ['offline', [101, 102]], 'both lines are made, and the add box says the photo uploads later');
+  for (let i = 0; i < 6; i++) await app.act({ op: i % 2 ? 'undone' : 'done', task: 7, run: null });
+  assert.equal(v.requests.filter(x => x.method === 'PATCH' && x.path === '/tasks/7').length, 6, 'every tick reaches Vikunja');
+  assert.deepEqual(sync.all(1).map(x => [x.kind, x.taskId, x.files.map(f => f.name)]), [[undefined, 101, ['van.jpg']]], 'only the photo waits, for the task its line made');
+  v.trouble = () => null;
+  const sent = await app.sendEntry(sync.all(1)[0].id);
+  assert.deepEqual([sent.status, sent.uploaded, sync.all(1)], ['sent', 1, []]);
+});
+
+test('a refused change to a task does not hold back subtasks added to it, and no message names a line that waits', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]), app = adding(t);
+  v.trouble = r => r.method === 'PATCH' && r.path === '/tasks/9' ? 403 : null;
+  await app.act({ op: 'done', task: 9, run: null });
+  const r = await send(app, entry([line('Chairs')], { parent: { id: 9, project_id: 5, title: 'Pack the van' } }));
+  assert.deepEqual([r.status, links(v)], ['sent', [[9, 101]]]);
+  // A line that waits behind a line whose answer is unknown says nothing of its own. The add box says what happened.
+  await clear();
+  const said = app.toasts.length;
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Parent' ? 'unknown' : null;
+  await send(app, entry([line('Parent'), line('Child', {}, 0)]));
+  assert.deepEqual(app.toasts.slice(said).filter(x => /Not sent/.test(x.msg)), []);
+});
+
+test('a line under a line gets its parent\'s task from the outbox, so a tab that never saw the parent sent still links it', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', {}, 0)]), es = opsOf(app, e);
+  await app.queue(es);
+  await app.sendActs(es[0].id);                                             // this tab sends the parent only
+  assert.deepEqual(sync.all(1).map(x => [x.raw, x.under]), [['Load chairs', 101]], 'the parent\'s task takes the place of its waiting id');
+  const kept = new Map(sync.claimed);
+  sync.claimed.clear();                                                     // another tab's memory
+  try { await resend(app, e); } finally { for (const [k, c] of kept) sync.claimed.set(k, c); }
+  assert.deepEqual(links(v), [[101, 102]]);
+});
+
+test('a line whose parent line is gone without a task is not made, and its text goes back to the box', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1)]);
+  v.trouble = () => 'offline';
+  await send(app, e);
+  await sync.remove(e.entries[0].id);
+  Object.assign(v, { trouble: () => null, requests: [] }); app.offline = false;
+  const r = await resend(app, e);
+  assert.deepEqual([r.status, v.requests.filter(x => x.method === 'POST'), sync.all(1), app.cap.text], ['gone', [], [], 'Load chairs\nStack them']);
+});
+
+test('a line whose first request was sent can\'t be cancelled, and Waiting to send offers no Cancel for it', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Chairs')]);
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Chairs' ? 'lost' : null;
+  await send(app, e);
+  assert.deepEqual(app.outboxRows.map(x => x.drop), [null]);
+  await app.cancelPending(e.entries[0].id);
+  assert.deepEqual([app.toast.msg, app.cap.text, sync.all(1).length], ['It was sent before it could be cancelled.', '', 1]);
+  v.trouble = () => null;
+  await resend(app, e);
+  assert.deepEqual([[...v.tasks.values()].map(x => x.title), sync.all(1)], [['Chairs'], []], 'it is made once');
+});
+
+test('a line whose answer is unknown keeps its waiting row, so the line under it stays under it', async t => {
+  t.after(clear);
+  const { app, e } = await unknownSecond(t), id = e.entries.map(x => 'pending-' + x.id);
+  assert.deepEqual(app.pendingTasks.map(x => [x.id, x.parent]), [[id[1], null], [id[2], id[1]]]);
+  await clear();
+});
+
+test('dropping a failed first line gives its photos back to the add box', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van')]);
+  v.trouble = r => r.method === 'POST' ? 'unknown' : null;
+  await app.sendLines(withPhoto(app, e), [photo()]);
+  app.refreshPending();
+  globalThis.confirm = () => true;
+  await app.dropAct(e.entries[0].id);
+  assert.deepEqual([sync.all(1), app.capPhotos.map(f => f.name)], [[], ['van.jpg']]);
+});
+
+test('dropping a line passes the parents\' progress it was to write to a line of its batch that still waits', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', { done: true }, 0), line('Tables', {}, 0), line('Sweep')]);
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Tables' ? 'unknown' : r.method === 'POST' && r.body?.title === 'Sweep' ? 'offline' : null;
+  app.flush = async () => {};
+  await send(app, e);
+  globalThis.confirm = () => true;
+  await app.dropAct(e.entries[2].id);
+  v.trouble = () => null;
+  await resend(app, e);
+  assert.equal(v.task(101).percent_done, 1, 'Sweep writes the progress of Pack the van, whose one subtask is done');
+});
+
+test('a line made by Try again after its batch\'s progress was written writes its parent\'s progress again', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]), app = adding(t);
+  const e = entry([line('Chairs'), line('Tables', { done: true })], { parent: { id: 9, project_id: 5, title: 'Pack the van' } });
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Chairs' ? 'unknown' : null;
+  await send(app, e);
+  assert.equal(v.task(9).percent_done, 1, 'Tables, the last line, wrote it without Chairs');
+  v.trouble = () => null;
+  app.flush = sending.flush;
+  await app.retryAct(e.entries[0].id);
+  assert.deepEqual([v.task(9).percent_done, sync.all(1)], [0.5, []]);
+});
+
+test('a line refused after its task was made gives nothing back, and the message doesn\'t say its text is back', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', {}, 0)]);
+  v.trouble = () => 'offline';
+  await send(app, e);
+  v.trouble = r => r.path.endsWith('/relations') ? 403 : null;
+  app.flush = sending.flush;
+  await app.flush();
+  assert.deepEqual([app.cap.text, app.toast.msg], ['', 'A subtask you added offline couldn\'t be sent: HTTP 403 from the fake.']);
+});
+
+test('when another tab sends a whole batch first, the add box is told it is gone, not saved offline', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), es = opsOf(app, entry([line('Pack the van'), line('Load chairs')]));
+  await app.queue(es);
+  for (const x of es) sync.entries.delete(x.id);                           // the other tab sent them, and this tab read the outbox again
+  assert.equal(batchOf(await app.sendActs(es.at(-1).id), es).status, 'gone');
+  assert.deepEqual(v.requests, []);
 });
 
 /* What a box reads before it is sent (src/js/app/quickadd.js). These helpers show the chips under the box as text (a
@@ -608,7 +740,7 @@ test('a subtask added as done is not highlighted because it leaves with the batc
 
 test('cancelling or refusing a waiting subtask moves the highlight to its task', async t => {
   const { v, app, add, aimed } = underBox(t);
-  v.trouble = () => 'offline';
+  app.offline = true;                                                       // so neither line is sent, and each can be cancelled
   await add('Rope\nStraps');
   const [rope, straps] = sync.all(1).map(x => x.id);
   assert.deepEqual(aimed(), [['pending-' + straps], 'Straps']);

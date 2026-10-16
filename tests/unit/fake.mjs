@@ -17,10 +17,11 @@ const lost = () => new TypeError('network error');
    move it). A task that is read lists its current subtasks, without any that were deleted (related_tasks).
    POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
    another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does. A
-   task's comments, assignees and position can be added to, and an assignee removed. GET and POST /labels list and
-   create labels (`labels`), and POST /tasks/:id/labels adds one to a task. PUT /tasks/:id/labels/bulk and
-   /assignees/bulk set a task's labels and people. As in Vikunja, a label that doesn't exist or a person who can't see
-   the project (`strangers`, by id) is refused, and a set with one of them is refused whole.
+   task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added to, and an assignee
+   removed. GET and POST /labels list and create labels (`labels`), and POST /tasks/:id/labels adds one to a task.
+   PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label that doesn't
+   exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them is refused
+   whole.
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
@@ -41,7 +42,7 @@ export function fakeVikunja(tasks = []){
   v.task = id => v.tasks.get(id);
   globalThis.fetch = async (url, { method = 'GET', headers = {}, body } = {}) => {
     const key = headers['Idempotency-Key']?.replace(/^"|"$/g, '');
-    const req = { method, path: new URL(url).pathname.replace(/^\/api\/(v2|v1\/plugins\/pocket\/v2)/, ''), body: body ? JSON.parse(body) : undefined, key };
+    const req = { method, path: new URL(url).pathname.replace(/^\/api\/(v2|v1\/plugins\/pocket\/v2)/, ''), body: typeof body === 'string' ? JSON.parse(body) : body, key };
     v.requests.push(req);
     const trouble = v.trouble(req);
     if (trouble === 'offline') throw new TypeError('Failed to fetch');
@@ -61,6 +62,7 @@ export function fakeVikunja(tasks = []){
     const who = req.path.match(/^\/tasks\/(\d+)\/assignees(?:\/(\d+))?$/), people = who && v.tasks.get(+who[1]);
     const bulk = req.path.match(/^\/tasks\/(\d+)\/(labels|assignees)\/bulk$/), set = bulk && v.tasks.get(+bulk[1]);
     const tag = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/labels$/) || [])[1]), label = id => v.labels.find(l => l.id === id);
+    const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404), noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
     let res;
     if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
@@ -76,6 +78,10 @@ export function fakeVikunja(tasks = []){
       if (!l) res = noLabel();
       else if (list.some(x => x.id === l.id)) res = reply({ code: 8001, message: 'This label already exists on the task.' }, 400);
       else { list.push(l); res = reply(req.body); }
+    } else if (attach && method === 'POST') {
+      const f = req.body.get('files'), a = { id: 2000 + v.requests.length, file: { name: f.name, size: f.size }, created: new Date().toISOString() };
+      (attach.attachments ||= []).push(a);
+      res = reply({ success: [a], errors: null });
     } else if (talk && method === 'POST') {
       const c = { id: 1000 + v.requests.length, comment: req.body.comment, author: { id: 1, username: 'me' }, created: new Date().toISOString() };
       (talk.comments ||= []).push(c);
@@ -139,7 +145,7 @@ export function component(...parts){
   const c = {
     server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
-    waiting: { files: {} }, opsOn: {}, slideClaim: {}, dropping: [],
+    waiting: { files: {} }, opsOn: {}, slideClaim: {}, dropping: [], failed: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},
