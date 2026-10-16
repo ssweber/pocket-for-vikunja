@@ -495,6 +495,34 @@ try {
     if (JSON.stringify(await subs(T('H2'))) !== JSON.stringify([[T('H2a'), false]])) throw new Error('subtasks of the second heading: ' + JSON.stringify(await subs(T('H2'))));
   });
 
+  /* A pasted list of a parent and two subtasks, typed offline, waits as one add op per line, each line under the
+     parent naming the parent's entry. Back online, the reply to the first subtask's request is lost, and the retry
+     sends it again with its key. Vikunja has the parent with its two subtasks, each made once. */
+  await step('a-pasted-list-typed-offline-arrives-as-one-parent-with-its-subtasks', async () => {
+    await context.setOffline(true);
+    await page.fill('#in-capture', `${T('Q')} tomorrow\n- ${T('Q1')}\n- ${T('Q2')}`);
+    await page.click('#cap-nest');
+    await page.click('#f-capture .go');
+    await page.waitForSelector(pendingRow(T('Q')));
+    const outbox = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction('outbox').objectStore('outbox').getAll(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }));
+    const lines = outbox.filter(e => e.op === 'add' && [T('Q'), T('Q1'), T('Q2')].includes(e.p.title));
+    const parent = lines.find(e => e.p.title === T('Q'));
+    if (lines.length !== 3 || lines.filter(e => e.under === 'pending-' + parent?.id).length !== 2) throw new Error('waiting: ' + JSON.stringify(lines.map(e => [e.p.title, e.under])));
+    let cut = true;
+    const lose = async r => { if (!cut || r.request().method() !== 'POST' || r.request().postDataJSON()?.title !== T('Q1')) return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/v2/projects/*/tasks', lose);
+    await context.setOffline(false);
+    await online();
+    await expect.poll(async () => (await byTitle(T('Q2'))).length, { timeout: 20000 }).toBe(1);
+    await synced(page);
+    await page.unroute('**/v2/projects/*/tasks', lose);
+    if (cut) throw new Error('the first subtask\'s reply was never lost');
+    for (const n of ['Q', 'Q1', 'Q2']) if ((await byTitle(T(n))).length !== 1) throw new Error(`${n}: ${(await byTitle(T(n))).length} copies`);
+    const full = await (await api('/tasks/' + (await byTitle(T('Q')))[0].id)).json();
+    const subs = (full.related_tasks?.subtask || []).map(s => s.title).sort();
+    if (JSON.stringify(subs) !== JSON.stringify([T('Q1'), T('Q2')])) throw new Error('subtasks: ' + subs.join(' | '));
+  });
+
   /* A checklist's screen is saved as its ids and Vikunja's copies of the checklist and its steps. Opened again offline,
      it shows the checklist and its steps from them. */
   await step('a-saved-checklist-screen-reopens-offline', async () => {

@@ -108,9 +108,9 @@ export default {
     // A sign-out the user chose (no `msg`) drops the saved lists and what is waiting to be sent, after asking.
     if (!msg) {
       const mine = sync.all(me);
-      const tasks = mine.flatMap(e => e.items.filter(x => !x.taskId)), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
+      const tasks = mine.filter(e => e.op === 'add' && !e.taskId), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
       const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`;
-      const runs =mine.filter(e => e.kind === 'run' || e.kind === 'act').length, n = tasks.length + files.length + runs;
+      const runs = mine.filter(e => e.kind === 'run' || (e.kind === 'act' && e.op !== 'add')).length, n = tasks.length + files.length + runs;
       const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file'),
         runs && (runs === 1 ? 'a change to a checklist' : runs + ' changes to checklists')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and discard ${n === 1 ? 'it' : 'them'}?`)) return;

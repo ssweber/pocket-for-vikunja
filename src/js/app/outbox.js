@@ -1,7 +1,7 @@
 // The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
-import {fmtSize} from '../util.js';
+import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
-import {isChild, itemDone, sendState, sync, underOf, uuid7} from '../sync.js';
+import {sendState, sync, uuid7} from '../sync.js';
 import {OPS} from '../ops/index.js';
 import {UNKNOWN} from '../messages.js';
 import {copyOf} from './tasks.js';
@@ -26,22 +26,17 @@ export default {
       } else if (e.kind === 'step') {
         const text = e.cancelled ? `Removing ${quoted(e.title)}, because its insert was cancelled` : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
         rows.push({key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id]});
-      } else if (e.kind === 'act') {
-        // A change the relay can't vouch for wasn't refused, so its reason stands alone.
+      } else if (e.kind === 'act' && !(e.op === 'add' && e.stage >= OPS.add.stages.length)) {   // a line whose task is made waits only for its photos
+        // A change the relay can't vouch for wasn't refused, so its reason stands alone. A line is cancelled as its
+        // waiting row's Cancel does it, until its task is made.
         const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why;
         rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
-          drop: e.failed || !e.sent ? ['dropAct', e.id] : null});
-      } else {
-        e.items.forEach((x, i) => {
-          if (itemDone(x, isChild(e, i))) return;
-          const u = underOf(e, i), under = u !== null ? e.items[u].p.title : e.parent?.title || null;
-          const text = x.taskId ? `Finishing ${quoted(x.p.title)}` : under ? `Subtask of ${quoted(under)}: ${x.p.title}` : `New task: ${x.p.title}`;
-          rows.push({key: `${e.id}-${i}`, text, when, drop: x.taskId ? null : ['cancelPending', e.id, i]});
-        });
-        const to = copyOf(e.taskId || e.items[0]?.taskId)?.title || e.items[0]?.p.title;
-        for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key))
-          rows.push({key: f.key, text: `${/^image\//.test(f.type) ? 'Photo' : 'File'}${to ? ' for ' + quoted(to) : ''}, ${fmtSize(f.size)}`, when, drop: ['cancelFile', e.id, f.key]});
+          drop: e.failed ? ['dropAct', e.id] : e.op === 'add' ? (e.taskId ? null : ['cancelPending', e.id]) : e.sent ? null : ['dropAct', e.id]});
       }
+      // The photos and files of a line, or added from a task's sheet.
+      const to = copyOf(e.taskId)?.title || e.p?.title;
+      for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key))
+        rows.push({key: f.key, text: `${/^image\//.test(f.type) ? 'Photo' : 'File'}${to ? ' for ' + quoted(to) : ''}, ${fmtSize(f.size)}`, when, drop: ['cancelFile', e.id, f.key]});
     }
     return rows;
   },
@@ -68,6 +63,16 @@ export default {
     if (this.pending.length && this.offline) { this.say('Still offline. Your changes are saved and go to Vikunja when you\'re back online.', {place: 'sheet:top', cls: 'failed'}); return; }
     this.refresh();
   },
+  /* Put the text of lines that weren't sent back in the box they were typed in: quick add, or the subtask box of the
+     task they were added to. That box keeps it as a draft until the task's sheet opens. Sets said.back. */
+  linesBack(lines, said){
+    const text = lines.filter(x => !x.taskId).map(x => x.raw), p = lines[0]?.parent, add = (was = '') => [was.trim(), ...text].filter(Boolean).join('\n');
+    if (!text.length) return;
+    if (!p) this.cap.text = add(this.cap.text);
+    else if (this.sheet.id === p.id) this.sheet.sub.text = add(this.sheet.sub.text);
+    else taskDrafts.set('sub:' + p.id, add(taskDrafts.get('sub:' + p.id) || ''));
+    said.back = true;
+  },
   // Whether a step was repeated during its checklist, as last loaded.
   isRepeat(id){
     if (typeof id === 'string') return !!this.pending.find(e => 'pending-' + e.id === id && (e.from || e.tpl != null));
@@ -92,21 +97,25 @@ export default {
     this.refreshPending();
     await this.flush();
   },
-  // Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
+  /* Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
+     The lines under a dropped line wait behind it, so they are refused, and their text goes back to their box. */
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a || !confirm(`Don't send it? ${OPS[a.op].dropped(a, a.label || this.actTitle(a.task))}`)) return;
     let gone = false, started = false;
+    const under = [];
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
       if (!e.failed && e.sent) { started = true; return; }
       await sync.remove(id);
+      const names = new Set(['pending-' + id]);
+      for (const x of sync.all(e.user)) if (x.op === 'add' && names.has(x.under)) { names.add('pending-' + x.id); under.push(x); await sync.remove(x.id); }
     });
     this.refreshPending();
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
-    this.giveBack(a, said);
+    if (a.op === 'add') this.linesBack(under, said); else this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
     this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});
     this.flush();                                                           // sends the actions that waited behind it

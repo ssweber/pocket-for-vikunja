@@ -98,7 +98,7 @@
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <!-- /only -->
   <!-- only top list card sheet own -->
-  <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <!-- /only -->
   <!-- only list card sheet -->
   <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">

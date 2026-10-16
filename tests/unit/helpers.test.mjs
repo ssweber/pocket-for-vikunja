@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, grow, motion, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { entryDone, heldTasks, isChild, itemDone, itemsOf, packParsed, sendState, slowness, underOf, unpackParsed, uuid7, WAIT_MS } from '../../src/js/sync.js';
+import { heldTasks, itemsOf, packParsed, sendState, slowness, unpackParsed, uuid7, waits, WAIT_MS } from '../../src/js/sync.js';
+import { addLines } from '../../src/js/ops/index.js';
 
 test('the address names the screen to show', () => {
   assert.deepEqual(routeOf(''), { name: 'today' });
@@ -93,32 +94,20 @@ test('a draft is kept until it is empty', () => {
   assert.deepEqual(taskDrafts.all(), {});
 });
 
-test('a waiting line is done once its task is created, and a subtask is done once it is also linked to its parent', () => {
-  assert.equal(itemDone({ taskId: 4 }, false), true);
-  assert.equal(itemDone({ taskId: 4 }, true), false);
-  assert.equal(itemDone({ taskId: 4, linked: true }, true), true);
-  assert.equal(itemDone({ done: false, taskId: 4 }, false), false, 'the line\'s own done flag takes priority');
-  // In a pasted list marked `nest`, every line after the first is a subtask of the first line.
-  const entry = { nest: true, items: [{ taskId: 1 }, { taskId: 2, linked: true }], files: [{ sent: true }] };
-  assert.deepEqual([isChild(entry, 0), isChild(entry, 1)], [false, true]);
-  assert.equal(entryDone(entry), true);
-  assert.equal(entryDone({ ...entry, files: [{ sent: false }] }), false, 'an entry with a file still to send is not done');
-  assert.equal(isChild({ parent: { id: 3 }, items: [] }, 0), true, 'a line added from a task\'s sheet is a subtask');
-});
-
-test('each waiting line records which line it is under, and an older saved entry puts its first line over the rest', () => {
-  // The lines are "## A", "a1", "  a2", "## B", "b1". That makes two parents and a subtask of a subtask.
-  const list = { nest: false, items: [{ under: null }, { under: 0 }, { under: 1 }, { under: null }, { under: 3 }] };
-  assert.deepEqual(list.items.map((x, i) => underOf(list, i)), [null, 0, 1, null, 3]);
-  assert.deepEqual(list.items.map((x, i) => isChild(list, i)), [false, true, true, false, true]);
-  // An older version of Pocket saved entries with `nest` and no `under`.
-  const old = { nest: true, items: [{}, {}, {}] }, flat = { nest: false, items: [{}, {}] };
-  assert.deepEqual(old.items.map((x, i) => underOf(old, i)), [null, 0, 0]);
-  assert.deepEqual(flat.items.map((x, i) => underOf(flat, i)), [null, null]);
-  // In an entry from a subtask box, a line that is not under another line becomes a subtask of the entry's task.
-  const sub = { parent: { id: 3 }, items: [{ under: null }, { under: 0 }] };
-  assert.deepEqual(sub.items.map((x, i) => [underOf(sub, i), isChild(sub, i)]), [[null, true], [0, true]]);
-  assert.equal(entryDone({ ...list, items: list.items.map((x, i) => ({ ...x, taskId: i + 1, linked: x.under !== null })) }), true, 'a line under another line is done once it is linked');
+/* The lines typed together become one add op each. The lines are "## A" (+Garden), "a1", "  a2" (done), "## B" and
+   "b1" (50%). That makes two parents and a subtask of a subtask. */
+test('each typed line is an add op that names the line it goes under, its project, and the parents whose progress it writes', () => {
+  const p = (title, more = {}) => ({ title, project: null, done: false, pct: 0, ...more });
+  const items = [{ raw: 'A', p: p('A', { project: { id: 6 } }), under: null }, { raw: 'a1', p: p('a1'), under: 0 }, { raw: 'a2', p: p('a2', { done: true }), under: 1 },
+    { raw: 'B', p: p('B'), under: null }, { raw: 'b1', p: p('b1', { pct: 50 }), under: 3 }];
+  const ops = addLines(items, { pid: 5 }), id = ops.map(o => 'pending-' + o.id);
+  assert.ok(ops.every(o => o.op === 'add' && o.batch === ops[0].id), 'they share a batch');
+  assert.deepEqual(ops.map(o => [o.under, o.over, o.pid]), [[null, null, 5], [id[0], 'A', 6], [id[1], 'a1', 6], [null, null, 5], [id[3], 'B', 5]],
+    'a line goes to the project of the line it is under');
+  assert.deepEqual(ops.map(o => o.ups), [[], [], [id[1], id[0]], [], [id[3]]], 'the last line under a parent writes its progress, deepest first');
+  // In a subtask box, every line goes to the parent's project, and the last line writes the parent's progress.
+  const parent = { id: 9, project_id: 7, title: 'Pack the van' }, subs = addLines([{ raw: 'x', p: p('x'), under: null }, { raw: 'y', p: p('y'), under: 0 }], { parent });
+  assert.deepEqual(subs.map(o => [o.under, o.over, o.pid, o.ups]), [[9, 'Pack the van', 7, []], ['pending-' + subs[0].id, 'x', 7, [9]]]);
 });
 
 test('a box\'s lines become an entry\'s items, a line with no title left is dropped, and lines under it move up a level', () => {
@@ -126,7 +115,6 @@ test('a box\'s lines become an entry\'s items, a line with no title left is drop
   const items = itemsOf([{ raw: 'A', p: p('A'), under: null }, { raw: 'tomorrow', p: p(''), under: 0 }, { raw: 'a1', p: p('a1'), under: 1 }, { raw: 'B', p: p('B'), under: null }, { raw: 'b1', p: p('b1'), under: 3 }],
     (k, under) => under !== null && { position: k * 10 });
   assert.deepEqual(items.map(x => [x.raw, x.under, x.p.position]), [['A', null, undefined], ['a1', 0, 10], ['B', null, undefined], ['b1', 2, 30]]);
-  assert.deepEqual(items.map(x => [x.taskId, x.done, x.linked]), Array(4).fill([null, false, false]));
   // A parent with no title is dropped, and its lines become separate tasks.
   assert.deepEqual(itemsOf([{ raw: 'tomorrow', p: p(''), under: null }, { raw: 'a', p: p('a'), under: 0 }]).map(x => [x.raw, x.under]), [['a', null]]);
 });
@@ -134,6 +122,14 @@ test('a box\'s lines become an entry\'s items, a line with no title left is drop
 test('a step whose change Vikunja rejected holds back the later changes to that step', () => {
   const held = heldTasks([{ kind: 'act', task: 5, failed: true }, { kind: 'act', task: 6 }, { kind: 'capture', task: 7, failed: true }]);
   assert.deepEqual([...held], [5]);
+});
+
+test('a line that failed holds back the lines under it, and their lines in turn, and the changes to its task', () => {
+  const stopped = heldTasks([{ kind: 'act', op: 'add', id: 'a', taskId: 4, failed: true }]);
+  assert.deepEqual([...stopped], ['pending-a', 4]);
+  const line = (id, under) => ({ kind: 'act', op: 'add', id, under });
+  assert.deepEqual([waits(line('b', 'pending-a'), stopped), waits(line('c', 'pending-b'), stopped), waits(line('d', 9), stopped)], [true, true, false]);
+  assert.deepEqual([waits({ kind: 'act', op: 'done', task: 4 }, stopped), waits({ kind: 'act', op: 'done', task: 5 }, stopped)], [true, false]);
 });
 
 test('the send state is "sending" while sending, even with changes waiting, and an outbox not read yet is not idle', () => {

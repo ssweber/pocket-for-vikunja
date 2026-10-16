@@ -102,6 +102,7 @@ const WORDS = {
     ['Deleting “a step”, with 2 subtasks', 'Deleting a task', '“it” stays in Vikunja.', '“it” stays in Vikunja.']],
   position: [['Moving “Unlock the door” in its list', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays where it was in Vikunja\'s list.', '“Unlock the door” stays where it was in Vikunja\'s list.'],
     ['Moving “a step” in its list', 'Moving a task', '“it” stays where it was in Vikunja\'s list.', '“it” stays where it was in Vikunja\'s list.']],
+  add: [['New task: Unlock the door T#5m', 'A task you added offline', '', ''], ['New task: ', 'A task you added offline', '', '']],
 };
 
 test('each op says what the outbox said before: its row, its refusal, and what dropping it leaves', () => {
@@ -111,6 +112,8 @@ test('each op says what the outbox said before: its row, its refusal, and what d
     assert.deepEqual([op.text(a(0), title), op.refused(a(0), title), op.dropped(a(0), title), op.dropped(a(1), title)], WORDS[name][k], `${name}, title "${title}"`);
   });
   assert.equal(OPS.done.text({ op: 'done' }, 'Mop', true), 'Done: Mop (repeated)', 'a step repeated in its checklist says so');
+  assert.deepEqual([OPS.add.text({ over: 'Pack the van' }, 'Chairs'), OPS.add.text({ taskId: 4 }, 'Chairs'), OPS.add.refused({ over: 'Pack the van' })],
+    ['Subtask of “Pack the van”: Chairs', 'Finishing “Chairs”', 'A subtask you added offline'], 'a line says what it goes under, as Waiting to send said before');
 });
 
 /* The sender with a fake outbox. Each act is queued with act() and sent at once. Messages are read from `toasts`, since

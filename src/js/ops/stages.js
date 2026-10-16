@@ -18,12 +18,13 @@ export const comment = async (a, c) => { const out = await c.send(`/tasks/${a.ta
    parent is the run after one of its steps (a.run), or the parent of a deleted subtask (a.up). The body is worked out
    once: after a lost reply Vikunja's copy already has the new progress, and a body read again would differ from the
    one the relay holds for this key. A parent that a waiting delete deletes is left alone. */
-export const figure = async (a, c) => {
-  const up = a.up ?? (a.run && a.task !== a.run ? a.run : null);
+export const figure = (a, c) => figureOf(c, a.up ?? (a.run && a.task !== a.run ? a.run : null));
+// Write task `up`'s progress, with its body kept in the entry under `name`.
+export const figureOf = async (c, up, name = 'figure') => {
   if (!up || c.app.beingDeleted(up)) return;
   // A parent deleted in the meantime, by Pocket or in the web app, is not an error.
   try {
-    const body = await c.once('figure', async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
+    const body = await c.once(name, async () => { const now = await c.read('/tasks/' + up); return c.app.role(now) === 'template' ? null : figurePatch(now); });
     if (!body) return;
     const t = await c.send('/tasks/' + up, {method: 'PATCH', body}) || await c.read('/tasks/' + up);
     c.app.change(w => w.answer([t], TASK));

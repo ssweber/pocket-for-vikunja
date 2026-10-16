@@ -445,11 +445,12 @@ export default {
   // Make a task the target, or clear the target if the task can't be one.
   aim(t){ this.light(this.canAim(t) ? {id: t.id, under: this.listParent(t)?.id ?? null} : null); },
   /* After subtasks are added, make the last new subtask's pending row the target at once, so the next entry goes
-     after it. A subtask created done leaves with the batch, so the parent stays the target. */
-  aimAdded(entry, i, parent){
-    const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
+     after it. `e` is that subtask's outbox entry. A subtask created done leaves with the batch, so the parent stays the
+     target. */
+  aimAdded(e, parent){
+    const p = e.p, id = 'pending-' + e.id;
     if (p.done || p.pct >= 100) return this.aim(parent);
-    this.light({id, under: parent.id, wait: {id, pending: true, entry: entry.id, index: i, parent: parent.id, title: p.title, position: p.position || 0}});
+    this.light({id, under: parent.id, wait: {id, pending: true, entry: e.id, parent: parent.id, title: p.title, position: p.position || 0}});
   },
   /* Move the target from a pending row to the task that was saved for it. If Vikunja rejected the task and the entry
      is gone, the parent becomes the target. */
@@ -460,15 +461,8 @@ export default {
     if (t) this.light({id: t.id, under: c.under, ...(c.out && {out: true})});
     else if (!sync.all(this.user?.id).some(e => e.id === w.entry)) this.aim(this.tasks[c.under]);
   },
-  // Cancelling the target's line makes its parent the target. Cancelling an earlier line of the same entry lowers the
-  // pending target's index and id by one.
-  aimCancelled(entry, index){
-    const c = this.cursor, w = c?.wait;
-    if (w?.entry !== entry || w.index < index) return;
-    if (w.index === index) return this.aim(this.tasks[c.under]);
-    const id = `pending-${entry}-${w.index - 1}`;
-    this.light({...c, id, wait: {...w, id, index: w.index - 1}});
-  },
+  // Cancelling the target's line makes its parent the target.
+  aimCancelled(entry){ const c = this.cursor; if (c?.wait?.entry === entry) this.aim(this.tasks[c.under]); },
   /* When the target leaves the list, its parent becomes the target, or the target is cleared if there is no parent.
      Reordering keeps the target, and the next entry goes after its new position. This runs after a sheet closes, so
      changes made temporarily inside the sheet don't move the box. */
@@ -683,12 +677,13 @@ export default {
     const end = Math.min(...sibs.filter(p => p > places.at(-1)));
     return clearOf(places, taken, end === Infinity ? null : end);
   },
-  // Make the last new top-level task's pending row the target, with the box staying at the outer level.
-  aimAddedOut(entry, i){
-    if (i < 0) return;
-    const p = entry.items[i].p, id = `pending-${entry.id}-${i}`;
+  // Make the last new top-level task's pending row the target, with the box staying at the outer level. `e` is that
+  // task's outbox entry.
+  aimAddedOut(e){
+    if (!e) return;
+    const p = e.p, id = 'pending-' + e.id;
     if (p.done || p.pct >= 100) return;                                  // it leaves with the batch, so the box stays put
-    this.light({id, under: null, out: true, wait: {id, pending: true, entry: entry.id, index: i, parent: null, title: p.title, position: p.position || 0}});
+    this.light({id, under: null, out: true, wait: {id, pending: true, entry: e.id, parent: null, title: p.title, position: p.position || 0}});
   },
   // Whether the add box has focus, at the bottom or in the list.
   get boxHasFocus(){ const el = this.$refs?.capture; return !!el && document.activeElement === el; },

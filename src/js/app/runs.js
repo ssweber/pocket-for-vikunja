@@ -8,7 +8,8 @@ import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, isAnswer, countText, DONE_MARK, durText, inBatches, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
-import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, resendTask, RUN_STEPS, runProgress, sync, uuid7} from '../sync.js';
+import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync, uuid7} from '../sync.js';
+import {resendTask} from './sending.js';
 import {saved} from '../lists.js';
 import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
@@ -718,7 +719,7 @@ export default {
       let id = j.taskId || j.job?.taskId || null;
       if (!id && j.from && j.tried) id = (await this.findCopy(j.from, j, j.at, c.taken, j.id, j.run))?.id ?? null;
       // A new step's task whose reply was lost: its request sent again with its key gives the task, or makes it now.
-      if (!id && j.job?.sent && j.job.body) { await resendTask(j.job, c.save); id = j.job.taskId; }
+      if (!id && j.job?.sent && j.job.body) { await resendTask(this, j.job, c.save); id = j.job.taskId; }
       if (id) await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await sync.remove(j.id);
       return {...none, status: 'sent', changed: 0};

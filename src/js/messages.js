@@ -118,6 +118,9 @@ export const OP_WORDS = {
   delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
     refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
   position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
+  // An add's line, under what it goes under (`a.over`). Its refusal is said only for a line that waited to be sent.
+  add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
+    refused: a => `${a.over ? 'A subtask' : 'A task'} you added offline`, dropped: () => ''},
 };
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;

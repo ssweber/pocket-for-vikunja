@@ -400,9 +400,9 @@ test('waiting claims and files are kept by task, and only that task\'s row is up
   const outbox = list => { app.pending = list; app.change(w => w.keyOps()); app.keyWaiting(); flush(); };
   outbox([act(5, 'claim')]);
   assert.deepEqual([seen[5], asked], [[['priya', 'alex'], 0], { 5: 2, 6: 1 }], 'a waiting claim shows you on the task, and the other row is not updated');
-  outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }]);
+  outbox([act(5, 'claim'), act(5, 'unclaim'), { id: 'e1', taskId: 6, files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }]);
   assert.deepEqual([seen[5], seen[6], asked], [[['priya'], 0], [['priya'], 2], { 5: 3, 6: 2 }], 'a later release overrides the claim, and two files are still to upload');
-  outbox([act(5, 'claim'), act(5, 'unclaim'), { kind: 'task', id: 'e1', items: [{ taskId: 6 }], files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }, { kind: 'task', id: 'e2', items: [{ p: { title: 'New' } }] }]);
+  outbox([act(5, 'claim'), act(5, 'unclaim'), { id: 'e1', taskId: 6, files: [{ key: 'a' }, { key: 'b', sent: true }, { key: 'c' }] }, { kind: 'act', op: 'add', id: 'e2', p: { title: 'New' }, files: [] }]);
   assert.deepEqual(asked, { 5: 3, 6: 2 }, 'an unrelated change in the outbox updates neither row');
   app.dropping.push('c'); app.keyWaiting(); flush();
   assert.deepEqual([seen[6], asked], [[['priya'], 1], { 5: 3, 6: 3 }], 'a cancelled file no longer counts');
@@ -575,9 +575,9 @@ test('a nudge highlights the row it starts on, and the phone vibrates when the h
     nudge(10);
     assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 1], 'nudging the highlighted row again changes nothing and does not vibrate');
     // A subtask added from the box becomes the highlighted row (aimAdded). Nudging its row while it is still waiting to be sent changes nothing.
-    app.aimAdded({ id: 'e1', items: [{ p: { title: 'Rope', position: 2000 }, under: null }] }, 0, van);
-    nudge('pending-e1-0');
-    assert.deepEqual(now(), [['pending-e1-0'], { to: 'Pack the van', after: 'Rope' }, 1]);
+    app.aimAdded({ id: 'e1', op: 'add', p: { title: 'Rope', position: 2000 } }, van);
+    nudge('pending-e1');
+    assert.deepEqual(now(), [['pending-e1'], { to: 'Pack the van', after: 'Rope' }, 1]);
     // Nudging the task touched before selects it again, the add box goes back to it, and the phone vibrates.
     nudge(10);
     assert.deepEqual(now(), [['10'], { to: 'Pack the van', after: '' }, 2]);

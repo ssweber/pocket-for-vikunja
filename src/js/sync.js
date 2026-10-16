@@ -1,19 +1,18 @@
-// The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps a capture, a checklist's start or
-// an inserted step is sent in. The requests of every other change are its op's stages (src/js/ops/).
+// The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps a checklist's start or an inserted
+// step is sent in. The requests of every other change are its op's stages (src/js/ops/).
 import {app, ZERO} from './util.js';
-import {api, NetError, passing, patchTask} from './api.js';
-import {copiedNotes, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
+import {api, patchTask} from './api.js';
+import {copiedNotes, isTemplateLabel, nextAfter, notesOnly, placeBefore, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {repeats} from './dates.js';
-import {removeAssignee} from './quickadd.js';
 
-/* An entry is one capture: a task or a pasted list, subtasks added from a task's sheet (`parent`), or files added from
-   a task's sheet (`taskId`):
-   {id, user, at, nest, pid, parent: {id, project_id, title}, items: [{raw, p, under, ...its steps}], files: [{key, name, size, type, ...}], taskId}.
-
-   `p` is the line as parsed when it was typed, so "tomorrow" keeps meaning the day after it was typed. `under` is the
-   index in `items` of the line this one goes under. It always points to an earlier line, and is null for none. So a
-   list can have several parents, and subtasks of subtasks. An entry from an older Pocket has `nest` instead, and its
-   first line is the parent of all the others (underOf).
+/* An entry is one of:
+   - an op (`kind: 'act'`, `op`), sent through its stages. A line typed in an add box is an `add` op (ops/add.js):
+     {id, kind, op: 'add', batch, raw, p, pid, under, over, parent, ups, files, ...its stages}. `p` is the line as parsed
+     when it was typed, so "tomorrow" keeps meaning the day after it was typed. The photos added with a list are on its
+     first line.
+   - a checklist's start (`kind: 'run'`) or a step inserted in one (`kind: 'step'`).
+   - files added from a task's sheet: {id, user, at, taskId, files: [{key, name, size, type, ...}]}.
+   An entry with `items` and no `kind` or `taskId` is a capture an older Pocket saved. The sender removes it.
 
    Entries, file bytes and the tasks Pocket has added live in IndexedDB. An entry and its files are saved together or
    not at all. The screen reads a copy in memory (`entries`). Sending always starts from the database's copy, so two
@@ -60,10 +59,12 @@ export const sync = {
   async start(){
     try {
       await this.reload();
-      const day = Date.now() - 86400000;
-      const claims = await this.tx(['claims'], 'readonly', s => s('claims').getAll());
-      for (const c of claims) if (c.at > day) this.claimed.set(c.id, c);
-      this.tx(['claims'], 'readwrite', s => { for (const c of claims) if (c.at <= day) s('claims').delete(c.id); }).catch(() => {});
+      // A claim lasts a day, or while an entry still waits for its task: a line under a line, or an op on a new step.
+      const day = Date.now() - 86400000, named = new Set([...this.entries.values()].flatMap(e => [e.task, e.under, e.after, ...e.ups || []])
+        .filter(k => typeof k === 'string').map(k => k.replace(/^pending-/, '')));
+      const claims = await this.tx(['claims'], 'readonly', s => s('claims').getAll()), kept = c => c.at > day || named.has(c.key);
+      for (const c of claims) if (kept(c)) this.claimed.set(c.id, c);
+      this.tx(['claims'], 'readwrite', s => { for (const c of claims) if (!kept(c)) s('claims').delete(c.id); }).catch(() => {});
     } catch {}
     this.channel?.addEventListener('message', async () => { await this.reload().catch(() => {}); app?.refreshPending(); });
   },
@@ -162,169 +163,17 @@ export const uuid7 = () => {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
 export const fileEntry = f => ({key: randomId(), name: f.name, size: f.size, type: f.type, tried: false, sent: false});
-// A line is done when all its steps are. A line saved by an older Pocket has no `done`. For that line, having a task
-// was all there was to do, and for a subtask also having its link.
-export const itemDone = (x, child) => x.done ?? (!!x.taskId && (!child || !!x.linked));
-// The index of the line that line `i` goes under, or null. It comes from `under`, or from `nest` for an older entry,
-// where it is the first line.
-export const underOf = (e, i) => e.items[i]?.under ?? (e.nest && i > 0 ? 0 : null);
-// Whether line `i` goes under a task: the entry's parent in Vikunja, or an earlier line.
-export const isChild = (e, i) => !!e.parent || underOf(e, i) !== null;
-/* Turn the lines typed in a box into an entry's items. `lines` is [{raw, p, under}], with `p` the parsed line and
-   `under` the index of the line it goes under. A line with no title left (a date alone, say) is dropped, and the lines
-   under it go under its parent. `more(k, under)` adds fields to kept line `k`. */
+/* Turn the lines typed in a box into the lines an add op is made from (addLines, ops/add.js). `lines` is [{raw, p,
+   under}], with `p` the parsed line and `under` the index of the line it goes under. A line with no title left (a
+   date alone, say) is dropped, and the lines under it go under its parent. `more(k, under)` adds fields to kept line `k`. */
 export function itemsOf(lines, more = () => null){
   const kept = lines.map(x => !!x.p.title), at = [];
   for (const ok of kept) at.push(ok ? at.filter(k => k >= 0).length : -1);
   const up = i => { let u = lines[i].under ?? null; while (u !== null && !kept[u]) u = lines[u].under ?? null; return u === null ? null : at[u]; };
-  return lines.flatMap((x, i) => kept[i] ? [{raw: x.raw, p: {...packParsed(x.p), ...more(at[i], up(i))}, under: up(i), taskId: null, done: false, linked: false}] : []);
+  return lines.flatMap((x, i) => kept[i] ? [{raw: x.raw, p: {...packParsed(x.p), ...more(at[i], up(i))}, under: up(i)}] : []);
 }
-export const entryDone = e => e.items.every((x, i) => itemDone(x, isChild(e, i))) && !(e.files || []).some(f => !f.sent);
-/* How a captured line becomes a task in Vikunja, one stage at a time. `done` says whether a stage is finished for the
-   line (`j`). `run` does the stage.
-
-   Every write is sent with a key made from the line's key (lineContext). Progress is saved after every stage, so a try
-   that is cut off carries on at the stage where it stopped, and sends each request again with the key it had. The
-   relay answers a request Vikunja already made from what it stored, so nothing is made twice. The relay refuses a key
-   sent again with a different body, so what a stage reads to build a body is read once and kept in the line.
-
-   A label or a person that Vikunja refuses is reported as a problem, and the next stage starts. A lost connection, a
-   busy Vikunja or a key the relay can't vouch for stops the line. */
+// Vikunja's codes for a label, a person or a link the task already has.
 export const ALREADY = {label: 8001, assignee: 4021, link: 4008};
-const settle = (e, problem) => {
-  if (passing(e) || e.status === 401 || e.code === 'unknown') throw e;
-  problem(e.message);
-};
-/* What each of LINE_STEPS is given to make its requests, as stageContext (app/acts.js) gives an op's stages. `send` is
-   a write with the next key: the line's key, the stage's index, and the part, counted from 0 each time the stage runs.
-   `skip` counts a part without sending it. A busy Vikunja is asked again with the same key, which is safe because the
-   relay keeps no answer to a request Vikunja failed. A read is asked again too. */
-export function lineContext(j, more){
-  let stage = 0, part = 0;
-  const c = {...more,
-    start(i){ stage = i; part = 0; return c; },
-    skip(){ part++; },
-    async send(path, opts){
-      if (!j.sent) {
-        // A request that gets no answer may still have reached Vikunja, and a cancelled step must then be deleted there.
-        // So the first request waits while Pocket knows it is offline, and flush sends it once a read gets through.
-        if (app.offline || navigator.onLine === false) {
-          if (navigator.onLine !== false) setTimeout(() => app.flush());
-          app.offline = true; throw new NetError('offline');
-        }
-        j.sent = true; await c.save();
-      }
-      const key = `${j.key}:${stage}:${part++}`;
-      return patiently(() => api(path, {...opts, key}));
-    },
-    read: path => patiently(() => api(path))};
-  return c;
-}
-const ids = list => (list || []).map(x => x.id);
-// The labels and people the task has in Vikunja before the line's are added. They are read once and kept, so a set sent
-// again after a lost reply has the same body. A task the line made has what Vikunja's answer gave it.
-async function had(j, c){
-  if (!j.had) { const t = await c.read('/tasks/' + j.taskId); j.had = {labels: ids(t.labels), assignees: ids(t.assignees)}; await c.save(); }
-  return j.had;
-}
-/* Set the task's labels or people (`kind`) in one request: what it had, and `items`. Vikunja refuses the whole set when
-   one item is bad, such as a label deleted in the web app or a person who can't see the project. Then each item is
-   added on its own, as the parts after the set's, so only the bad ones are reported. The relay keeps a refusal and
-   gives it again, so a retry takes the same path with the same keys. Returns the problems, in the words `says` gives. */
-async function setAll(j, c, kind, items, one, already, says){
-  const path = `/tasks/${j.taskId}/${kind}`, out = [], report = xs => e => settle(e, m => out.push(...xs.map(x => says(x, m))));
-  let was;
-  try { was = (await had(j, c))[kind]; } catch (e) { report(items)(e); return out; }
-  try { await c.send(path + '/bulk', {method: 'PUT', body: {[kind]: [...new Set([...was, ...items.map(x => x.id)])].map(id => ({id}))}}); }
-  catch (e) {
-    if (!(e.status < 500) || passing(e) || e.status === 401 || e.code === 'unknown') { report(items)(e); return out; }
-    for (const x of items) await c.send(path, {method: 'POST', body: one(x)}).catch(e => { if (e.code !== already) report([x])(e); });
-  }
-  return out;
-}
-const findLabel = all => name => all.find(l => l.title.toLowerCase() === name.toLowerCase());
-export const LINE_STEPS = [
-  {name: 'prepare', done: j => !!j.body, async run(j, {parsed, pid}){
-    const to = parsed.project?.id || pid, body = {title: parsed.title}, people = [], problems = [];
-    // A user who can see the project is assigned, and their @username is removed from the title, as in Vikunja. A user
-    // who can't see it stays in the title and is reported. If Vikunja refuses the search, Pocket assigns the user
-    // anyway, and Vikunja decides. Each person's id is looked up here, so a retry never reads it again.
-    for (const name of parsed.assignees) {
-      const seen = await app.canSee(to, name);
-      if (seen === false) problems.push(await app.userExists(name).catch(() => true) ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
-      else {
-        let u = null;
-        try { u = await patiently(() => app.findUser(name)); if (!u) problems.push(`no user @${name}`); } catch (e) { settle(e, m => problems.push(`@${name}: ${m}`)); }
-        if (u) people.push({name, id: u.id});
-      }
-      if (seen === true) body.title = removeAssignee(body.title, app.prefixes.assignee, name);
-    }
-    if (parsed.due) body.due_date = parsed.due.toISOString();
-    if (parsed.due && parsed.remind) body.reminders = [{relative_to: 'due_date', relative_period: 0}];   // the 🔔 chip sets a reminder at the due time
-    if (parsed.priority) body.priority = parsed.priority;
-    if (parsed.position) body.position = parsed.position;                   // its position in its project's List view
-    if (parsed.repeat) { body.repeat_after = parsed.repeat.after; body.repeat_mode = parsed.repeat.mode; }
-    // Kept on the job, so a later try sends the same body.
-    j.problems.push(...problems);
-    Object.assign(j, {to, body, people, labels: [...parsed.labels]});
-  }},
-  {name: 'task', done: j => !!j.taskId, async run(j, c){
-    const t = await c.send(`/projects/${j.to}/tasks`, {method: 'POST', body: j.body});
-    sync.claim(t.id, j.key);
-    Object.assign(j, {taskId: t.id, projectId: t.project_id, had: {labels: ids(t.labels), assignees: ids(t.assignees)}});
-    c.task = t; c.made?.(t);
-  }},
-  /* Each label Vikunja doesn't have yet is created, one part each, and its id is kept as soon as it is answered. Then
-     the task's labels are set (setAll): the labels it had, and the line's. Which labels exist is read from Vikunja when
-     the line is sent, not from Pocket's copy. So a label an earlier line created is found, and a label deleted in the
-     web app is made again instead of being sent with its old id. */
-  {name: 'label', done: j => !j.labels.length || !!j.labeled, async run(j, c){
-    const says = (l, m) => `label ${l.name}: ${m}`, report = ls => e => settle(e, m => j.problems.push(...ls.map(l => says(l, m))));
-    if (!j.tags) {
-      try {
-        const all = await patiently(() => app.loadLabels(true));
-        j.tags = j.labels.map(name => { const id = findLabel(all)(name)?.id; return id ? {name, id} : {name, id: null, create: true}; });
-      } catch (e) { report(j.labels.map(name => ({name})))(e); j.labeled = true; return; }
-      await c.save();
-    }
-    for (const l of j.tags.filter(l => l.create)) {
-      // A label made on an earlier try isn't sent again. Its part is still counted, so the requests after it keep their keys.
-      if (l.id || l.refused) { c.skip(); continue; }
-      try { const got = await c.send('/labels', {method: 'POST', body: {title: l.name}}); l.id = got.id; app.labels?.push(got); }
-      catch (e) { report([l])(e); l.refused = true; }
-      await c.save();
-    }
-    const on = j.tags.filter(l => l.id);
-    if (on.length) j.problems.push(...await setAll(j, c, 'labels', on, l => ({label_id: l.id}), ALREADY.label, says));
-    j.labeled = true;
-  }},
-  // The task's people are set the same way. A person Vikunja refuses (no access to the project, say) is reported, and
-  // the task is kept.
-  {name: 'assignee', done: j => !j.people?.length || !!j.assigned, async run(j, c){
-    j.problems.push(...await setAll(j, c, 'assignees', j.people, u => ({user_id: u.id}), ALREADY.assignee, (u, m) => `@${u.name}: ${m}`));
-    j.assigned = true;
-  }},
-  // Link the task under its parent. The parent is the line it goes under in a pasted list, or the task whose sheet it
-  // was added from. A refusal here stops the line, because the list can't be put together without the link.
-  {name: 'link', done: (j, c) => !c.parent || !!j.linked, async run(j, c){
-    try { await app.linkSubtask(c.parent, j.taskId, c.send); } catch (e) { if (e.code !== ALREADY.link) throw e; }
-    j.linked = true;
-  }},
-  /* A line that said it was done, or how far along it is, is first made like any task. Then it is marked the way a
-     tick or a swipe marks it (100% is done). So a repeating task moves on to its next date, and its parent's progress
-     counts it. This stage comes last, once the task is under its parent.
-
-     The mark is sent with a key, so a repeating task whose reply was lost is ticked once, not twice. `c.arrived` gives
-     the row Vikunja's copy afterwards (`now`) and whether the task was marked done. */
-  {name: 'arrive', done: (j, c) => !!j.arrived || !(c.parsed.done || c.parsed.pct > 0), async run(j, c){
-    const done = !!c.parsed.done || c.parsed.pct >= 100, path = '/tasks/' + j.taskId;
-    const t = await c.send(path, {method: 'PATCH', body: done ? {done: true} : {percent_done: c.parsed.pct / 100}}) || await c.read(path);
-    j.arrived = true;
-    c.arrived = {now: t, done};
-  }},
-];
-// Send a line's task request again with its key. The relay gives Vikunja's answer to the first, or the task is made now.
-export const resendTask = (j, save) => { const i = LINE_STEPS.findIndex(s => s.name === 'task'); return LINE_STEPS[i].run(j, lineContext(j, {save}).start(i)); };
 /* How a run (a started checklist) is set up from its template. As with a line, the outbox entry (`j`) keeps how far
    it got, so a cut-off try carries on where it stopped. If a copy reached Vikunja but its reply was lost, the copy is
    found again through the template's "copied to" links instead of being made twice. */
@@ -494,6 +343,17 @@ export function slowness(entries, now, offline){
   for (const e of entries) { const at = Date.parse(e.at) + WAIT_MS; if (offline || !(at > now)) slow.push(e.id); else later.push(at); }
   return {slow, next: later.length ? Math.min(...later) : null};
 }
+// What a failed act holds back: the acts on its task, or for an add the lines under it and the acts on its task.
+const holds = e => e.op === 'add' ? ['pending-' + e.id, ...e.taskId ? [e.taskId] : []] : [e.task];
 // The tasks with an act that Vikunja rejected. Later acts on those tasks wait, so an untick never arrives before its
 // tick.
-export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).map(e => e.task));
+export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).flatMap(holds));
+export const hold = (e, stopped) => { for (const k of holds(e)) stopped.add(k); };
+// Whether act `e` waits behind a failed act (`stopped`, from heldTasks). A line waits for the line it goes under, and
+// then the lines under it wait too.
+export const waits = (e, stopped) => {
+  if (e.op !== 'add') return stopped.has(e.task);
+  const w = stopped.has(e.under);
+  if (w) stopped.add('pending-' + e.id);
+  return w;
+};

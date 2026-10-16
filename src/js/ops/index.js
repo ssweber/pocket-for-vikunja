@@ -12,5 +12,9 @@ import {answer, note} from './comments.js';
 import {claim, unclaim} from './people.js';
 import {position} from './order.js';
 import {del} from './delete.js';
+import {add} from './add.js';
 
-export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position};
+// Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
+// stages.js is still loading, and they fail without it.
+export {addLines, LINE, madeStage} from './add.js';
+export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add};

@@ -1,13 +1,15 @@
-// Tests for what an add box's lines become when they go through the outbox (src/js/app/sending.js, LINE_STEPS in
-// src/js/sync.js), against a fake Vikunja. They check what is sent for each line, in what order, and what its row
-// shows once it arrives. They also check what a box shows it has read before sending: its chips and the text marked
-// in it (src/js/app/quickadd.js).
+// Tests for what an add box's lines become when they go through the outbox, each line an add op (src/js/ops/add.js,
+// sent by src/js/app/acts.js and sending.js), against a fake Vikunja. They check what is sent for each line, in what
+// order, and what its row shows once it arrives. They also check what a box shows it has read before sending: its
+// chips and the text marked in it (src/js/app/quickadd.js).
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
 import tasks from '../../src/js/app/tasks.js';
-import sending from '../../src/js/app/sending.js';
+import sending, { batchOf } from '../../src/js/app/sending.js';
+import acts from '../../src/js/app/acts.js';
+import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import views from '../../src/js/app/views.js';
@@ -16,29 +18,37 @@ import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import runs from '../../src/js/app/runs.js';
 import { UNKNOWN } from '../../src/js/messages.js';
+import { addLines } from '../../src/js/ops/index.js';
 import { sync, unpackParsed, uuid7 } from '../../src/js/sync.js';
 
 const DAY = 86400;
-const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
+// The parts that queue and send a line, and put the result on the screen. The fake's own flush and render stay.
+const SENDING = Object.assign({}, ...[sending, acts, outbox].map(p => Object.getOwnPropertyDescriptors(p)));
+delete SENDING.flush;
+const parts = Object.defineProperties({}, SENDING);
 // The component on Today, with the parts that send an entry and put the result on the screen. The test controls the
 // batch's timer, so the batch doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'cancelLabel'));
-  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], positions: {}, projects: [], canWrite: () => true });
-  Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
+  const app = component(tasks, actions, leaving, quickadd, parts);
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], positions: {}, projects: [], canWrite: () => true, cap: { text: '' }, capPhotos: [], endPlace(){} });
   app.view = { groups: todayGroups(), route: '' };
   return app;
 };
-// A line as an add box keeps it in the outbox (packParsed). `p` is what was read from the line, and `under` is the
-// index of the line it sits under.
-const line = (title, p = {}, under = null) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, under, taskId: null, done: false, linked: false });
-// A line as an older Pocket kept it, before each line said which line it sits under. The entry's `nest` said it for all
-// the lines.
-const oldLine = (title, p = {}) => { const { under, ...x } = line(title, p); return x; };
-let n = 0;
-const entry = (items, more = {}) => ({ id: 'e' + ++n, user: 1, at: new Date().toISOString(), nest: false, pid: 5, items, files: [], ...more });
-const send = async (app, e) => { await sync.add(e, []); app.refreshPending(); return app.sendEntry(e.id); };
+// A line as an add box reads it (itemsOf). `p` is what was read from the line, and `under` is the index of the line it
+// sits under.
+const line = (title, p = {}, under = null) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0, ...p }, under });
+// The lines typed together, as their add ops' entries (addLines), into project 5 or under `parent`.
+const entry = (items, more = {}) => ({ items, ...more });
+const opsOf = (app, e) => e.entries ||= addLines(e.items, { pid: 5, parent: e.parent }).map(f => app.actEntry(f));
+// The add box shows what became of its lines, so it reads the outbox again itself (submitCapture).
+const shown = (app, r) => { app.refreshPending(); return r; };
+const send = async (app, e) => shown(app, await app.sendLines(opsOf(app, e)));
+// Send the lines again, as flush or a later add does, and read what became of them.
+const resend = async (app, e) => shown(app, batchOf(await app.sendActs(e.entries.at(-1).id), e.entries));
+// An entry that isn't an add op, saved and sent.
+const queued = async (app, e) => { await sync.add(e, []); app.refreshPending(); return app.sendEntry(e.id); };
+const clear = async () => { for (const x of sync.all(1)) await sync.remove(x.id); };
 const sent = v => v.requests.filter(r => r.method !== 'GET').map(r => [r.method, r.path, r.body]);
 const group = (app, key) => app.view.groups.find(g => g.key === key).tasks;
 
@@ -57,7 +67,7 @@ test('while it waits, a line marked as done shows ticked on its list', async t =
   app.refreshPending();
   assert.equal(r.status, 'offline');
   assert.deepEqual(app.pendingTasks.map(x => [x.title, x.done]), [['Call Sam', true], ['Call Jo', false]]);
-  await sync.remove(sync.all(1)[0].id);
+  await clear();
 });
 
 test('a task that arrives done shows ticked and leaves with the batch, and tapping its tick before then opens it again', async t => {
@@ -85,7 +95,7 @@ test('a repeating task moves on to its next date as a tick does, and a lost repl
   v.trouble = r => r.method === 'PATCH' ? 'lost' : null;
   assert.equal((await send(app, e)).status, 'offline', 'the entry is kept to try again');
   v.trouble = () => null;
-  const r = await app.sendEntry(e.id);
+  const r = await resend(app, e);
   const ticks = v.requests.filter(x => x.method === 'PATCH');
   assert.deepEqual(ticks.map(x => [x.key, !!x.replayed]), [[ticks[0].key, false], [ticks[0].key, true]], 'the tick is sent again with its key, and the relay answers from what it kept');
   assert.equal(Date.parse(v.task(101).due_date) - Date.parse(due), DAY * 1000, 'the task moved on one date, not two');
@@ -110,7 +120,7 @@ test('each stage of a line sends the same key again after its reply was lost, an
     v.trouble = r => is(r) && cut ? (cut = false, 'lost') : null;
     assert.equal((await send(app, e)).status, 'offline', 'the entry is kept to try again');
     const lost = v.requests.find(is), from = v.requests.length;
-    assert.equal((await app.sendEntry(e.id)).status, 'sent');
+    assert.equal((await resend(app, e)).status, 'sent');
     const retry = v.requests.slice(from), again = retry.find(is);
     assert.deepEqual([again.key, again.replayed], [lost.key, true], 'sent again with its key, and answered from what the relay kept');
     assert.deepEqual(retry.slice(0, retry.indexOf(again)).filter(r => r.method === 'GET'), [], 'nothing is read again first');
@@ -127,7 +137,7 @@ test('a new label is not sent again once Vikunja answered it, and the requests a
   let cut = true;
   v.trouble = r => r.path === '/labels' && r.body?.title === 'Folding' && cut ? (cut = false, 'lost') : null;
   assert.equal((await send(app, e)).status, 'offline');
-  assert.equal((await app.sendEntry(e.id)).status, 'sent');
+  assert.equal((await resend(app, e)).status, 'sent');
   const made = v.requests.filter(r => r.path === '/labels' && r.method === 'POST');
   assert.deepEqual(made.map(r => [r.body.title, stage(r), !!r.replayed]), [['Spare', '2:0', false], ['Folding', '2:1', false], ['Folding', '2:1', true]]);
   assert.deepEqual(v.requests.filter(r => r.path.endsWith('/labels/bulk')).map(stage), ['2:2']);
@@ -146,21 +156,13 @@ test('a line\'s labels are added to the labels the task already has, and a new l
   assert.deepEqual([v.task(101).labels, v.task(102).labels].map(ls => ls.map(l => l.title)), [['Spare'], ['Spare']]);
 });
 
-test('a line whose key the relay can\'t vouch for goes back to the box, with words that say Vikunja may have it', async t => {
-  const v = fakeVikunja(), app = adding(t);
-  v.trouble = r => r.method === 'POST' ? 'unknown' : null;
-  const r = await send(app, entry([line('Chairs')]));
-  assert.deepEqual([r.status, r.error.message, r.unsent], ['error', UNKNOWN, ['Chairs']]);
-  assert.equal(sync.all(1).length, 0);
-});
-
 test('a step inserted in a checklist, cancelled after its reply was lost, is found by its key and deleted', async t => {
   const v = fakeVikunja([{ id: 9, title: 'Opening', project_id: 5 }]), app = adding(t);
   Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep });
   const id = uuid7(), is = r => r.method === 'POST' && r.path === '/projects/5/tasks';
   v.trouble = r => is(r) ? 'lost' : null;
   const step = { id, kind: 'step', user: 1, at: new Date().toISOString(), items: [], files: [], fails: 0, run: 9, project: 5, title: 'Sweep up', from: null, tpl: null };
-  assert.equal((await send(app, step)).status, 'offline');
+  assert.equal((await queued(app, step)).status, 'offline');
   await sync.save({ ...sync.entries.get(id), cancelled: true });            // as dropStep does
   v.trouble = () => null;
   assert.equal((await app.sendEntry(id)).status, 'sent');
@@ -174,7 +176,7 @@ test('a step inserted in a checklist while Pocket knows it is offline, then canc
   Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep, dropStep: runs.dropStep, offline: true });
   v.trouble = () => 'offline';
   const id = uuid7(), step = { id, kind: 'step', user: 1, at: new Date().toISOString(), items: [], files: [], fails: 0, run: 9, project: 5, title: 'Sweep up', from: null, tpl: null };
-  assert.equal((await send(app, step)).status, 'offline');
+  assert.equal((await queued(app, step)).status, 'offline');
   await app.dropStep(id, true);
   // Back online, as a read that gets through finds, and whatever is still waiting is sent.
   v.trouble = () => null; app.offline = false;
@@ -219,7 +221,7 @@ test('a label Vikunja refuses in the set is reported alone, and the line\'s othe
   v.trouble = r => r.path.endsWith('/labels/bulk') ? 'offline' : null;
   assert.equal((await send(app, e)).status, 'offline');
   v.labels.splice(1, 1); v.trouble = () => null;
-  const r = await app.sendEntry(e.id);
+  const r = await resend(app, e);
   assert.deepEqual([r.status, r.problems, v.task(101).labels.map(l => l.title)], ['sent', ['label Gone: The label does not exist.'], ['Old']]);
   assert.deepEqual(v.requests.filter(r => r.path.startsWith('/tasks/101/labels')).map(r => [r.method, part(r), r.body.label_id]),
     [['PUT', '2:0', undefined], ['PUT', '2:0', undefined], ['POST', '2:1', 1], ['POST', '2:2', 2]]);
@@ -234,7 +236,7 @@ test('a person Vikunja refuses is reported alone, the others are assigned, and a
   let cut = true;
   v.trouble = r => r.body?.user_id === 8 && cut ? (cut = false, 'lost') : null;
   assert.equal((await send(app, e)).status, 'offline');
-  const r = await app.sendEntry(e.id);
+  const r = await resend(app, e);
   assert.deepEqual([r.status, r.problems, v.task(101).assignees.map(u => u.id)], ['sent', ['@max: The user does not have access to the project.'], [7]]);
   assert.deepEqual(v.requests.filter(r => r.path.startsWith('/tasks/101/assignees')).map(r => [r.method, part(r), !!r.replayed]),
     [['PUT', '3:0', false], ['POST', '3:1', false], ['POST', '3:2', false], ['PUT', '3:0', true], ['POST', '3:1', true], ['POST', '3:2', true]]);
@@ -260,7 +262,7 @@ test('a line\'s progress is written once the task is created, as a swipe sets it
   assert.deepEqual(app.pendingTasks.map(x => [x.title, x.percent_done, x.done]), [['Tables', 0.5, false], ['Chairs', 1, true]], 'the progress also shows while the tasks wait');
   v.trouble = () => null;
   v.requests.length = 0;
-  const r = await app.sendEntry(e.id);
+  const r = await resend(app, e);
   assert.deepEqual(sent(v), [['POST', '/projects/5/tasks', { title: 'Tables' }], ['PATCH', '/tasks/101', { percent_done: 0.5 }],
     ['POST', '/projects/5/tasks', { title: 'Chairs' }], ['PATCH', '/tasks/102', { done: true }]]);
   app.placeSent(r.tasks);
@@ -291,62 +293,117 @@ test('a list with several parents and nested subtasks creates each line under th
   v.trouble = () => 'offline';
   await send(app, e);
   app.refreshPending();
-  assert.deepEqual(app.pendingTasks.map(x => [x.id, x.parent, x.child]), [[`pending-${e.id}-0`, null, false], [`pending-${e.id}-1`, `pending-${e.id}-0`, true],
-    [`pending-${e.id}-2`, `pending-${e.id}-1`, true], [`pending-${e.id}-3`, null, false], [`pending-${e.id}-4`, `pending-${e.id}-3`, true]], 'while the lines wait, each row is under its parent line\'s row, with ids in item order');
+  const id = e.entries.map(x => 'pending-' + x.id);
+  assert.deepEqual(app.pendingTasks.map(x => [x.id, x.parent, x.child]), [[id[0], null, false], [id[1], id[0], true], [id[2], id[1], true], [id[3], null, false], [id[4], id[3], true]],
+    'while the lines wait, each row is under its parent line\'s row, by its entry\'s id');
   v.trouble = () => null;
   v.requests.length = 0;
-  const r = await app.sendEntry(e.id);
+  const r = await resend(app, e);
   assert.equal(r.status, 'sent');
   assert.deepEqual(links(v), [[101, 102], [102, 103], [104, 105]]);
   assert.deepEqual(r.tasks.map(x => [x.title, x.parent, x.child]), [['Pack the van', null, false], ['Load chairs', 101, true], ['Stack them', 102, true], ['Set the hall', null, false], ['Tables', 104, true]]);
   await app.saveTask(101, null, () => null);
-  // The deepest task is written first, because its progress counts in the task above it. Load chairs is 100% (its one
-  // subtask is done), so Pack the van is 100%.
+  // The last line under a parent writes the parent's progress, deepest first, because its progress counts in the task
+  // above it. Load chairs is 100% (its one subtask is done), so Pack the van is 100%. Tables arrives at 50% after them.
   assert.deepEqual(sent(v).filter(([m, , b]) => m === 'PATCH' && 'percent_done' in b && !b.done).map(([, path, b]) => [path, b.percent_done]),
-    [['/tasks/105', 0.5], ['/tasks/104', 0.5], ['/tasks/102', 1], ['/tasks/101', 1]]);
+    [['/tasks/102', 1], ['/tasks/101', 1], ['/tasks/105', 0.5], ['/tasks/104', 0.5]]);
 });
 
-test('an entry saved before lines recorded their parent line still sends, with the first line as parent or every line as its own task', async t => {
+test('an entry an older Pocket saved, with all its lines in one entry, is removed and sends nothing', async t => {
   const v = fakeVikunja(), app = adding(t);
-  const r = await send(app, entry([oldLine('Pack the van'), oldLine('Load chairs'), oldLine('Tables')], { nest: true }));
-  assert.deepEqual(links(v), [[101, 102], [101, 103]]);
-  assert.deepEqual(r.tasks.map(x => x.parent), [null, 101, 101]);
-  await send(app, entry([oldLine('Order cups'), oldLine('Order lids')]));
-  assert.equal(links(v).length, 2, 'no more links are made, because the lines are separate tasks');
-  // An entry the older Pocket half sent: its first line was made, and the project it went to is kept on the entry.
-  const half = entry([{ ...oldLine('Set the hall'), taskId: 101, projectId: 5, done: true }, oldLine('Lights')], { nest: true, parentProject: 5 });
-  await send(app, half);
-  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100], 'the remaining lines are created under the first task');
-  // Subtasks added from a task's sheet (`parent`) are kept without `under`, and go under that task.
-  await send(app, entry([oldLine('Sound check')], { parent: { id: 101, project_id: 5, title: 'Pack the van' } }));
-  assert.deepEqual(links(v).at(-1), [101, v.tasks.size + 100]);
+  const old = { id: 'old1', user: 1, at: new Date().toISOString(), nest: true, pid: 5, items: [line('Pack the van'), line('Load chairs')], files: [] };
+  await sync.add(old, []); app.refreshPending();
+  assert.deepEqual(app.pendingTasks, [], 'it shows no waiting row');
+  await app.sendEntry(old.id);
+  assert.deepEqual([v.requests, sync.all(1)], [[], []]);
 });
 
 test('cancelling a waiting line moves the lines under it to its parent, and a message says so', async t => {
   const v = fakeVikunja(), app = adding(t);
-  Object.assign(app, { cap: { text: '' } });
   v.trouble = () => 'offline';
   const e = entry([line('Pack the van'), line('Load chairs', {}, 0), line('Stack them', {}, 1), line('Tables', {}, 0)]);
   await send(app, e);
+  const [van, load, stack, tables] = e.entries.map(x => x.id), under = () => sync.all(1).map(x => [x.raw, x.under]);
   // Each waiting row's Cancel label says what becomes of the lines under it, including the lines under a later parent.
   assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Pack the van. The lines under it become their own tasks.',
     'Cancel Load chairs. The line under it moves under “Pack the van”.', 'Cancel Stack them', 'Cancel Tables']);
-  await app.cancelPending(e.id, 1);
-  assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Pack the van', null], ['Stack them', 0], ['Tables', 0]]);
+  await app.cancelPending(load);
+  assert.deepEqual(under(), [['Pack the van', null], ['Stack them', 'pending-' + van], ['Tables', 'pending-' + van]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
   assert.equal(app.cap.text, 'Load chairs');
   assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van. The lines under it become their own tasks.', 'the label still counts two lines waiting under the first');
-  await app.cancelPending(e.id, 0);
-  assert.deepEqual(sync.all(1)[0].items.map(x => [x.raw, x.under]), [['Stack them', null], ['Tables', null]]);
+  await app.cancelPending(van);
+  assert.deepEqual(under(), [['Stack them', null], ['Tables', null]]);
   assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now their own tasks.');
-  assert.deepEqual(app.pendingTasks.map(x => app.cancelLabel(x)), ['Cancel Stack them', 'Cancel Tables']);
-  // An older entry with its first line cancelled: the other lines become separate tasks, as they were then.
-  const old = entry([oldLine('Order cups'), oldLine('Small'), oldLine('Large')], { nest: true });
-  await send(app, old);
-  await app.cancelPending(old.id, 0);
-  const left = sync.all(1).find(x => x.id === old.id);
-  assert.deepEqual([left.nest, left.items.map(x => x.under)], [false, [null, null]]);
-  for (const x of sync.all(1)) await sync.remove(x.id);
+  assert.deepEqual(app.pendingTasks.map(x => [x.id, app.cancelLabel(x)]), [['pending-' + stack, 'Cancel Stack them'], ['pending-' + tables, 'Cancel Tables']]);
+  await clear();
+});
+
+/* The lines typed together are one add op each, sent in order. A line under a line waits for that line's task. */
+const three = () => entry([line('Pack the van'), line('Load chairs'), line('Stack them', {}, 1)]);
+test('a list of three lines, the third under the second, is sent in order, and the third waits for the second\'s task', async t => {
+  const v = fakeVikunja(), app = adding(t), e = three();
+  let cut = true;
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Load chairs' && cut ? (cut = false, 'offline') : null;
+  const r = await send(app, e);
+  assert.deepEqual([r.status, r.ids, sync.all(1).map(x => x.raw)], ['offline', [101], ['Load chairs', 'Stack them']], 'the first is made, and the second and third wait');
+  assert.equal(sync.all(1)[1].under, 'pending-' + e.entries[1].id, 'the third names the second until the second is made');
+  const done = await resend(app, e);
+  assert.deepEqual([done.status, done.ids, links(v)], ['sent', [102, 103], [[102, 103]]]);
+  assert.deepEqual(v.requests.filter(x => x.method === 'POST' && x.path === '/projects/5/tasks').map(x => x.body.title), ['Pack the van', 'Load chairs', 'Load chairs', 'Stack them']);
+  assert.equal(sync.all(1).length, 0);
+});
+
+test('a refused line goes back to the box with the lines after it, and leaves nothing waiting', async t => {
+  const v = fakeVikunja(), app = adding(t), e = three();
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Load chairs' ? 403 : null;
+  const r = await send(app, e);
+  assert.deepEqual([r.status, r.ids, r.unsent, r.error.message], ['error', [101], ['Load chairs', 'Stack them'], 'HTTP 403 from the fake']);
+  assert.deepEqual([sync.all(1), app.pendingTasks], [[], []]);
+  assert.deepEqual(v.requests.filter(x => x.body?.title === 'Stack them'), [], 'the third is never sent');
+});
+
+/* The relay can't tell whether Vikunja made the second line's task. The line stays in Waiting to send, marked failed,
+   with Try again. The third, under it, waits behind it. */
+const unknownSecond = async t => {
+  const v = fakeVikunja([{ id: 7, title: 'Wipe the till' }]), app = adding(t), e = three();
+  v.trouble = r => r.method === 'POST' && r.body?.title === 'Load chairs' ? 'unknown' : null;
+  return { v, app, e, r: await send(app, e) };
+};
+test('a line whose answer the relay can\'t vouch for waits in Waiting to send with Try again, and the line under it waits behind it', async t => {
+  const { v, app, e, r } = await unknownSecond(t);
+  assert.deepEqual([r.status, r.error.message, r.unsent, r.ids], ['error', UNKNOWN, [], [101]], 'nothing goes back to the box');
+  assert.deepEqual(app.failed.map(x => x.raw), ['Load chairs']);
+  assert.deepEqual(app.outboxRows.map(x => [x.text, x.failed, x.retry, x.drop?.[0]]),
+    [['New task: Load chairs', UNKNOWN, true, 'dropAct'], ['Subtask of “Load chairs”: Stack them', '', false, 'cancelPending']]);
+  // A tick on another task goes out while the line waits, and flush leaves the line under it waiting too.
+  app.flush = sending.flush;
+  await app.act({ op: 'done', task: 7, run: null });
+  await app.flush();
+  assert.deepEqual([v.task(7).done, v.requests.filter(x => x.body?.title === 'Stack them'), sync.all(1).map(x => x.raw)], [true, [], ['Load chairs', 'Stack them']]);
+  // Try again sends the line with a new key, and then the line under it.
+  v.trouble = () => null;
+  await app.retryAct(e.entries[1].id);
+  const posts = v.requests.filter(x => x.body?.title === 'Load chairs');
+  assert.notEqual(posts[1].key.split(':')[0], posts[0].key.split(':')[0], 'the key is new');
+  assert.deepEqual([links(v), sync.all(1)], [[[102, 103]], []]);
+});
+
+test('dropping a line whose answer is unknown sends the line under it back to the box', async t => {
+  const { v, app, e } = await unknownSecond(t);
+  globalThis.confirm = () => true;
+  await app.dropAct(e.entries[1].id);
+  assert.deepEqual([sync.all(1), app.cap.text, app.toast.msg], [[], 'Stack them', 'Not sent. Its text is back where you wrote it.']);
+  assert.deepEqual(v.requests.filter(x => x.body?.title === 'Stack them'), []);
+});
+
+test('a parent\'s progress is written once, by the last line under it, after subtasks are added to it', async t => {
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]), app = adding(t);
+  const e = entry([line('Chairs'), line('Legs', { done: true }, 0), line('Tables')], { parent: { id: 9, project_id: 5, title: 'Pack the van' } });
+  await send(app, e);
+  const figures = id => v.requests.filter(x => x.method === 'PATCH' && x.path === '/tasks/' + id && 'percent_done' in x.body).map(x => [x.key.split(':')[0], x.body.percent_done]);
+  assert.deepEqual([figures(101), figures(9)], [[[e.entries[1].id, 1]], [[e.entries[2].id, 0.5]]],
+    'Legs writes Chairs, the line it is under, and Tables, the last line, writes Pack the van once');
 });
 
 /* What a box reads before it is sent (src/js/app/quickadd.js). These helpers show the chips under the box as text (a
@@ -479,11 +536,10 @@ test('in quick add, a first line ending with a colon is the parent of the other 
 const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'flush'));
-  Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
+  const app = component(tasks, actions, leaving, quickadd, parts, { flush: sending.flush });
   const van = app.row(v.task(9)), chairs = app.row(v.task(8));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},
-    checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 },
+    checklistIds: new Set(), remindersReach: false, canWrite: () => true, cap: newBox(), capPhotos: [], route: { name: 'project', id: 5 }, endPlace(){},
     view: { groups: [{ key: 'open', tasks: [van, chairs] }], route: '', listView: 3 }, cursor: null, lit: {}, flash(){}, $nextTick(){} });
   app.aim(van);
   const add = text => { app.cap.text = text; return app.addSubtasks('under'); };
@@ -531,7 +587,7 @@ test('offline, an added subtask waits highlighted, and is still highlighted once
 test('after a pasted list with nested lines, the last direct subtask is highlighted and the next subtasks go after it', async t => {
   const { v, app, add, aimed, pos } = underBox(t);
   const sent = add('Ladder\n  Check the feet\nTables\n  Fold the legs');
-  assert.match(Object.keys(app.lit)[0], /^pending-[0-9a-f]+-2$/, 'Tables is highlighted, not Fold the legs under it');
+  assert.deepEqual(Object.keys(app.lit), [app.pendingTasks.find(x => x.title === 'Tables').id], 'Tables is highlighted, not Fold the legs under it');
   await sent;
   assert.deepEqual(aimed(), [['103'], 'Tables']);
   assert.deepEqual(v.requests.filter(r => r.path.endsWith('/relations')).map(r => [+r.path.split('/')[2], r.body.other_task_id]), [[9, 101], [101, 102], [9, 103], [103, 104]]);
@@ -554,11 +610,11 @@ test('cancelling or refusing a waiting subtask moves the highlight to its task',
   const { v, app, add, aimed } = underBox(t);
   v.trouble = () => 'offline';
   await add('Rope\nStraps');
-  const e = sync.all(1)[0].id;
-  assert.deepEqual(aimed(), [[`pending-${e}-1`], 'Straps']);
-  await app.cancelPending(e, 0);
-  assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'cancelling the first line keeps the highlight on the same line, now one position earlier');
-  await app.cancelPending(e, 0);
+  const [rope, straps] = sync.all(1).map(x => x.id);
+  assert.deepEqual(aimed(), [['pending-' + straps], 'Straps']);
+  await app.cancelPending(rope);
+  assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[['pending-' + straps], 'Straps'], [['pending-' + straps, 'Straps']]], 'cancelling the first line keeps the highlight on the same line');
+  await app.cancelPending(straps);
   assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'cancelling the highlighted line highlights its task');
   // Back online, as a read that gets through finds. If Vikunja refuses, the text goes back in the box with the reason,
   // and the task is highlighted.

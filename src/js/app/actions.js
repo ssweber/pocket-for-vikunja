@@ -10,7 +10,8 @@ import {htmlToText} from '../html.js';
 import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {dayGroup, parentIds} from '../lists.js';
-import {itemsOf, NO_ROOM, NOT_KEPT, randomId, sync, uuid7} from '../sync.js';
+import {itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
+import {addLines} from '../ops/index.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
 import {copyOf, started, TASK} from './tasks.js';
@@ -591,20 +592,19 @@ export default {
     if (!parent || !parsed.some(p => p.title)) return;
     const n = parsed.filter(p => p.title).length;
     const at = foot ? this.cursorPlaces(n) : this.subPlaces(n);
-    const items = itemsOf(this.boxItems(w), k => at && {position: at[k]});
-    const entry = {id: randomId(), user: this.user?.id, at: new Date().toISOString(), nest: false, pid: parent.project_id,
-      parent: {id: parent.id, project_id: parent.project_id, title: parent.title}, items, files: []};
+    const items = itemsOf(this.boxItems(w), k => at && {position: at[k]}), lastTop = items.findLastIndex(x => x.under === null);
+    const entries = addLines(items, {parent: {id: parent.id, project_id: parent.project_id, title: parent.title}}).map(f => this.actEntry(f));
     // Add placeholder rows for the new direct subtasks to Today's card at once. They go in the order typed, after
     // the cursor row or below the header.
     if (today) {
       if (!this.cardAdded[parent.id]) this.cardAdded[parent.id] = [];
       const rows = this.cardAdded[parent.id];
       let after = this.cursor?.under != null ? this.cursor.id : null;
-      items.forEach((x, i) => { if (x.under === null) { rows.push({id: `pending-${entry.id}-${i}`, after}); after = rows.at(-1).id; } });
+      items.forEach((x, i) => { if (x.under === null) { rows.push({id: 'pending-' + entries[i].id, after}); after = rows.at(-1).id; } });
     }
     // Move the highlight to the last new direct subtask, so the next entry goes after it and not under a nested
     // child.
-    if (foot) this.aimAdded(entry, items.findLastIndex(x => x.under === null), parent);
+    if (foot) this.aimAdded(entries[lastTop], parent);
     const here = () => foot || this.sheet.id === parent.id, place = foot ? 'cap' : 'sheet:subtasks';
     // `adding` counts the batches still sending, so the user can submit another batch meanwhile.
     b.adding++; b.text = '';
@@ -612,10 +612,7 @@ export default {
     try {
       // The rows and the highlight appear before queuing finishes. The waiting look is delayed until sending takes
       // a while.
-      const keeping = sync.add(entry, []);
-      this.refreshPending();
-      const {kept, full} = await keeping;
-      const r = await sync.lock(() => this.sendEntry(entry.id));
+      const r = await this.sendLines(entries), {kept, full} = r;
       if (foot) this.refreshPending();                                    // swaps the waiting rows for the sent rows at once
       // Replace the pending card rows with their saved tasks, and keep the highlight on the right row.
       if (today) this.change(w => { for (const {child, problems, arrived, was, place, ...x} of r.tasks || []) { w.base(x); for (const a of this.cardAdded[parent.id] || []) { if (a.id === was) a.id = x.id; if (a.after === was) a.after = x.id; } } });
@@ -629,7 +626,7 @@ export default {
         this.sheet.dirty = true;
         try { const t = await this.readCopy(parent.id); if (t && here()) { this.showTask(t); this.loadSubPeople(t); this.loadSubOrder(t); } } catch {}
         // Move the selection to the last added sheet subtask, so the next entry goes after it.
-        const last = r.ids[items.findLastIndex(x => x.under === null)];
+        const last = sync.taskOf(entries[lastTop].id);
         if (here() && this.sheet.subAt != null && last) { this.sheet.subAt = last; this.sheet.subAfter = null; this.seatFoot('sheet'); }
       }
       if (r.status === 'offline') {
@@ -637,7 +634,7 @@ export default {
         // When the subtasks were added from the add box, their rows show that they are waiting, so no message.
         if (!foot || !kept || today) this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place, cls: kept ? '' : 'failed'});
       } else if (r.status === 'error') {
-        if (here()) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');      // puts the lines that weren't added back in the box
+        if (here() && r.unsent.length) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');   // puts the lines that weren't added back in the box
         this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place, cls: 'failed'});
       } else if (r.ids?.length && but) this.say(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`, {place, cls: 'failed'});
     } finally { b.adding--; this.refreshPending(); }

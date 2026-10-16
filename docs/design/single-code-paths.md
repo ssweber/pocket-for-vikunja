@@ -557,7 +557,8 @@ checks that Vikunja changed once.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks and `findSent`. `claims` stays until phase 10. A capture entry from before
    phase 5 is dropped, and Pocket writes no upgrade code. "Phase 5 in detail" has the steps.
-   Built so far: 5a, so every request `LINE_STEPS` sends has a key, and `findSent` is gone.
+   Built so far: 5a, so every request `LINE_STEPS` sends has a key, and `findSent` is gone. 5b is built, and phase 5
+   waits for the user's phone check.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
