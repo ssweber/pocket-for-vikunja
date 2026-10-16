@@ -1026,6 +1026,87 @@ template's date. Each passes `test:local` and is committed. One phone check afte
   request is sent.
 - E2e: the existing reschedule, Move all and sheet date tests pass.
 
+## Phase 6c in detail
+
+Agreed on 2026-10-16, to build before the handoff. Nothing on screen changes. Two causes made most of the bugs that
+the reviews of phases 5 and 6 found, and the reviews kept finding the same missing transition in another op. 6c turns
+each into a lint error or a failing test, so a later change that breaks the rule is caught rather than slipping
+through. Lint can be switched off by a comment, and a run-time guard catches only what the tests run, so reviews
+still check both rules.
+
+### 1. One sender: no op's name outside `src/js/ops/`
+
+Code outside `src/js/ops/` tested an op's name in 35 places (`a.op === 'position'`, `e.op !== 'add'`), 15 of them in
+the sender. Each was a second code path, and several bugs came from them (a refusal message that named the wrong
+line, a toast that fired for an add).
+
+- **Lint:** comparing an entry's `op` to a string is an error outside `src/js/ops/**`, like the store rule. Making
+  an op (`this.act({op: 'due', …})`) stays allowed.
+- **Each difference becomes something the op declares,** with a default in one place. The registry test already
+  fails when an op lacks a field, so a new op has to decide each one:
+  - `refusal`: what a refusal does. `kept` (the default: it waits in the Outbox, marked failed), `back` (its text
+    goes back where it was typed: `note`), `lines` (it and the lines after it go back to their box: `add`), `undone`
+    (the screen goes back and nothing is kept: `position`).
+  - `cancel`: what Cancel says and whether it offers Undo, from the op's `dropped` words and `refusal`.
+  - `answered(app, a, c)`: what the screen does once Vikunja answers (`positionSent`, `loadComments`, `forgetTree`,
+    refreshing a checklist's screen).
+  - `holds(a)` and `waitsOn(a)`: which ids a failed op holds back, and which ids it waits for. These replace the
+    `add` branches in `sync.js`.
+  - `row(a)`: the waiting row it shows on a list, or null (`add` only). `pendingTasks` asks every op.
+  - `files(a)`: the files it still has to send (`add` only).
+  - Queries that screens ask about ops (`pendingComments`, the waiting positions, `beingDeleted`) move into the op's
+    own file as helpers, and the screen calls the helper.
+
+### 2. An op records only what you chose
+
+An op saved Pocket's view of the task when it was queued, and built a request from it when it was sent. The stale
+label cache (5a), a template's repeat (6b) and the date a repeat set (6b) came from this. The plan already said a body
+that depends on Vikunja's copy is built from one read when it is sent. Nothing made the code do it.
+
+- **Each op declares two lists.** `asks`: what the user chose (`due`, `pct`, `html`, `set`, `under`, `batch` and the
+  like). `saw`: what the screen showed when the user chose it (`was`, `label`, `tpl`), which only Undo and the words
+  may read.
+- **`act()` throws** on a field in neither list. The common fields (`id`, `task`, `run`) are listed once.
+- **A stage can't read `saw`.** `stageContext` hands each stage the entry through a view that throws when a stage
+  reads a `saw` field. So a body can only come from what the user chose, or from Vikunja's copy read with `c.once`.
+  `invert` may read `saw`, because the Undo it makes is checked against Vikunja when it is sent.
+
+### 3. Every op passes the same lifecycle checks
+
+One test runs every op in `OPS` through the same states: unsent, sending, answered, refused, unknown, and partly
+done for an op with several stages. In each it tries Undo, Cancel, a reload and a second tab, and checks the same
+rules: each request reaches Vikunja at most once, no change is lost, the row is Vikunja's copy with the waiting ops,
+and every message offers a way forward. Each op gives the test a sample entry and task. The test fails when an op in
+`OPS` has no sample, so a new op can't ship without passing it.
+
+### 4. Written down
+
+- "Store invariants" gains: "An op records what the user chose. What the task is like now is read from Vikunja when
+  the op is sent." and "Only `src/js/ops/` knows which op is which."
+- Every review brief checks both.
+
+### Order of work
+
+6c-1, the lint rule and the op's declared differences. 6c-2, `asks` and `saw`. 6c-3, the lifecycle checks. Then the
+relay's fix (below). Each passes `test:local` and is committed, then one read-only review of all four. The user's
+phone check of phase 6 covers 6c, since nothing on screen changes.
+
+### Tests
+
+- Unit: the registry test covers the new fields. `act()` throws on an undeclared field. A stage that reads a `saw`
+  field throws. Each moved branch keeps its existing test passing unchanged.
+- Lint: a file outside `src/js/ops/` that compares `.op` to a string fails `npm run lint`.
+
+### The relay keeps a key when the outcome is unknown
+
+Found on 2026-10-16 by an outside reader of the plan, and confirmed in the code. `relayWrite` releases the key on any
+error from `relayForward`, so the phone's retry runs the write again. Three of those errors can come after Vikunja
+made the change: reading the reply body fails, the relay's own timeout ends the wait while Vikunja is still working,
+or the connection drops after the request was written. Only a failure to connect proves the request never reached
+Vikunja. That one releases the key. Every other error keeps the key and answers as the gap does
+(`Idempotency-Unknown`), which Pocket already shows as a change to check, with Try again. A plugin change, so it runs
+`test:local` on Postgres, `DB=sqlite` and `DB=mysql`.
+
 ## State on 2026-10-15
 
 For whoever carries on. Read this, then phase 4.
