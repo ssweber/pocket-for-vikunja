@@ -2,6 +2,11 @@
    which op is which. The shared code asks the op what to do (opOf), and lint fails on code elsewhere that compares an
    op's name. An op sets every field below, to its own value or to null for the default in DEFAULTS, so a new op
    decides each one. The registry test checks that it does.
+   - asks: the fields of its entry that hold what the user chose. Its stages build their requests from these.
+   - saw: the fields that hold what the screen showed when the user chose, for its words and its Undo. The task may
+     have changed by the time the op is sent, so a stage that reads one throws (stageView). A request that depends on
+     the task is built from Vikunja's copy, read once with c.once. act() throws on a field in none of asks, saw, COMMON
+     and SENT (checkFields).
    - apply(t, a): the task as it will be once the op is made, as a new object. It changes neither argument.
    - on(a): the ids of the tasks it changes, whose rows show it while it waits (shownOn, tasks.js).
    - stages: its requests in order, `(a, c) => Promise` each (stages.js), or a function of the entry giving them.
@@ -38,6 +43,8 @@ export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, 
 
 // What each field is when an op sets it to null.
 export const DEFAULTS = {
+  asks: [],
+  saw: [],
   on: a => [opsId(a.task)],
   keepReads: false,
   invert: null,
@@ -60,6 +67,12 @@ export const DEFAULTS = {
   files: () => [],
   deletes: () => [],
 };
+// The fields any op's entry may have when it is queued (actEntry). `undo` marks an op that undoes another (undoOps).
+export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
+/* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
+   answered. `until` holds a delete back while Restore shows, and an add's stages keep the task they made. */
+export const SENT = ['files', 'stage', 'fails', 'sent', 'key', 'fixed', 'got', 'failed', 'filed', 'until', 'problems', 'doneAt',
+  'taskId', 'projectId', 'to', 'body', 'people', 'labels', 'tags', 'had', 'labeled', 'assigned', 'linked', 'arrived'];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't
    know, such as one an older Pocket saved, takes every default. */
@@ -68,6 +81,21 @@ export const opOf = a => {
   if (!op) return DEFAULTS;
   if (!full.has(op)) full.set(op, Object.fromEntries(Object.entries({...DEFAULTS, ...op}).map(([k, v]) => [k, v ?? DEFAULTS[k]])));
   return full.get(op);
+};
+// Throw on a field of entry `a` that its op doesn't declare. Nothing reads such a field on purpose, so it is a bug.
+export const checkFields = a => {
+  const op = opOf(a), known = new Set([...COMMON, ...SENT, ...op.asks, ...op.saw]);
+  for (const k of Object.keys(a)) if (!known.has(k)) throw new Error(`The ${a.op} op doesn't declare the field ${k}`);
+  return a;
+};
+/* Entry `a` as its stages get it. Reading a field in the op's `saw` throws, because what the screen showed when the op
+   was queued may be wrong by the time it is sent. Writes reach the entry. */
+export const stageView = a => {
+  const saw = new Set(opOf(a).saw);
+  return new Proxy(a, {get(t, k){
+    if (saw.has(k)) throw new Error(`The ${t.op} op's stage read ${k}, what the screen showed. Read Vikunja's copy with c.once instead.`);
+    return t[k];
+  }});
 };
 // The stages entry `a` is sent in. A stage builds its requests only from the entry and `a.fixed`, so each part always
 // carries the same request, and its key gets the same answer from the relay.

@@ -11,7 +11,7 @@ import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
-import {addLines} from '../ops/index.js';
+import {addLines, checkFields} from '../ops/index.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
 import {copyOf, started, TASK} from './tasks.js';
@@ -727,8 +727,8 @@ export default {
     const n = tree.length - 1;
     // The deletion's last stage updates the progress of the parent that stays.
     const up = this.parentIdOf(t);
-    const entry = {id: uuid7(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), files: [], stage: 0, fails: 0,
-      run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS, ...typeof up === 'number' && !tree.includes(up) && {up}};
+    const entry = checkFields({id: uuid7(), kind: 'act', op: 'delete', user: this.user?.id, at: new Date().toISOString(), files: [], stage: 0, fails: 0,
+      run: null, task: t.id, ids: tree, label: t.title, until: Date.now() + HELD_MS, ...typeof up === 'number' && !tree.includes(up) && {up}});
     sync.held.add(entry.id);
     const added = sync.add(entry, []);
     show?.({id: entry.id, n, ids: tree});

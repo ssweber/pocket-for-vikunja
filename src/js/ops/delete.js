@@ -10,5 +10,5 @@ const apply = (t, a) => a.ids.includes(t.id) || !t.related_tasks?.subtask ? {...
 
 // `figure` writes the progress of the parent that stays.
 export const del = {apply, on: a => [...a.ids, ...a.up != null ? [a.up] : []], stages: [deleteAll, figure], deletes: a => a.ids, ...OP_WORDS.delete,
-  keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null, answered: null,
+  asks: ['ids', 'up'], saw: ['label'], keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null, answered: null,
   holds: null, waitsOn: null, row: null, files: null};

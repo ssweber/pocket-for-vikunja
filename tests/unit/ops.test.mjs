@@ -4,7 +4,7 @@ import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DEFAULTS, opOf, OPS } from '../../src/js/ops/index.js';
+import { COMMON, DEFAULTS, opOf, OPS, SENT, stageView } from '../../src/js/ops/index.js';
 import acts, { heldTasks, stageContext, waits } from '../../src/js/app/acts.js';
 import tasks, { copyOf, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
@@ -30,6 +30,9 @@ test('every op defines every field, null for the default, and the comment on OPS
     const full = opOf({ op: name });
     for (const f of ['on', 'answered', 'holds', 'waitsOn', 'row', 'files', 'deletes']) assert.equal(typeof full[f], 'function', `${name}.${f}`);
     assert.deepEqual([typeof full.keepReads, ['kept', 'back', 'lines', 'undone'].includes(full.refusal), ['undo', 'text', 'back', 'lines'].includes(full.cancel)], ['boolean', true, true], name);
+    assert.ok(Array.isArray(op.asks) && Array.isArray(op.saw), `${name} declares asks and saw`);
+    assert.deepEqual(op.asks.filter(k => op.saw.includes(k)), [], `${name}: no field is in both asks and saw`);
+    assert.deepEqual([...op.asks, ...op.saw].filter(k => COMMON.includes(k) || SENT.includes(k)), [], `${name}: asks and saw leave out the fields every entry has`);
   }
   const comment = readFileSync(new URL('../../src/js/ops/index.js', import.meta.url), 'utf8').split('*/')[0];
   for (const f of FIELDS) assert.match(comment, new RegExp(`^ +- (\\w+, )*${f}\\b`, 'm'), `the comment on OPS names ${f}`);
@@ -287,14 +290,14 @@ test('Cancel\'s Undo does nothing once its message has gone', async t => {
 test('Cancel offers Undo except for a comment, whose text goes back to its box', async t => {
   const { app } = offlineSender(t);
   const cancel = async f => {
-    await app.act({ run: null, label: 'Wipe the till', task: 7, html: '', ...f });
+    await app.act({ run: null, label: 'Wipe the till', task: 7, ...f });
     await app.dropAct(sync.all(1).at(-1).id);
     return [lastSaid(app).msg, lastSaid(app).action?.label ?? null];
   };
   assert.deepEqual(await cancel({ op: 'done' }), ['Cancelled. “Wipe the till” stays not done in Vikunja.', 'Undo']);
   assert.deepEqual(await cancel({ op: 'claim' }), ['Cancelled. You are not assigned to “Wipe the till”.', 'Undo']);
-  assert.deepEqual(await cancel({ op: 'answer' }), ['Cancelled. Your answer to “Wipe the till” isn\'t saved.', 'Undo']);
-  assert.deepEqual(await cancel({ op: 'note' }), ['Cancelled. Your comment is back where you typed it.', null]);
+  assert.deepEqual(await cancel({ op: 'answer', html: '' }), ['Cancelled. Your answer to “Wipe the till” isn\'t saved.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'note', html: '' }), ['Cancelled. Your comment is back where you typed it.', null]);
 });
 
 test('Cancel\'s Undo puts a refused change back as refused, to try again', async t => {
@@ -508,7 +511,7 @@ test('an Undo of a move on a task deleted since leaves the outbox, and counts as
 /* Two made-up ops show what fold does for any op. `off` cancels an `on` before it, as an untick cancels a tick, and
    `on` names its own key in `waiting`. */
 test('a new op meets any earlier op on its task, and can cancel it, so both leave the outbox', async t => {
-  const op = (merge, waiting) => ({ apply: x => ({ ...x }), stages: [async () => {}], invert: null, merge, waiting, text: () => '', refused: () => '', dropped: () => '' });
+  const op = (merge, waiting) => ({ apply: x => ({ ...x }), stages: [async () => {}], asks: [], saw: ['label'], invert: null, merge, waiting, text: () => '', refused: () => '', dropped: () => '' });
   Object.assign(OPS, { on: op(null, 'ons'), off: op((older, newer) => older.op === 'on' ? CANCEL : null) });
   t.after(() => { delete OPS.on; delete OPS.off; for (const x of sync.all(1)) sync.remove(x.id); });
   const { v, app } = sender(t, [{ id: 7, title: 'Call the plumber' }]);
@@ -715,7 +718,7 @@ test('an Undo retried with Try again puts back the repeat Vikunja had when the U
    code asks the op for it. Fields it leaves out take their defaults. Its one request is a PATCH of its task. */
 const madeUp = (t, fields) => {
   OPS.madeUp = { apply: x => ({ ...x }), stages: [(a, c) => c.send('/tasks/' + a.task, { method: 'PATCH', body: { priority: 2 } })],
-    text: () => 'A made-up change', refused: () => 'A made-up change', dropped: () => 'Vikunja keeps what it has.', ...fields };
+    asks: ['batch', 'raw'], saw: ['label'], text: () => 'A made-up change', refused: () => 'A made-up change', dropped: () => 'Vikunja keeps what it has.', ...fields };
   t.after(() => { delete OPS.madeUp; });
 };
 const emptied = async app => { for (const x of sync.all(1)) await sync.remove(x.id); app.refreshPending(); app.toasts.length = 0; };
@@ -810,6 +813,46 @@ test('the files an op still has to upload move to an entry of their own once a s
   await app.act({ op: 'madeUp', task: 7, taskId: 7, run: null, files: [photo] });
   const op = sync.all(1).find(e => e.kind === 'act'), own = sync.all(1).find(e => !e.kind);
   assert.deepEqual([op.files, op.filed, own.taskId, own.files], [[], own.id, 7, [photo]]);
+});
+
+/* An op records what the user chose (`asks`). What the screen showed (`saw`) is for its words and its Undo, so a stage
+   that reads it throws, and the request is built from Vikunja's copy instead. */
+test('act() throws on a field the op doesn\'t declare, naming the op and the field, and queues nothing', async t => {
+  const { app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  await assert.rejects(app.act({ op: 'done', task: 7, run: null, html: '<p>Done early</p>' }), /The done op doesn't declare the field html/);
+  assert.deepEqual(sync.all(1), []);
+});
+
+test('a stage that reads a field the op saw throws, naming the op and the field, and one that reads what the user chose sends it', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  t.after(() => emptied(app));
+  const rename = k => [(a, c) => c.send('/tasks/' + a.task, { method: 'PATCH', body: { title: a[k] } })];
+  madeUp(t, { stages: rename('label') });
+  await app.act({ op: 'madeUp', task: 7, run: null, raw: 'Wipe the counter' });
+  assert.match(app.failed[0].failed.message, /^The madeUp op's stage read label, what the screen showed\. Read Vikunja's copy with c\.once instead\.$/);
+  assert.deepEqual([v.task(7).title, v.requests.filter(r => r.method === 'PATCH')], ['Wipe the till', []], 'nothing is sent');
+  await emptied(app);
+  madeUp(t, { stages: rename('raw') });
+  await app.act({ op: 'madeUp', task: 7, run: null, raw: 'Wipe the counter' });
+  assert.deepEqual([v.task(7).title, sync.all(1)], ['Wipe the counter', []]);
+  const a = { op: 'madeUp', raw: 'Wipe the counter', label: 'Wipe the till' }, seen = stageView(a);
+  seen.taskId = 7;
+  assert.deepEqual([a.taskId, seen.raw, 'label' in seen], [7, 'Wipe the counter', true], 'a write through the stage\'s view reaches the entry');
+});
+
+test('an op\'s Undo and its words read what the screen showed', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  t.after(() => emptied(app));
+  madeUp(t, { saw: ['label', 'was'], invert: a => ({ op: 'madeUp', task: a.task, raw: a.was, was: a.raw }), refused: a => `Renaming “${a.was}”`,
+    stages: [(a, c) => c.send('/tasks/' + a.task, { method: 'PATCH', body: { title: a.raw } })] });
+  const f = { id: uuid7(), op: 'madeUp', task: 7, run: null, raw: 'Wipe the counter', was: 'Wipe the till' };
+  await app.act(f);
+  assert.equal(v.task(7).title, 'Wipe the counter');
+  assert.equal(await app.undoOps([f]).left, 0);
+  assert.equal(v.task(7).title, 'Wipe the till', 'Undo puts back the title the row showed');
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await app.act({ ...f, id: uuid7() });
+  assert.match(lastSaid(app).msg, /^Renaming “Wipe the till” couldn't be saved/);
 });
 
 test('the tasks an op deletes are hidden while it waits, and forgotten once Vikunja answers it', async t => {

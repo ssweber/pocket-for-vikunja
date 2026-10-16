@@ -11,7 +11,8 @@ const same = (k, a, b) => k === 'due_date' ? sameTime(a, b) : a === b;
 const gotOf = a => a.got?.task?.due_date ?? a.due;
 // Reads Vikunja's copy, or null for a task deleted since.
 const now = (a, c) => c.read('/tasks/' + a.task).catch(e => { if (e.status === 404) return null; throw e; });
-const changed = (a, what) => Object.assign(new ApiError(409, what + ' changed since then'), {drop: true, said: changedSince(a.label || 'it')});
+// A stage can't read the title the row showed, so the sender gives `said` the entry itself (sendAct).
+const changed = what => Object.assign(new ApiError(409, what + ' changed since then'), {drop: true, said: a => changedSince(a.label || 'it')});
 const OFF = {repeat_after: 0, repeat_mode: 0};
 const repeatOf = t => t && repeats(t) ? {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode} : null;
 /* Sent with done: true while the task repeats, Vikunja moves the task on to its next time and leaves it not done. So
@@ -39,7 +40,7 @@ const seen = (a, c) => c.once('seen', async () => {
 // next repeats, and `done` comes with it.
 const move = i => async (a, c) => {
   const s = a.check !== undefined || a.done === true ? await seen(a, c) : {};
-  if (s.found === 'changed') throw changed(a, 'its date has');
+  if (s.found === 'changed') throw changed('its date has');
   const body = s.found !== 'back' && split({due_date: a.due, ...a.done !== undefined && {done: a.done}}, s.rep)[i];
   if (body) await patch(a, c, body);
 };
@@ -58,7 +59,7 @@ export const due = {apply: (t, a) => ({...t, due_date: a.due, ...a.done !== unde
   // It keeps the earlier move's `done` when it has none of its own, because Vikunja doesn't have that `done` yet.
   merge: (older, newer) => older.op === 'due' ? {...older.done !== undefined && {done: older.done}, ...newer, was: older.was} : null,
   ...OP_WORDS.due,
-  on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  asks: ['due', 'done', 'check'], saw: ['label', 'was', 'tpl'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
 
 // The fields an Undo of a repeat compares. The repeat is two fields, compared together.
 const PARTS = [['repeat_after', 'repeat_mode'], ['due_date'], ['done']];
@@ -88,7 +89,7 @@ const setCount = a => a.set?.done === true ? 3 : 1;
 const SETS = [0, 1, 2].map(i => async (a, c) => {
   const {body, left, rep} = await fieldsOf(a, c), part = split(body, rep)[i];
   if (part && Object.keys(part).length) await patch(a, c, part);
-  if (left && i === setCount(a) - 1) throw changed(a, 'it has');
+  if (left && i === setCount(a) - 1) throw changed('it has');
 });
 
 /* How a task repeats (`set`: repeat_after and repeat_mode, and a date when a repeat needs one), with what each field
@@ -98,4 +99,4 @@ export const repeat = {apply: (t, a) => ({...t, ...a.set}), stages: a => SETS.sl
   // A change replaces an earlier one that hasn't been sent, with the fields of both, and keeps the oldest `was`.
   merge: (older, newer) => older.op === 'repeat' ? {...newer, set: {...older.set, ...newer.set}, was: {...newer.was, ...older.was}} : null,
   ...OP_WORDS.repeat,
-  on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  asks: ['set', 'check'], saw: ['label', 'was'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};

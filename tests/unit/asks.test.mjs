@@ -217,6 +217,6 @@ test('Done sends the unsent answers as their own comment before the tick and the
   assert.equal(app.runDrafts['7:temp'], '7.5', 'a skip keeps what was typed in the fields');
   sent.length = 0;
   await app.tickStep(s, 'done', true);
-  assert.deepEqual(sent.map(f => [f.op, f.html]), [['answer', '<p>Temp: 7.5 °C</p><p>pocket:answer</p>'], ['done', '']]);
+  assert.deepEqual(sent.map(f => [f.op, f.html]), [['answer', '<p>Temp: 7.5 °C</p><p>pocket:answer</p>'], ['done', undefined]]);
   assert.equal('7:temp' in app.runDrafts, false, 'the field shows the answer that counts again');
 });

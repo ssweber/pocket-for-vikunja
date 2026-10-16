@@ -817,6 +817,8 @@ Phase 5 makes creates ops.
 - The edits are scaffolding. Phases 5 to 10 turn each direct save into an op, so that by phase 10 a row is Vikunja's
   copy with the waiting ops.
 - Only `src/js/ops/` knows which op is which. Lint holds it.
+- An op records what the user chose. What the task is like now is read from Vikunja when the op is sent. `act()` and
+  the stage proxy hold it.
 
 ### Order of work
 
@@ -1093,6 +1095,9 @@ relay's fix (below). Each passes `test:local` and is committed, then one read-on
 phone check of phase 6 covers 6c, since nothing on screen changes.
 
 6c-1 is built: the lint rule, and each op's fields with their defaults in `DEFAULTS` (`src/js/ops/index.js`).
+
+6c-2 is built: each op's `asks` and `saw`, the check in `actEntry` (`checkFields`), and the proxy a stage gets
+(`stageView`).
 
 ### Tests
 

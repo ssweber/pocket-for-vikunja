@@ -150,6 +150,8 @@ const pending = a => 'pending-' + a.id;
    holds back the lines under it (`pending`) and the ops on its task. A line waits only for a failed line it goes under,
    never for another op on its parent. */
 export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figures], refusal: 'lines', cancel: 'lines', ...OP_WORDS.add,
+  // `parent` is the task whose subtask box the line was typed in. A refused line goes back to that box.
+  asks: ['batch', 'raw', 'p', 'pid', 'under', 'ups', 'above'], saw: ['label', 'over', 'parent'],
   holds: a => [pending(a), ...a.taskId ? [a.taskId] : []],
   waitsOn: a => typeof a.under === 'string' ? [a.under] : [],
   // The line's waiting row, shaped like a task. Its parent is the line it goes under, by that line's waiting-row id

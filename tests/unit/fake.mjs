@@ -7,7 +7,7 @@ import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { uuid7 } from '../../src/js/sync.js';
 import { stageContext } from '../../src/js/app/acts.js';
-import { noneWaiting, stagesOf } from '../../src/js/ops/index.js';
+import { noneWaiting, stagesOf, stageView } from '../../src/js/ops/index.js';
 
 const reply = (body, status = 200, more = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
 const lost = () => new TypeError('network error');
@@ -166,5 +166,5 @@ export function component(...parts){
 // Send an op's stages one after another, as app/acts.js does, without the outbox around them.
 export async function sendStages(app, a){
   a.id ||= uuid7();
-  for (a.stage = 0; a.stage < stagesOf(a).length; a.stage++) await stagesOf(a)[a.stage](a, stageContext(a, app).start());
+  for (a.stage = 0; a.stage < stagesOf(a).length; a.stage++) await stagesOf(a)[a.stage](stageView(a), stageContext(a, app).start());
 }

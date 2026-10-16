@@ -543,7 +543,7 @@ export default {
     if (current && op !== 'undone') { r.at = this.nextStep(s); if (r.last) r.last.held = null; }
     if (!felt) haptic(tickFeel(op === 'undone'));
     if (answers) await this.act({op: 'answer', task: s.id, html: answers});
-    await this.act({op, task: s.id, html});
+    await this.act({op, task: s.id, ...html && {html}});
   },
   /* Advance to the next open step, or an earlier timed step that is due, wrapping to the first open step. Return
      null when only the completed step remained. */

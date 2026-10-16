@@ -6,7 +6,7 @@ import {parseStep, patiently} from '../checklists.js';
 import {CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
-import {dropUnder, opOf, refuseLines, stagesOf} from '../ops/index.js';
+import {checkFields, dropUnder, opOf, refuseLines, stageView, stagesOf} from '../ops/index.js';
 import {CREATED, opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
@@ -160,8 +160,8 @@ export default {
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
   actEntry(fields){
     const me = this.user;
-    return {id: uuid7(), kind: 'act', user: me?.id, who: me && {id: me.id, username: me.username, name: me.name || ''}, at: new Date().toISOString(), n: nextN(),
-      files: [], stage: 0, fails: 0, run: this.view.shownRun?.id, label: this.actTitle(fields.task), ...fields};
+    return checkFields({id: uuid7(), kind: 'act', user: me?.id, who: me && {id: me.id, username: me.username, name: me.name || ''}, at: new Date().toISOString(), n: nextN(),
+      files: [], stage: 0, fails: 0, run: this.view.shownRun?.id, label: this.actTitle(fields.task), ...fields});
   },
   // Save `entries` in the outbox, the first with `files`, and show them at once. Returns whether all of them reached
   // the database (`kept`), and whether the phone is out of space (`full`).
@@ -216,7 +216,7 @@ export default {
      entry then has `taskId`) also gives the task (`ids`, and `tasks` for placeSent) and its problems, and uploads its
      photos once it is sent (`filesWait` while they wait). What a refusal does is the op's (refusal). */
   async sendAct(a){
-    const op = opOf(a), stages = stagesOf(a), c = stageContext(a, this), none = {ids: [], tasks: [], problems: a.problems || [], uploaded: 0};
+    const op = opOf(a), stages = stagesOf(a), c = stageContext(a, this), seen = stageView(a), none = {ids: [], tasks: [], problems: a.problems || [], uploaded: 0};
     const got = () => ({...none, ids: a.taskId && a.stage >= stages.length ? [a.taskId] : [], projectId: a.projectId});
     // A stage that makes a task puts it on screen at once, and shows on its row that it arrived done, or with progress.
     c.made = t => { this.change(w => w.answer([t], CREATED)); none.tasks.push({...t, child: a.under != null, parent: a.under, was: 'pending-' + a.id, place: a.p.position || 0}); };
@@ -241,7 +241,7 @@ export default {
       }
       // A busy Vikunja is retried a few times. With keys, sending a stage again is safe.
       while (a.stage < stages.length) {
-        await patiently(() => stages[a.stage](a, c.start()));
+        await patiently(() => stages[a.stage](seen, c.start()));
         a.stage++;
         await sync.save(a, [], filesOut(a));
       }
@@ -267,6 +267,8 @@ export default {
       if (c.task) this.change(w => w.answer([c.task], TASK));
       if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
       error.what = op.refused(a, a.label || this.actTitle(a.task));
+      // A stage can't read the title the row showed (stageView), so a sentence that names it is a function of the entry.
+      if (typeof error.said === 'function') error.said = error.said(a);
       // Reload after a permanent rejection when no retry remains queued.
       if (error.drop) {
         await sync.remove(a.id);
