@@ -511,8 +511,8 @@ checks that Vikunja changed once.
 2. **Today's groups.** Done. Add `dayGroup`, move all seven places, and turn on its rule.
 3. **Roles.** Done. Add the table test, `roleOf` and `this.role`, move every caller, and turn on the roles rule.
    `known` also holds the Checklists projects' ids. `isTemplateLabel` stays exported, because it asks about a label.
-4. **The store's foundation.** Done on 2026-10-15, in six commits, and waits for the user's phone check before
-   phase 5. Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
+4. **The store's foundation.** Done on 2026-10-15, in six commits, and checked on the user's phone on 2026-10-16.
+   Rows read Vikunja's copy with the waiting ops applied, which `show(id)` patches into
    `tasks[id]`, its only writer. Every read and every direct save writes into the copies by field, so today's
    `saveTask` paths feed the store instead of `tasks`. The sheet and a checklist's screen read their task by id, so
    `sheet.task` and `view.run` go. A late read is ignored as part 7 says, so `readTask` and `saving` go. The bridge's
@@ -846,8 +846,8 @@ For whoever carries on. Read this, then phase 4.
   New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
   building it, as was done for phase 1.
 - **Phases 3 and 4 are on `dev`.** Phase 4 was built in four commits, as "Phase 4 in detail" says, and a fifth (4e)
-  put every write inside `change`. A sixth (4f) closed the gaps a review of 4d and 4e found. It waits for the
-  user's phone check, and phase 5 comes after it.
+  put every write inside `change`. A sixth (4f) closed the gaps a review of 4d and 4e found. It passed the
+  user's phone check on 2026-10-16. Phase 5 is next, and its design is agreed with the user before it is built.
 - **Known, and fixed by a later phase.**
   - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
   - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
