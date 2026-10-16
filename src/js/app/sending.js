@@ -8,7 +8,7 @@ import {parseCapture} from '../quickadd.js';
 import {fileEntry, held, heldTasks, hold, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7, waits} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
-import {addLines, LINE, madeStage, OPS} from '../ops/index.js';
+import {addLines, LINE, madeStage, noneWaiting, OPS} from '../ops/index.js';
 import {stageContext} from './acts.js';
 import {opsId, savedScreen} from './tasks.js';
 
@@ -373,7 +373,7 @@ export default {
      changes. Without this, every row searched the whole outbox whenever anything in it changed, and adding a task to a
      long list made every row search it twice. The ops waiting on a task are in opsOn (keyOps, tasks.js). */
   keyWaiting(){
-    const out = {files: {}, dues: {}}, slow = new Set(this.slow);
+    const out = noneWaiting(), slow = new Set(this.slow);
     for (const e of this.pending) {
       const w = e.kind === 'act' && OPS[e.op]?.waiting;
       if (w && slow.has(e.id)) out[w][opsId(e.task)] = true;

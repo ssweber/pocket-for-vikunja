@@ -3,6 +3,7 @@ import {grow, setApp, store, taskDrafts} from '../util.js';
 import {sharedToken} from '../api.js';
 import {currentRoute} from '../routing.js';
 import {saved} from '../lists.js';
+import {noneWaiting} from '../ops/index.js';
 
 /* Share mutable state across app modules because a module cannot assign to another module's variable.
    onClosedSheet and closedAt identify a closed sheet's history entry. saveChain saves task changes in order. */
@@ -75,8 +76,8 @@ export default () => ({
   cardAdded: {},                               // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
-  // The number of waiting files by task id, so rows read only their own state.
-  waiting: {files: {}, dues: {}},
+  // The waiting files by task id, and the tasks with a slow op under that op's key, so rows read only their own state.
+  waiting: noneWaiting(),
   opsOn: {},                                   // task id -> the ops waiting in the outbox that change it, in the order they will be sent (keyOps, tasks.js)
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.

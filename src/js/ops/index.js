@@ -6,10 +6,11 @@
      A stage's requests and their bodies depend only on the entry and `a.fixed`, so each part number always carries
      the same request, and its key gets the same answer from the relay.
    - invert(a): the fields of the op that undoes entry `a`, from what `a` recorded. Null when it has none.
-   - merge(older, newer): the entry that replaces both, when `newer` is queued on the task of `older` before `older`
-     has sent anything (fold, app/acts.js), or null when both are sent. An op whose merge is null never folds.
+   - merge(older, newer): what becomes of `older`, the op queued just before `newer` on the same task, when `older`
+     has sent nothing (fold, app/acts.js). It returns the entry that replaces both, CANCEL (sync.js) when the two
+     cancel out and both leave the outbox, or null when both are sent. An op whose merge is null never folds.
    - waiting: the key of the component's `waiting` that marks the task's rows once the op has waited a while
-     (keyWaiting), if the op has one.
+     (keyWaiting), if the op has one. noneWaiting adds the key to `waiting`.
    - text, refused, dropped: its words, from messages.js. */
 import {done, doneNote, finish, progress, reopen, skip, undone} from './ticks.js';
 import {answer, note} from './comments.js';
@@ -23,3 +24,5 @@ import {due} from './dates.js';
 // stages.js is still loading, and they fail without it.
 export {addLines, LINE, madeStage} from './add.js';
 export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add, due};
+// The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
+export const noneWaiting = () => Object.fromEntries(['files', ...Object.values(OPS).map(o => o.waiting).filter(Boolean)].map(k => [k, {}]));

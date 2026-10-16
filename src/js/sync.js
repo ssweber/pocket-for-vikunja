@@ -167,6 +167,8 @@ function named(e, name, id){
 }
 // The order entries are sent in (all).
 export const older = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
+// What an op's merge returns when the new op cancels the earlier one, as an untick cancels a tick. Both leave the outbox.
+export const CANCEL = 'cancel';
 export const NO_ROOM = 'This phone\'s storage is full, so Pocket can\'t save this for later. Keep Pocket open until it is sent.';
 export const KEPT = ' It\'s kept to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';

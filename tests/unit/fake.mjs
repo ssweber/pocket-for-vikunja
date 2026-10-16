@@ -7,7 +7,7 @@ import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { uuid7 } from '../../src/js/sync.js';
 import { stageContext } from '../../src/js/app/acts.js';
-import { OPS } from '../../src/js/ops/index.js';
+import { noneWaiting, OPS } from '../../src/js/ops/index.js';
 
 const reply = (body, status = 200, more = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
 const lost = () => new TypeError('network error');
@@ -145,9 +145,9 @@ export function component(...parts){
   const c = {
     server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
-    waiting: { files: {}, dues: {} }, opsOn: {}, slideClaim: {}, dropping: [], failed: [],
+    waiting: noneWaiting(), opsOn: {}, slideClaim: {}, dropping: [], failed: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
-    say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
+    say(msg, { row = null, place = null, action = null, cls = '', gone } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls, ...gone && { gone } }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},
     get toast(){ return this.toasts.at(-1); },
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,

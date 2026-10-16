@@ -5,7 +5,7 @@
 import {api, NetError, patchTask} from '../api.js';
 import {dueInfo, isSet, movedDue, repeats} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
-import {dayWord, doneText, movedText, movedTo, movedToProject, notKnown, notReordered, notMovedBack, notSaved, sentLater, toOutbox} from '../messages.js';
+import {changedSince, dayWord, doneText, movedText, movedTo, movedToProject, notKnown, notReordered, notMovedBack, notSaved, sentLater, toOutbox} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
@@ -126,7 +126,7 @@ export default {
         const err = {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'};
         const undo = async () => {
           try {
-            if (!await this.unchanged(t)) { this.say(`Not undone: “${t.title}” has changed since then`, err); return; }
+            if (!await this.unchanged(t)) { this.say(changedSince(t.title), err); return; }
             await this.saveFor(t, {...back, ...undoExtra});
           } catch (e) { this.say('Not undone: ' + e.message, err); }
           this.render();
@@ -447,12 +447,12 @@ export default {
     const now = new Date(), moves = tasks.map(t => ({id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: movedDue(t.due_date, now, now), run: null}));
     const sending = this.actAll(moves);
     const undo = async () => {
-      const {left} = await this.undoOps(moves);
+      const {left} = this.undoOps(moves);
       this.render();
       const k = await left;
       if (k) { this.say(notMovedBack(k, 'today'), {place: 'overdue', cls: 'failed'}); this.render(); }
     };
-    this.say(movedText(moves.length, stays), {place: 'overdue', action: {label: 'Undo', fn: undo}});
+    this.say(movedText(moves.length, stays), {place: 'overdue', action: {label: 'Undo', fn: undo}, gone: () => this.forgetUndo(moves)});
     this.render();
     await sending;
     this.movingOverdue = false;
@@ -463,31 +463,36 @@ export default {
      not. When Vikunja refuses the move, the op leaves the outbox, and the task goes back to its old group with Try
      again. */
   async reschedule(t, to){
-    const c = this.view.cards?.[t.id], m = {was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
+    const c = this.view.cards?.[t.id], key = isSet(t.due_date) ? undefined : this.todayKey(t);
     const op = {id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: to.due, run: null}, sending = this.act(op, true);
     this.placeOnToday(t, to.due);
     // A task due on that date goes in the same group as a task waiting to be sent with that date (pendingPlace).
     const want = this.pendingPlace({due_date: to.due}), kept = c && this.todayKey(t) !== want && c.when !== t.due_date
       ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
-    // Undo puts the task back and highlights it at once. If the date has changed since, the task goes where its date is.
-    let failed = false;
+    // Undo puts the task back and highlights it at once. It places the task by the date the row then shows, because
+    // Undo of a move that replaced an earlier one goes back to the date before both.
+    const place = () => this.placeOnToday(t, t.due_date, key);
+    let failed = false, undone = false;
     const undo = {label: 'Undo', fn: async () => {
       if (failed) return;
-      const {left} = await this.undoOps([op]);
-      this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived');
+      undone = true;
+      const {left} = this.undoOps([op]);
+      place(); this.flash([t.id], 'arrived');
       if (!await left) return;
-      this.placeOnToday(t, t.due_date, undefined, m.key);
+      place();
       this.say(notMovedBack(1, to.label && dayWord(to.label)), {place: 'cap', cls: 'failed'});
     }};
     await this.$nextTick();                                                 // waits until the row has moved
-    const text = movedTo(to.label, kept?.title), where = this.say(text, {row: !kept && this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
+    const text = movedTo(to.label, kept?.title);
+    const where = this.say(text, {row: !kept && this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo, gone: () => this.forgetUndo([op])});
     const r = await sending;
-    if (r.status !== 'error') return true;
+    // An Undo tapped while the move was being sent deals with a refusal itself.
+    if (r.status !== 'error' || undone) return r.status !== 'error';
     // A move whose answer is unknown stays in the Outbox, where the user checks it first.
     const e = r.error, unknown = e.code === 'unknown';
-    failed = true;
+    failed = true; this.forgetUndo([op]);
     if (!unknown) { await sync.lock(() => sync.remove(r.entry)); this.refreshPending(); }
-    this.placeOnToday(t, m.was, m.when, m.key);
+    place();
     if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false);   // the move failed, so the Undo beside the add box has nothing to undo
     await this.$nextTick();                                                 // waits until a task that left Today has its row back
     this.say(unknown ? notKnown(e.what) : notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap',
@@ -497,12 +502,11 @@ export default {
   // The key of the Today group that task `t` is in, or null.
   todayKey(t){ return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null; },
   /* Put task `t`, whose row already has the date `due`, in the Today group for that date, or remove it from Today if
-     the date is beyond the next seven days. A card uses the earliest date of its parent and open subtasks, unless
-     `when` is given for a retry. A task without a date goes in the group `key`, which is the Added today, no date
-     group by default. */
-  placeOnToday(t, due, when, key = 'nodate'){
+     the date is beyond the next seven days. A card uses the earliest date of its parent and open subtasks. A task
+     without a date goes in the group `key`, which is the Added today, no date group by default. */
+  placeOnToday(t, due, key = 'nodate'){
     const c = this.view.cards?.[t.id];
-    if (c) c.when = when !== undefined ? when : [due, ...this.cardSubs(t, false).filter(s => !s.done).map(s => s.due_date)].filter(isSet)
+    if (c) c.when = [due, ...this.cardSubs(t, false).filter(s => !s.done).map(s => s.due_date)].filter(isSet)
       .reduce((a, b) => !a || Date.parse(b) < Date.parse(a) ? b : a, null);
     const k = dayGroup(c ? c.when : due), groups = this.view.groups, into = k && groups.find(g => g.key === (k === 'nodate' ? key : k));
     for (const g of groups) g.tasks = g.tasks.filter(x => x.id !== t.id);

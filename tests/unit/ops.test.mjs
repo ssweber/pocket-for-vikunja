@@ -9,7 +9,7 @@ import tasks, { copyOf, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
-import { sync, uuid7 } from '../../src/js/sync.js';
+import { CANCEL, sync, uuid7 } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { UNKNOWN } from '../../src/js/messages.js';
 import { figure } from '../../src/js/ops/stages.js';
@@ -294,7 +294,7 @@ test('a move sets the date, its Undo goes back to the date before, and a later m
   assert.deepEqual(OPS.due.invert(a), { op: 'due', task: 7, due: D(5), was: D(9), check: D(9) }, 'before Vikunja answers, the Undo checks for the date sent');
   assert.equal(OPS.due.invert({ ...a, got: { task: { due_date: '2026-10-09T13:00:00Z' } } }).check, '2026-10-09T13:00:00Z', 'once it answers, for the date Vikunja stored');
   assert.deepEqual(OPS.due.merge(a, { ...a, was: D(9), due: D(12) }), { ...a, was: D(5), due: D(12) }, 'the later move keeps the first move\'s date before');
-  assert.deepEqual([OPS.due.merge({ ...a, check: D(3) }, a), OPS.due.merge(a, { ...a, check: D(3) })], [null, null], 'an Undo never folds, or its check would be lost');
+  assert.equal(OPS.due.merge({ op: 'done', task: 7 }, a), null, 'a move replaces only a move');
 });
 
 test('an Undo of a move not sent yet takes the move out of the outbox, and nothing is sent', async t => {
@@ -305,24 +305,56 @@ test('an Undo of a move not sent yet takes the move out of the outbox, and nothi
   assert.equal((await sending).status, 'offline');
   assert.deepEqual([sync.all(1).length, app.waiting.dues[7]], [1, true], 'the move waits, and its row shows it is waiting');
   const { left } = await app.undoOps([f]);
-  assert.deepEqual([app.tasks[7].due_date, sync.all(1).length, app.waiting.dues[7], await left], [D(5), 0, undefined, 0]);
+  assert.equal(app.tasks[7].due_date, D(5), 'the row goes back at once');
+  assert.deepEqual([await left, app.tasks[7].due_date, sync.all(1).length, app.waiting.dues[7]], [0, D(5), 0, undefined]);
   assert.deepEqual(v.requests, [], 'nothing is sent');
 });
 
-test('two moves made offline on one task send one request, and Undo returns the task to its first date', async t => {
+test('two moves made offline on one task send one request, and the second\'s Undo returns the task to its first date', async t => {
   const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
   app.offline = true;
   const first = move(app, 7, D(8));
   await first.sending;
-  await move(app, 7, D(9)).sending;
+  const second = move(app, 7, D(9));
+  await second.sending;
   assert.deepEqual(sync.all(1).map(e => [e.was, e.due]), [[D(5), D(9)]], 'one entry, from the first date to the last');
   assert.equal(app.tasks[7].due_date, D(9));
   app.offline = false;
   await app.flush();
   assert.deepEqual([datePatches(v), v.task(7).due_date], [[D(9)], D(9)]);
-  const { left } = await app.undoOps([first.f]);
-  assert.equal(app.tasks[7].due_date, D(5), 'the first move\'s Undo undoes the move it went into, at once');
-  assert.deepEqual([await left, v.task(7).due_date, datePatches(v)], [0, D(5), [D(9), D(5)]]);
+  // The second move is a change to the date since the first, so the first move's Undo leaves it.
+  let undo = await app.undoOps([first.f]);
+  assert.equal(app.tasks[7].due_date, D(9));
+  assert.deepEqual([await undo.left, v.task(7).due_date, datePatches(v)], [1, D(9), [D(9)]], 'it counts as changed since, and nothing is sent');
+  undo = await app.undoOps([second.f]);
+  assert.equal(app.tasks[7].due_date, D(5), 'the second move\'s Undo shows the first date at once');
+  assert.deepEqual([await undo.left, v.task(7).due_date, datePatches(v)], [0, D(5), [D(9), D(5)]]);
+});
+
+test('the Undo of a move that replaced another goes back to the first date, also when another tab sent it', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  app.offline = true;
+  await move(app, 7, D(8)).sending;
+  const second = move(app, 7, D(9));
+  await second.sending;
+  // Another tab sends the move. Vikunja has its date, and it leaves the outbox without this tab seeing the answer.
+  v.task(7).due_date = D(9);
+  for (const x of sync.all(1)) await sync.remove(x.id);
+  app.offline = false;
+  const { left } = await app.undoOps([second.f]);
+  assert.deepEqual([await left, v.task(7).due_date], [0, D(5)]);
+});
+
+test('an Undo never folds into a move, and a move never folds into an Undo or past one', async t => {
+  const { app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  const m = move(app, 7, D(8));
+  await m.sending;
+  app.offline = true;
+  await move(app, 7, D(9)).sending;
+  const { left } = await app.undoOps([m.f]);
+  await left;
+  await move(app, 7, D(12)).sending;
+  assert.deepEqual(sync.all(1).map(e => [e.due, !!e.undo]), [[D(9), false], [D(5), true], [D(12), false]], 'the Undo keeps its check, and is checked after the move before it');
 });
 
 test('a move that has sent a request, or is held, is not replaced by a later move', async t => {
@@ -367,8 +399,45 @@ test('an Undo puts the date back after a change to another field, and leaves a d
   await m.sending;
   app.offline = true;
   undo = await app.undoOps([m.f]);
+  assert.equal(await undo.left, 0, 'the Undo waits');
   v.task(7).due_date = D(15);
   app.offline = false;
   await app.flush();
-  assert.deepEqual([await undo.left, v.task(7).due_date, app.toasts.at(-1).msg], [0, D(15), 'Not undone: “Call the plumber today” has changed since then'], 'the title is Vikunja\'s, as the Undo read it');
+  assert.deepEqual([v.task(7).due_date, app.toasts.at(-1).msg], [D(15), 'Not undone: “Call the plumber today” has changed since then'], 'the title is Vikunja\'s, as the Undo read it');
+});
+
+test('an Undo of a move whose answer is unknown puts the date back if the move arrived, and sends nothing if it didn\'t', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }, { id: 8, title: 'Order milk', due_date: D(5) }]);
+  v.trouble = r => r.method === 'PATCH' ? 'unknown' : null;
+  const arrived = move(app, 7, D(9)), lost = move(app, 8, D(9));
+  assert.deepEqual([(await arrived.sending).error.code, (await lost.sending).error.code, app.failed.length], ['unknown', 'unknown', 2]);
+  v.trouble = () => null;
+  v.task(7).due_date = D(9);
+  const sent = datePatches(v).length, { left } = await app.undoOps([arrived.f, lost.f]);
+  assert.deepEqual([await left, v.task(7).due_date, v.task(8).due_date, datePatches(v).slice(sent)], [0, D(5), D(5), [D(5)]], 'only the move that arrived is sent back');
+  assert.deepEqual([sync.all(1).length, app.failed.length], [0, 0], 'neither move stays in the Outbox');
+});
+
+test('an Undo of a move on a task deleted since leaves the outbox, and counts as changed since', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  const m = move(app, 7, D(9));
+  await m.sending;
+  v.tasks.delete(7);
+  const { left } = await app.undoOps([m.f]);
+  assert.deepEqual([await left, sync.all(1).length, app.failed.length], [1, 0, 0]);
+});
+
+/* Two made-up ops show what fold does for any op. `off` cancels an `on` before it, as an untick cancels a tick, and
+   `on` names its own key in `waiting`. */
+test('a new op meets any earlier op on its task, and can cancel it, so both leave the outbox', async t => {
+  const op = (merge, waiting) => ({ apply: x => ({ ...x }), stages: [async () => {}], invert: null, merge, waiting, text: () => '', refused: () => '', dropped: () => '' });
+  Object.assign(OPS, { on: op(null, 'ons'), off: op((older, newer) => older.op === 'on' ? CANCEL : null) });
+  t.after(() => { delete OPS.on; delete OPS.off; for (const x of sync.all(1)) sync.remove(x.id); });
+  const { v, app } = sender(t, [{ id: 7, title: 'Call the plumber' }]);
+  app.row(v.task(7));
+  app.offline = true;
+  await app.act({ op: 'on', task: 7, run: null });
+  assert.deepEqual([sync.all(1).length, app.waiting.ons[7]], [1, true], 'the op\'s own key marks its row as waiting');
+  await app.act({ op: 'off', task: 7, run: null });
+  assert.deepEqual([sync.all(1).length, app.waiting.ons[7]], [0, undefined], 'nothing is left to send');
 });

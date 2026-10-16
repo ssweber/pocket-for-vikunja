@@ -3,7 +3,7 @@ import {taskDrafts} from '../util.js';
 import {api, ApiError, passing, serverTime} from '../api.js';
 import {htmlToText} from '../html.js';
 import {parseStep, patiently} from '../checklists.js';
-import {held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7, waits} from '../sync.js';
+import {CANCEL, held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7, waits} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
@@ -11,9 +11,12 @@ import {CREATED, opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
 export const nextN = () => ++actCount;
-// For Undo, in this tab: the entry each folded entry went into (fold), and the undo of each op answered here, built
-// from Vikunja's answer before the entry left the outbox.
-const folded = new Map(), inverts = new Map();
+/* For each op queued in this tab whose Undo can still be tapped, the op that undoes it (`inverts`), built from the
+   entry as queued, and from Vikunja's answer once this tab sees it. An op a later op replaced (fold) moves to
+   `folded`. Both forget an op once its Undo has gone (forgetUndo). */
+const inverts = new Map(), folded = new Set();
+// How many ops this tab keeps an Undo for, for the tests.
+export const undosKept = () => inverts.size + folded.size;
 /* Keep local completion times for offline ticks so countdowns do not jump or chime again when Vikunja receives
    them. Map each step to {here, there, kept}, using Vikunja's completion time to identify the tick. Expire these
    records after a day. */
@@ -67,48 +70,77 @@ export default {
   },
   /* Queue ops (their fields) together, so their rows show in one change (rule 10), fold each into an earlier op it
      replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`) and every
-     result (`all`). */
+     result (`all`). A caller that shows an Undo for an op with an invert calls forgetUndo once that Undo has gone. */
   async actAll(list, quiet = false){
-    const entries = list.map(f => this.actEntry(f)), last = entries.at(-1).id, {kept, full} = await this.queue(entries);
+    const entries = list.map(f => this.actEntry(f)), last = entries.at(-1).id;
+    for (const e of entries) if (OPS[e.op].invert) inverts.set(e.id, OPS[e.op].invert(e));
+    const {kept, full} = await this.queue(entries);
     await sync.lock(() => this.fold(entries));
     return {...await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null), entry: last};
   },
-  /* Fold each of `entries`, just queued, into an earlier op on its task that has sent nothing, isn't held and hasn't
-     failed (the op's merge). The earlier entry leaves the outbox. Runs inside the outbox's lock, so the sender can't
-     start the earlier op meanwhile. */
+  /* Fold each of `entries`, just queued, into the op before it on its task, if that op has sent nothing, isn't held,
+     hasn't failed and isn't an Undo. The new op's merge decides what becomes of the two. Only the op just before it
+     counts, so a fold never moves an op past another op on its task. An Undo is never folded, so its check is never
+     lost. Runs inside the outbox's lock, so the sender can't start the earlier op meanwhile. */
   async fold(entries){
-    const by = new Map(), at = e => e.op + ' ' + opsId(e.task);
-    for (const x of sync.all(entries[0]?.user)) if (x.kind === 'act' && OPS[x.op]?.merge) by.set(at(x), [...by.get(at(x)) || [], x]);
+    const on = new Map();
+    for (const x of sync.all(entries[0]?.user)) if (x.kind === 'act') on.set(opsId(x.task), [...on.get(opsId(x.task)) || [], x]);
     for (const e of entries) {
-      for (const x of OPS[e.op].merge ? by.get(at(e)) || [] : []) {
-        if (older(x, e) >= 0) continue;
-        const was = await sync.fresh(x.id), m = was && !was.sent && !was.failed && !held(was) && OPS[e.op].merge(was, e);
-        if (!m) continue;
-        Object.assign(e, m); folded.set(x.id, e.id);
-        await sync.save(e); await sync.remove(x.id);
+      const merge = !e.undo && OPS[e.op].merge;
+      if (!merge) continue;
+      let x = null;
+      for (const y of (on.get(opsId(e.task)) || []).filter(y => older(y, e) < 0).reverse()) if ((x = await sync.fresh(y.id))) break;
+      const m = x && !x.sent && !x.failed && !x.undo && !held(x) && merge(x, e);
+      if (!m) continue;
+      if (inverts.delete(x.id)) folded.add(x.id);
+      if (m === CANCEL) {
+        if (inverts.delete(e.id)) folded.add(e.id);
+        await sync.remove(e.id); await sync.remove(x.id);
+        continue;
       }
+      Object.assign(e, m);
+      if (inverts.has(e.id)) inverts.set(e.id, OPS[e.op].invert(e));
+      await sync.save(e); await sync.remove(x.id);
     }
   },
-  /* Undo the ops queued from `list` (their fields, with each entry's id). An op that has sent nothing, or that Vikunja
-     refused, leaves the outbox, and its rows show the task without it. Otherwise its invert is queued: from Vikunja's
-     answer when this tab saw it, or else from the op as it was queued. The rows show every Undo in one change. Returns
-     once they show, with `left`, which resolves to how many inverts Vikunja refused or found changed since. */
-  async undoOps(list){
-    const back = [];
-    await sync.lock(async () => {
-      for (const f of list) {
-        let id = f.id;
-        while (folded.has(id)) id = folded.get(id);
-        const e = await sync.fresh(id);
-        if (e && (!e.sent || e.failed)) { await sync.remove(id); continue; }
-        const inv = inverts.get(id) || OPS[f.op].invert(e || f);
-        if (inv) back.push({...inv, run: null});
-      }
-    });
-    if (!back.length) { this.refreshPending(); return {left: Promise.resolve(0)}; }
-    const entries = back.map(f => this.actEntry(f)), ids = new Set(entries.map(e => e.id)), {kept, full} = await this.queue(entries);
-    return {left: this.sendActs(entries.at(-1).id, kept, full, ids).then(r => r.all.filter(x => ids.has(x.id) && x.status === 'error').length)};
+  /* Undo the ops queued from `list` (their fields, with each entry's id). The rows show the Undo at once, though the
+     outbox may be busy sending. Then, in the outbox's lock, an op that has sent nothing, or that Vikunja refused,
+     leaves the outbox, and its rows show the task without it. An op whose answer is unknown leaves too, and its
+     invert is queued, checked against what it sent. Any other op's invert is queued, built from Vikunja's answer when
+     this tab saw it. An op that a later op replaced (fold) counts as changed since, and stays. Returns `left`, which
+     resolves to how many Undos were left alone: changed since, or refused. */
+  undoOps(list){
+    const now = list.filter(f => !folded.has(f.id)), invert = (f, e) => e ? OPS[f.op].invert(e) : inverts.get(f.id) ?? OPS[f.op].invert(f);
+    const shown = this.change(w => now.flatMap(f => {
+      const i = invert(f, sync.entries.get(f.id)), id = i && opsId(i.task), t = i && this.tasks[id];
+      if (!t) return [];
+      const to = OPS[i.op].apply(t, i);
+      return [w.edit(id, Object.fromEntries(Object.entries(to).filter(([k, v]) => v !== t[k])))];
+    }));
+    const undo = async () => {
+      const back = [];
+      let left = list.length - now.length;
+      await sync.lock(async () => {
+        for (const f of now) {
+          if (folded.has(f.id)) { left++; continue; }                     // replaced while Undo waited for the lock
+          const e = await sync.fresh(f.id), unknown = e?.failed?.message === UNKNOWN;
+          if (e && (!e.sent || e.failed)) await sync.remove(f.id);
+          const inv = (!e || (e.sent && (!e.failed || unknown))) && invert(f, e);
+          if (inv) back.push({...inv, run: null, undo: true});
+        }
+      });
+      this.forgetUndo(list);
+      const entries = back.map(f => this.actEntry(f)), ids = new Set(entries.map(e => e.id)), {kept, full} = entries.length ? await this.queue(entries) : {};
+      if (!entries.length) this.refreshPending();
+      // The rows now show the Undo through the outbox.
+      this.change(() => { for (const x of shown) x.undo(); });
+      const r = entries.length ? await this.sendActs(entries.at(-1).id, kept, full, ids) : {all: []};
+      return left + r.all.filter(x => ids.has(x.id) && x.status === 'error').length;
+    };
+    return {left: undo()};
   },
+  // Forget the Undos of the ops queued from `list`, once they can't be tapped: their message has gone, or Undo ran.
+  forgetUndo(list){ for (const f of list) { inverts.delete(f.id); folded.delete(f.id); } },
   // An op's outbox entry. It stores the task's title so the Outbox can name the action after a reload, and the
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
   actEntry(fields){
@@ -200,7 +232,7 @@ export default {
         await sync.save(a, [], filesOut(a));
       }
       this.change(w => w.answered(a, c.task, c.comment));
-      if (op.invert) inverts.set(a.id, op.invert(a));
+      if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       if (a.op === 'position') this.positionSent(a);
       await sync.remove(a.id, add ? a.taskId : null);
       // A line's photos upload now, from their own entry. If Vikunja is busy they wait there, and the add box says so.

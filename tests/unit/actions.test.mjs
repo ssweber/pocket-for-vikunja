@@ -7,7 +7,7 @@ import actions from '../../src/js/app/actions.js';
 import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
-import acts, { stageContext } from '../../src/js/app/acts.js';
+import acts, { stageContext, undosKept } from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import lines from '../../src/js/app/lines.js';
@@ -657,6 +657,8 @@ const ZERO = '0001-01-01T00:00:00Z';
 // The last message and where it appears: its text, its action's label, the id of the row it is on (or null) and the
 // place it goes otherwise.
 const said = app => { const s = app.toast; return [s.msg, s.action?.label ?? null, s.row?.id ?? null, s.place]; };
+// The last message with an Undo. Offline, a message that the phone couldn't keep the move follows it.
+const lastUndo = app => app.toasts.findLast(x => x.action?.label === 'Undo');
 
 test('moving a row to a new date keeps its time of day, moves it at once, and shows an Undo on its row or by the add box', async c => {
   const { v, app, seen, shown, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() },
@@ -785,6 +787,83 @@ test('moving a card changes only its task\'s date, and a card with a sooner subt
   assert.deepEqual(said(app), ['Moved to Fri 9. Its subtask “Sub 21” is due sooner, so it stays here.', 'Undo', null, 'cap'], 'the message with Undo appears by the add box, where the whole sentence fits');
   await app.toast.action.fn();
   assert.deepEqual([v.task(20).due_date, v.task(21).due_date, key(20)], [ZERO, at(7, 18), 'today'], 'Undo removes the task\'s date again and leaves the subtask\'s date as it was');
+});
+
+test('Undo of a move that replaced an earlier one puts the row, or the card, where the date before both puts it', async c => {
+  const at = (d, h) => new Date(2026, 9, d, h).toISOString();
+  const { app, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: at(7, 16) }, { id: 2, title: 'No date yet', due_date: ZERO, created: at(7, 9) },
+    { id: 10, title: 'Paint the hall', due_date: at(7, 17), related_tasks: { subtask: [{ id: 11 }] } }, { id: 11, title: 'Sub 11', done: false, due_date: ZERO, related_tasks: { parenttask: [{ id: 10 }] } }],
+  { 10: { when: at(7, 17), made: null, focus: null } });
+  app.view.groups[1].tasks.push(app.tasks[1], app.tasks[10]); app.view.groups[3].tasks.push(app.tasks[2]);
+  app.offline = true;
+  const back = [];
+  for (const id of [1, 2, 10]) {
+    await moveTo(app, app.tasks[id], new Date(2026, 9, 8), 'Tomorrow');
+    await moveTo(app, app.tasks[id], new Date(2026, 9, 9), 'Fri 9');
+    await lastUndo(app).action.fn();
+    back.push([app.tasks[id].due_date, key(id)]);
+  }
+  assert.deepEqual(back, [[at(7, 16), 'today'], [ZERO, 'nodate'], [at(7, 17), 'today']]);
+  assert.deepEqual([app.view.cards[10].when, sync.all(1).length], [at(7, 17), 0], 'the card\'s date is worked out again, and nothing is left to send');
+});
+
+test('a task moved again after Move all keeps its new date when Move all is undone, and the message counts it', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const v = fakeVikunja([{ id: 1, title: 'Morning one', due_date: at(5, 9) }, { id: 2, title: 'Evening one', due_date: at(6, 18, 30) }]);
+  const app = overdueApp(t);
+  Object.assign(app, { lines: {}, positions: {}, flashed: {}, flash(){}, $nextTick: async () => {}, rowSeen: () => true, view: { groups: todayGroups(), cards: {} } });
+  app.change(w => w.read([1, 2].map(id => structuredClone(v.task(id))), TASK, started()));
+  app.view.groups[0].tasks.push(...[1, 2].map(id => app.row(v.task(id))));
+  app.offline = true;
+  await app.moveOverdueToToday();
+  const moved = app.toasts.find(x => x.msg === 'Moved 2 to today');
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  await moved.action.fn();
+  assert.deepEqual([app.tasks[1].due_date, app.tasks[2].due_date, sync.all(1).map(e => [e.task, e.was, e.due])], [at(9, 0), at(6, 18, 30), [[1, at(5, 9), at(9, 0)]]],
+    'the task moved since keeps its move, and the other goes back');
+  assert.deepEqual([app.toast.msg, app.toast.place], ['1 task couldn\'t be moved back (changed since, or not saved) and is still due today.', 'overdue']);
+});
+
+test('Undo of Move all shows the old dates at once, while the moves are still being sent', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const v = fakeVikunja([{ id: 1, title: 'Morning one', due_date: at(5, 9) }, { id: 2, title: 'Evening one', due_date: at(6, 18, 30) }]);
+  const app = overdueApp(t);
+  app.change(w => w.read([1, 2].map(id => structuredClone(v.task(id))), TASK, started()));
+  app.view.groups = [{ key: 'overdue', tasks: [1, 2].map(id => app.row(v.task(id))) }];
+  // Vikunja's answers wait until `answer()`, so the outbox stays busy sending the first move.
+  const real = globalThis.fetch;
+  let answer, asked = 0;
+  const held = new Promise(r => { answer = r; });
+  globalThis.fetch = async (...a) => { asked++; await held; return real(...a); };
+  try {
+    const moving = app.moveOverdueToToday();
+    while (!asked) await new Promise(setImmediate);
+    const undoing = app.toasts.find(x => x.msg === 'Moved 2 to today').action.fn();
+    assert.deepEqual([app.tasks[1].due_date, app.tasks[2].due_date], [at(5, 9), at(6, 18, 30)], 'the rows show the old dates at once');
+    answer();
+    await moving; await undoing;
+    assert.deepEqual([v.task(1).due_date, v.task(2).due_date, app.tasks[1].due_date, sync.all(1).length], [at(5, 9), at(6, 18, 30), at(5, 9), 0]);
+  } finally { globalThis.fetch = real; }
+});
+
+test('Pocket forgets what it kept to undo a move once its Undo has gone, or has run', async c => {
+  const { app } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
+  app.view.groups[1].tasks.push(app.tasks[1]);
+  const n = undosKept();
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  assert.equal(undosKept(), n + 1);
+  app.toast.gone();
+  assert.equal(undosKept(), n, 'its message has gone');
+  app.offline = true;
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 8), 'Tomorrow');
+  const first = lastUndo(app);
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 10), 'Sat 10');
+  assert.equal(undosKept(), n + 2, 'a move that replaced another keeps both Undos');
+  await lastUndo(app).action.fn();
+  first.gone();
+  assert.equal(undosKept(), n, 'one Undo has run, and the other\'s message has gone');
 });
 
 /* A title being edited, in the box in the sheet's own row or in a template's box over its card, is saved when the box
