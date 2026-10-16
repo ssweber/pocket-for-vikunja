@@ -5,7 +5,7 @@ import {htmlToText} from '../html.js';
 import {parseStep, patiently} from '../checklists.js';
 import {held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7, waits} from '../sync.js';
 import {saved} from '../lists.js';
-import {notKnown, UNKNOWN} from '../messages.js';
+import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
 import {CREATED, opsId, TASK} from './tasks.js';
 
@@ -62,7 +62,7 @@ export default {
     const entry = this.actEntry(fields), {kept, full} = await this.queue([entry]);
     return {...await this.sendActs(entry.id, kept, full), entry: entry.id};
   },
-  // An op's outbox entry. It stores the task's title so Waiting to send can name the action after a reload, and the
+  // An op's outbox entry. It stores the task's title so the Outbox can name the action after a reload, and the
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
   actEntry(fields){
     const me = this.user;
@@ -94,7 +94,7 @@ export default {
         if (e.failed || waits(e, stopped)) {                                 // waits behind an earlier action Vikunja refused
           if (e.id !== id) continue;
           // The add box and flush say what became of a line.
-          if (e.op !== 'add') this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”. Tap the warning sign at the top to try that change again.`, {place: 'step', cls: 'failed'});
+          if (e.op !== 'add') this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”.`, {place: 'step', cls: 'failed', action: toOutbox(this)});
           last = {status: 'offline', reached: true};
           break;
         }
@@ -104,7 +104,8 @@ export default {
         // A failed move shows its own message on the row (reorder), and a line in its add box, so none here.
         const err = last.error;
         if (last.status === 'error' && e.op !== 'position' && e.op !== 'add') this.say(err.code === 'unknown' ? notKnown(err.what)
-          : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err)), {place: 'step', cls: 'failed'});
+          : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err)),
+          {place: 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null});
         if (last.status === 'offline' || e.id === id) break;
       }
     });
@@ -179,7 +180,7 @@ export default {
         if (this.sheetTask && this.sheet.kind === 'task') this.loadSubPeople(this.sheetTask);
         return {...none, status: 'error', error};
       }
-      // Restore rejected note text to its draft. Keep other rejected actions under Waiting to send so a missed
+      // Restore rejected note text to its draft. Keep other rejected actions in the Outbox so a missed
       // toast does not lose the retry.
       if (a.op === 'note' && !unknown) { await sync.remove(a.id); this.giveBack(a, error); return {...none, status: 'error', error}; }
       if (add && !unknown) return {...got(), ...await this.refuseLines(a), status: 'error', error};

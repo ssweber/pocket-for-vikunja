@@ -86,7 +86,7 @@ export const cancelName = (title, n = 0, over = '') => 'Cancel ' + title + (!n ?
 export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja.`;
 
 /* The words for each op in the outbox (src/js/ops/), by op name. `title` is the task's title as Pocket knows it, or ''.
-   - text(a, title, repeated): the op's row in Waiting to send. `repeated` says the step was repeated in its checklist.
+   - text(a, title, repeated): the op's row in the Outbox. `repeated` says the step was repeated in its checklist.
    - refused(a, title): the op in a message saying Vikunja refused it, such as "A tick on “Unlock the door”".
    - dropped(a, title): what Vikunja keeps after Don't send it. `a.stage` above 0 means the first request was sent.
    - saved: what Vikunja already has when it refuses a later request, as in "couldn't be saved in full (it's marked
@@ -118,19 +118,22 @@ export const OP_WORDS = {
   delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
     refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
   position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
-  // An add's line, under what it goes under (`a.over`). Its refusal is said only for a line that waited to be sent.
+  // An add's line, under what it goes under (`a.over`).
   add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
-    refused: a => `${a.over ? 'A subtask' : 'A task'} you added offline`, dropped: () => ''},
+    refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},
 };
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;
 export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, so the step stays done';
 /* The plugin's relay answers 409 with Idempotency-Unknown when Vikunja stopped while making a change. Pocket can't
-   tell whether the change was made, and only the user can check. So the change waits in Waiting to send, and Try
-   again sends it as a new request. */
-const UNSURE = 'Vikunja may or may not have this change.';
+   tell whether the change was made, and only the user can check. So the change waits in the Outbox, and Try again
+   sends it as a new request. */
+export const UNSURE = 'Vikunja may or may not have this change.';
 export const UNKNOWN = UNSURE + ' Check, then tap Try again if it\'s missing.';
-export const notKnown = what => `${what} may not have reached Vikunja. Tap the warning sign at the top.`;
+export const notKnown = what => `${what} may not have reached Vikunja.`;
+// The button on a message about a change kept in the Outbox. It only opens the Outbox, because after an unknown answer
+// the user checks Vikunja before the change is sent again.
+export const toOutbox = app => ({label: 'Outbox', fn: () => app.openOutbox()});
 
 /* Who started a checklist, and when. A finished checklist's summary shows "Started by <name> at 6:02 AM", or for
    another day "Started by <name>, Oct 8, 6:02 AM". The top of the checklist's ⋯ sheet always includes the day (`day`).

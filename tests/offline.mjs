@@ -484,9 +484,10 @@ try {
     await page.waitForSelector(pendingRow(T('H1')));
     await page.waitForSelector(pendingRow(T('H2')));
     if (await page.isVisible(pendingRow(T('H1a'))) || await page.isVisible(pendingRow(T('H2a')))) throw new Error('a subtask is shown in Today');
-    // Each parent's Cancel button has a label that says what happens to the lines waiting under it, for the second parent too.
-    await expect(page.locator(`${pendingRow(T('H1'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H1')}. The lines under it become their own tasks.`);
+    // The first parent's request went out, so Vikunja may have it and its row has no Cancel. The second parent wasn't
+    // sent. Its Cancel button has a label that says what happens to the line waiting under it.
     await expect(page.locator(`${pendingRow(T('H2'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H2')}. The line under it becomes its own task.`);
+    await expect(page.locator(`${pendingRow(T('H1'))} button[aria-label^="Cancel"]`)).toHaveCount(0);
     await page.unroute('**/v2/projects/*/tasks', drop);
     await online();
     await synced(page);
@@ -596,7 +597,7 @@ try {
     }
   });
 
-  /* While Pocket is offline it doesn't try a tick's first request, so Waiting to send still offers Don't send it.
+  /* While Pocket is offline it doesn't try a tick's first request, so the Outbox still offers Don't send it.
      Tapping it unticks the step on the checklist's screen at once, and leaves it not done in Vikunja, also once Pocket
      is back online. */
   await step('a-tick-made-offline-can-be-dropped', async () => {

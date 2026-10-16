@@ -67,7 +67,7 @@ export default () => ({
   flashed: {fresh: {}, due: {}, arrived: {}},
   movingOverdue: false,                        // "Move all to today" is saving
   showingMore: null,                           // key of the done list whose next batch is loading (showMore, views.js)
-  pending: [],                                 // this user's outbox entries, for the "Waiting to send" rows
+  pending: [],                                 // this user's outbox entries, for the Outbox's rows
   failed: [],                                  // outbox entries Vikunja refused, kept to retry or discard (outbox.js)
   leaving: {},                                 // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
   lines: {},                                   // task id -> the message in its row's place (lines.js)

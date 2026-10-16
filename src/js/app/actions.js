@@ -5,7 +5,7 @@
 import {api, NetError, patchTask} from '../api.js';
 import {dueInfo, isSet, movedDue, repeats} from '../dates.js';
 import {figurePatch, isSubtask, openSubtasks, pctOf, progressPatch} from '../progress.js';
-import {dayWord, doneText, movedText, movedTo, movedToProject, notReordered, notMovedBack, notSaved, sentLater} from '../messages.js';
+import {dayWord, doneText, movedText, movedTo, movedToProject, notKnown, notReordered, notMovedBack, notSaved, sentLater, toOutbox} from '../messages.js';
 import {htmlToText} from '../html.js';
 import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
@@ -635,7 +635,10 @@ export default {
         if (!foot || !kept || today) this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {place, cls: kept ? '' : 'failed'});
       } else if (r.status === 'error') {
         if (here() && r.unsent.length) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n');   // puts the lines that weren't added back in the box
-        this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place, cls: 'failed'});
+        // A line whose answer is unknown stays in the Outbox, and the message's button opens the Outbox.
+        const added = r.ids.length ? `Added ${r.ids.length} of ${n}${but}. ` : '';
+        if (r.error.code === 'unknown') this.say(added + notKnown(r.error.what), {place, cls: 'failed', action: toOutbox(this)});
+        else this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {place, cls: 'failed'});
       } else if (r.ids?.length && but) this.say(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`, {place, cls: 'failed'});
     } finally { b.adding--; this.refreshPending(); }
   },

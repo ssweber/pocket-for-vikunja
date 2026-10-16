@@ -1,4 +1,4 @@
-// The waiting-to-send button and sheet, including rejected changes that can be retried or dropped.
+// The Outbox: the header's button and its sheet, including rejected changes that can be retried or dropped.
 import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {older, sendState, sync, uuid7} from '../sync.js';
@@ -39,11 +39,11 @@ export default {
     }
     return rows;
   },
-  // The waiting button shows after a delay, or at once when a change is rejected.
+  // The Outbox button shows after a delay, or at once when a change is rejected.
   get outboxShown(){ return !!this.failed.length || (this.waitShown && !!this.pending.length); },
   get outboxLabel(){
     const failed = this.outboxRows.filter(r => r.failed).length, waiting = this.outboxRows.length - failed;
-    return [failed && `${failed} couldn't be sent`, waiting && `${waiting} waiting to send`].filter(Boolean).join(', ') || 'Nothing waiting to send';
+    return 'Outbox, ' + ([failed && `${failed} couldn't be sent`, waiting && `${waiting} waiting to send`].filter(Boolean).join(', ') || 'nothing waiting to send');
   },
   get outboxStatus(){
     if (this.flushing) return 'Sending…';

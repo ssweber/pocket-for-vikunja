@@ -364,19 +364,20 @@ test('a refused line goes back to the box with the lines after it, and leaves no
   assert.deepEqual(v.requests.filter(x => x.body?.title === 'Stack them'), [], 'the third is never sent');
 });
 
-/* The relay can't tell whether Vikunja made the second line's task. The line stays in Waiting to send, marked failed,
+/* The relay can't tell whether Vikunja made the second line's task. The line stays in the Outbox, marked failed,
    with Try again. The third, under it, waits behind it. */
 const unknownSecond = async t => {
   const v = fakeVikunja([{ id: 7, title: 'Wipe the till' }]), app = adding(t), e = three();
   v.trouble = r => r.method === 'POST' && r.body?.title === 'Load chairs' ? 'unknown' : null;
   return { v, app, e, r: await send(app, e) };
 };
-test('a line whose answer the relay can\'t vouch for waits in Waiting to send with Try again, and the line under it waits behind it', async t => {
+test('a line whose answer the relay can\'t vouch for waits in the Outbox with Try again, and the line under it waits behind it', async t => {
   const { v, app, e, r } = await unknownSecond(t);
   assert.deepEqual([r.status, r.error.message, r.unsent, r.ids], ['error', UNKNOWN, [], [101]], 'nothing goes back to the box');
   assert.deepEqual(app.failed.map(x => x.raw), ['Load chairs']);
   assert.deepEqual(app.outboxRows.map(x => [x.text, x.failed, x.retry, x.drop?.[0]]),
     [['New task: Load chairs', UNKNOWN, true, 'dropAct'], ['Subtask of “Load chairs”: Stack them', '', false, 'cancelPending']]);
+  assert.equal(app.outboxLabel, 'Outbox, 1 couldn\'t be sent, 1 waiting to send', 'the header\'s button names the Outbox');
   // A tick on another task goes out while the line waits, and flush leaves the line under it waiting too.
   app.flush = sending.flush;
   await app.act({ op: 'done', task: 7, run: null });
@@ -461,7 +462,7 @@ test('a line whose parent line is gone without a task is not made, and its text 
   assert.deepEqual([r.status, v.requests.filter(x => x.method === 'POST'), sync.all(1), app.cap.text], ['gone', [], [], 'Load chairs\nStack them']);
 });
 
-test('a line whose first request was sent can\'t be cancelled, and Waiting to send offers no Cancel for it', async t => {
+test('a line whose first request was sent can\'t be cancelled, and the Outbox offers no Cancel for it', async t => {
   t.after(clear);
   const v = fakeVikunja(), app = adding(t), e = entry([line('Chairs')]);
   v.trouble = r => r.method === 'POST' && r.body?.title === 'Chairs' ? 'lost' : null;
@@ -472,6 +473,34 @@ test('a line whose first request was sent can\'t be cancelled, and Waiting to se
   v.trouble = () => null;
   await resend(app, e);
   assert.deepEqual([[...v.tasks.values()].map(x => x.title), sync.all(1)], [['Chairs'], []], 'it is made once');
+});
+
+// The waiting row hides its Cancel once its line's first request is sent (task-row.html reads `sent`).
+test('a waiting row offers Cancel until its line\'s first request is sent', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Chairs')]);
+  app.offline = true;
+  await send(app, e);
+  assert.deepEqual([app.pendingTasks.map(x => x.sent), app.outboxRows.map(x => x.drop?.[0])], [[false], ['cancelPending']], 'not tried while offline');
+  app.offline = false;
+  v.trouble = r => r.method === 'POST' ? 'lost' : null;
+  await resend(app, e);
+  assert.deepEqual([app.pendingTasks.map(x => x.sent), app.outboxRows.map(x => x.drop)], [[true], [null]]);
+});
+
+test('a line sent later whose answer is unknown is named in the message, and the message\'s button opens the Outbox', async t => {
+  t.after(clear);
+  const v = fakeVikunja(), app = adding(t), e = entry([line('Load chairs')]);
+  app.offline = true;
+  await send(app, e);
+  app.offline = false;
+  v.trouble = r => r.method === 'POST' ? 'unknown' : null;
+  app.flush = sending.flush;
+  await app.flush();
+  let opened = null;
+  app.openSheet = kind => { opened = kind; };
+  app.toast.action.fn();
+  assert.deepEqual([app.toast.msg, app.toast.action.label, opened], ['Adding “Load chairs” may not have reached Vikunja.', 'Outbox', 'outbox']);
 });
 
 test('a line whose answer is unknown keeps its waiting row, so the line under it stays under it', async t => {
@@ -526,7 +555,7 @@ test('a line refused after its task was made gives nothing back, and the message
   v.trouble = r => r.path.endsWith('/relations') ? 403 : null;
   app.flush = sending.flush;
   await app.flush();
-  assert.deepEqual([app.cap.text, app.toast.msg], ['', 'A subtask you added offline couldn\'t be sent: HTTP 403 from the fake.']);
+  assert.deepEqual([app.cap.text, app.toast.msg, app.toast.action], ['', 'Adding “Load chairs” couldn\'t be sent: HTTP 403 from the fake.', null], 'nothing is kept, so no Outbox button');
 });
 
 test('when another tab sends a whole batch first, the add box is told it is gone, not saved offline', async t => {
@@ -715,6 +744,16 @@ test('offline, an added subtask waits highlighted, and is still highlighted once
   assert.deepEqual([pos(101), pos(102)], [rows[0][2], rows[1][2]]);
   assert.equal(sync.all(1).length, 0);
 });
+
+for (const [text, said] of [['Straps', 'Adding “Straps” may not have reached Vikunja.'], ['Rope\nStraps', 'Added 1 of 2. Adding “Straps” may not have reached Vikunja.']])
+  test(`a subtask whose answer is unknown is named in the add box, with a button that opens the Outbox (${text.split('\n').length} lines)`, async t => {
+    t.after(clear);
+    const { v, app, add } = underBox(t);
+    v.trouble = r => r.method === 'POST' && r.body?.title === 'Straps' ? 'unknown' : null;
+    await add(text);
+    const l = app.toasts.find(x => /Straps/.test(x.msg));
+    assert.deepEqual([l.msg, l.place, l.action.label], [said, 'cap', 'Outbox']);
+  });
 
 test('after a pasted list with nested lines, the last direct subtask is highlighted and the next subtasks go after it', async t => {
   const { v, app, add, aimed, pos } = underBox(t);

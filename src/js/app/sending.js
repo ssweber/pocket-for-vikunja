@@ -3,7 +3,7 @@ import {raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, NetError, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {patiently} from '../checklists.js';
 import {isSet, startOfDay} from '../dates.js';
-import {addedWhere, cancelName, doneText, notKnown, UNKNOWN} from '../messages.js';
+import {addedWhere, cancelName, doneText, notKnown, toOutbox, UNSURE} from '../messages.js';
 import {parseCapture} from '../quickadd.js';
 import {fileEntry, held, heldTasks, hold, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7, waits} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
@@ -54,8 +54,9 @@ export default {
       }
       while (job.stage < LINE.length) { await patiently(() => LINE[job.stage](job, c.start())); job.stage++; await save(); }
     } catch (e) {
-      // The relay can't tell whether Vikunja made the change. The line is refused, with words that say only the user can check.
-      if (e.code === 'unknown') e.message = UNKNOWN;
+      // The relay can't tell whether Vikunja made the change. The line is refused, with words that say only the user can
+      // check. These callers keep nothing in the Outbox, so the words don't offer its Try again.
+      if (e.code === 'unknown') e.message = UNSURE;
       throw e;
     }
     return Object.assign({...c.task || {id: job.taskId, project_id: job.projectId}}, {problems: job.problems}, c.arrived && {arrived: c.arrived});
@@ -141,11 +142,13 @@ export default {
         else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.pendingPlace(t)))
           this.say(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, cap);
       } else if (r.status === 'error') {
-        // A line whose answer is unknown stays in Waiting to send, so only the refused lines come back.
+        // A line whose answer is unknown stays in the Outbox, so only the refused lines come back.
         if (r.unsent.length) this.cap.text = r.unsent.join('\n');           // keep what wasn't added
         this.capPhotos = r.photos;
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
-        this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {...err, action: undo});
+        // A message has one button. After some lines were added, Undo keeps it.
+        if (r.error.code === 'unknown' && !undo) this.say(notKnown(r.error.what), {...err, action: toOutbox(this)});
+        else this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {...err, action: undo});
       } else if (r.status === 'sent') {
         const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
         if (away.length || but) this.say(addedWhere({n, subs, project: this.projById.get(r.projectId)?.title, due: items[0].p.due, photos: r.uploaded, but}),
@@ -346,7 +349,7 @@ export default {
       this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message.replace(/\.$/, '')}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
     } else if (other.length) {
       const e = other[0].error, what = e.what || 'A change made offline';
-      this.notify(e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e)));
+      this.notify(e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e)), other[0].kept ? toOutbox(this) : null);
     } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || errors.length) this.render();
   },
@@ -395,7 +398,7 @@ export default {
       if (e.op !== 'add' || e.taskId) continue;
       // The parent is the line this line goes under, by that line's waiting-row id until that line is sent, and by its
       // task id after. Or it is the task the subtask box added to.
-      const p = e.p, t = {id: 'pending-' + e.id, pending: true, waits: !!e.failed || this.slow.includes(e.id), entry: e.id, child: e.under != null, parent: opsId(e.under) ?? null, title: p.title,
+      const p = e.p, t = {id: 'pending-' + e.id, pending: true, waits: !!e.failed || this.slow.includes(e.id), entry: e.id, sent: !!e.sent, child: e.under != null, parent: opsId(e.under) ?? null, title: p.title,
         done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0, due_date: p.due || ZERO, project_id: p.project?.id || e.pid,
         labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0, waiting: (e.files || []).filter(f => !f.sent).length};
       const k = t.id, had = waitingRows.get(k);
@@ -485,7 +488,7 @@ export default {
      under it move up to what the cancelled line was under, and the message says so. If the cancelled line was under
      nothing, those lines become separate tasks. Cancelling the first line of a pasted list does this. The photos added
      with it are dropped too. A line whose first request was sent can't be cancelled, because Vikunja may have its
-     task. */
+     task. Its row has no Cancel then, but a tap can still arrive while the request goes out. */
   async cancelPending(id){
     let raw = '', rest = 0, over = '', parent = null, sent = false;
     await sync.lock(async () => {

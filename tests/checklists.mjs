@@ -674,14 +674,21 @@ try {
     await toastGone().catch(() => {});
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await said('step', 'couldn\'t be saved in full (it\'s marked done)');
+    await said('step', 'It\'s kept to try again.');
+    // The message's Outbox button opens the Outbox, where the kept change waits.
+    await placeLine(page, 'step').getByRole('button', { name: 'Outbox' }).click();
+    await expect(page.getByRole('dialog', { name: 'Outbox' }).locator('h2')).toHaveText('Outbox');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.unroute('**/v2/tasks/*/reactions', refuse);
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done', { timeout: 15000 });
     if (!(await task(id)).done) throw new Error('the step is not done in Vikunja');
     // Pocket keeps the rejected change to retry, and the header shows a warning. An untick in the meantime waits behind it, so it can't arrive first.
-    await page.waitForSelector('#btn-refresh.trouble[aria-label="1 couldn\'t be sent"]');
+    await page.waitForSelector('#btn-refresh.trouble[aria-label="Outbox, 1 couldn\'t be sent"]');
     await toastGone().catch(() => {});
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await said('step', 'Not sent. Vikunja refused an earlier change');
+    await expect(placeLine(page, 'step').getByRole('button', { name: 'Outbox' })).toBeVisible();
     if (!(await task(id)).done) throw new Error('the untick reached Vikunja before the tick it waits behind');
     await page.click('#btn-refresh');
     await page.waitForSelector('#outbox-rows .ob-row.failed:has-text("Done: Check the guards at 3pm"):has-text("Vikunja refused it")');
@@ -1522,7 +1529,7 @@ try {
     }, 30000);
     const order = (await titles()).split(' | ');
     if (order.indexOf('Offline step') !== order.indexOf('Sweep up') + 1) throw new Error('the step is not where it was added: ' + order.join(' | '));
-    // Cancelling a step from Waiting to send leaves nothing of it, even though Pocket tried to send it before the
+    // Cancelling a step from the Outbox leaves nothing of it, even though Pocket tried to send it before the
     // connection dropped. The box points at the card's step again.
     await context.setOffline(true);
     await add('Not after all');

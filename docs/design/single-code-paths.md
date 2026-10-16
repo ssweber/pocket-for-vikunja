@@ -561,7 +561,9 @@ checks that Vikunja changed once.
    waits for the user's phone check.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
-   `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
+   `arrivedDone`'s own save, `closeSubtasks` and `reopen`. Dropping a failed add from the Outbox when no line of its
+   batch is still waiting leaves its parent's progress unwritten. Phase 7 fixes that when it changes how progress is
+   sent.
 8. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js.
 9. **Deletes and comments.** Delete `deleteTasks` and `deleteTree`.
 10. **Checklists and files.** `startRun` and `addStep` as keyed ops. Delete `findCopy`, `duplicate`'s bookkeeping and
@@ -893,7 +895,8 @@ is one entry, sent by `act` and `sendAct` like every other op, so `sendEntry` lo
 - A parent's progress is written when it is today: after subtasks are added to a task, or when a line under a line
   arrives done or with progress. The last line of the batch under that parent writes it once, as its last stage
   (`figure`, with `up`).
-- Photos and files stay on the first line's entry. They are sent as now, with `hasAttachment`, until phase 10.
+- A line's unsent photos and files move to a file entry of their own once its task is made. They are sent as now,
+  with `hasAttachment`, until phase 10.
 - Waiting rows stay in `pendingTasks`, built from the entries. Phase 11 decides whether a waiting row is shown
   through the store.
 

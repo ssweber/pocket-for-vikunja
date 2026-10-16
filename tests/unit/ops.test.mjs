@@ -72,7 +72,7 @@ test('a deleted subtask\'s figure stage skips a parent that a waiting delete del
   assert.deepEqual(v.requests, [], 'the parent is neither read nor written');
 });
 
-/* Each op's words, as the outbox said them before the ops had words of their own: its row in Waiting to send, what a
+/* Each op's words, as the outbox said them before the ops had words of their own: its row in the Outbox, what a
    refusal calls it, and what Don't send it leaves in Vikunja before and after its first request. The first row of each
    has a step's title with its time, and the second has no title. */
 const WORDS = {
@@ -102,7 +102,7 @@ const WORDS = {
     ['Deleting “a step”, with 2 subtasks', 'Deleting a task', '“it” stays in Vikunja.', '“it” stays in Vikunja.']],
   position: [['Moving “Unlock the door” in its list', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays where it was in Vikunja\'s list.', '“Unlock the door” stays where it was in Vikunja\'s list.'],
     ['Moving “a step” in its list', 'Moving a task', '“it” stays where it was in Vikunja\'s list.', '“it” stays where it was in Vikunja\'s list.']],
-  add: [['New task: Unlock the door T#5m', 'A task you added offline', '', ''], ['New task: ', 'A task you added offline', '', '']],
+  add: [['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''], ['New task: ', 'Adding a task', '', '']],
 };
 
 test('each op says what the outbox said before: its row, its refusal, and what dropping it leaves', () => {
@@ -112,8 +112,8 @@ test('each op says what the outbox said before: its row, its refusal, and what d
     assert.deepEqual([op.text(a(0), title), op.refused(a(0), title), op.dropped(a(0), title), op.dropped(a(1), title)], WORDS[name][k], `${name}, title "${title}"`);
   });
   assert.equal(OPS.done.text({ op: 'done' }, 'Mop', true), 'Done: Mop (repeated)', 'a step repeated in its checklist says so');
-  assert.deepEqual([OPS.add.text({ over: 'Pack the van' }, 'Chairs'), OPS.add.text({ taskId: 4 }, 'Chairs'), OPS.add.refused({ over: 'Pack the van' })],
-    ['Subtask of “Pack the van”: Chairs', 'Finishing “Chairs”', 'A subtask you added offline'], 'a line says what it goes under, as Waiting to send said before');
+  assert.deepEqual([OPS.add.text({ over: 'Pack the van' }, 'Chairs'), OPS.add.text({ taskId: 4 }, 'Chairs')],
+    ['Subtask of “Pack the van”: Chairs', 'Finishing “Chairs”'], 'a line says what it goes under, as the Outbox said before');
 });
 
 /* The sender with a fake outbox. Each act is queued with act() and sent at once. Messages are read from `toasts`, since
@@ -172,7 +172,13 @@ test('a change the relay can\'t vouch for is kept as failed, and Try again sends
   v.trouble = r => r.method === 'PATCH' ? 'unknown' : null;
   const r = await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   assert.deepEqual([r.status, app.failed.length, app.failed[0].failed.message], ['error', 1, UNKNOWN]);
-  assert.equal(app.toasts.at(-1).msg, 'A tick on “Wipe the till” may not have reached Vikunja. Tap the warning sign at the top.');
+  assert.equal(app.toasts.at(-1).msg, 'A tick on “Wipe the till” may not have reached Vikunja.');
+  // Its Outbox button opens the Outbox and sends nothing, because the user checks Vikunja first.
+  let opened = null;
+  app.openSheet = kind => { opened = kind; };
+  const sent = v.requests.length;
+  app.toasts.at(-1).action.fn();
+  assert.deepEqual([app.toasts.at(-1).action.label, opened, v.requests.length], ['Outbox', 'outbox', sent]);
   assert.equal(app.outboxRows[0].failed, 'Vikunja may or may not have this change. Check, then tap Try again if it\'s missing.');
   assert.ok(!v.task(7).done, 'the change wasn\'t made');
   const first = v.requests.find(q => q.method === 'PATCH').key;
@@ -181,6 +187,18 @@ test('a change the relay can\'t vouch for is kept as failed, and Try again sends
   const again = v.requests.filter(q => q.method === 'PATCH').at(-1).key;
   assert.notEqual(again.split(':')[0], first.split(':')[0], 'the key is new');
   assert.deepEqual([again.split(':').slice(1), v.task(7).done, sync.all(1).length], [['0', '0'], true, 0]);
+});
+
+test('a refused change kept to try again, and a change held behind it, each have a button that opens the Outbox', async t => {
+  t.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  const kept = app.toasts.at(-1);
+  await app.act({ op: 'progress', task: 7, pct: 50, run: null, label: 'Wipe the till' });
+  const held = app.toasts.find(x => /^Not sent/.test(x.msg));
+  assert.deepEqual([kept.msg, kept.action?.label], ['A tick on “Wipe the till” couldn\'t be saved: HTTP 403 from the fake. It\'s kept to try again.', 'Outbox']);
+  assert.deepEqual([held.msg, held.action?.label], ['Not sent. Vikunja refused an earlier change to “Wipe the till”.', 'Outbox']);
 });
 
 /* A request that gets no answer may have reached Vikunja, and after it an act can't be dropped. So while Pocket knows
@@ -201,7 +219,7 @@ for (const [how, mark] of [['Pocket has found no connection', noConnection], ['t
     const { v, app, r } = await offlineTick(t, mark);
     await settle(t);
     assert.deepEqual([r.status, v.requests.filter(q => q.path !== '/user').length, app.pending[0].sent, app.offline], ['offline', 0, undefined, true]);
-    assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'Waiting to send offers Don\'t send it');
+    assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'the Outbox offers Don\'t send it');
     globalThis.confirm = () => true;
     await app.dropAct(app.pending[0].id);
     assert.deepEqual([sync.all(1).length, v.requests.filter(q => q.path !== '/user').length, v.task(7).done], [0, 0, undefined]);

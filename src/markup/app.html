@@ -15,8 +15,8 @@
       <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
-    <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens Waiting to send
-         instead (outbox.js). -->
+    <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens the Outbox instead
+         (outbox.js). -->
     <button id="btn-refresh" class="icon-btn" :class="{waits: outboxShown, trouble: failed.length}" :aria-label="outboxShown ? outboxLabel : 'Refresh'"
             :disabled="refreshing && !outboxShown" @click="tapRefresh()"><svg class="i"><use :href="failed.length ? '#i-alert' : outboxShown ? '#i-wait' : '#i-refresh'"/></svg>
       <template x-if="outboxShown"><span class="count num" id="outbox-count" aria-hidden="true" x-text="outboxRows.length"></span></template></button>

@@ -74,6 +74,8 @@ const createdProjects = [];
 // row's title, or the card's header.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const opener = t => `:is(.row > .body:has(.title:has-text("${t}")), ${cardOf(t)} > .card-head)`;
+// The body of a row whose task Vikunja has made. A waiting row's id starts with "pending-".
+const sentRow = t => `.row:not([data-id^="pending-"]) > .body:has(.title:has-text("${t}"))`;
 
 try {
   await step('a-server-with-no-sign-in-method-says-so', async () => {
@@ -582,8 +584,8 @@ try {
     await page.fill('#in-capture', `${t} every week`);
     if (!(await page.textContent('#cap-chips')).includes('Every week')) throw new Error('chips: ' + await page.textContent('#cap-chips'));
     await page.click('#f-capture .go');
-    await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
-    await page.click(`.row .body:has-text("${t}")`);
+    // A tap on a waiting row does nothing, so the test waits for the row of the task Vikunja made.
+    await page.click(sentRow(t), { timeout: 15000 });
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });     // wait for the sheet to finish loading
     await page.waitForFunction(() => document.querySelector('#d-repeat')?.value === 'week', null, { timeout: 10000 });
     await page.selectOption('#d-repeat', 'month');
@@ -875,7 +877,7 @@ try {
     // The assigned person is removed from the title, as in Vikunja. The unknown name stays.
     const saved = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title.startsWith(t));
     if (saved?.title !== `${t} @nobody-${stamp}`) throw new Error('title: ' + saved?.title);
-    await page.click(`.row .body:has-text("${t}")`);
+    await page.click(sentRow(t));
     await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { timeout: 10000 });
     await page.click(`#d-assignees .label-chip:has-text("${ASSIGNEE}") .x`);
     await page.waitForSelector(`#d-assignees .label-chip:has-text("${ASSIGNEE}")`, { state: 'detached', timeout: 10000 });
@@ -1694,7 +1696,7 @@ try {
 
   /* Deleting a subtask on Today and then its parent, both while Restore shows, deletes both. The subtask's deletion is
      already waiting, so the parent's deletion neither counts the subtask nor asks about it. Both are sent when the
-     batch clears, and nothing is left in Waiting to send. The subtask's deletion leaves its parent's progress alone,
+     batch clears, and nothing is left in the Outbox. The subtask's deletion leaves its parent's progress alone,
      because the parent is being deleted. */
   await step('a-subtask-and-then-its-parent-deleted-on-today-are-both-deleted', async () => {
     const p = await make(`Pocket smoke gone parent ${stamp}`, { due_date: todayAt(23) }), k = await make(`Pocket smoke gone kid ${stamp}`, { due_date: todayAt(23) });
@@ -1719,7 +1721,7 @@ try {
       await synced(page).catch(async e => { throw new Error(`${e.message}. Refused: ${JSON.stringify(await failed())}. Answered 404: ${missing.join(', ')}`); });
       await expect.poll(async () => !!(await get(k.id) || await get(p.id))).toBe(false);
       const unsent = await page.evaluate(() => Alpine.$data(document.body).unsent);
-      if (unsent) throw new Error(`${unsent} left in Waiting to send. Refused: ${JSON.stringify(await failed())}`);
+      if (unsent) throw new Error(`${unsent} left in the Outbox. Refused: ${JSON.stringify(await failed())}`);
     } finally {
       page.off('response', see); page.off('dialog', ask);
       for (const t of [k, p]) await api('/tasks/' + t.id, { method: 'DELETE' });

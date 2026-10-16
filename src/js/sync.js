@@ -168,7 +168,7 @@ function named(e, name, id){
 // The order entries are sent in (all).
 export const older = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 export const NO_ROOM = 'This phone\'s storage is full, so Pocket can\'t save this for later. Keep Pocket open until it is sent.';
-export const KEPT = ' It is saved. Tap the warning sign at the top to try again.';
+export const KEPT = ' It\'s kept to try again.';
 export const NOT_KEPT = 'This couldn\'t be saved on the phone. Keep Pocket open until it\'s sent.';
 export const packParsed = p => ({title: p.title, due: p.due ? p.due.toISOString() : null, priority: p.priority, repeat: p.repeat,
   labels: p.labels, assignees: p.assignees, project: p.project ? {id: p.project.id, title: p.project.title} : null, remind: !!p.remind, done: !!p.done, pct: p.pct || 0});

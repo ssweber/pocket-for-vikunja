@@ -2,7 +2,8 @@
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, movedToProject, namesText, notReordered, notMovedBack, notSaved, OP_WORDS, sentLater, startedText } from '../../src/js/messages.js';
+import { addedWhere, cancelName, completeAsk, COPIED, dayWord, doneLine, doneText, headText, moreDone, movedText, movedTo, movedToProject, namesText, notKnown, notReordered, notMovedBack, notSaved, OP_WORDS, sentLater, startedText, toOutbox, UNKNOWN } from '../../src/js/messages.js';
+import { KEPT } from '../../src/js/sync.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -31,6 +32,19 @@ test('a rejected reorder gives the reason', () => {
   assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
   assert.equal(notReordered(new NetError('Failed to fetch')), 'Not reordered: no connection');
   assert.equal(notReordered(Object.assign(new Error('never finished'), { status: 409, code: 'unknown' })), 'Not reordered: Vikunja may or may not have this change.');
+});
+
+/* A message about a change kept in the Outbox names the change and has an Outbox button. The button opens the Outbox
+   and sends nothing. Only the Outbox's own row tells the user to check, then tap Try again. */
+test('a change with an unknown answer, or kept to try again, points to the Outbox', () => {
+  assert.equal(notKnown(OP_WORDS.done.refused({ op: 'done' }, 'Buy milk')), 'A tick on “Buy milk” may not have reached Vikunja.');
+  assert.equal(notKnown(OP_WORDS.add.refused({ op: 'add' }, 'Buy milk')), 'Adding “Buy milk” may not have reached Vikunja.');
+  assert.equal(KEPT, ' It\'s kept to try again.');
+  assert.equal(UNKNOWN, 'Vikunja may or may not have this change. Check, then tap Try again if it\'s missing.');
+  let opened = 0;
+  const b = toOutbox({ openOutbox: () => opened++ });
+  b.fn();
+  assert.deepEqual([b.label, opened], ['Outbox', 1]);
 });
 
 test('a tick message says "Closed" with a count when a parent closed its open subtasks, and "Done:" otherwise', () => {
@@ -152,7 +166,7 @@ test('a tapped action runs once, and its message is removed without calling its 
   assert.deepEqual([gone, a.placeLines('overdue').length], [1, 0]);
 });
 
-test('on a checklist, a note on a step or the checklist is called a comment, as in Vikunja, in Waiting to send and its messages', () => {
+test('on a checklist, a note on a step or the checklist is called a comment, as in Vikunja, in the Outbox and its messages', () => {
   const t = 'Unlock the door';
   assert.equal(OP_WORDS.note.text({ op: 'note' }, t), 'A comment on “Unlock the door”');
   assert.equal(OP_WORDS.doneNote.text({ op: 'doneNote' }, t), 'Done, with a comment: Unlock the door');
