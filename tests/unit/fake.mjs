@@ -18,7 +18,9 @@ const lost = () => new TypeError('network error');
    POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
    another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does. A
    task's comments, assignees and position can be added to, and an assignee removed. GET and POST /labels list and
-   create labels (`labels`), and PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people.
+   create labels (`labels`), and POST /tasks/:id/labels adds one to a task. PUT /tasks/:id/labels/bulk and
+   /assignees/bulk set a task's labels and people. As in Vikunja, a label that doesn't exist or a person who can't see
+   the project (`strangers`, by id) is refused, and a set with one of them is refused whole.
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
@@ -29,7 +31,7 @@ const lost = () => new TypeError('network error');
    the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), or an HTTP status to
    answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them. */
 export function fakeVikunja(tasks = []){
-  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), labels: [], requests: [], relayed: new Map(), trouble: () => null }, gone = new Set();
+  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), labels: [], strangers: new Set(), requests: [], relayed: new Map(), trouble: () => null }, gone = new Set();
   const withSubtasks = t => {
     const subs = t.related_tasks?.subtask;
     if (!subs) return t;
@@ -58,12 +60,23 @@ export function fakeVikunja(tasks = []){
     const talk = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/comments$/) || [])[1]), placed = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/position$/) || [])[1]);
     const who = req.path.match(/^\/tasks\/(\d+)\/assignees(?:\/(\d+))?$/), people = who && v.tasks.get(+who[1]);
     const bulk = req.path.match(/^\/tasks\/(\d+)\/(labels|assignees)\/bulk$/), set = bulk && v.tasks.get(+bulk[1]);
+    const tag = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/labels$/) || [])[1]), label = id => v.labels.find(l => l.id === id);
+    const noLabel = () => reply({ message: 'The label does not exist.' }, 404), noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
     let res;
     if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
     else if (req.path === '/labels' && method === 'POST') { const l = { id: 500 + v.labels.length, title: req.body.title }; v.labels.push(l); res = reply(l); }
-    else if (set && method === 'PUT' && bulk[2] === 'labels') { set.labels = req.body.labels.map(({ id }) => v.labels.find(l => l.id === id)); res = reply(req.body); }
-    else if (set && method === 'PUT') { set.assignees = req.body.assignees.map(({ id }) => ({ id, username: 'user' + id })); res = reply(req.body); }
-    else if (talk && method === 'POST') {
+    else if (set && method === 'PUT' && bulk[2] === 'labels') {
+      if (!req.body.labels.every(({ id }) => label(id))) res = noLabel();
+      else { set.labels = req.body.labels.map(({ id }) => label(id)); res = reply(req.body); }
+    } else if (set && method === 'PUT') {
+      if (req.body.assignees.some(({ id }) => v.strangers.has(id))) res = noAccess();
+      else { set.assignees = req.body.assignees.map(({ id }) => ({ id, username: 'user' + id })); res = reply(req.body); }
+    } else if (tag && method === 'POST') {
+      const l = label(req.body.label_id), list = tag.labels ||= [];
+      if (!l) res = noLabel();
+      else if (list.some(x => x.id === l.id)) res = reply({ code: 8001, message: 'This label already exists on the task.' }, 400);
+      else { list.push(l); res = reply(req.body); }
+    } else if (talk && method === 'POST') {
       const c = { id: 1000 + v.requests.length, comment: req.body.comment, author: { id: 1, username: 'me' }, created: new Date().toISOString() };
       (talk.comments ||= []).push(c);
       res = reply(c);
@@ -72,7 +85,8 @@ export function fakeVikunja(tasks = []){
       res = reply({ task_id: placed.id, project_view_id: req.body.project_view_id, position: req.body.position });
     } else if (people && method === 'POST') {
       const uid = req.body.user_id, list = people.assignees ||= [];
-      if (list.some(u => u.id === uid)) res = reply({ code: 4021, message: 'This user is already assigned to that task.' }, 400);
+      if (v.strangers.has(uid)) res = noAccess();
+      else if (list.some(u => u.id === uid)) res = reply({ code: 4021, message: 'This user is already assigned to that task.' }, 400);
       else { list.push({ id: uid, username: 'user' + uid }); res = reply(req.body); }
     } else if (people && method === 'DELETE') {
       const list = people.assignees || [];

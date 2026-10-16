@@ -1,7 +1,7 @@
 // The outbox: everything waiting to go to Vikunja, kept on the phone, and the steps a capture, a checklist's start or
 // an inserted step is sent in. The requests of every other change are its op's stages (src/js/ops/).
 import {app, ZERO} from './util.js';
-import {api, passing, patchTask} from './api.js';
+import {api, NetError, passing, patchTask} from './api.js';
 import {copiedNotes, isTemplateLabel, nextAfter, notesOnly, patiently, placeBefore, stepOrder, stepsOf, vikunjaNext, withAdded, withOrder, withRunMark, withStepLine} from './checklists.js';
 import {repeats} from './dates.js';
 import {removeAssignee} from './quickadd.js';
@@ -198,18 +198,26 @@ const settle = (e, problem) => {
 /* What each of LINE_STEPS is given to make its requests, as stageContext (app/acts.js) gives an op's stages. `send` is
    a write with the next key: the line's key, the stage's index, and the part, counted from 0 each time the stage runs.
    `skip` counts a part without sending it. A busy Vikunja is asked again with the same key, which is safe because the
-   relay keeps no answer to a request Vikunja failed. */
+   relay keeps no answer to a request Vikunja failed. A read is asked again too. */
 export function lineContext(j, more){
   let stage = 0, part = 0;
   const c = {...more,
     start(i){ stage = i; part = 0; return c; },
     skip(){ part++; },
     async send(path, opts){
-      if (!j.sent) { j.sent = true; await c.save(); }                       // from now on a cancelled step may have reached Vikunja
+      if (!j.sent) {
+        // A request that gets no answer may still have reached Vikunja, and a cancelled step must then be deleted there.
+        // So the first request waits while Pocket knows it is offline, and flush sends it once a read gets through.
+        if (app.offline || navigator.onLine === false) {
+          if (navigator.onLine !== false) setTimeout(() => app.flush());
+          app.offline = true; throw new NetError('offline');
+        }
+        j.sent = true; await c.save();
+      }
       const key = `${j.key}:${stage}:${part++}`;
       return patiently(() => api(path, {...opts, key}));
     },
-    read: path => api(path)};
+    read: path => patiently(() => api(path))};
   return c;
 }
 const ids = list => (list || []).map(x => x.id);
@@ -218,6 +226,21 @@ const ids = list => (list || []).map(x => x.id);
 async function had(j, c){
   if (!j.had) { const t = await c.read('/tasks/' + j.taskId); j.had = {labels: ids(t.labels), assignees: ids(t.assignees)}; await c.save(); }
   return j.had;
+}
+/* Set the task's labels or people (`kind`) in one request: what it had, and `items`. Vikunja refuses the whole set when
+   one item is bad, such as a label deleted in the web app or a person who can't see the project. Then each item is
+   added on its own, as the parts after the set's, so only the bad ones are reported. The relay keeps a refusal and
+   gives it again, so a retry takes the same path with the same keys. Returns the problems, in the words `says` gives. */
+async function setAll(j, c, kind, items, one, already, says){
+  const path = `/tasks/${j.taskId}/${kind}`, out = [], report = xs => e => settle(e, m => out.push(...xs.map(x => says(x, m))));
+  let was;
+  try { was = (await had(j, c))[kind]; } catch (e) { report(items)(e); return out; }
+  try { await c.send(path + '/bulk', {method: 'PUT', body: {[kind]: [...new Set([...was, ...items.map(x => x.id)])].map(id => ({id}))}}); }
+  catch (e) {
+    if (!(e.status < 500) || passing(e) || e.status === 401 || e.code === 'unknown') { report(items)(e); return out; }
+    for (const x of items) await c.send(path, {method: 'POST', body: one(x)}).catch(e => { if (e.code !== already) report([x])(e); });
+  }
+  return out;
 }
 const findLabel = all => name => all.find(l => l.title.toLowerCase() === name.toLowerCase());
 export const LINE_STEPS = [
@@ -231,7 +254,7 @@ export const LINE_STEPS = [
       if (seen === false) problems.push(await app.userExists(name).catch(() => true) ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}` : `no user @${name}`);
       else {
         let u = null;
-        try { u = await app.findUser(name); if (!u) problems.push(`no user @${name}`); } catch (e) { settle(e, m => problems.push(`@${name}: ${m}`)); }
+        try { u = await patiently(() => app.findUser(name)); if (!u) problems.push(`no user @${name}`); } catch (e) { settle(e, m => problems.push(`@${name}: ${m}`)); }
         if (u) people.push({name, id: u.id});
       }
       if (seen === true) body.title = removeAssignee(body.title, app.prefixes.assignee, name);
@@ -252,39 +275,33 @@ export const LINE_STEPS = [
     c.task = t; c.made?.(t);
   }},
   /* Each label Vikunja doesn't have yet is created, one part each, and its id is kept as soon as it is answered. Then
-     one request sets the task's labels: the labels it had, and the line's. Which labels exist is read when the line is
-     sent, so a label that an earlier line created is found. */
+     the task's labels are set (setAll): the labels it had, and the line's. Which labels exist is read from Vikunja when
+     the line is sent, not from Pocket's copy. So a label an earlier line created is found, and a label deleted in the
+     web app is made again instead of being sent with its old id. */
   {name: 'label', done: j => !j.labels.length || !!j.labeled, async run(j, c){
-    const report = names => e => settle(e, m => j.problems.push(...names.map(n => `label ${n}: ${m}`)));
+    const says = (l, m) => `label ${l.name}: ${m}`, report = ls => e => settle(e, m => j.problems.push(...ls.map(l => says(l, m))));
     if (!j.tags) {
       try {
-        let all = await app.loadLabels();
-        if (!j.labels.every(findLabel(all))) all = await app.loadLabels(true);   // a label missing from Pocket's copy may have been made since
+        const all = await patiently(() => app.loadLabels(true));
         j.tags = j.labels.map(name => { const id = findLabel(all)(name)?.id; return id ? {name, id} : {name, id: null, create: true}; });
-      } catch (e) { report(j.labels)(e); j.labeled = true; return; }
+      } catch (e) { report(j.labels.map(name => ({name})))(e); j.labeled = true; return; }
       await c.save();
     }
     for (const l of j.tags.filter(l => l.create)) {
       // A label made on an earlier try isn't sent again. Its part is still counted, so the requests after it keep their keys.
       if (l.id || l.refused) { c.skip(); continue; }
       try { const got = await c.send('/labels', {method: 'POST', body: {title: l.name}}); l.id = got.id; app.labels?.push(got); }
-      catch (e) { report([l.name])(e); l.refused = true; }
+      catch (e) { report([l])(e); l.refused = true; }
       await c.save();
     }
     const on = j.tags.filter(l => l.id);
-    if (on.length) try {
-      const was = (await had(j, c)).labels;
-      await c.send(`/tasks/${j.taskId}/labels/bulk`, {method: 'PUT', body: {labels: [...new Set([...was, ...on.map(l => l.id)])].map(id => ({id}))}});
-    } catch (e) { report(on.map(l => l.name))(e); }
+    if (on.length) j.problems.push(...await setAll(j, c, 'labels', on, l => ({label_id: l.id}), ALREADY.label, says));
     j.labeled = true;
   }},
-  // One request sets the task's people: the people it had, and the line's. A refusal (no access to the project, say) is
-  // reported, and the task is kept.
+  // The task's people are set the same way. A person Vikunja refuses (no access to the project, say) is reported, and
+  // the task is kept.
   {name: 'assignee', done: j => !j.people?.length || !!j.assigned, async run(j, c){
-    try {
-      const was = (await had(j, c)).assignees;
-      await c.send(`/tasks/${j.taskId}/assignees/bulk`, {method: 'PUT', body: {assignees: [...new Set([...was, ...j.people.map(u => u.id)])].map(id => ({id}))}});
-    } catch (e) { settle(e, m => j.problems.push(...j.people.map(u => `@${u.name}: ${m}`))); }
+    j.problems.push(...await setAll(j, c, 'assignees', j.people, u => ({user_id: u.id}), ALREADY.assignee, (u, m) => `@${u.name}: ${m}`));
     j.assigned = true;
   }},
   // Link the task under its parent. The parent is the line it goes under in a pasted list, or the task whose sheet it

@@ -493,8 +493,8 @@ export default {
     if (!t || !d.added.length || d.problem || this.sheet.subBusy) return;
     this.sheet.subBusy = true;
     const r = {ids: [], problems: [], error: null};
-    // Each row remembers how far it got. If an earlier Add was interrupted, the next Add finds a step whose reply was
-    // lost instead of creating it again.
+    // Each row keeps its job, so an Add after an interrupted one sends each request with the key it had and makes
+    // nothing twice.
     const rows = this.sheet.addRows.filter(x => x.text.trim()), jobs = jobsFor(rows.map(x => x.job), d.added);
     rows.forEach((x, k) => { x.job = jobs[k]; });
     const under = this.sheet.subAt;

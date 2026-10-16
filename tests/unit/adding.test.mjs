@@ -169,6 +169,77 @@ test('a step inserted in a checklist, cancelled after its reply was lost, is fou
   assert.deepEqual([v.tasks.has(101), sync.all(1).length], [false, 0], 'the task is deleted, and nothing is left waiting');
 });
 
+test('a step inserted in a checklist while Pocket knows it is offline, then cancelled, sends nothing', async t => {
+  const v = fakeVikunja([{ id: 9, title: 'Opening', project_id: 5 }]), app = adding(t);
+  Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep, dropStep: runs.dropStep, offline: true });
+  v.trouble = () => 'offline';
+  const id = uuid7(), step = { id, kind: 'step', user: 1, at: new Date().toISOString(), items: [], files: [], fails: 0, run: 9, project: 5, title: 'Sweep up', from: null, tpl: null };
+  assert.equal((await send(app, step)).status, 'offline');
+  await app.dropStep(id, true);
+  // Back online, as a read that gets through finds, and whatever is still waiting is sent.
+  v.trouble = () => null; app.offline = false;
+  for (const e of sync.all(1)) await app.sendEntry(e.id);
+  assert.deepEqual(v.requests.filter(r => r.method !== 'GET').map(r => [r.method, r.path]), [], 'no request for the step was made');
+  assert.equal(sync.all(1).length, 0, 'nothing is left waiting');
+});
+
+// Run `p` while moving the mocked clock, so the waits between a busy Vikunja's tries (patiently) pass.
+const patient = async (t, p) => {
+  let done = false;
+  p.then(() => { done = true; }, () => { done = true; });
+  while (!done) { for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok)); if (!done) t.mock.timers.tick(500); }
+  return p;
+};
+
+test('a busy Vikunja is asked again for its labels, so the line still gets them', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  app.loadLabels = views.loadLabels;
+  let busy = true;
+  v.trouble = r => r.method === 'GET' && r.path === '/labels' && busy ? (busy = false, 500) : null;
+  const r = await patient(t, send(app, entry([line('Chairs', { labels: ['Spare'] })])));
+  assert.deepEqual([r.status, r.problems, v.task(101).labels.map(l => l.title)], ['sent', [], ['Spare']]);
+});
+
+test('a label deleted in the web app since Pocket read its labels is made again, not sent with its old id', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  v.labels.push({ id: 1, title: 'Old' });
+  Object.assign(app, { loadLabels: views.loadLabels, labels: [{ id: 1, title: 'Old' }, { id: 3, title: 'Gone' }], labelsLoaded: true });
+  const r = await send(app, entry([line('Chairs', { labels: ['Old', 'Gone'] })]));
+  assert.deepEqual([r.status, r.problems, v.task(101).labels.map(l => l.title)], ['sent', [], ['Old', 'Gone']]);
+  assert.ok(!v.requests.some(r => r.body?.labels?.some(l => l.id === 3)), 'the old id is never sent');
+});
+
+const part = r => r.key.split(':').slice(1).join(':');
+test('a label Vikunja refuses in the set is reported alone, and the line\'s other labels are added one by one', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  v.labels.push({ id: 1, title: 'Old' }, { id: 2, title: 'Gone' });
+  app.loadLabels = views.loadLabels;
+  const e = entry([line('Chairs', { labels: ['Old', 'Gone'] })]);
+  // The connection drops before the set is sent, and the label is deleted in the web app before the retry.
+  v.trouble = r => r.path.endsWith('/labels/bulk') ? 'offline' : null;
+  assert.equal((await send(app, e)).status, 'offline');
+  v.labels.splice(1, 1); v.trouble = () => null;
+  const r = await app.sendEntry(e.id);
+  assert.deepEqual([r.status, r.problems, v.task(101).labels.map(l => l.title)], ['sent', ['label Gone: The label does not exist.'], ['Old']]);
+  assert.deepEqual(v.requests.filter(r => r.path.startsWith('/tasks/101/labels')).map(r => [r.method, part(r), r.body.label_id]),
+    [['PUT', '2:0', undefined], ['PUT', '2:0', undefined], ['POST', '2:1', 1], ['POST', '2:2', 2]]);
+});
+
+test('a person Vikunja refuses is reported alone, the others are assigned, and a retry sends the same keys', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  v.strangers.add(8);
+  Object.assign(app, { canSee: async () => null, findUser: async name => ({ id: { sam: 7, max: 8 }[name], username: name }) });
+  const e = entry([line('Chairs', { assignees: ['sam', 'max'] })]);
+  // The reply to the last request is lost, so the stage runs again from its start.
+  let cut = true;
+  v.trouble = r => r.body?.user_id === 8 && cut ? (cut = false, 'lost') : null;
+  assert.equal((await send(app, e)).status, 'offline');
+  const r = await app.sendEntry(e.id);
+  assert.deepEqual([r.status, r.problems, v.task(101).assignees.map(u => u.id)], ['sent', ['@max: The user does not have access to the project.'], [7]]);
+  assert.deepEqual(v.requests.filter(r => r.path.startsWith('/tasks/101/assignees')).map(r => [r.method, part(r), !!r.replayed]),
+    [['PUT', '3:0', false], ['POST', '3:1', false], ['POST', '3:2', false], ['PUT', '3:0', true], ['POST', '3:1', true], ['POST', '3:2', true]]);
+});
+
 test('a repeating task that arrives done shows ticked with its given date, then opens at its next date', async t => {
   const v = fakeVikunja(), app = adding(t), due = new Date(Date.now() + 36e5).toISOString();
   const r = await send(app, entry([line('Water the plants', { done: true, due, repeat: { after: DAY, mode: 0 } })]));
@@ -489,8 +560,9 @@ test('cancelling or refusing a waiting subtask moves the highlight to its task',
   assert.deepEqual([aimed(), app.pendingTasks.map(x => [x.id, x.title])], [[[`pending-${e}-0`], 'Straps'], [[`pending-${e}-0`, 'Straps']]], 'cancelling the first line keeps the highlight on the same line, now one position earlier');
   await app.cancelPending(e, 0);
   assert.deepEqual([aimed(), app.toast.msg], [[['9'], ''], 'Cancelled.'], 'cancelling the highlighted line highlights its task');
-  // If Vikunja refuses, the text goes back in the box with the reason, and the task is highlighted.
-  v.trouble = r => r.method === 'POST' ? 400 : null;
+  // Back online, as a read that gets through finds. If Vikunja refuses, the text goes back in the box with the reason,
+  // and the task is highlighted.
+  v.trouble = r => r.method === 'POST' ? 400 : null; app.offline = false;
   await add('Straps');
   assert.deepEqual([aimed(), app.cap.text, app.toast.msg], [[['9'], ''], 'Straps', 'Not added: HTTP 400 from the fake']);
   assert.equal(sync.all(1).length, 0);
