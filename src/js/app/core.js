@@ -76,7 +76,7 @@ export default () => ({
   cardOpen: {},                                // a card's id -> true, opened by its footer's More, on Today or in search
   slideClaim: {},                              // task id -> temporary claim during a progress gesture (claimOnSlide)
   // The number of waiting files by task id, so rows read only their own state.
-  waiting: {files: {}},
+  waiting: {files: {}, dues: {}},
   opsOn: {},                                   // task id -> the ops waiting in the outbox that change it, in the order they will be sent (keyOps, tasks.js)
   // Track the swipe hint's row, whether to pick a row on the next screen, and whether this phone has dismissed the
   // hint.

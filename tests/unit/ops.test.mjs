@@ -5,11 +5,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
 import acts, { stageContext } from '../../src/js/app/acts.js';
-import tasks, { copyOf, started, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
-import { sync } from '../../src/js/sync.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { UNKNOWN } from '../../src/js/messages.js';
 import { figure } from '../../src/js/ops/stages.js';
@@ -103,6 +103,7 @@ const WORDS = {
   position: [['Moving “Unlock the door” in its list', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays where it was in Vikunja\'s list.', '“Unlock the door” stays where it was in Vikunja\'s list.'],
     ['Moving “a step” in its list', 'Moving a task', '“it” stays where it was in Vikunja\'s list.', '“it” stays where it was in Vikunja\'s list.']],
   add: [['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''], ['New task: ', 'Adding a task', '', '']],
+  due: [['Removed its due date: Unlock the door', 'Moving “Unlock the door T#5m”', '', ''], ['Removed its due date: a step', 'Moving a task', '', '']],
 };
 
 test('each op says what the outbox said before: its row, its refusal, and what dropping it leaves', () => {
@@ -114,6 +115,10 @@ test('each op says what the outbox said before: its row, its refusal, and what d
   assert.equal(OPS.done.text({ op: 'done' }, 'Mop', true), 'Done: Mop (repeated)', 'a step repeated in its checklist says so');
   assert.deepEqual([OPS.add.text({ over: 'Pack the van' }, 'Chairs'), OPS.add.text({ taskId: 4 }, 'Chairs')],
     ['Subtask of “Pack the van”: Chairs', 'Finishing “Chairs”'], 'a line says what it goes under, as the Outbox said before');
+  const day = n => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(9, 0, 0, 0); return d; };
+  assert.deepEqual([OPS.due.text({ due: day(0).toISOString() }, 'Mop'), OPS.due.text({ due: day(1).toISOString() }, 'Mop'), OPS.due.text({ due: day(9).toISOString() }, 'Mop')],
+    ['Moved to today: Mop', 'Moved to tomorrow: Mop', `Moved to ${day(9).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: day(9).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}: Mop`],
+    'a move names its day as the message after a hold does');
 });
 
 /* The sender with a fake outbox. Each act is queued with act() and sent at once. Messages are read from `toasts`, since
@@ -267,4 +272,103 @@ test('a tick with a comment that finishes on a later try still answers with the 
   assert.equal(sync.all(1).length, 0);
   const posted = v.task(2).comments[0];
   assert.deepEqual([copyOf(2).comments.map(c => [c.id, !!c.waiting]), copyOf(2).updated], [[[posted.id, false]], v.task(2).updated]);
+});
+
+/* Moving a task to another date (ops/dates.js). A move is a `due` op. Its Undo is an op too, made from what the move
+   recorded, which checks Vikunja's date before it writes the old one back. `dated` gives a sender whose tasks have rows
+   and copies, and `move` queues a move as reschedule does. */
+const D = (d, h = 9) => new Date(2026, 9, d, h).toISOString();
+const dated = (t, list) => {
+  const s = sender(t, list);
+  s.app.change(w => w.read(list.map(x => structuredClone(x)), TASK, started()));
+  for (const x of list) s.app.row(structuredClone(x));
+  t.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  return s;
+};
+const move = (app, task, due) => { const f = { id: uuid7(), op: 'due', task, was: app.tasks[task].due_date, due, run: null }; return { f, sending: app.act(f, true) }; };
+const datePatches = v => reached(v, 'PATCH', /^\/tasks\/\d+$/).map(r => r.body.due_date);
+
+test('a move sets the date, its Undo goes back to the date before, and a later move takes the place of one not sent', () => {
+  const a = { op: 'due', task: 7, was: D(5), due: D(9) };
+  assert.deepEqual(OPS.due.apply({ id: 7, title: 'Call the plumber', due_date: D(5) }, a), { id: 7, title: 'Call the plumber', due_date: D(9) });
+  assert.deepEqual(OPS.due.invert(a), { op: 'due', task: 7, due: D(5), was: D(9), check: D(9) }, 'before Vikunja answers, the Undo checks for the date sent');
+  assert.equal(OPS.due.invert({ ...a, got: { task: { due_date: '2026-10-09T13:00:00Z' } } }).check, '2026-10-09T13:00:00Z', 'once it answers, for the date Vikunja stored');
+  assert.deepEqual(OPS.due.merge(a, { ...a, was: D(9), due: D(12) }), { ...a, was: D(5), due: D(12) }, 'the later move keeps the first move\'s date before');
+  assert.deepEqual([OPS.due.merge({ ...a, check: D(3) }, a), OPS.due.merge(a, { ...a, check: D(3) })], [null, null], 'an Undo never folds, or its check would be lost');
+});
+
+test('an Undo of a move not sent yet takes the move out of the outbox, and nothing is sent', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  app.offline = true;
+  const { f, sending } = move(app, 7, D(9));
+  assert.equal(app.tasks[7].due_date, D(9), 'the row moves at once');
+  assert.equal((await sending).status, 'offline');
+  assert.deepEqual([sync.all(1).length, app.waiting.dues[7]], [1, true], 'the move waits, and its row shows it is waiting');
+  const { left } = await app.undoOps([f]);
+  assert.deepEqual([app.tasks[7].due_date, sync.all(1).length, app.waiting.dues[7], await left], [D(5), 0, undefined, 0]);
+  assert.deepEqual(v.requests, [], 'nothing is sent');
+});
+
+test('two moves made offline on one task send one request, and Undo returns the task to its first date', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  app.offline = true;
+  const first = move(app, 7, D(8));
+  await first.sending;
+  await move(app, 7, D(9)).sending;
+  assert.deepEqual(sync.all(1).map(e => [e.was, e.due]), [[D(5), D(9)]], 'one entry, from the first date to the last');
+  assert.equal(app.tasks[7].due_date, D(9));
+  app.offline = false;
+  await app.flush();
+  assert.deepEqual([datePatches(v), v.task(7).due_date], [[D(9)], D(9)]);
+  const { left } = await app.undoOps([first.f]);
+  assert.equal(app.tasks[7].due_date, D(5), 'the first move\'s Undo undoes the move it went into, at once');
+  assert.deepEqual([await left, v.task(7).due_date, datePatches(v)], [0, D(5), [D(9), D(5)]]);
+});
+
+test('a move that has sent a request, or is held, is not replaced by a later move', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }, { id: 8, title: 'Order milk', due_date: D(5) }]);
+  lostOnce(v, 'PATCH', /^\/tasks\/7$/);
+  assert.equal((await move(app, 7, D(8)).sending).status, 'offline', 'the reply to the first move is lost');
+  await move(app, 7, D(9)).sending;
+  assert.deepEqual([datePatches(v), v.task(7).due_date, sync.all(1).length], [[D(8), D(9)], D(9), 0], 'both moves are sent, in order');
+  // A move Vikunja refused stays in the Outbox, and holds back the later move.
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await move(app, 8, D(8)).sending;
+  await move(app, 8, D(9)).sending;
+  assert.deepEqual(sync.all(1).map(e => [e.due, !!e.failed]), [[D(8), true], [D(9), false]]);
+  // A move held until a time, as a deletion is held while Restore shows in another tab.
+  for (const x of sync.all(1)) await sync.remove(x.id);
+  app.offline = true;
+  const held = move(app, 8, D(8));
+  await held.sending;
+  await sync.save({ ...sync.entries.get(held.f.id), until: Date.now() + 60e3 });
+  await move(app, 8, D(9)).sending;
+  assert.deepEqual(sync.all(1).map(e => e.due), [D(8), D(9)]);
+});
+
+test('an Undo puts the date back after a change to another field, and leaves a date changed since', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5), comments: [] }]);
+  let m = move(app, 7, D(9));
+  await m.sending;
+  // Another person changes the title and comments. Vikunja's date is written in another format, at the same time.
+  Object.assign(v.task(7), { title: 'Call the plumber today', comments: [{ id: 1, comment: 'Done by noon' }], due_date: D(9).replace('.000Z', 'Z') });
+  let undo = await app.undoOps([m.f]);
+  assert.deepEqual([await undo.left, v.task(7).due_date, v.task(7).title], [0, D(5), 'Call the plumber today'], 'the date goes back, and the title stays');
+  m = move(app, 7, D(9));
+  await m.sending;
+  v.task(7).due_date = D(12);
+  const sent = datePatches(v).length;
+  undo = await app.undoOps([m.f]);
+  assert.equal(app.tasks[7].due_date, D(5), 'the row goes back at once');
+  assert.deepEqual([await undo.left, datePatches(v).length, v.task(7).due_date, app.tasks[7].due_date], [1, sent, D(12), D(12)],
+    'a date changed since is left alone, nothing is sent, and the row shows Vikunja\'s date');
+  // An Undo made offline is checked when it is sent, and says so then.
+  m = move(app, 7, D(14));
+  await m.sending;
+  app.offline = true;
+  undo = await app.undoOps([m.f]);
+  v.task(7).due_date = D(15);
+  app.offline = false;
+  await app.flush();
+  assert.deepEqual([await undo.left, v.task(7).due_date, app.toasts.at(-1).msg], [0, D(15), 'Not undone: “Call the plumber today” has changed since then'], 'the title is Vikunja\'s, as the Undo read it');
 });

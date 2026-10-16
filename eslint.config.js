@@ -27,7 +27,7 @@ const RESTRICTED = [
   { selector: "CallExpression[callee.name='addDays'][arguments.1.value=8]", message: "Ask dayGroup() in src/js/lists.js which of Today's groups a date is in, or use TODAY_DAYS.", allow: ['src/js/lists.js'] },
   { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']", message: WRITE, allow: WRITERS },
   { selector: "CallExpression[callee.name='patchTask']", message: WRITE, allow: WRITERS },
-  { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name=/^(saveTask|saveEach)$/]", message: WRITE, allow: WRITERS },
+  { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name='saveTask']", message: WRITE, allow: WRITERS },
   { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },

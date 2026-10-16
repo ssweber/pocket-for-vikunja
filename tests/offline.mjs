@@ -11,7 +11,7 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright';   // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, placeSays, signIn, synced } from './helpers.mjs';
+import { expect, hintSeen, placeLine, placeSays, signIn, steady, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN, USER = process.env.VIKUNJA_USER, PASSWORD = process.env.VIKUNJA_PASSWORD;
@@ -55,6 +55,9 @@ const photo = name => ({ name, mimeType: 'image/png', buffer: PNG });
 // The file names of a task's attachments in Vikunja.
 const attached = async n => { const [t] = await byTitle(T(n)); return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : []; };
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online')));   // makes Pocket retry now
+// What is waiting in the outbox, as IndexedDB holds it.
+const outboxOf = p => p.evaluate(() => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction('outbox').objectStore('outbox').getAll(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }));
+const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
 
 try {
   // A task due tomorrow, so there is something for Pocket to save for offline use.
@@ -714,6 +717,98 @@ try {
       await page.unroute(relay, cut).catch(() => {});
       await context.setOffline(false);
       await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
+  /* Move all to today made offline shows its message at once, and its moves wait in the outbox, also across a reload.
+     Back online, each task is moved once. A move's request sent again with its key is answered from what the relay
+     kept, and Vikunja changes nothing. */
+  await step('move-all-made-offline-moves-each-task-once', async () => {
+    const late = new Date(); late.setDate(late.getDate() - 2); late.setHours(9, 0, 0, 0);
+    const made = [];
+    for (const n of ['late one', 'late two']) made.push(await (await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T(n), due_date: late.toISOString() }) })).json());
+    const patched = [], seen = r => { if (r.method() === 'PATCH' && /\/v2\/tasks\/\d+$/.test(r.url())) patched.push(+r.url().split('/').pop()); };
+    const row = (where, n) => page.locator(`.sec.${where} ~ .list .row:has(.title:has-text("${T(n)}"))`);
+    page.on('request', seen);
+    try {
+      await context.setOffline(false);
+      await page.reload();
+      await expect(row('overdue', 'late two')).toBeVisible({ timeout: 15000 });
+      await context.setOffline(true);
+      await page.click('#btn-overdue-today');
+      await expect(placeLine(page, 'overdue')).toContainText(/^Moved \d+ to today/);
+      await expect(row('today', 'late one')).toBeVisible();
+      await page.reload();
+      await expect(row('today', 'late two')).toBeVisible({ timeout: 15000 });       // the moves still wait, after the reload
+      const moves = (await outboxOf(page)).filter(e => e.op === 'due' && made.some(t => t.id === e.task));
+      if (moves.length !== 2) throw new Error('waiting: ' + JSON.stringify(moves));
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const today = new Date().toDateString();
+      for (const t of made) {
+        const due = (await (await api('/tasks/' + t.id)).json()).due_date;
+        if (new Date(due).toDateString() !== today) throw new Error(`${t.title} is due ${due}`);
+        if (patched.filter(id => id === t.id).length !== 1) throw new Error(`${patched.filter(id => id === t.id).length} requests moved ${t.title}`);
+      }
+      const a = moves[0], again = await fetch(SERVER + '/api/v1/plugins/pocket/v2/tasks/' + a.task, { method: 'PATCH', body: JSON.stringify({ due_date: a.due }),
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Idempotency-Key': `"${a.key || a.id}:0:0"` } });
+      if (again.headers.get('idempotent-replayed') !== 'true') throw new Error(`HTTP ${again.status}, not answered from what the relay kept: ${await again.text()}`);
+    } finally {
+      page.off('request', seen);
+      await context.setOffline(false);
+      for (const t of made) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
+  /* A row thrown at two dates offline (app/throw.js) waits as one move, from its first date to the last. Back online,
+     one request is sent, and Undo puts the first date back. The hold needs the page's clock, so this runs in a context
+     of its own with Playwright's clock. */
+  await step('a-row-thrown-at-two-dates-offline-sends-one-request', async () => {
+    const due = new Date(); due.setHours(23, 0, 0, 0);
+    const t = await (await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('thrown'), due_date: due.toISOString() }) })).json();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await hintSeen(ctx);
+    await ctx.clock.install();
+    const p = await ctx.newPage(), patched = [];
+    p.on('pageerror', e => errors.push(String(e)));
+    p.on('request', r => { if (r.method() === 'PATCH' && r.url().endsWith('/v2/tasks/' + t.id)) patched.push(JSON.parse(r.postData()).due_date); });
+    const later = async ms => { await p.clock.fastForward(ms); await p.clock.setSystemTime(Date.now()); };
+    const R = `#view .row:has(.title:has-text("${T('thrown')}"))`;
+    // Hold the row until its date chips show, let go without moving, and tap the chip for date `id`.
+    const throwAt = async id => {
+      await p.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const box = await steady(p.locator(R));
+      await p.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 28)); await p.mouse.down();
+      await later(700);
+      await expect(p.locator('.throw .throw-t[data-id]')).toHaveCount(4);
+      await p.mouse.up();
+      const chip = await p.locator(`.throw .throw-t[data-id="${id}"]`).boundingBox();
+      await p.mouse.click(chip.x + chip.width / 2, chip.y + chip.height / 2);
+      await expect(p.locator('.throw')).toHaveCount(0);
+    };
+    try {
+      await signIn(p, POCKET, USER, PASSWORD);
+      await expect(p.locator(R)).toBeVisible({ timeout: 15000 });
+      await ctx.setOffline(true);
+      await throwAt('tomorrow');
+      await later(5100);                                                    // the message with its Undo folds, and the row is back
+      await throwAt('none');
+      const undo = p.locator('.row-line, .place-line[data-place="cap"]').filter({ hasText: 'Removed its due date' }).getByRole('button', { name: 'Undo' });
+      await expect(undo).toBeVisible();
+      const moves = (await outboxOf(p)).filter(e => e.op === 'due' && e.task === t.id);
+      if (moves.length !== 1 || !sameTime(moves[0].was, t.due_date) || !moves[0].due.startsWith('0001')) throw new Error('waiting: ' + JSON.stringify(moves));
+      await ctx.setOffline(false);
+      await p.evaluate(() => window.dispatchEvent(new Event('online')));
+      await synced(p);
+      if (patched.length !== 1 || !patched[0].startsWith('0001')) throw new Error('sent: ' + JSON.stringify(patched));
+      await undo.click();
+      await synced(p);
+      const now = (await (await api('/tasks/' + t.id)).json()).due_date;
+      if (!sameTime(now, t.due_date) || patched.length !== 2) throw new Error(`after Undo the task is due ${now}, with ${patched.length} requests`);
+    } finally {
+      await ctx.close();
+      await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
 

@@ -289,6 +289,25 @@ async function counts(){
     await left; await sleep(800); res['on Today, the batch clearing'] = flat(await fx(page));
     await sleep(1500);
   }
+  // On Today, a row thrown at tomorrow, then Move all to today and its Undo. The dates are put back through Vikunja's API.
+  {
+    const id = (await plainRows(page))[2], was = (await vikunja('GET', '/tasks/' + id)).due_date;
+    undo.push(() => vikunja('PATCH', '/tasks/' + id, { due_date: was }));
+    await fx(page);
+    await page.evaluate(id => { const a = window.__pf.app(), d = new Date(); d.setDate(d.getDate() + 1); a.moveHeld(a.tasks[id], { due: d.toISOString(), label: 'Tomorrow' }); }, id);
+    await sleep(40); res['on Today, a row thrown, at once'] = flat(await fx(page));
+    await idleSync(page); await sleep(300); res['on Today, its move answered'] = flat(await fx(page));
+    await sleep(5500);
+    const late = await page.evaluate(() => window.__pf.app().overdueTasks.map(t => [t.id, t.due_date]));
+    for (const [x, due] of late) undo.push(() => vikunja('PATCH', '/tasks/' + x, { due_date: due }));
+    await fx(page);
+    await page.locator('#btn-overdue-today').click(); await sleep(40); res[`on Today, Move all of ${late.length}, at once`] = flat(await fx(page));
+    await idleSync(page); await sleep(300); res['on Today, Move all answered'] = flat(await fx(page));
+    await page.locator('.place-line[data-place="overdue"] button').click(); await sleep(40); res['on Today, its Undo, at once'] = flat(await fx(page));
+    await page.waitForFunction(n => window.__pf.app().overdueTasks.length === n, late.length, { polling: 100, timeout: 60000 });
+    await idleSync(page); await sleep(300); res['on Today, its Undo answered'] = flat(await fx(page));
+    await sleep(1500);
+  }
   // Open Big, then count the bindings evaluated and what its rows asked of the component.
   await page.evaluate(names => { window.__fx.reset(); window.__pf.stop = window.__pf.counted(names); }, ASKED);
   await page.evaluate(id => { location.hash = '#/project/' + id; }, state.projects.big);

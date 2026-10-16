@@ -3,7 +3,7 @@ import {taskDrafts} from '../util.js';
 import {api, ApiError, passing, serverTime} from '../api.js';
 import {htmlToText} from '../html.js';
 import {parseStep, patiently} from '../checklists.js';
-import {held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, sync, uuid7, waits} from '../sync.js';
+import {held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7, waits} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
 import {OPS} from '../ops/index.js';
@@ -11,6 +11,9 @@ import {CREATED, opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
 export const nextN = () => ++actCount;
+// For Undo, in this tab: the entry each folded entry went into (fold), and the undo of each op answered here, built
+// from Vikunja's answer before the entry left the outbox.
+const folded = new Map(), inverts = new Map();
 /* Keep local completion times for offline ticks so countdowns do not jump or chime again when Vikunja receives
    them. Map each step to {here, there, kept}, using Vikunja's completion time to identify the tick. Expire these
    records after a day. */
@@ -54,13 +57,57 @@ export function stageContext(a, app, save = () => sync.save(a)){
 
 export default {
   /* Queue every run action behind earlier pending actions so Vikunja receives them in order. The op shows on its task
-     at once, before it is saved on the phone. Returns how sending went, with the entry's id (`entry`). */
-  async act(fields){
+     at once, before it is saved on the phone. Returns how sending went, with the entry's id (`entry`). With `quiet`,
+     the caller says what became of it. */
+  async act(fields, quiet = false){
     const run = fields.run ?? this.view.shownRun?.id;
     if (this.toast.show && this.toast.startOf && this.toast.startOf === run) this.toast.show = false;
     if (this.places.run?.startOf === run) this.endPlace('run', this.places.run, false);
-    const entry = this.actEntry(fields), {kept, full} = await this.queue([entry]);
-    return {...await this.sendActs(entry.id, kept, full), entry: entry.id};
+    return this.actAll([fields], quiet);
+  },
+  /* Queue ops (their fields) together, so their rows show in one change (rule 10), fold each into an earlier op it
+     replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`) and every
+     result (`all`). */
+  async actAll(list, quiet = false){
+    const entries = list.map(f => this.actEntry(f)), last = entries.at(-1).id, {kept, full} = await this.queue(entries);
+    await sync.lock(() => this.fold(entries));
+    return {...await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null), entry: last};
+  },
+  /* Fold each of `entries`, just queued, into an earlier op on its task that has sent nothing, isn't held and hasn't
+     failed (the op's merge). The earlier entry leaves the outbox. Runs inside the outbox's lock, so the sender can't
+     start the earlier op meanwhile. */
+  async fold(entries){
+    const by = new Map(), at = e => e.op + ' ' + opsId(e.task);
+    for (const x of sync.all(entries[0]?.user)) if (x.kind === 'act' && OPS[x.op]?.merge) by.set(at(x), [...by.get(at(x)) || [], x]);
+    for (const e of entries) {
+      for (const x of OPS[e.op].merge ? by.get(at(e)) || [] : []) {
+        if (older(x, e) >= 0) continue;
+        const was = await sync.fresh(x.id), m = was && !was.sent && !was.failed && !held(was) && OPS[e.op].merge(was, e);
+        if (!m) continue;
+        Object.assign(e, m); folded.set(x.id, e.id);
+        await sync.save(e); await sync.remove(x.id);
+      }
+    }
+  },
+  /* Undo the ops queued from `list` (their fields, with each entry's id). An op that has sent nothing, or that Vikunja
+     refused, leaves the outbox, and its rows show the task without it. Otherwise its invert is queued: from Vikunja's
+     answer when this tab saw it, or else from the op as it was queued. The rows show every Undo in one change. Returns
+     once they show, with `left`, which resolves to how many inverts Vikunja refused or found changed since. */
+  async undoOps(list){
+    const back = [];
+    await sync.lock(async () => {
+      for (const f of list) {
+        let id = f.id;
+        while (folded.has(id)) id = folded.get(id);
+        const e = await sync.fresh(id);
+        if (e && (!e.sent || e.failed)) { await sync.remove(id); continue; }
+        const inv = inverts.get(id) || OPS[f.op].invert(e || f);
+        if (inv) back.push({...inv, run: null});
+      }
+    });
+    if (!back.length) { this.refreshPending(); return {left: Promise.resolve(0)}; }
+    const entries = back.map(f => this.actEntry(f)), ids = new Set(entries.map(e => e.id)), {kept, full} = await this.queue(entries);
+    return {left: this.sendActs(entries.at(-1).id, kept, full, ids).then(r => r.all.filter(x => ids.has(x.id) && x.status === 'error').length)};
   },
   // An op's outbox entry. It stores the task's title so the Outbox can name the action after a reload, and the
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
@@ -78,9 +125,10 @@ export default {
     return {kept: r.every(x => x.kept), full: r.some(x => x.full)};
   },
   /* Send through action `id` in order. Keep deletions held while Restore is still available. Returns the last one's
-     result, with every result in `all`, each with its line's `batch`. An add box reads its own lines' results there.
-     The lines of other batches sent on the way are reported as flush reports them (reportSent). */
-  async sendActs(id, kept = true, full = false){
+     result, with every result in `all`, each with its entry's `id` and its line's `batch`. An add box reads its own
+     lines' results there. The lines of other batches sent on the way are reported as flush reports them (reportSent).
+     The entries in `quiet` get no message here, because their caller says what became of them. */
+  async sendActs(id, kept = true, full = false, quiet = null){
     // An add box shows what it sent itself, swapping each waiting row for its task in one go (submitCapture). A
     // refresh here would draw the list without either in between.
     const lines = sync.entries.get(id)?.op === 'add';
@@ -99,12 +147,13 @@ export default {
           break;
         }
         last = await this.sendEntry(e.id);
-        out.push({...last, batch: e.batch, add: e.op === 'add'});
+        out.push({...last, id: e.id, batch: e.batch, add: e.op === 'add'});
         if (last.kept) hold(e, stopped);
         // A failed move shows its own message on the row (reorder), and a line in its add box, so none here.
         const err = last.error;
-        if (last.status === 'error' && e.op !== 'position' && e.op !== 'add') this.say(err.code === 'unknown' ? notKnown(err.what)
-          : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err)),
+        // A stage that knows the whole sentence gives it (`said`).
+        if (last.status === 'error' && !quiet?.has(e.id) && e.op !== 'position' && e.op !== 'add') this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
+          : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err))),
           {place: 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null});
         if (last.status === 'offline' || e.id === id) break;
       }
@@ -151,6 +200,7 @@ export default {
         await sync.save(a, [], filesOut(a));
       }
       this.change(w => w.answered(a, c.task, c.comment));
+      if (op.invert) inverts.set(a.id, op.invert(a));
       if (a.op === 'position') this.positionSent(a);
       await sync.remove(a.id, add ? a.taskId : null);
       // A line's photos upload now, from their own entry. If Vikunja is busy they wait there, and the add box says so.

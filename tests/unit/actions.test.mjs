@@ -377,7 +377,7 @@ test('Move all to today moves each overdue task to today at its time, or with no
     { id: 2, title: 'Evening one', due_date: at(6, 18, 30) },
     { id: 3, title: 'Repeats', due_date: at(6, 8), repeat_after: DAY },
   ]);
-  const app = component(tasks, actions, cards);
+  const app = overdueApp(t);
   app.view.groups = [{ key: 'overdue', tasks: [1, 2, 3].map(id => app.row(v.task(id))) }];
   assert.equal(app.overdueMovable, true);
   await app.moveOverdueToToday();
@@ -389,6 +389,41 @@ test('Move all to today moves each overdue task to today at its time, or with no
   await app.toast.action.fn();
   assert.equal(v.task(1).due_date, at(5, 9));
   assert.equal(v.task(2).due_date, at(6, 18, 30));
+});
+
+// Move all to today queues one `due` op for each task, so it needs the outbox and its sender, which is emptied after the test.
+const overdueApp = t => {
+  t.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  const app = component(tasks, actions, cards, sending, acts, outbox);
+  return Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], flushing: false, cap: {}, sheet: { id: null, sub: {} }, places: {}, endPlace(){}, aimSent(){}, toasts: [{}] });
+};
+
+test('Move all made offline shows its message at once, and moves each task once when the connection is back', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const v = fakeVikunja([{ id: 1, title: 'Morning one', due_date: at(5, 9) }, { id: 2, title: 'Evening one', due_date: at(6, 18, 30) }, { id: 3, title: 'Order cups', due_date: at(6, 10) }]);
+  const app = overdueApp(t);
+  app.change(w => w.read([1, 2, 3].map(id => structuredClone(v.task(id))), TASK, started()));
+  app.view.groups = [{ key: 'overdue', tasks: [1, 2, 3].map(id => app.row(v.task(id))) }];
+  app.offline = true;
+  await app.moveOverdueToToday();
+  // The unit tests have no IndexedDB, so the outbox is kept in memory, and Pocket also asks to be kept open.
+  const moved = app.toasts.find(x => x.msg === 'Moved 3 to today');
+  assert.deepEqual([moved.action.label, moved.place], ['Undo', 'overdue']);
+  assert.deepEqual([[1, 2, 3].map(id => app.tasks[id].due_date), sync.all(1).length, v.requests.length], [[at(7, 0), at(7, 18, 30), at(7, 0)], 3, 0], 'the rows move at once, and the moves wait');
+  // Vikunja refuses the second task's move, which stays in the Outbox. The others are moved once each.
+  app.offline = false;
+  v.trouble = r => r.method === 'PATCH' && r.path === '/tasks/2' ? 403 : null;
+  await app.flush();
+  assert.deepEqual([v.task(1).due_date, v.task(2).due_date, v.task(3).due_date, app.tasks[2].due_date], [at(7, 0), at(6, 18, 30), at(7, 0), at(6, 18, 30)]);
+  assert.deepEqual([app.toast.msg, app.toast.action?.label, app.failed.map(e => e.task)], ['Moving “Evening one” couldn\'t be sent: HTTP 403 from the fake. It\'s kept to try again.', 'Outbox', [2]]);
+  assert.deepEqual(patches(v).map(([id]) => id), [1, 2, 3], 'one request for each task');
+  // Undo moves each task back, leaves the refused move out of the Outbox, and leaves a task whose date changed since.
+  v.trouble = () => null;
+  v.task(3).due_date = at(8, 10);
+  await moved.action.fn();
+  assert.deepEqual([v.task(1).due_date, v.task(2).due_date, v.task(3).due_date, sync.all(1).length], [at(5, 9), at(6, 18, 30), at(8, 10), 0]);
+  assert.deepEqual([app.toast.msg, app.toast.place, app.toast.cls], ['1 task couldn\'t be moved back (changed since, or not saved) and is still due today.', 'overdue', 'failed']);
 });
 
 test('ticking a subtask or setting its progress shows only on its row, with no message, and the row stays in place', async () => {
@@ -600,15 +635,18 @@ test('the sync state is waiting while an Undo shows or offline, sending while se
   assert.equal(app.syncState, 'idle');
 });
 
-/* Holding a row or card on Today and moving it to a new date (app/throw.js). Move all to today does the same one task
-   at a time. Each move has an Undo for a few seconds that restores the date and time the task had. There is no screen
-   here. `seen` holds the tasks whose row is in sight once the task is in its new place (rowSeen). That decides where
-   the message with the Undo appears, on the task's row or by the add box. */
+/* Holding a row or card on Today and moving it to a new date (app/throw.js). Each move is a `due` op sent through the
+   outbox, as Move all to today's are. Each move has an Undo for a few seconds that restores the date and time the task
+   had. There is no screen here. `seen` holds the tasks whose row is in sight once the task is in its new place
+   (rowSeen). That decides where the message with the Undo appears, on the task's row or by the add box. The outbox is
+   emptied after each test. */
 const onToday = (c, list, cardsBy = {}) => {
   c?.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
-  const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts, sending), seen = new Set(list.map(t => t.id));
+  c?.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  const v = fakeVikunja(list), app = component(tasks, actions, cards, alerts, sending, acts, outbox), seen = new Set(list.map(t => t.id));
   const shown = id => app.listBase.some(g => g.tasks.some(t => t.id === id));       // whether the task is on one of Today's lists as drawn
-  Object.assign(app, { setBadge(){}, lines: {}, positions: {}, route: { name: 'today' }, pending: [], flashed: {}, flash(ids, kind){ this.flashed[kind] = ids; },
+  Object.assign(app, { setBadge(){}, lines: {}, positions: {}, route: { name: 'today' }, pending: [], failed: [], slow: [], user: { id: 1 }, flushing: false, cap: {},
+    sheet: { id: null, sub: {} }, places: {}, endPlace(){}, aimSent(){}, toasts: [{}], flashed: {}, flash(ids, kind){ this.flashed[kind] = ids; },
     $nextTick: async () => {}, rowSeen: id => seen.has(id) && shown(id) });
   app.view = { groups: todayGroups(), cards: cardsBy };
   for (const t of list) app.row(v.task(t.id));
@@ -670,7 +708,7 @@ test('every date changed by a hold has an Undo that restores the date and time t
   await moveTo(app, app.tasks[3], new Date(2026, 9, 8), 'Tomorrow');
   await app.toast.action.fn();
   assert.deepEqual([v.task(3).due_date, key(3)], [ZERO, 'nodate'], 'a task that had no date has none again');
-  // Tapping Undo before Vikunja answers the move makes Undo wait for the answer, then restore the date.
+  // Undo tapped before Vikunja answers the move is sent after it, and restores the date.
   const real = globalThis.fetch;
   let answer;
   const held = new Promise(r => { answer = r; });
@@ -683,22 +721,44 @@ test('every date changed by a hold has an Undo that restores the date and time t
   assert.equal(await going, true);
   await undone;
   assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'the task is moved and then moved back');
-  // If the task changed elsewhere since the move, Undo leaves it as it is and shows a message.
+  // A change to the task's title since the move doesn't stop Undo. A change to its date does, and Undo says so.
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  v.task(1).title = 'Call the plumber about the boiler';
+  await app.toast.action.fn();
+  assert.deepEqual([v.task(1).due_date, key(1)], [at(7, 16), 'today'], 'Undo puts the date back');
   await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
   const undo = app.toast.action;
-  v.task(1).updated = new Date(2026, 9, 7, 14, 30).toISOString();
+  v.task(1).due_date = at(10, 16);
   await undo.fn();
-  assert.deepEqual([v.task(1).due_date, key(1)], [at(9, 16), 'week'], 'Undo does not overwrite the newer change');
+  assert.deepEqual([v.task(1).due_date, app.tasks[1].due_date, key(1)], [at(10, 16), at(10, 16), 'week'], 'Undo leaves the newer date, and the row shows it');
   assert.deepEqual([app.toast.msg, app.toast.place, app.toast.cls], ['1 task couldn\'t be moved back (changed since, or not saved) and is still due Fri 9.', 'cap', 'failed']);
 });
 
-test('a move that is not saved goes back and shows a message with Try again, and its Undo then does nothing', async c => {
+test('a move made offline shows at once and waits, Undo takes it back without sending, and a later move replaces it', async c => {
   const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
   app.view.groups[1].tasks.push(app.tasks[1]);
-  v.trouble = () => 'offline';
+  app.offline = true;
+  assert.equal(await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9'), true);
+  // The unit tests have no IndexedDB, so the outbox is kept in memory, and Pocket also asks to be kept open.
+  const moved = app.toasts.find(x => x.msg === 'Moved to Fri 9');
+  assert.deepEqual([app.tasks[1].due_date, key(1), moved.action.label, moved.row.id], [at(9, 16), 'week', 'Undo', 1], 'the row moves, and the message is the same as online');
+  await moved.action.fn();
+  assert.deepEqual([app.tasks[1].due_date, key(1), sync.all(1).length, v.requests.length], [at(7, 16), 'today', 0, 0], 'Undo takes the move out of the outbox');
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 8), 'Tomorrow');
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  assert.deepEqual(sync.all(1).map(e => [e.was, e.due]), [[at(7, 16), at(9, 16)]], 'the second move takes the place of the first');
+  app.offline = false;
+  await app.flush();
+  assert.deepEqual([v.requests.filter(r => r.method === 'PATCH').length, v.task(1).due_date], [1, at(9, 16)]);
+});
+
+test('a move Vikunja refuses goes back and shows a message with Try again, and its Undo then does nothing', async c => {
+  const { v, app, at, key } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
+  app.view.groups[1].tasks.push(app.tasks[1]);
+  v.trouble = () => 403;
   assert.equal(await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9'), false);
-  assert.deepEqual([app.tasks[1].due_date, key(1)], [at(7, 16), 'today'], 'the task is back where it was');
-  assert.deepEqual([app.toast.msg, app.toast.action.label, app.toast.cls], ['Not saved: no connection', 'Try again', 'failed']);
+  assert.deepEqual([app.tasks[1].due_date, key(1), sync.all(1).length], [at(7, 16), 'today', 0], 'the task is back where it was, and the move is not kept');
+  assert.deepEqual([app.toast.msg, app.toast.action.label, app.toast.cls], ['Not saved: HTTP 403 from the fake', 'Try again', 'failed']);
   const sent = v.requests.length;
   await app.toasts.at(-2).action.fn();
   assert.deepEqual([app.toasts.at(-2).msg, v.requests.length], ['Moved to Fri 9', sent], 'the Undo from the move has nothing to restore');

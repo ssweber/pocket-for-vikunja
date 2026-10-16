@@ -58,3 +58,10 @@ export function movedDue(due, day, now = new Date()){
   d.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());
   return (isLate(d.toISOString(), now) ? startOfDay(day) : d).toISOString();
 }
+// The day a task was moved to, as "Moved to …" names it: "Today", "Tomorrow", or else "Thu, Oct 15" (with the year when
+// it isn't this year). Null with no date.
+export function dayName(due, now = new Date()){
+  if (!isSet(due)) return null;
+  const d = new Date(due), n = Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
+  return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : d.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined});
+}

@@ -90,11 +90,6 @@ export default {
   },
   // Whether a task is still as Pocket last saved it. Undo checks this so it doesn't overwrite a change made elsewhere.
   async unchanged(t){ const now = await api('/tasks/' + t.id); return !t.updated || now.updated === t.updated; },
-  // Saves [task, patch] pairs and resolves to the tasks that saved.
-  async saveEach(pairs){
-    const results = await Promise.allSettled(pairs.map(([t, patch]) => this.saveTask(t.id, patch)));
-    return pairs.filter((p, i) => results[i].status === 'fulfilled').map(([t]) => t);
-  },
 
   /* ---------- done, and not done again ---------- */
   /* Toggle a task from any row or sheet. A checklist and its steps go through the outbox instead. Ticking a task
@@ -369,7 +364,7 @@ export default {
     if (copyOf(t.id)?.project_id !== pid) return;                        // the move failed
     const undo = async () => {
       if (this.sheet.id !== t.id || await this.save({project_id: from}) === false) return;   // save says why it failed
-      const left = moved.length - (await this.saveEach(moved.map(k => [k, {project_id: k.was}]))).length;
+      const left = (await Promise.allSettled(moved.map(k => this.saveTask(k.id, {project_id: k.was})))).filter(r => r.status === 'rejected').length;
       if (left) this.say(`Moved back, but not ${left === 1 ? '1 subtask' : left + ' subtasks'}`, {place: at, cls: 'failed'});
       else this.said = 'Moved back to ' + (this.projById.get(from)?.title || 'its project');
       this.sheet.dirty = true;
@@ -437,62 +432,66 @@ export default {
   // Whether Move all to today has anything to move. Repeating tasks and repeating checklists don't count.
   get overdueMovable(){ return this.overdueTasks.some(t => !repeats(t) && this.role(t) !== 'template'); },
   /* Move overdue tasks to today, keeping their time of day. Repeating tasks and repeating checklists stay, because
-     moving them would change their schedule. The result shows under Overdue with an Undo that restores each date.
-     `reschedule` uses the same save and Undo for one held row. */
+     moving them would change their schedule. Each task's move is a `due` op, and they are queued together, so the
+     message under Overdue shows at once, online or offline. Its Undo undoes each op. A move Vikunja refuses stays in
+     the Outbox, as any op does. */
   async moveOverdueToToday(){
     // A card counts its own task and those of its subtasks that are overdue themselves (overdueTasks).
     const overdue = this.overdueTasks, tasks = overdue.filter(t => !repeats(t) && this.role(t) !== 'template');
     const tpl = overdue.filter(t => this.role(t) === 'template').length, stay = overdue.length - tasks.length - tpl;
     const stays = [stay && `${stay === 1 ? '1 repeating task stays' : stay + ' repeating tasks stay'}. Tick ${stay === 1 ? 'it' : 'them'} to move ${stay === 1 ? 'it to its' : 'them to their'} next date.`,
       tpl && `${tpl === 1 ? '1 checklist stays' : tpl + ' checklists stay'}. Start ${tpl === 1 ? 'it' : 'them'} to move ${tpl === 1 ? 'it to its' : 'them to their'} next date.`].filter(Boolean).join(' ');
-    if (!tasks.length && stays) { this.say(movedText(0, 0, stays), {place: 'overdue'}); return; }
+    if (!tasks.length && stays) { this.say(movedText(0, stays), {place: 'overdue'}); return; }
     if (!tasks.length || this.movingOverdue) return;
     this.movingOverdue = true;
-    const now = new Date(), moves = tasks.map(t => ({t, was: t.due_date, due: movedDue(t.due_date, now, now)}));
-    const moved = await this.saveEach(moves.map(m => [m.t, {due_date: m.due}]));
-    this.movingOverdue = false;
-    const left = moves.length - moved.length, n = moved.length;
-    if (!n) return this.say(this.offline ? 'Not moved: no connection' : 'Not moved: Vikunja didn\'t save the changes', {place: 'overdue', cls: 'failed'});
-    this.say(movedText(n, left, stays), {place: 'overdue', action: this.undoMoves(moves.filter(m => moved.includes(m.t)), 'today', {place: 'overdue'}, () => this.render())});
+    const now = new Date(), moves = tasks.map(t => ({id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: movedDue(t.due_date, now, now), run: null}));
+    const sending = this.actAll(moves);
+    const undo = async () => {
+      const {left} = await this.undoOps(moves);
+      this.render();
+      const k = await left;
+      if (k) { this.say(notMovedBack(k, 'today'), {place: 'overdue', cls: 'failed'}); this.render(); }
+    };
+    this.say(movedText(moves.length, stays), {place: 'overdue', action: {label: 'Undo', fn: undo}});
     this.render();
+    await sending;
+    this.movingOverdue = false;
   },
-  /* Undo each {t, was} move, except for a task that was changed elsewhere since. For the tasks that could not be
-     moved back, a message at `at` names the date they still have (`still`), or says they have no date when `still`
-     is null. The moves that were undone are passed to after(back) to update the screen. */
-  undoMoves(moves, still, at, after){
-    return {label: 'Undo', fn: async () => {
-      const same = [];                                                      // tasks not changed elsewhere since
-      for (const m of moves) if (await this.unchanged(m.t).catch(() => false)) same.push(m);
-      const back = await this.saveEach(same.map(m => [m.t, {due_date: m.was}]));
-      const k = moves.length - back.length;
-      if (k) this.say(notMovedBack(k, still), {...at, cls: 'failed'});
-      after(same.filter(m => back.includes(m.t)));
-    }};
-  },
-  /* Move a held Today row to `to.due` at once, then save it and offer Undo. On a card, only the parent's date
+  /* Move a held Today row to `to.due` at once, as a `due` op, and offer Undo. On a card, only the parent's date
      changes. If an earlier subtask keeps the card where it is, a message beside the add box says why. Undo is shown
-     on the destination row, or beside the add box if the row left Today or is offscreen. A failed save puts the
-     task back in its old group and shows Try again. */
+     on the destination row, or beside the add box if the row left Today or is offscreen. Undo undoes the op, sent or
+     not. When Vikunja refuses the move, the op leaves the outbox, and the task goes back to its old group with Try
+     again. */
   async reschedule(t, to){
-    const c = this.view.cards?.[t.id], m = {t, was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
-    const moving = this.change(w => w.edit(t.id, {due_date: to.due}));
+    const c = this.view.cards?.[t.id], m = {was: t.due_date, when: c ? c.when : undefined, key: this.todayKey(t)};
+    const op = {id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: to.due, run: null}, sending = this.act(op, true);
     this.placeOnToday(t, to.due);
     // A task due on that date goes in the same group as a task waiting to be sent with that date (pendingPlace).
     const want = this.pendingPlace({due_date: to.due}), kept = c && this.todayKey(t) !== want && c.when !== t.due_date
       ? this.cardSubs(t, false).filter(s => !s.done && isSet(s.due_date)).sort((a, b) => Date.parse(a.due_date) - Date.parse(b.due_date))[0] : null;
-    const saving = this.saveTask(t.id, {due_date: to.due}).then(() => { this.change(() => moving.ok()); return null; }, e => e);
-    // Undo waits for the save to finish, then puts the task back and highlights it.
-    const back = this.undoMoves([m], to.label && dayWord(to.label), {place: 'cap'}, done => { if (done.length) { this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived'); } });
-    const undo = {label: 'Undo', fn: async () => { if (!await saving) await back.fn(); }};
+    // Undo puts the task back and highlights it at once. If the date has changed since, the task goes where its date is.
+    let failed = false;
+    const undo = {label: 'Undo', fn: async () => {
+      if (failed) return;
+      const {left} = await this.undoOps([op]);
+      this.placeOnToday(t, m.was, m.when, m.key); this.flash([t.id], 'arrived');
+      if (!await left) return;
+      this.placeOnToday(t, t.due_date, undefined, m.key);
+      this.say(notMovedBack(1, to.label && dayWord(to.label)), {place: 'cap', cls: 'failed'});
+    }};
     await this.$nextTick();                                                 // waits until the row has moved
     const text = movedTo(to.label, kept?.title), where = this.say(text, {row: !kept && this.rowSeen(t.id) ? {id: t.id, stays: true} : null, place: 'cap', action: undo});
-    const e = await saving;
-    if (!e) return true;
-    this.change(() => moving.undo());
+    const r = await sending;
+    if (r.status !== 'error') return true;
+    // A move whose answer is unknown stays in the Outbox, where the user checks it first.
+    const e = r.error, unknown = e.code === 'unknown';
+    failed = true;
+    if (!unknown) { await sync.lock(() => sync.remove(r.entry)); this.refreshPending(); }
     this.placeOnToday(t, m.was, m.when, m.key);
-    if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false);   // the save failed, so the Undo beside the add box has nothing to undo
+    if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false);   // the move failed, so the Undo beside the add box has nothing to undo
     await this.$nextTick();                                                 // waits until a task that left Today has its row back
-    this.say(notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap', action: {label: 'Try again', fn: () => this.reschedule(t, to)}});
+    this.say(unknown ? notKnown(e.what) : notSaved(e), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'cap',
+      action: unknown ? toOutbox(this) : {label: 'Try again', fn: () => this.reschedule(t, to)}});
     return false;
   },
   // The key of the Today group that task `t` is in, or null.

@@ -350,7 +350,7 @@ export default {
       this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message.replace(/\.$/, '')}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
     } else if (other.length) {
       const e = other[0].error, what = e.what || 'A change made offline';
-      this.notify(e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e)), other[0].kept ? toOutbox(this) : null);
+      this.notify(e.said || (e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e))), other[0].kept ? toOutbox(this) : null);
     } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
     if (sent || errors.length) this.render();
   },
@@ -367,13 +367,16 @@ export default {
     this.change(w => w.keyOps());
     this.markSlow();
   },
-  /* How many photos and files wait to upload for each task, by task id (`waiting.files`). Each key is written
-     separately (intoKeys) when the outbox changes, so a row that reads its own task's entry (rowMeta) redraws only when
-     that entry changes. Without this, every row searched the whole outbox whenever anything in it changed, and adding
-     a task to a long list made every row search it twice. The ops waiting on a task are in opsOn (keyOps, tasks.js). */
+  /* How many photos and files wait to upload for each task, by task id (`waiting.files`), and the tasks whose op has
+     waited a while, under the key the op names (`waiting.dues`, an op's `waiting`). Each key is written separately
+     (intoKeys) when the outbox changes, so a row that reads its own task's entry (rowMeta) redraws only when that entry
+     changes. Without this, every row searched the whole outbox whenever anything in it changed, and adding a task to a
+     long list made every row search it twice. The ops waiting on a task are in opsOn (keyOps, tasks.js). */
   keyWaiting(){
-    const out = {files: {}};
+    const out = {files: {}, dues: {}}, slow = new Set(this.slow);
     for (const e of this.pending) {
+      const w = e.kind === 'act' && OPS[e.op]?.waiting;
+      if (w && slow.has(e.id)) out[w][opsId(e.task)] = true;
       if (e.taskId) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) out.files[e.taskId] = (out.files[e.taskId] || 0) + 1;
     }
     for (const k in out) intoKeys(this.waiting[k], out[k], raw);
@@ -384,7 +387,7 @@ export default {
     clearTimeout(waitTimer);
     const was = new Set(this.slow), still = this.pending.filter(e => was.has(e.id)).map(e => e.id);
     const {slow: more, next} = slowness(this.pending.filter(e => !was.has(e.id)), Date.now(), this.offline), slow = [...still, ...more];
-    if (slow.join() !== this.slow.join()) this.slow = slow;
+    if (slow.join() !== this.slow.join()) { this.slow = slow; this.keyWaiting(); }
     this.waitShown = slow.length > 0;
     if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },

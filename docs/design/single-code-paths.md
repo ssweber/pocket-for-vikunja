@@ -561,6 +561,7 @@ checks that Vikunja changed once. A phase that makes a change work offline also 
    Built so far: 5a, so every request `LINE_STEPS` sends has a key, and `findSent` is gone. 5b is built, and phase 5
    waits for the user's phone check.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. "Phase 6 in detail" has the steps.
+   Built so far: 6a, the `due` op with its `invert` and `merge`, sent by a held row on Today and by Move all.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`. Dropping a failed add from the Outbox when no line of its
    batch is still waiting leaves its parent's progress unwritten. Phase 7 fixes that when it changes how progress is

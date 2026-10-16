@@ -318,6 +318,7 @@ try {
     await expect(placeLine(page, 'overdue')).toContainText(/^Moved \d+ to today\. \d+ repeating tasks? stays?\. Tick/);
     await expect(placeLine(page, 'overdue').getByRole('button', { name: 'Undo' })).toBeVisible();
     await noToast(page);
+    await synced(page);                                                      // the moves are sent after the rows move
     if (new Date((await (await api('/tasks/' + daily.id)).json()).due_date).getTime() !== due.getTime()) throw new Error('the repeating task was moved');
     await api('/tasks/' + daily.id, { method: 'DELETE' });
     // The task keeps its 9:00 time. If 9:00 has already passed today, it is due today with no time.
@@ -327,6 +328,7 @@ try {
     if (moved.getTime() !== want.getTime()) throw new Error('moved to ' + moved);
     await placeLine(page, 'overdue').getByRole('button', { name: 'Undo' }).click();
     await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
+    await synced(page);
     const back = new Date((await (await api('/tasks/' + made.id)).json()).due_date);
     if (back.getTime() !== due.getTime()) throw new Error('Undo moved the task to ' + back);
   });

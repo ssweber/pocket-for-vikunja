@@ -78,10 +78,9 @@ test('the add box says where the tasks just added went', () => {
 });
 
 test('Move all to today reports how many tasks moved and which tasks stayed', () => {
-  assert.equal(movedText(6, 0, ''), 'Moved 6 to today');
-  assert.equal(movedText(1, 2, ''), 'Moved 1 to today. 2 weren\'t saved and are still overdue.');
-  assert.equal(movedText(2, 0, '1 repeating task stays: tick it.'), 'Moved 2 to today. 1 repeating task stays: tick it.');
-  assert.equal(movedText(0, 0, '1 repeating task stays: tick it.'), 'Nothing moved. 1 repeating task stays: tick it.');
+  assert.equal(movedText(6, ''), 'Moved 6 to today');
+  assert.equal(movedText(2, '1 repeating task stays: tick it.'), 'Moved 2 to today. 1 repeating task stays: tick it.');
+  assert.equal(movedText(0, '1 repeating task stays: tick it.'), 'Nothing moved. 1 repeating task stays: tick it.');
   assert.equal(sentLater('Done'), 'Done. It\'s sent once Pocket reaches Vikunja.');
 });
 

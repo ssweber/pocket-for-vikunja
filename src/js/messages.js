@@ -2,7 +2,7 @@
 // the text, so the unit tests can check it.
 import {andList} from './util.js';
 import {NetError} from './api.js';
-import {dueInfo, fmtTime} from './dates.js';
+import {dayName, dueInfo, fmtTime} from './dates.js';
 import {parseStep} from './checklists.js';
 import {htmlToText} from './html.js';
 
@@ -35,13 +35,11 @@ export function addedWhere({n, subs = 0, project, due = null, photos = 0, but = 
 }
 
 /* The message that Move all to today shows under Overdue. `n` is how many tasks moved, and `stays` is a sentence about
-   what stayed where it was. `left` is how many tasks Vikunja didn't save. */
-export function movedText(n, left, stays){
-  if (!n) return stays ? 'Nothing moved. ' + stays : 'Nothing moved. Vikunja didn\'t save the changes.';
-  return `Moved ${n} to today` + (left ? `. ${left === 1 ? '1 wasn\'t' : left + ' weren\'t'} saved and ${left === 1 ? 'is' : 'are'} still overdue.` : '')
-    + (stays ? (left ? ' ' : '. ') + stays : '');
-}
+   what stayed where it was. */
+export const movedText = (n, stays) => !n ? 'Nothing moved. ' + stays : `Moved ${n} to today` + (stays ? '. ' + stays : '');
 
+// The message when an Undo finds that the task changed since, and leaves it as it is.
+export const changedSince = title => `Not undone: “${title}” has changed since then`;
 // The message when Undo can't move `k` tasks back, after Move all to today or after the user held a task on Today and
 // moved it. The tasks changed since, or were not saved. `still` is the date they are still due ("today"), or null when
 // their date was removed and they are still without one.
@@ -118,6 +116,8 @@ export const OP_WORDS = {
   delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
     refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
   position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
+  // A new date, named as the message after a move names it.
+  due: {text: (a, title, r) => `${movedTo(dayName(a.due))}: ${row(title, r)}`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},
   // An add's line, under what it goes under (`a.over`).
   add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
     refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},

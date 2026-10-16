@@ -145,7 +145,7 @@ export function component(...parts){
   const c = {
     server: 'http://vikunja.test', signedIn: true, offline: false, writing: 0,
     tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
-    waiting: { files: {} }, opsOn: {}, slideClaim: {}, dropping: [], failed: [],
+    waiting: { files: {}, dues: {} }, opsOn: {}, slideClaim: {}, dropping: [], failed: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
     say(msg, { row = null, place = null, action = null, cls = '' } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},

@@ -11,7 +11,7 @@
    leaves the four dates open to tap, with Pick a date… in the middle. A date that would leave the task as it is
    (Today, on a task due later today) is dimmed. It is never moved or hidden. To change which date is where, or any
    number, change THROW. */
-import {addDays, isSet, movedDue, startOfDay} from './dates.js';
+import {addDays, dayName, isSet, movedDue, startOfDay} from './dates.js';
 import {ZERO} from './util.js';
 
 export const THROW = {
@@ -104,9 +104,8 @@ export function throwEnd({commit, on = null, flick = null, out = false, why = nu
 export function throwDate(due, value, now = new Date()){
   const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(value || ''), day = m && new Date(+m[1], m[2] - 1, +m[3]), today = startOfDay(now);
   if (!day || day < today) return null;
-  const to = movedDue(due, day, now), n = Math.round((day - today) / 864e5);
-  const label = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : day.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric', year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined});
-  return {id: 'pick', day, due: to, label, dim: isSet(due) && Date.parse(to) === Date.parse(due)};
+  const to = movedDue(due, day, now);
+  return {id: 'pick', day, due: to, label: dayName(to, now), dim: isSet(due) && Date.parse(to) === Date.parse(due)};
 }
 // The day `due` is on, as a date picker writes it ("2026-10-15"). With no date, today.
 export const dateValue = (due, now = new Date()) => { const d = isSet(due) ? new Date(due) : now, p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
