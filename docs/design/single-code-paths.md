@@ -491,7 +491,8 @@ are turned on in the phase that finishes their part.
 Each phase is its own commits on `dev`, and leaves the app working. Each passes `npm run lint`, `npm run test:unit`
 and `npm run test:local`. Each phase that moves an op adds a case to `tests/offline.mjs`: make the change offline,
 reload Pocket, reconnect, and check Vikunja's copy. It also sends each request of the op twice with its key, and
-checks that Vikunja changed once.
+checks that Vikunja changed once. A phase that makes a change work offline also shortens the offline line in
+`app.html` ("Ticking off or changing tasks needs a connection"), with words the user agrees first.
 
 0. **The spike.** Done on 2026-10-15. `relay.go` and `tests/relay.mjs` came from the spike's branch, since deleted.
 1. **Ground.** Done, and checked on the user's phone and server on 2026-10-15. Delete API-token sign-in (part 6). The op registry, `app/acts.js`, and the `key` option in `api()`. The

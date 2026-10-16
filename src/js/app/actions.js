@@ -406,7 +406,7 @@ export default {
       const r = await this.act({op: 'position', task: t.id, view, pos, run: null});
       if (r.status !== 'error') return;
       this.positions[t.id] = had;
-      this.say(notReordered(r.error), {place: 'sheet:top', cls: 'failed'});
+      this.say(notReordered(r.error), {place: 'sheet:top', cls: 'failed', action: r.error.code === 'unknown' ? toOutbox(this) : null});
     };
     try {
       // A 404 means the task is already not a subtask of this parent, for example because it was detached elsewhere.
@@ -526,7 +526,8 @@ export default {
       const r = await this.act({op: 'position', task: id, view, pos, run: null});
       if (r.status !== 'error') continue;
       Object.assign(this.positions, was);
-      this.say(notReordered(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top'});
+      // A move whose answer is unknown stays in the Outbox, so the message opens it.
+      this.say(notReordered(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top', action: r.error.code === 'unknown' ? toOutbox(this) : null});
       return false;
     }
     this.saveProject();

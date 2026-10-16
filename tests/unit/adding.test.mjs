@@ -755,6 +755,19 @@ for (const [text, said] of [['Straps', 'Adding “Straps” may not have reached
     assert.deepEqual([l.msg, l.place, l.action.label], [said, 'cap', 'Outbox']);
   });
 
+for (const [text, said, button] of [['Straps', 'Adding “Straps” may not have reached Vikunja.', 'Outbox'], ['Rope\nStraps', 'Added 1 of 2. Adding “Straps” may not have reached Vikunja.', 'Undo']])
+  test(`a quick-add line whose answer is unknown is named in the add box (${text.split('\n').length} lines, ${button})`, async t => {
+    t.after(clear);
+    const { v, app } = underBox(t);
+    app.cursor = null; app.lit = {};
+    Object.assign(app, { projects: [{ id: 5, title: 'Van' }], defaultProjectId: () => 5, $refs: {}, placeSent(){}, render(){} });
+    v.trouble = r => r.method === 'POST' && r.body?.title === 'Straps' ? 'unknown' : null;
+    app.cap.text = text;
+    await app.submitCapture();
+    const l = app.toasts.find(x => /Straps/.test(x.msg));
+    assert.deepEqual([l.msg, l.place, l.action.label], [said, 'cap', button], 'Undo keeps the one button after some lines were added');
+  });
+
 test('after a pasted list with nested lines, the last direct subtask is highlighted and the next subtasks go after it', async t => {
   const { v, app, add, aimed, pos } = underBox(t);
   const sent = add('Ladder\n  Check the feet\nTables\n  Fold the legs');

@@ -146,8 +146,9 @@ export default {
         if (r.unsent.length) this.cap.text = r.unsent.join('\n');           // keep what wasn't added
         this.capPhotos = r.photos;
         const undo = r.ids.length ? {label: 'Undo', fn: () => this.deleteTasks(r.ids)} : null;
-        // A message has one button. After some lines were added, Undo keeps it.
-        if (r.error.code === 'unknown' && !undo) this.say(notKnown(r.error.what), {...err, action: toOutbox(this)});
+        // A message has one button. After some lines were added, Undo keeps it, because the header's button still
+        // opens the Outbox.
+        if (r.error.code === 'unknown') this.say((undo ? `Added ${r.ids.length} of ${n}${but}. ` : '') + notKnown(r.error.what), {...err, action: undo || toOutbox(this)});
         else this.say(r.ids.length ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}` : 'Not added: ' + r.error.message, {...err, action: undo});
       } else if (r.status === 'sent') {
         const away = (r.tasks || []).filter(t => !this.pendingPlace(t));

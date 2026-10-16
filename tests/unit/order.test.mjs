@@ -288,6 +288,17 @@ test('the cursor never points at a row that has left the list', async () => {
 
 /* The box goes back to adding a task once the highlighted row is out of sight (watchCursor). The browser's
    IntersectionObserver reports this. The test uses a fake one that reports whatever `see` gives it. */
+test('a move whose answer is unknown says so with a button that opens the Outbox, and a refused one has no button', async () => {
+  const { app, chairs, tables } = projectList();
+  const said = [];
+  Object.assign(app, { saveProject(){}, say: (msg, o) => said.push([msg, o.action?.label ?? null]), openOutbox(){} });
+  for (const error of [Object.assign(new Error('never finished'), { code: 'unknown' }), Object.assign(new Error('Forbidden'), { status: 403 })]) {
+    app.act = async () => ({ status: 'error', error });
+    await app.reorder(tables, [chairs, tables], 0, 5);
+  }
+  assert.deepEqual(said, [['Not reordered: Vikunja may or may not have this change.', 'Outbox'], ['Not reordered: Forbidden', null]]);
+});
+
 test('the box adds a task again when the highlighted row scrolls out of sight', () => {
   const { app, van, chairs } = projectList();
   let tell;
