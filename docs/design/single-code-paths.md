@@ -559,7 +559,7 @@ checks that Vikunja changed once.
    phase 5 is dropped, and Pocket writes no upgrade code. "Phase 5 in detail" has the steps.
    Built so far: 5a, so every request `LINE_STEPS` sends has a key, and `findSent` is gone. 5b is built, and phase 5
    waits for the user's phone check.
-6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
+6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. "Phase 6 in detail" has the steps.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`. Dropping a failed add from the Outbox when no line of its
    batch is still waiting leaves its parent's progress unwritten. Phase 7 fixes that when it changes how progress is
@@ -935,6 +935,90 @@ makes those callers queue ops.
 
 5a, then 5b, each passing the full `test:local` and committed. The user checks the phone once, after 5b. Before
 installing 5b, the user empties Waiting to send on each phone.
+
+## Phase 6 in detail
+
+Agreed on 2026-10-16.
+
+Phase 6 moves dates into the outbox. A date set while offline waits and is sent later, as a tick on a checklist's
+step already does. Undo of a date becomes an op that checks each field before it writes back. It is the first op with
+an `invert` and a `merge`, so it sets the pattern phases 7 to 10 follow.
+
+### What the code does today
+
+- `reschedule` (holding a row on Today and throwing it at a date chip), `moveOverdueToToday` (Move all to today) and
+  the sheet's date and repeat (`setDue`, `setRepeat`) all save with `saveTask` or `save`. None of them has a key, and
+  none works offline. Move all says "Not moved: no connection".
+- Their Undo is `undoMoves`. It reads each task (`unchanged()`) and puts the old date back only if `updated` hasn't
+  changed. Any edit to any field, even a comment, blocks the Undo.
+- Move all saves every task at once (`saveEach`) and reports how many saved.
+- A template's date has its own rules (`setDue`). Removing a template's date takes three saves: the repeat off, the
+  date and done, then the repeat back. Saved in one request, Vikunja would move the template to its next time.
+
+### The ops
+
+- **`due`** sets `due_date` on one task. Its `apply` sets the date, so the row moves at once (rule 1). Its one stage
+  is a keyed `PATCH`. It records `was`, the date before, and once answered `got`, the date Vikunja stored.
+- **`repeat`** sets `repeat_after` and `repeat_mode`, and `due_date` when a repeat needs a date and the task has none
+  (`setRepeat`). Same shape as `due`.
+- **A template's date** is a `due` op with `tpl: true`, in this phase, so every date goes one way. Its stages are the three saves `setDue` makes now, each keyed,
+  so a retry halfway through finishes the same way. Giving a template a date is one stage, as now.
+- **Move all** queues one `due` op per task. One task refused holds back only that task (`heldTasks`). The message
+  counts the ops queued, not the saves answered, so it shows at once, online or offline.
+
+### Undo
+
+As part 2 of the plan says, with these details:
+
+- `invert(a)` makes a `due` op back to `a.was`, with `check: a.got`. Its stage reads Vikunja's copy once (`c.once`).
+  If `due_date` is still `got`, it sends `was`. If not, it sends nothing and the op ends with "changed since then".
+- An Undo of a `due` op that hasn't been sent removes the op from the outbox. Nothing is sent, and the row goes back
+  through `show`, because the op is gone.
+- Undo of Move all is one inverted op per task. The tasks left alone are counted in the existing message
+  (`notMovedBack`).
+- `reschedule`'s Undo no longer waits for the save. It inverts the op, sent or not.
+- `undoMoves`, `saveEach`, `unchanged()` and `saveFor` go, unless a phase-7 caller still needs them. Then they stay
+  until phase 7, and the report says which.
+
+### Pruning
+
+`merge` for `due`: a new `due` on a task replaces an unsent `due` on that task, keeping the oldest `was`. So throwing
+a row at Tomorrow, then at Friday, while offline sends one request, and Undo returns it to where it started. `repeat`
+merges the same way.
+
+### What the user sees change
+
+1. Moving a date works offline. The row moves at once and shows the waiting mark until it is sent.
+2. Move all to today works offline, and its message shows at once.
+3. An Undo after a teammate's edit to another field (a comment, the title) now puts the date back. Only a date changed
+   since then is left alone. Agreed with the user.
+4. Rows of moved tasks show the waiting mark when sending takes a while (`waiting: 'dues'`).
+
+No new words. "Not moved: no connection" and "Not moved: Vikunja didn't save the changes" go, because Move all no
+longer fails as a whole.
+
+### Traps
+
+- **Rule 10.** Move all on a long Overdue group queues many ops at once. Each must show its row once, in one
+  `change`, not one `change` per op. Measure with `npm run perf:rows -- counts` before and after.
+- **Repeating tasks.** Move all skips them, as now. A `due` op on a repeating task (thrown at a chip) moves only that
+  occurrence's date, as now.
+- **The card.** On Today, throwing a card moves only the parent's date, as now (`reschedule`'s `kept` message).
+- **`today-moves.md`** (the gap where a moved row was) is built after this phase, not in it.
+
+### Order of work
+
+6a, the `due` op with `invert` and `merge`, `reschedule` and Move all. 6b, the sheet's date and repeat and the
+template's date. Each passes `test:local` and is committed. One phone check after 6b.
+
+### Tests
+
+- Unit: `due`'s `apply`, `invert` and `merge`. An Undo of an unsent op leaves no entry. An Undo after another
+  field changed puts the date back. An Undo after the date changed elsewhere leaves it, with the message. A
+  template's three stages finish after a lost reply halfway through.
+- `tests/offline.mjs`: Move all offline, then back online, moves every task once. Throw a row twice offline. One
+  request is sent.
+- E2e: the existing reschedule, Move all and sheet date tests pass.
 
 ## State on 2026-10-15
 
