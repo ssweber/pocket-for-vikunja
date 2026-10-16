@@ -4,6 +4,7 @@ import {api, ApiError, errText, INSTALLED, NetError, netHelp, seenToken, setOpen
 import {sync} from '../sync.js';
 import {saved} from '../lists.js';
 import {dropCopies} from './tasks.js';
+import {opOf} from '../ops/index.js';
 
 let confirming = null;                           // app.confirmAccount() while it runs
 
@@ -108,9 +109,10 @@ export default {
     // A sign-out the user chose (no `msg`) drops the saved lists and what is waiting to be sent, after asking.
     if (!msg) {
       const mine = sync.all(me);
-      const tasks = mine.filter(e => e.op === 'add' && !e.taskId), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
+      // A line not yet made counts as a task, by its waiting row. One whose task is made counts as neither.
+      const row = e => opOf(e).row(e), tasks = mine.filter(row), files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
       const count = (n, word) => n === 1 ? 'a ' + word : `${n} ${word}s`;
-      const runs = mine.filter(e => e.kind === 'run' || (e.kind === 'act' && e.op !== 'add')).length, n = tasks.length + files.length + runs;
+      const runs = mine.filter(e => e.kind === 'run' || (e.kind === 'act' && !e.taskId && !row(e))).length, n = tasks.length + files.length + runs;
       const what = [tasks.length && count(tasks.length, 'task'), files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file'),
         runs && (runs === 1 ? 'a change to a checklist' : runs + ' changes to checklists')].filter(Boolean).join(' and ');
       if (n && !confirm(`${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? 'hasn\'t' : 'haven\'t'} reached Vikunja yet. Sign out anyway and discard ${n === 1 ? 'it' : 'them'}?`)) return;

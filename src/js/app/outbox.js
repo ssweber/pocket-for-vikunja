@@ -2,8 +2,8 @@
 import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {older, sendState, sync, uuid7} from '../sync.js';
-import {OPS} from '../ops/index.js';
-import {UNKNOWN, UNSURE} from '../messages.js';
+import {dropUnder, opOf, passUps, photosOf} from '../ops/index.js';
+import {UNKNOWN} from '../messages.js';
 import {copyOf} from './tasks.js';
 
 const whenText = at => {
@@ -28,9 +28,9 @@ export default {
       } else if (e.kind === 'act') {
         // A change the relay can't vouch for wasn't refused, so its reason stands alone. A line is cancelled as its
         // waiting row's Cancel does it, until its first request is sent.
-        const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why;
-        rows.push({key: e.id, text: OPS[e.op].text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
-          drop: e.failed ? ['dropAct', e.id] : e.sent ? null : [e.op === 'add' ? 'cancelPending' : 'dropAct', e.id]});
+        const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why, op = opOf(e);
+        rows.push({key: e.id, text: op.text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
+          drop: e.failed ? ['dropAct', e.id] : e.sent ? null : [op.cancel === 'lines' ? 'cancelPending' : 'dropAct', e.id]});
       }
       // The photos and files of a line, or added from a task's sheet.
       const to = copyOf(e.taskId)?.title || e.p?.title;
@@ -91,7 +91,7 @@ export default {
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e?.failed) return;
-      if (!OPS[e.op]?.keepReads) delete e.fixed;
+      if (!opOf(e).keepReads) delete e.fixed;
       delete e.failed; e.fails = 0; e.key = uuid7();
       // A line made now writes the progress of every parent above it, which its batch may have written without it.
       if (e.above?.length) e.ups = e.above;
@@ -102,18 +102,19 @@ export default {
   },
   /* Cancel an action, but only before sending starts or after it was rejected. It asks nothing, because the message
      says what Vikunja keeps and has an Undo. Text the action held goes back to its box instead, with no Undo, so
-     the text is never both in the box and sent. An answer's text doesn't go back, because the step's comment box is
-     not where it was typed. The lines under a cancelled line wait behind it, so they are refused, and their text goes
-     back to their box. The photos of a line whose task isn't made go back to quick add. */
+     the text is never both in the box and sent. What goes back is the op's (cancel). The lines under a cancelled line
+     wait behind it, so they are refused, and their text goes back to their box. The photos of a line whose task isn't
+     made go back to quick add. */
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a) return;
+    const how = opOf(a).cancel;
     let gone = false, started = false, under = [], photos = [], kept = null;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
       if (!e.failed && e.sent) { started = true; return; }
-      if (e.op === 'add') { photos = await this.photosOf([e]); under = await this.dropUnder('pending-' + id, e.user); await this.passUps(e, under); }
+      if (how === 'lines') { photos = await photosOf([e]); under = await dropUnder('pending-' + id, e.user); await passUps(e, under); }
       kept = JSON.parse(JSON.stringify(e));
       await sync.remove(id);
     });
@@ -121,15 +122,14 @@ export default {
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
     if (photos.length && !a.parent) this.capPhotos = [...this.capPhotos, ...photos];
-    if (a.op === 'add') this.linesBack(under, said); else if (a.op !== 'answer') this.giveBack(a, said);
+    if (how === 'lines') this.linesBack(under, said); else if (how === 'text' || how === 'back') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    // Vikunja may have a change whose answer is unknown, so its words say that instead of what Vikunja keeps. A move
-    // names both dates itself (OP_WORDS.due).
-    const dropped = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), words = a.failed?.message === UNKNOWN && a.op !== 'due' ? [UNSURE, a.op === 'note' && dropped] : [dropped];
-    const back = said.back && a.op !== 'note' && (a.op === 'add' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
+    // The op's words say what Vikunja keeps, or that it may or may not have a change whose answer is unknown.
+    const words = [opOf(a).dropped(a, a.label || this.actTitle(a.task))];
+    const back = said.back && how !== 'back' && (how === 'lines' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
     // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
     // again, as before.
-    const undo = said.back || a.op === 'add' || a.op === 'note' ? null : {label: 'Undo', fn: async () => {
+    const undo = said.back || how === 'lines' || how === 'back' ? null : {label: 'Undo', fn: async () => {
       const e = kept; kept = null;
       if (!e) return;
       await sync.lock(() => sync.add(e, []));

@@ -1,15 +1,15 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
-import {raw, userCache, ZERO} from '../util.js';
+import {raw, userCache} from '../util.js';
 import {api, ApiError, items, NetError, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {patiently} from '../checklists.js';
 import {isSet, startOfDay} from '../dates.js';
 import {addedWhere, cancelName, doneText, notKnown, toOutbox, UNSURE} from '../messages.js';
 import {parseCapture} from '../quickadd.js';
-import {fileEntry, held, heldTasks, hold, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7, waits} from '../sync.js';
+import {fileEntry, held, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
-import {addLines, LINE, madeStage, noneWaiting, OPS} from '../ops/index.js';
-import {stageContext} from './acts.js';
+import {addLines, LINE, linesUnder, madeStage, noneWaiting, opOf, passUps} from '../ops/index.js';
+import {heldTasks, hold, stageContext, waits} from './acts.js';
 import {opsId, savedScreen} from './tasks.js';
 
 let waitTimer;
@@ -375,7 +375,7 @@ export default {
   keyWaiting(){
     const out = noneWaiting(), slow = new Set(this.slow);
     for (const e of this.pending) {
-      const w = e.kind === 'act' && OPS[e.op]?.waiting;
+      const w = e.kind === 'act' && opOf(e).waiting;
       if (w && slow.has(e.id)) out[w][opsId(e.task)] = true;
       if (e.taskId) for (const f of e.files || []) if (!f.sent && !this.dropping.includes(f.key)) out.files[e.taskId] = (out.files[e.taskId] || 0) + 1;
     }
@@ -396,18 +396,16 @@ export default {
   waitText(id){ return !this.slow.includes(id) ? '' : this.offline ? 'Waiting for a connection' : 'Sending…'; },
   // The label of a waiting row's Cancel, which says what becomes of the lines waiting under it.
   cancelLabel(t){ return cancelName(t.title, this.pending.filter(x => x.under === t.id).length, [...this.pending, ...this.failed].find(x => x.id === t.entry)?.over); },
-  /* Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent. A waiting
-     row is the same object while nothing in it changes, so a group with a waiting row compares as unchanged
-     (sameGroup, lists.js). A line whose answer is unknown keeps its row, so the lines under it stay under it. */
+  /* The waiting rows of the ops in the outbox (their op's row), shaped like tasks so they can sit in the lists where
+     they'll land once sent. A waiting row is the same object while nothing in it changes, so a group with a waiting
+     row compares as unchanged (sameGroup, lists.js). A line whose answer is unknown keeps its row, so the lines under
+     it stay under it. */
   get pendingTasks(){
-    const out = [], seen = new Set();
-    for (const e of this.failed.some(x => x.op === 'add') ? [...this.pending, ...this.failed].sort(older) : this.pending) {
-      if (e.op !== 'add' || e.taskId) continue;
-      // The parent is the line this line goes under, by that line's waiting-row id until that line is sent, and by its
-      // task id after. Or it is the task the subtask box added to.
-      const p = e.p, t = {id: 'pending-' + e.id, pending: true, waits: !!e.failed || this.slow.includes(e.id), entry: e.id, sent: !!e.sent, child: e.under != null, parent: opsId(e.under) ?? null, title: p.title,
-        done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0, due_date: p.due || ZERO, project_id: p.project?.id || e.pid,
-        labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0, waiting: (e.files || []).filter(f => !f.sent).length};
+    const out = [], seen = new Set(), rowOf = e => opOf(e).row(e);
+    for (const e of this.failed.some(rowOf) ? [...this.pending, ...this.failed].sort(older) : this.pending) {
+      const row = rowOf(e);
+      if (!row) continue;
+      const t = {...row, waits: !!e.failed || this.slow.includes(e.id)};
       const k = t.id, had = waitingRows.get(k);
       seen.add(k);
       if (had && JSON.stringify(had) === JSON.stringify(t)) out.push(had); else { waitingRows.set(k, t); out.push(t); }
@@ -502,10 +500,10 @@ export default {
       const e = await sync.fresh(id);
       if (!e || e.sent) { sent = true; return; }                              // sent while this call waited for the lock
       raw = e.raw.trim(); title = e.p?.title || raw; parent = e.parent || null; over = e.over || '';
-      const kids = sync.all(e.user).filter(x => x.op === 'add' && x.under === 'pending-' + id);
+      const kids = linesUnder('pending-' + id, sync.all(e.user));
       rest = kids.length;
       for (const x of kids) await sync.save(Object.assign(x, {under: e.under, over: e.over, pid: e.pid}));
-      await this.passUps(e);
+      await passUps(e);
       await sync.remove(id);
     });
     this.refreshPending();
@@ -517,14 +515,6 @@ export default {
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
     const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
     this.say(['Cancelled.', raw && box && `“${title}” is back where you typed it.`, rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`)].filter(Boolean).join(' '), {place});
-  },
-  /* Line `e` leaves the outbox unsent, and the lines in `gone` leave with it. The parents' progress they were to write
-     goes to the line before `e` in its batch, or else the line after it, so it is still written. Runs inside the
-     outbox's lock. */
-  async passUps(e, gone = []){
-    const out = new Set([e, ...gone].map(x => x.id)), ups = [...new Set([e, ...gone].flatMap(x => x.ups || []))].filter(u => !out.has(String(u).replace(/^pending-/, '')));
-    const batch = sync.all(e.user).filter(x => x.batch === e.batch && !out.has(x.id) && x.stage < OPS.add.stages.length - 1), before = batch.filter(x => x.n < e.n).at(-1), after = batch.find(x => x.n > e.n);
-    if (ups.length && (before || after)) await sync.save(before ? Object.assign(before, {ups: [...before.ups || [], ...ups]}) : Object.assign(after, {ups: [...ups, ...after.ups || []]}));
   },
   // Cancel the upload of a waiting photo or file. Its row disappears at once, but an upload already running finishes
   // first.

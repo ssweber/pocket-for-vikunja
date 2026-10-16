@@ -13,7 +13,7 @@ import {app, raw} from '../util.js';
 import {api} from '../api.js';
 import {intoKeys} from '../lists.js';
 import {sync} from '../sync.js';
-import {OPS} from '../ops/index.js';
+import {opOf, OPS} from '../ops/index.js';
 
 const forgotten = new Set();                     // tasks deleted this session, which copies kept on the phone may still hold
 // Whether a field is the same as Vikunja gave it. Lists and objects compare by content, since Vikunja writes them in one order.
@@ -63,7 +63,7 @@ const writing = () => { if (!depth) throw new Error('Write the store inside chan
    this too, or an op filed under the new id would vanish from the step's row. */
 export const opsId = task => typeof task === 'string' ? sync.taskOf(task.replace(/^pending-/, '')) ?? task : task;
 // The ids of the tasks an outbox entry changes (an op's `on`).
-const shownOn = a => OPS[a.op].on?.(a) || [opsId(a.task)];
+const shownOn = a => opOf(a).on(a);
 // A key of opsOn as the task id it stands for. A task not yet sent has a string id.
 const idOf = k => /^\d+$/.test(k) ? +k : k;
 const drop = (id, e, failed = false) => {
@@ -175,7 +175,7 @@ function offTasks(a){
    forgotten. */
 function answered(a, got, posted = null){
   writing();
-  const op = OPS[a.op], ids = shownOn(a);
+  const op = opOf(a), ids = shownOn(a);
   const real = t => !t.comments?.some(c => c.id === a.id) ? t : {...t, comments: t.comments.map(c => c.id !== a.id ? c : posted || {...c, waiting: false})};
   for (const id of ids) {
     const had = copies.get(id);
@@ -184,7 +184,8 @@ function answered(a, got, posted = null){
   }
   if (got?.id === opsId(a.task)) answer([got], TASK);
   offTasks(a);
-  if (a.op === 'delete') forgetTree(a.ids);
+  const deleted = op.deletes(a);
+  if (deleted.length) forgetTree(deleted);
 }
 // Remove a deleted task from the lists on screen, and remember it was deleted, so no read brings it back.
 function forget(id){ answer([{id}], null); }
@@ -266,7 +267,7 @@ export default {
     return (edits.get(id) || []).reduce((x, e) => ({...x, ...e.fields}), this.withOps(id, b));
   },
   // `t` with the ops waiting on task `id` applied in order. A step still being inserted gets its ops this way too.
-  withOps(id, t){ return this.opsOf(id).reduce((x, a) => OPS[a.op].apply(x, a), t); },
+  withOps(id, t){ return this.opsOf(id).reduce((x, a) => opOf(a).apply(x, a), t); },
   // The ops waiting in the outbox that change task `id`, in the order they will be sent.
   opsOf(id){ return this.opsOn[id] || []; },
   // The row for task `t` as a read gave it: the row already on screen, or a new one. Call it outside a change, since
@@ -300,7 +301,7 @@ export default {
     return kept.map(t => this.tasks[t.id]);
   },
   // Whether a waiting delete, held for Restore or not, deletes task `id`.
-  beingDeleted(id){ return this.opsOf(id).some(a => a.op === 'delete' && a.ids.includes(id)); },
+  beingDeleted(id){ return this.opsOf(id).some(a => opOf(a).deletes(a).includes(id)); },
   // Hide tasks that a waiting delete deletes (beingDeleted), unless their marked rows are waiting for the batch to clear.
   get hiddenRows(){ return new Set(Object.keys(this.opsOn).map(Number).filter(id => !this.leaving[id] && this.beingDeleted(id))); },
   rowTask(id){ return this.tasks[id] || null; },

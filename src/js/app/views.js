@@ -10,6 +10,7 @@ import {batchMs, DONE_PART, doneParentIds, drawnOf, FIRST_ROWS, FOUND_PART, kept
 import {cardGroup, countdown, openSubs, todayItems} from '../cards.js';
 import {headText, moreDone} from '../messages.js';
 import {listViewOf} from '../order.js';
+import {waitingPositions} from '../ops/index.js';
 import {haptic} from '../haptics.js';
 import {tickFeel} from '../progress.js';
 import {shared} from './core.js';
@@ -466,7 +467,7 @@ export default {
     const shown = this.view.groups.find(g => g.key === 'done'), quiet = g => g.key === 'done' && shown && !shown.loaded;
     if (!await this.settle(groups.flatMap(g => quiet(g) ? [] : g.tasks.map(t => t.id)), seq)) return;
     Object.assign(this.positions, d.positions);
-    for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') this.positions[e.task] = e.pos;   // a move made while loading
+    Object.assign(this.positions, waitingPositions(this.pending));                // a move made while loading
     Object.assign(this.view, {project: d.project, listView: d.listView, groups: this.keepMarked(groups)});
     saved.set('project.last', p.id);                            // preloads now loads this project in the background
     this.saveProject();
@@ -510,7 +511,7 @@ export default {
         positions[h.id] = at < Infinity ? at : 0;
       }
       // Use the positions that moves still waiting to be sent will give.
-      for (const e of this.pending) if (e.kind === 'act' && e.op === 'position') positions[e.task] = e.pos;
+      Object.assign(positions, waitingPositions(this.pending));
     }
     return {project: p, listView: lv?.id || null, tasks, read, list, heads: headIds, positions, count: n, finished};
   },

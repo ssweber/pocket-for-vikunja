@@ -1,7 +1,8 @@
 // ESLint looks for mistakes only (a name that isn't defined, a variable never used, an import assigned to), not style,
 // and that only api.js talks to Vikunja, only util.js asks whether less motion is wanted, only lists.js decides how
-// many days Today shows, only checklists.js decides what kind of task a task is, only tasks.js writes a task's row, and
-// only the files in WRITERS write to Vikunja directly: npm run lint, which also runs scripts/check.mjs. CI runs it too.
+// many days Today shows, only checklists.js decides what kind of task a task is, only tasks.js writes a task's row, only
+// src/js/ops/ compares an op's name, and only the files in WRITERS write to Vikunja directly: npm run lint, which also
+// runs scripts/check.mjs. CI runs it too.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -16,6 +17,11 @@ const ROW = "MemberExpression[object.type='ThisExpression'][property.name=/^(tas
 // this.sheet.task and this.view.run, where the sheet and a checklist's screen kept their own copies of tasks.
 const HELD = (a, b) => `MemberExpression[object.type='MemberExpression'][object.object.type='ThisExpression'][object.property.name='${a}'][property.name='${b}']`;
 const BY_ID = "The sheet and a checklist's screen hold ids. Read this.sheet.id or this.sheetTask, and this.view.shownRun or this.runTask (tasks.js).";
+// An entry's op name, as e.op or e?.op, compared to a string (===, !==, a switch), or looked up in a list (includes).
+const OP = name => `:matches([${name}.property.name='op'], [${name}.expression.property.name='op'])`;
+const TEXT = name => `:matches([${name}.type='Literal'], [${name}.type='TemplateLiteral'])`;
+const OP_NAME = `:matches(BinaryExpression[operator=/^[!=]==?$/]:matches(${OP('left')}${TEXT('right')}, ${OP('right')}${TEXT('left')}), SwitchStatement${OP('discriminant')}, CallExpression[callee.property.name=/^(includes|indexOf|has)$/]${OP('arguments.0')})`;
+const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/js/ops/index.js), adding a field with its default there, or call a helper in the op\'s own file.';
 // The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
 // The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
 // c.send, which no selector here matches yet.
@@ -32,6 +38,7 @@ const RESTRICTED = [
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },
   { selector: "MemberExpression[object.type='ThisExpression'][property.name='opsOn']", message: "Read a task's waiting ops with this.opsOf(id) (tasks.js).", allow: ['src/js/app/tasks.js'] },
+  { selector: OP_NAME, message: BY_OP, allow: ['src/js/ops/**'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],

@@ -15,13 +15,13 @@ import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
 import {renderSeq} from './views.js';
 import {keptTicks, nextN} from './acts.js';
+import {lastTick} from '../ops/index.js';
 import {copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS} from './tasks.js';
 
 const LAST_WAIT = 600;                           // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
    when another step or countdown changes. */
 const lastSteps = new Map();
-const TICKS = ['done', 'undone', 'skip', 'doneNote'];
 
 export default {
   async openStart(id){
@@ -342,7 +342,7 @@ export default {
       const skipper = skippedBy(s), done = s.done, skipped = !!skipper, pct = Math.round((s.percent_done || 0) * 100);
       // The step waits while a tick, a skip or an untick of it is in the outbox. It looks waiting (slow) once the last
       // of them has waited long enough.
-      const tick = this.opsOf(opsId(s.id)).filter(a => TICKS.includes(a.op)).at(-1), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
+      const tick = lastTick(this.opsOf(opsId(s.id))), waiting = !!tick, slow = !!tick && this.slow.includes(tick.id);
       let doneAt = s.done_at;
       const kept = keptTicks()[s.id];
       // Compare whole seconds because tick replies include nanoseconds but later task reads do not.

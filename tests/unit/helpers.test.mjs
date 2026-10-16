@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOf } from '../../src/js/routing.js';
 import { andList, colorOf, esc, fmtSize, grow, motion, sizeLimit, taskDrafts } from '../../src/js/util.js';
-import { heldTasks, itemsOf, packParsed, sendState, slowness, unpackParsed, uuid7, waits, WAIT_MS } from '../../src/js/sync.js';
+import { itemsOf, packParsed, sendState, slowness, unpackParsed, uuid7, WAIT_MS } from '../../src/js/sync.js';
+import { heldTasks, waits } from '../../src/js/app/acts.js';
 import { addLines } from '../../src/js/ops/index.js';
 
 test('the address names the screen to show', () => {

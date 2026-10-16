@@ -11,6 +11,8 @@ import {patiently} from '../checklists.js';
 import {OP_WORDS} from '../messages.js';
 import {removeAssignee} from '../quickadd.js';
 import {ALREADY, sync, unpackParsed, uuid7} from '../sync.js';
+import {ZERO} from '../util.js';
+import {opsId} from '../app/tasks.js';
 import {figureOf} from './stages.js';
 
 const settle = (e, problem) => {
@@ -143,7 +145,58 @@ async function figures(a, c){
 // (createTask, app/sending.js).
 export const LINE = [prepare, made, label, assignee, link, arrive];
 export const madeStage = LINE.indexOf(made);
-export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figures], invert: null, merge: null, ...OP_WORDS.add};
+const pending = a => 'pending-' + a.id;
+/* A line shows as a waiting row of its own until its task is made, so it changes no task's row. A line that fails
+   holds back the lines under it (`pending`) and the ops on its task. A line waits only for a failed line it goes under,
+   never for another op on its parent. */
+export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figures], refusal: 'lines', cancel: 'lines', ...OP_WORDS.add,
+  holds: a => [pending(a), ...a.taskId ? [a.taskId] : []],
+  waitsOn: a => typeof a.under === 'string' ? [a.under] : [],
+  // The line's waiting row, shaped like a task. Its parent is the line it goes under, by that line's waiting-row id
+  // until that line is sent and by its task id after, or the task whose subtask box it was added from.
+  row(a){
+    if (a.taskId) return null;
+    const p = a.p;
+    return {id: pending(a), pending: true, entry: a.id, sent: !!a.sent, child: a.under != null, parent: opsId(a.under) ?? null, title: p.title,
+      done: !!p.done || p.pct >= 100, percent_done: (p.pct || 0) / 100, priority: p.priority || 0, position: p.position || 0, due_date: p.due || ZERO, project_id: p.project?.id || a.pid,
+      labels: [], assignees: [], repeat_after: p.repeat?.after || 0, repeat_mode: p.repeat?.mode || 0, waiting: (a.files || []).filter(f => !f.sent).length};
+  },
+  // Once the line's task is made, its photos still waiting move to an entry of their own (filesOut, app/acts.js).
+  files: a => a.taskId ? (a.files || []).filter(f => !f.sent) : [],
+  keepReads: null, invert: null, merge: null, waiting: null, sheetPlace: null, answered: null, deletes: null};
+
+/* The lines under waiting id `name` among the outbox's `entries`, in the order they were typed: only those right under
+   it, or with `deep` those at every level. */
+export function linesUnder(name, entries, deep = false){
+  const names = new Set([name]), out = [];
+  for (const x of entries) if (x.op === 'add' && names.has(x.under)) { if (deep) names.add(pending(x)); out.push(x); }
+  return out;
+}
+// Remove the lines under waiting id `name`, at every level, and return them. Runs inside the outbox's lock.
+export async function dropUnder(name, user){
+  const out = linesUnder(name, sync.all(user), true);
+  for (const x of out) await sync.remove(x.id);
+  return out;
+}
+// The photos waiting on `lines`, read before the lines leave the outbox and their bytes with them.
+export async function photosOf(lines){ return (await Promise.all(lines.flatMap(e => (e.files || []).filter(f => !f.sent).map(f => sync.file(f.key))))).filter(Boolean); }
+/* A refused line, and the lines typed after it that are not sent yet, leave the outbox. Each of them goes under it or
+   was meant to come after it. Returns their text for the box they were typed in (`unsent`), the photos added with
+   them, and the task the box added to (`parent`). Runs inside the outbox's lock. */
+export async function refuseLines(a){
+  const rest = sync.all(a.user).filter(e => e.op === a.op && e.batch === a.batch && (e.id === a.id || (!e.sent && (e.n || 0) > (a.n || 0))));
+  const photos = await photosOf(rest);
+  for (const e of rest) await sync.remove(e.id, e.taskId ?? null);
+  return {unsent: rest.filter(e => !e.taskId).map(e => e.raw), photos, parent: a.parent || null};
+}
+/* Line `e` leaves the outbox unsent, and the lines in `gone` leave with it. The parents' progress they were to write
+   goes to the line before `e` in its batch, or else the line after it, so it is still written. Runs inside the
+   outbox's lock. */
+export async function passUps(e, gone = []){
+  const out = new Set([e, ...gone].map(x => x.id)), ups = [...new Set([e, ...gone].flatMap(x => x.ups || []))].filter(u => !out.has(String(u).replace(/^pending-/, '')));
+  const batch = sync.all(e.user).filter(x => x.batch === e.batch && !out.has(x.id) && x.stage < add.stages.length - 1), before = batch.filter(x => x.n < e.n).at(-1), after = batch.find(x => x.n > e.n);
+  if (ups.length && (before || after)) await sync.save(before ? Object.assign(before, {ups: [...before.ups || [], ...ups]}) : Object.assign(after, {ups: [...ups, ...after.ups || []]}));
+}
 
 /* The lines typed together in an add box (itemsOf, sync.js), as the fields of one add op each. A line goes to the
    project it names, or else to the project of the line it is under, or else to `pid`. In a subtask box (`parent`),

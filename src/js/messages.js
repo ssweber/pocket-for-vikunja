@@ -87,7 +87,8 @@ export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja
 /* The words for each op in the outbox (src/js/ops/), by op name. `title` is the task's title as Pocket knows it, or ''.
    - text(a, title, repeated): the op's row in the Outbox. `repeated` says the step was repeated in its checklist.
    - refused(a, title): the op in a message saying Vikunja refused it, such as "A tick on “Unlock the door”".
-   - dropped(a, title): what Vikunja keeps after Cancel. `a.stage` above 0 means the first request was sent.
+   - dropped(a, title): what Vikunja keeps after Cancel. `a.stage` above 0 means the first request was sent. After an
+     unknown answer the words say that Vikunja may or may not have the change instead (keeps).
    - saved: what Vikunja already has when it refuses a later request, as in "couldn't be saved in full (it's marked
      done)". */
 const named = title => parseStep(title).title;
@@ -98,8 +99,10 @@ const REST = ' The rest of the change is not sent.';
 const EVERY = {86400: 'every day', 604800: 'every week', 1209600: 'every 2 weeks'};
 const dueWords = d => isSet(d) ? 'due ' + dayWord(dayName(d)) : 'without a date';
 const repeatText = s => s.repeat_mode === 1 ? 'Repeats every month' : !s.repeat_after ? 'Doesn\'t repeat' : 'Repeats ' + (EVERY[s.repeat_after] || `every ${s.repeat_after / 86400} days`);
-const ticked = {saved: 'it\'s marked done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays marked done in Vikunja.${REST}` : `${it(title)} stays not done in Vikunja.`};
-const unticked = {saved: 'it\'s marked not done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays not done in Vikunja.${REST}` : `${it(title)} stays done in Vikunja.`};
+const unsure = a => a.failed?.message === UNKNOWN;
+const keeps = words => (a, title) => unsure(a) ? UNSURE : words(a, title);
+const ticked = {saved: 'it\'s marked done', dropped: keeps((a, title) => a.stage > 0 ? `${it(title)} stays marked done in Vikunja.${REST}` : `${it(title)} stays not done in Vikunja.`)};
+const unticked = {saved: 'it\'s marked not done', dropped: keeps((a, title) => a.stage > 0 ? `${it(title)} stays not done in Vikunja.${REST}` : `${it(title)} stays done in Vikunja.`)};
 export const OP_WORDS = {
   done: {...ticked, text: (a, title, r) => `Done: ${row(title, r)}`, refused: (a, title) => 'A tick' + on(title)},
   doneNote: {...ticked, text: (a, title, r) => `Done, with a comment: ${row(title, r)}`, refused: (a, title) => `Marking ${title ? `“${named(title)}”` : 'a step'} done, with its comment`},
@@ -109,38 +112,39 @@ export const OP_WORDS = {
   }},
   undone: {...unticked, text: (a, title, r) => `Not done: ${row(title, r)}`, refused: (a, title) => `Marking ${title ? `“${named(title)}”` : 'a step'} not done`},
   finish: {saved: 'it\'s marked done', text: (a, title, r) => `Finishing “${row(title, r)}”`, refused: () => 'Finishing the checklist',
-    dropped: a => a.stage > 0 ? 'The checklist stays finished in Vikunja.' + REST : 'The checklist stays open in Vikunja.'},
+    dropped: keeps(a => a.stage > 0 ? 'The checklist stays finished in Vikunja.' + REST : 'The checklist stays open in Vikunja.')},
   reopen: {saved: 'it\'s marked not done', text: (a, title, r) => `Reopening “${row(title, r)}”`, refused: () => 'Reopening the checklist',
-    dropped: a => a.stage > 0 ? 'The checklist stays open in Vikunja.' + REST : 'The checklist stays finished in Vikunja.'},
-  progress: {text: (a, title, r) => `Progress: ${a.pct}% on “${row(title, r)}”`, refused: (a, title) => 'Progress' + on(title), dropped: (a, title) => `${it(title)} keeps the progress it has in Vikunja.`},
-  note: {text: (a, title, r) => `A comment on “${row(title, r)}”`, refused: (a, title) => 'A comment' + on(title), dropped: () => 'Your comment is back where you typed it.'},
+    dropped: keeps(a => a.stage > 0 ? 'The checklist stays open in Vikunja.' + REST : 'The checklist stays finished in Vikunja.')},
+  progress: {text: (a, title, r) => `Progress: ${a.pct}% on “${row(title, r)}”`, refused: (a, title) => 'Progress' + on(title), dropped: keeps((a, title) => `${it(title)} keeps the progress it has in Vikunja.`)},
+  note: {text: (a, title, r) => `A comment on “${row(title, r)}”`, refused: (a, title) => 'A comment' + on(title),
+    dropped: a => (unsure(a) ? UNSURE + ' ' : '') + 'Your comment is back where you typed it.'},
   // An answer is named by its ask's label, or by its step when it holds several answers or its ask has no label.
-  answer: {text: (a, title, r) => row(title, r), refused: (a, title) => 'Answers' + on(title), dropped(a, title){
+  answer: {text: (a, title, r) => row(title, r), refused: (a, title) => 'Answers' + on(title), dropped: keeps((a, title) => {
     const lines = answerLines(textLines(a.html)) || [], label = lines.length === 1 && lines[0].match(/^(.+?): /)?.[1];
     return lines.length > 1 ? `Your answers to ${it(title)} aren't saved.` : `Your answer to ${label ? `“${label}”` : it(title)} isn't saved.`;
-  }},
-  claim: {text: (a, title, r) => `Assigning “${row(title, r)}” to you`, refused: (a, title) => `Assigning ${title ? `“${named(title)}”` : 'it'} to you`, dropped: (a, title) => `You are not assigned to ${it(title)}.`},
-  unclaim: {text: (a, title, r) => `Unassigning you from “${row(title, r)}”`, refused: (a, title) => 'Unassigning you from ' + (title ? `“${named(title)}”` : 'it'), dropped: (a, title) => `${it(title)} stays assigned to you.`},
+  })},
+  claim: {text: (a, title, r) => `Assigning “${row(title, r)}” to you`, refused: (a, title) => `Assigning ${title ? `“${named(title)}”` : 'it'} to you`, dropped: keeps((a, title) => `You are not assigned to ${it(title)}.`)},
+  unclaim: {text: (a, title, r) => `Unassigning you from “${row(title, r)}”`, refused: (a, title) => 'Unassigning you from ' + (title ? `“${named(title)}”` : 'it'), dropped: keeps((a, title) => `${it(title)} stays assigned to you.`)},
   delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
-    refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
-  position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
+    refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: keeps((a, title) => `${it(title)} stays in Vikunja.`)},
+  position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: keeps((a, title) => `${it(title)} stays where it was in Vikunja's list.`)},
   // A new date, named as the message after a move names it. Cancel names the date before the move (`was`).
   due: {text: (a, title, r) => `${movedTo(dayName(a.due))}: ${row(title, r)}`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'),
     dropped(a, title){
       // Taking a repeating template's date off turns its repeat off first, and puts it back last (`rep`, ops/dates.js).
       // Stopped after its first request, the template has no repeat. A move whose answer is unknown names both dates,
       // unless the request in doubt is about the repeat.
-      const rep = a.fixed?.seen?.rep, unsure = a.failed?.message === UNKNOWN;
-      if (rep && (a.stage === 1 || (a.stage === 2 && !unsure))) return `${it(title)} no longer repeats, because its date was only partly removed. Set its repeat again in its sheet.`;
-      if (unsure) return rep ? UNSURE : `Vikunja may have ${it(title)} ${dueWords(a.was)} or ${dueWords(a.due)}.`;
+      const rep = a.fixed?.seen?.rep;
+      if (rep && (a.stage === 1 || (a.stage === 2 && !unsure(a)))) return `${it(title)} no longer repeats, because its date was only partly removed. Set its repeat again in its sheet.`;
+      if (unsure(a)) return rep ? UNSURE : `Vikunja may have ${it(title)} ${dueWords(a.was)} or ${dueWords(a.due)}.`;
       return `${it(title)} stays ${dueWords(a.was)}.`;
     }},
   // How a task repeats, in the words of the sheet's Repeats list. Cancel names the repeat before the change (`was`).
   repeat: {text: (a, title, r) => `${repeatText(a.set || {})}: ${row(title, r)}`, refused: (a, title) => `Changing how ${title ? `“${named(title)}”` : 'a task'} repeats`,
-    dropped: (a, title) => `${it(title)} still ${repeatText(a.was || {}).toLowerCase()}.`},
+    dropped: keeps((a, title) => `${it(title)} still ${repeatText(a.was || {}).toLowerCase()}.`)},
   // An add's line, under what it goes under (`a.over`).
   add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
-    refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},
+    refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: keeps(() => '')},
 };
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;

@@ -365,17 +365,3 @@ export function slowness(entries, now, offline){
   for (const e of entries) { const at = Date.parse(e.at) + WAIT_MS; if (offline || !(at > now)) slow.push(e.id); else later.push(at); }
   return {slow, next: later.length ? Math.min(...later) : null};
 }
-// What a failed act holds back: the acts on its task, or for an add the lines under it and the acts on its task.
-const holds = e => e.op === 'add' ? ['pending-' + e.id, ...e.taskId ? [e.taskId] : []] : [e.task];
-// The tasks with an act that Vikunja rejected. Later acts on those tasks wait, so an untick never arrives before its
-// tick.
-export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).flatMap(holds));
-export const hold = (e, stopped) => { for (const k of holds(e)) stopped.add(k); };
-// Whether act `e` waits behind a failed act (`stopped`, from heldTasks). A line waits only for a failed line it goes
-// under, never for another op on its parent. Then the lines under it wait too.
-export const waits = (e, stopped) => {
-  if (e.op !== 'add') return stopped.has(e.task);
-  const w = typeof e.under === 'string' && stopped.has(e.under);
-  if (w) stopped.add('pending-' + e.id);
-  return w;
-};

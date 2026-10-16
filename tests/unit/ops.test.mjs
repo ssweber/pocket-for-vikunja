@@ -3,8 +3,9 @@
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OPS } from '../../src/js/ops/index.js';
-import acts, { stageContext } from '../../src/js/app/acts.js';
+import { readFileSync } from 'node:fs';
+import { DEFAULTS, opOf, OPS } from '../../src/js/ops/index.js';
+import acts, { heldTasks, stageContext, waits } from '../../src/js/app/acts.js';
 import tasks, { copyOf, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
@@ -16,16 +17,22 @@ import { UNKNOWN } from '../../src/js/messages.js';
 import { figure } from '../../src/js/ops/stages.js';
 import { ZERO } from '../../src/js/util.js';
 
-const FIELDS = ['apply', 'stages', 'invert', 'merge', 'text', 'refused', 'dropped'];
+const FIELDS = ['apply', 'stages', ...Object.keys(DEFAULTS), 'text', 'refused', 'dropped'];
 
-test('every op has every field, and only invert and merge may be empty', () => {
+/* An op sets every field, to its own value or to null for the default, so a new op decides each one. The comment on OPS
+   names every field, since it is where a new op is made from. */
+test('every op defines every field, null for the default, and the comment on OPS names each', () => {
   for (const [name, op] of Object.entries(OPS)) {
     for (const f of FIELDS) assert.ok(f in op, `${name} has ${f}`);
     for (const f of ['apply', 'text', 'refused', 'dropped']) assert.equal(typeof op[f], 'function', `${name}.${f}`);
     const stages = typeof op.stages === 'function' ? op.stages({ set: {} }) : op.stages;
     assert.ok(stages.length && stages.every(s => typeof s === 'function'), `${name} has its requests`);
-    assert.ok(!('on' in op) || typeof op.on === 'function', `${name}.on`);
+    const full = opOf({ op: name });
+    for (const f of ['on', 'answered', 'holds', 'waitsOn', 'row', 'files', 'deletes']) assert.equal(typeof full[f], 'function', `${name}.${f}`);
+    assert.deepEqual([typeof full.keepReads, ['kept', 'back', 'lines', 'undone'].includes(full.refusal), ['undo', 'text', 'back', 'lines'].includes(full.cancel)], ['boolean', true, true], name);
   }
+  const comment = readFileSync(new URL('../../src/js/ops/index.js', import.meta.url), 'utf8').split('*/')[0];
+  for (const f of FIELDS) assert.match(comment, new RegExp(`^ +- (\\w+, )*${f}\\b`, 'm'), `the comment on OPS names ${f}`);
 });
 
 test('apply returns the task as a new object, and leaves the task and the op alone', () => {
@@ -702,4 +709,118 @@ test('an Undo retried with Try again puts back the repeat Vikunja had when the U
   const off = { due_date: ZERO, done: true };
   assert.deepEqual(patches(v, 7).slice(1), [NEVER, off, off, WEEKLY], 'the refused request, then the same one again and the repeat back');
   assert.deepEqual([v.task(7).done, v.task(7).due_date, v.task(7).repeat_after, sync.all(1)], [true, ZERO, 604800, []]);
+});
+
+/* `madeUp` is an op no code outside src/js/ops/ knows by name. Each test gives it one field and shows that the shared
+   code asks the op for it. Fields it leaves out take their defaults. Its one request is a PATCH of its task. */
+const madeUp = (t, fields) => {
+  OPS.madeUp = { apply: x => ({ ...x }), stages: [(a, c) => c.send('/tasks/' + a.task, { method: 'PATCH', body: { priority: 2 } })],
+    text: () => 'A made-up change', refused: () => 'A made-up change', dropped: () => 'Vikunja keeps what it has.', ...fields };
+  t.after(() => { delete OPS.madeUp; });
+};
+const emptied = async app => { for (const x of sync.all(1)) await sync.remove(x.id); app.refreshPending(); app.toasts.length = 0; };
+
+test('what a refusal does is the op\'s: kept in the Outbox, its text back, its lines back to their box, or undone', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]), given = [];
+  t.after(() => emptied(app));
+  app.giveBack = (a, error) => { given.push(a.id); error.back = true; };
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  const refused = async (refusal, list) => {
+    await emptied(app);
+    madeUp(t, { refusal });
+    return app.actAll(list.map(f => ({ op: 'madeUp', task: 7, run: null, label: 'Wipe the till', ...f })));
+  };
+  await refused(null, [{}]);
+  assert.deepEqual([app.failed.length, lastSaid(app).msg], [1, 'A made-up change couldn\'t be saved: HTTP 403 from the fake. It\'s kept to try again.'], 'kept by default');
+  const back = await refused('back', [{}]);
+  assert.deepEqual([sync.all(1), given, lastSaid(app).msg], [[], [back.entry], 'A made-up change couldn\'t be saved: HTTP 403 from the fake. Its text is back in the box.'], 'its text back');
+  const lines = await refused('lines', [{ batch: 'b', raw: 'Rope' }, { batch: 'b', raw: 'Tape' }]);
+  assert.deepEqual([sync.all(1), lines.all[0].unsent, app.toasts], [[], ['Rope', 'Tape'], []], 'it and the line after it go back to their box, which says so');
+  const undone = await refused('undone', [{}]);
+  assert.deepEqual([undone.status, sync.all(1), app.toasts], ['error', [], []], 'undone, and the code that queued it says why');
+});
+
+test('what Cancel gives back is the op\'s, and Cancel offers Undo only when nothing went back', async t => {
+  const { app } = offlineSender(t), given = [];
+  t.after(() => emptied(app));
+  app.giveBack = (a, said) => { given.push(a.op); said.back = true; };
+  const cancel = async cancel => {
+    await emptied(app);
+    madeUp(t, { cancel });
+    await app.act({ op: 'madeUp', task: 7, run: null, label: 'Wipe the till' });
+    const id = sync.all(1)[0].id, drop = app.outboxRows.find(r => r.key === id).drop;
+    if (drop[0] !== 'dropAct') return drop;
+    await app.dropAct(id);
+    return [lastSaid(app).msg, lastSaid(app).action?.label ?? null];
+  };
+  assert.deepEqual(await cancel(null), ['Cancelled. Vikunja keeps what it has.', 'Undo']);
+  assert.deepEqual(await cancel('text'), ['Cancelled. Vikunja keeps what it has. Its text is back where you typed it.', null]);
+  assert.deepEqual(await cancel('back'), ['Cancelled. Vikunja keeps what it has.', null], 'its own words say where its text went');
+  assert.deepEqual(given, ['madeUp', 'madeUp'], 'only text and back give text back');
+  const [how, id] = await cancel('lines');
+  assert.deepEqual([how, id], ['cancelPending', sync.all(1)[0].id], 'an unsent line is cancelled as its waiting row\'s Cancel does it');
+});
+
+test('an op says it was refused in its task\'s open sheet only where it names a place there', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  t.after(() => emptied(app));
+  Object.assign(app.sheet, { id: 7, kind: 'task', open: true });
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  for (const sheetPlace of [null, 'sheet:due']) {
+    await emptied(app);
+    madeUp(t, { sheetPlace });
+    await app.act({ op: 'madeUp', task: 7, run: null });
+    assert.deepEqual([lastSaid(app).place, lastSaid(app).ms], sheetPlace ? ['sheet:due', null] : ['step', undefined]);
+  }
+});
+
+test('once Vikunja answers, the op says what the screen does, and by default a checklist\'s screen refreshes its step', async t => {
+  const { app } = sender(t, [{ id: 7, title: 'Wipe the till' }]), seen = [];
+  app.refreshRunTask = id => seen.push(['refreshed', id]);
+  app.view.shownRun = { id: 5, steps: [7] };
+  madeUp(t, {});
+  await app.act({ op: 'madeUp', task: 7, run: 5 });
+  madeUp(t, { answered: (app, a, c) => seen.push(['answered', a.task, typeof c.send]) });
+  await app.act({ op: 'madeUp', task: 7, run: 5 });
+  assert.deepEqual(seen, [['refreshed', 7], ['answered', 7, 'function']]);
+});
+
+test('a failed op holds back the ids its op names, and an op waits on the ids its op names', t => {
+  madeUp(t, { holds: a => [a.task, 'pending-' + a.id], waitsOn: a => [a.after] });
+  const stopped = heldTasks([{ kind: 'act', op: 'madeUp', id: 'x', task: 4, failed: true }]);
+  assert.deepEqual([...stopped], [4, 'pending-x']);
+  const op = (id, after) => ({ kind: 'act', op: 'madeUp', id, task: 9, after });
+  assert.deepEqual([waits(op('y', 'pending-x'), stopped), waits(op('z', 4), stopped), waits(op('w', 3), stopped)], [true, true, false]);
+  assert.ok(stopped.has('pending-y') && stopped.has(9), 'an op that waits holds back what it would hold if it failed');
+});
+
+test('a waiting row in a list is the op\'s row', t => {
+  madeUp(t, { row: a => ({ id: 'pending-' + a.id, title: a.raw }) });
+  const pendingTasks = Object.getOwnPropertyDescriptor(sending, 'pendingTasks').get;
+  const e = { kind: 'act', op: 'madeUp', id: 'r1', raw: 'Buy rope', at: '2026-10-16T09:00:00.000Z' };
+  assert.deepEqual(pendingTasks.call({ pending: [e, { kind: 'act', op: 'done', id: 'r2', task: 7 }], failed: [], slow: ['r1'] }), [{ id: 'pending-r1', title: 'Buy rope', waits: true }]);
+});
+
+test('the files an op still has to upload move to an entry of their own once a stage is done', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  t.after(() => emptied(app));
+  madeUp(t, { stages: [async () => {}, OPS.done.stages[0]], files: a => a.files.filter(f => !f.sent) });
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  const photo = { key: 'k1', name: 'till.jpg', size: 1, type: 'image/jpeg', sent: false };
+  await app.act({ op: 'madeUp', task: 7, taskId: 7, run: null, files: [photo] });
+  const op = sync.all(1).find(e => e.kind === 'act'), own = sync.all(1).find(e => !e.kind);
+  assert.deepEqual([op.files, op.filed, own.taskId, own.files], [[], own.id, 7, [photo]]);
+});
+
+test('the tasks an op deletes are hidden while it waits, and forgotten once Vikunja answers it', async t => {
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
+  t.after(() => emptied(app));
+  madeUp(t, { deletes: a => [a.task] });
+  app.row(v.task(7));
+  noConnection(app, v);
+  await app.act({ op: 'madeUp', task: 7, run: null });
+  assert.deepEqual([app.beingDeleted(7), app.hiddenRows.has(7), !!app.tasks[7]], [true, true, true]);
+  app.offline = false; v.trouble = () => null;
+  await app.sendActs(sync.all(1)[0].id);
+  assert.deepEqual([app.beingDeleted(7), app.tasks[7]], [false, undefined]);
 });

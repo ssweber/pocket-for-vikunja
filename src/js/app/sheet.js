@@ -14,6 +14,7 @@ import {blankSheet, shared} from './core.js';
 import {sliding} from './progress.js';
 import {seats, seatUnder} from './seat.js';
 import {copyOf} from './tasks.js';
+import {waitingComments} from '../ops/index.js';
 import {haptic} from '../haptics.js';
 
 // The sheet's latest save. Saves run one after another, so its answer comes last, and only it says Saved.
@@ -469,7 +470,7 @@ export default {
     if (r.status === 'error' && this.sheet.id === id) this.sheet.commentDraft = v;
   },
   // Comments on the open task still waiting to be posted.
-  get pendingComments(){ return this.pending.filter(e => e.kind === 'act' && e.op === 'note' && e.task === this.sheet.id && !e.run); },
+  get pendingComments(){ return waitingComments(this.pending, this.sheet.id); },
   get attachmentsOn(){ return this.info?.task_attachments_enabled !== false; },
   // A message naming the files this Vikunja won't accept because they are too big, or '' when they all fit. Vikunja's
   // own error message gives the wrong limit.

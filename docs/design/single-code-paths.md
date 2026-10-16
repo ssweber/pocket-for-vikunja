@@ -816,6 +816,7 @@ Phase 5 makes creates ops.
 - A read and an answer are written by different writers, and a read always carries the time it started.
 - The edits are scaffolding. Phases 5 to 10 turn each direct save into an op, so that by phase 10 a row is Vikunja's
   copy with the waiting ops.
+- Only `src/js/ops/` knows which op is which. Lint holds it.
 
 ### Order of work
 
@@ -1090,6 +1091,8 @@ and every message offers a way forward. Each op gives the test a sample entry an
 6c-1, the lint rule and the op's declared differences. 6c-2, `asks` and `saw`. 6c-3, the lifecycle checks. Then the
 relay's fix (below). Each passes `test:local` and is committed, then one read-only review of all four. The user's
 phone check of phase 6 covers 6c, since nothing on screen changes.
+
+6c-1 is built: the lint rule, and each op's fields with their defaults in `DEFAULTS` (`src/js/ops/index.js`).
 
 ### Tests
 

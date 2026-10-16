@@ -21,11 +21,31 @@ const untickOpen = async (a, c) => {
   return untick(a, c);
 };
 
-export const done = {apply: doneBy(DONE_MARK), stages: [tick, mark(DONE_MARK), figure], invert: null, merge: null, ...OP_WORDS.done};
-export const doneNote = {apply: doneBy(DONE_MARK, true), stages: [tick, mark(DONE_MARK), comment, figure], invert: null, merge: null, ...OP_WORDS.doneNote};
-export const skip = {apply: doneBy(SKIP_MARK, true), stages: [tick, mark(SKIP_MARK), comment, figure], invert: null, merge: null, ...OP_WORDS.skip};
-export const undone = {apply: (t, a) => marked({...t, done: false, done_at: ZERO}, a, null), stages: [untickOpen, unmark, figure], invert: null, merge: null, ...OP_WORDS.undone};
-export const finish = {apply: closed, stages: [tick, mark(DONE_MARK)], invert: null, merge: null, ...OP_WORDS.finish};
-export const reopen = {apply: open, stages: [untick, unmark], invert: null, merge: null, ...OP_WORDS.reopen};
+export const done = {apply: doneBy(DONE_MARK), stages: [tick, mark(DONE_MARK), figure], ...OP_WORDS.done,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
+  answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+// Cancel gives a done note's text, or a skip's reason, back to the step's box.
+export const doneNote = {apply: doneBy(DONE_MARK, true), stages: [tick, mark(DONE_MARK), comment, figure], cancel: 'text', ...OP_WORDS.doneNote,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, sheetPlace: null, answered: null,
+  holds: null, waitsOn: null, row: null, files: null, deletes: null};
+export const skip = {apply: doneBy(SKIP_MARK, true), stages: [tick, mark(SKIP_MARK), comment, figure], cancel: 'text', ...OP_WORDS.skip,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, sheetPlace: null, answered: null,
+  holds: null, waitsOn: null, row: null, files: null, deletes: null};
+export const undone = {apply: (t, a) => marked({...t, done: false, done_at: ZERO}, a, null), stages: [untickOpen, unmark, figure], ...OP_WORDS.undone,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
+  answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+// finishRun and reopenRun redraw the checklist's screen themselves.
+export const finish = {apply: closed, stages: [tick, mark(DONE_MARK)], answered: () => {}, ...OP_WORDS.finish,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
+  holds: null, waitsOn: null, row: null, files: null, deletes: null};
+export const reopen = {apply: open, stages: [untick, unmark], answered: () => {}, ...OP_WORDS.reopen,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
+  holds: null, waitsOn: null, row: null, files: null, deletes: null};
 export const progress = {apply: (t, a) => ({...t, percent_done: a.pct / 100}), stages: [(a, c) => patch(a, c, {percent_done: a.pct / 100}), figure],
-  invert: null, merge: null, ...OP_WORDS.progress};
+  ...OP_WORDS.progress,
+  on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
+  answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+
+// The last tick, skip or untick among a step's waiting ops. The step looks waiting while one is in the outbox.
+const TICKS = ['done', 'undone', 'skip', 'doneNote'];
+export const lastTick = ops => ops.filter(a => TICKS.includes(a.op)).at(-1);

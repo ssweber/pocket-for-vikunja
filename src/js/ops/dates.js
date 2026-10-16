@@ -46,9 +46,10 @@ const move = i => async (a, c) => {
 const MOVES = [0, 1, 2].map(move);
 
 /* Try again keeps what the first try read (keepReads). An earlier stage may have turned the repeat off since, and a new
-   read would lose the repeat to put back. */
+   read would lose the repeat to put back. A date or a repeat set in the open sheet says it was refused under the
+   sheet's date until the sheet closes, as the sheet's own saves do (sheetPlace). */
 export const due = {apply: (t, a) => ({...t, due_date: a.due, ...a.done !== undefined && {done: a.done}}), stages: a => a.done === true ? MOVES : MOVES.slice(0, 1),
-  waiting: 'dues', keepReads: true,
+  waiting: 'dues', keepReads: true, sheetPlace: 'sheet:due',
   /* Undo puts back the date before the move (`was`), unless the date Vikunja stored for it has changed since. A
      template is done without a date, so its Undo takes the date off again, or gives it back and leaves it not done. */
   invert: a => ({op: 'due', task: a.task, due: a.was, was: gotOf(a), check: gotOf(a),
@@ -56,7 +57,8 @@ export const due = {apply: (t, a) => ({...t, due_date: a.due, ...a.done !== unde
   // A move replaces an earlier move of the task, and keeps its `was`, so Undo goes back to where the first move started.
   // It keeps the earlier move's `done` when it has none of its own, because Vikunja doesn't have that `done` yet.
   merge: (older, newer) => older.op === 'due' ? {...older.done !== undefined && {done: older.done}, ...newer, was: older.was} : null,
-  ...OP_WORDS.due};
+  ...OP_WORDS.due,
+  on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
 
 // The fields an Undo of a repeat compares. The repeat is two fields, compared together.
 const PARTS = [['repeat_after', 'repeat_mode'], ['due_date'], ['done']];
@@ -91,8 +93,9 @@ const SETS = [0, 1, 2].map(i => async (a, c) => {
 
 /* How a task repeats (`set`: repeat_after and repeat_mode, and a date when a repeat needs one), with what each field
    had before (`was`). */
-export const repeat = {apply: (t, a) => ({...t, ...a.set}), stages: a => SETS.slice(0, setCount(a)), waiting: 'dues', keepReads: true,
+export const repeat = {apply: (t, a) => ({...t, ...a.set}), stages: a => SETS.slice(0, setCount(a)), waiting: 'dues', keepReads: true, sheetPlace: 'sheet:due',
   invert: a => { const ks = Object.keys(sentOf(a)); return {op: 'repeat', task: a.task, set: Object.fromEntries(ks.map(k => [k, a.was[k]])), was: gotSet(a, ks), check: gotSet(a, ks)}; },
   // A change replaces an earlier one that hasn't been sent, with the fields of both, and keeps the oldest `was`.
   merge: (older, newer) => older.op === 'repeat' ? {...newer, set: {...older.set, ...newer.set}, was: {...newer.was, ...older.was}} : null,
-  ...OP_WORDS.repeat};
+  ...OP_WORDS.repeat,
+  on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
