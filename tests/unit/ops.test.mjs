@@ -22,7 +22,8 @@ test('every op has every field, and only invert and merge may be empty', () => {
   for (const [name, op] of Object.entries(OPS)) {
     for (const f of FIELDS) assert.ok(f in op, `${name} has ${f}`);
     for (const f of ['apply', 'text', 'refused', 'dropped']) assert.equal(typeof op[f], 'function', `${name}.${f}`);
-    assert.ok(op.stages.length && op.stages.every(s => typeof s === 'function'), `${name} has its requests`);
+    const stages = typeof op.stages === 'function' ? op.stages({ set: {} }) : op.stages;
+    assert.ok(stages.length && stages.every(s => typeof s === 'function'), `${name} has its requests`);
     assert.ok(!('on' in op) || typeof op.on === 'function', `${name}.on`);
   }
 });
@@ -107,8 +108,8 @@ const WORDS = {
   add: [['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''], ['New task: ', 'Adding a task', '', '']],
   due: [['Removed its due date: Unlock the door', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays without a date.', '“Unlock the door” stays without a date.'],
     ['Removed its due date: a step', 'Moving a task', '“it” stays without a date.', '“it” stays without a date.']],
-  repeat: [['Doesn\'t repeat: Unlock the door', 'Changing how “Unlock the door” repeats', '“Unlock the door” keeps the repeat it has in Vikunja.', '“Unlock the door” keeps the repeat it has in Vikunja.'],
-    ['Doesn\'t repeat: a step', 'Changing how a task repeats', '“it” keeps the repeat it has in Vikunja.', '“it” keeps the repeat it has in Vikunja.']],
+  repeat: [['Doesn\'t repeat: Unlock the door', 'Changing how “Unlock the door” repeats', '“Unlock the door” still doesn\'t repeat.', '“Unlock the door” still doesn\'t repeat.'],
+    ['Doesn\'t repeat: a step', 'Changing how a task repeats', '“it” still doesn\'t repeat.', '“it” still doesn\'t repeat.']],
 };
 
 test('each op says what the outbox said before: its row, its refusal, and what cancelling it leaves', () => {
@@ -241,7 +242,9 @@ const offlineSender = t => {
   const today = new Date(); today.setHours(9, 0, 0, 0);
   const r = sender(t, [{ id: 7, title: 'Wipe the till' }, { id: 8, title: 'Pay the rent', due_date: today.toISOString() }, { id: 9, title: 'Lock up' }]);
   noConnection(r.app, r.v);
+  const confirm = globalThis.confirm;
   globalThis.confirm = () => { throw new Error('Cancel asked'); };
+  t.after(() => { globalThis.confirm = confirm; });
   return r;
 };
 const lastSaid = app => app.toasts.at(-1);
@@ -516,8 +519,8 @@ test('a new op meets any earlier op on its task, and can cancel it, so both leav
 const sheeted = (t, list, role = null) => {
   const s = dated(t, list);
   Object.defineProperties(s.app, Object.getOwnPropertyDescriptors(sheet));
-  Object.defineProperties(s.app, { checklistRole: { value: role }, dueTime: { value: '09:00' } });
-  Object.assign(s.app.sheet, { id: list[0].id, kind: 'task' });
+  Object.defineProperties(s.app, { checklistRole: { value: role, writable: true }, dueTime: { value: '09:00' } });
+  Object.assign(s.app.sheet, { id: list[0].id, kind: 'task', open: true });
   return s;
 };
 const patches = (v, id) => reached(v, 'PATCH', new RegExp(`^/tasks/${id}$`)).map(r => r.body);
@@ -532,17 +535,17 @@ test('a repeat sets its fields, its Undo goes back to what each had, and a later
     'the fields of both, each with the first value before');
   assert.deepEqual([OPS.repeat.merge({ op: 'due', task: 7, was: D(5), due: D(9) }, a), OPS.due.merge(a, { op: 'due', task: 7, was: D(5), due: D(9) })], [null, null], 'a repeat and a move never fold into each other');
   assert.deepEqual([OPS.repeat.text(a, 'Water the plants'), OPS.repeat.text({ set: { repeat_mode: 1 } }, 'Water the plants'), OPS.repeat.dropped(a, 'Water the plants')],
-    ['Repeats every week: Water the plants', 'Repeats every month: Water the plants', '“Water the plants” keeps the repeat and the date it has in Vikunja.']);
+    ['Repeats every week: Water the plants', 'Repeats every month: Water the plants', '“Water the plants” still doesn\'t repeat.']);
+  assert.equal(OPS.repeat.dropped({ ...a, was: WEEKLY }, 'Water the plants'), '“Water the plants” still repeats every week.', 'Cancel names the repeat it had before');
 });
 
 test('a template\'s date taken off makes it done and keeps its repeat, and its Undo gives the date back, not done', () => {
-  const off = { op: 'due', task: 7, tpl: true, rep: DAILY, was: D(9), due: ZERO, done: true }, on = { op: 'due', task: 7, tpl: true, rep: DAILY, was: ZERO, due: D(9), done: false };
+  const off = { op: 'due', task: 7, tpl: true, was: D(9), due: ZERO, done: true }, on = { op: 'due', task: 7, tpl: true, was: ZERO, due: D(9), done: false };
   assert.deepEqual(OPS.due.apply({ id: 7, title: 'TEMPLATE: Closing', ...DAILY, due_date: D(9), done: false }, off), { id: 7, title: 'TEMPLATE: Closing', ...DAILY, due_date: ZERO, done: true });
-  assert.deepEqual(OPS.due.invert(off), { op: 'due', task: 7, due: D(9), was: ZERO, check: ZERO, tpl: true, rep: DAILY, done: false });
-  assert.deepEqual(OPS.due.invert(on), { op: 'due', task: 7, due: ZERO, was: D(9), check: D(9), tpl: true, rep: DAILY, done: true });
-  assert.deepEqual(OPS.due.merge(on, { op: 'due', task: 7, tpl: true, rep: DAILY, was: D(9), due: D(10) }), { op: 'due', task: 7, tpl: true, rep: DAILY, was: ZERO, due: D(10), done: false },
+  assert.deepEqual(OPS.due.invert(off), { op: 'due', task: 7, due: D(9), was: ZERO, check: ZERO, tpl: true, done: false });
+  assert.deepEqual(OPS.due.invert(on), { op: 'due', task: 7, due: ZERO, was: D(9), check: D(9), tpl: true, done: true });
+  assert.deepEqual(OPS.due.merge(on, { op: 'due', task: 7, tpl: true, was: D(9), due: D(10) }), { op: 'due', task: 7, tpl: true, was: ZERO, due: D(10), done: false },
     'a later date keeps the first move\'s done, because the template is still done in Vikunja');
-  assert.equal(OPS.due.dropped({ ...off, stage: 1 }, 'TEMPLATE: Closing'), '“TEMPLATE: Closing” doesn\'t repeat in Vikunja now. The rest of the change is not sent.');
 });
 
 test('the sheet shows a new date and repeat at once, offline, and Vikunja gets each once, as two ops that don\'t fold', async t => {
@@ -561,12 +564,16 @@ test('the sheet shows a new date and repeat at once, offline, and Vikunja gets e
 });
 
 test('a repeat picked for a task with no date gives it one, and a done template is then not done', async t => {
-  const { v, app } = sheeted(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: D(5), ...NEVER, done: true }], 'template');
+  const { v, app } = sheeted(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: D(5), ...NEVER, done: true }, { id: 8, title: 'Water the plants', due_date: ZERO, ...NEVER, done: false }], 'template');
   assert.equal(app.dueShown, ZERO, 'a done template shows no date');
   await app.setRepeat('day');
   const [body] = patches(v, 7);
   assert.deepEqual([Object.keys(body).sort(), body.done, app.tasks[7].done, v.task(7).repeat_after], [['done', 'due_date', 'repeat_after', 'repeat_mode'], false, false, 86400]);
   assert.match(app.toasts.find(x => x.place === 'sheet:due').msg, /^Pocket set the due date to .+, because a repeat needs one\./);
+  app.checklistRole = null; app.sheet.id = 8;
+  await app.setRepeat('week');
+  assert.deepEqual([Object.keys(patches(v, 8)[0]).sort(), v.task(8).due_date !== ZERO, v.task(8).repeat_after], [['due_date', 'repeat_after', 'repeat_mode'], true, 604800],
+    'a task that isn\'t a template gets a date, and nothing about done');
 });
 
 test('a template\'s date taken off offline sends its three requests once each, and a lost reply on the second finishes the same way', async t => {
@@ -596,4 +603,103 @@ test('an Undo of a repeat puts back each field still as the repeat left it, and 
   v.task(7).due_date = D(12);
   const { left } = app.undoOps([f]);
   assert.deepEqual([await left, patches(v, 7).at(-1), v.task(7).due_date, app.tasks[7].due_date], [1, NEVER, D(12), D(12)], 'the repeat goes back, and the date changed since stays');
+});
+
+/* A row shows the waiting ops on top of Vikunja's copy, so what it shows can differ from what Vikunja has when an op
+   is sent: a repeat changed in the web app, a waiting op cancelled. A body that depends on Vikunja's copy is built from
+   one read when it is first sent. */
+test('a template\'s date taken off puts back the repeat Vikunja has when it is sent, and is one request when Vikunja\'s copy doesn\'t repeat', async t => {
+  const { v, app } = sheeted(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: D(9), ...DAILY, done: false }, { id: 8, title: 'TEMPLATE: Opening', due_date: D(10), ...NEVER, done: false }], 'template');
+  noConnection(app, v);
+  await app.setDue(ZERO);
+  Object.assign(v.task(7), WEEKLY);                                       // changed in the web app while it waits
+  // A repeat picked for the other template shows on its row. Cancelled, it never reaches Vikunja.
+  app.sheet.id = 8;
+  await app.setRepeat('day');
+  await app.setDue(ZERO);
+  await app.dropAct(sync.all(1).find(e => e.op === 'repeat').id);
+  await settle(t);                                                        // the flush Cancel starts finds no connection
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual([patches(v, 7), v.task(7).repeat_after], [[NEVER, { due_date: ZERO, done: true }, WEEKLY], 604800]);
+  assert.deepEqual([patches(v, 8), v.task(8).repeat_after, v.task(8).done], [[{ due_date: ZERO, done: true }], 0, true]);
+});
+
+test('a repeat sets a date only when Vikunja\'s copy has none when it is sent', async t => {
+  const { v, app } = sheeted(t, [{ id: 7, title: 'Water the plants', due_date: D(5), ...NEVER, done: false }]);
+  noConnection(app, v);
+  await app.setDue(ZERO);
+  await app.setRepeat('week');
+  assert.match(app.toasts.find(x => x.place === 'sheet:due')?.msg, /^Pocket set the due date to /, 'the sheet says which date it set, while the repeat waits');
+  // The date taken off is cancelled, so Vikunja still has the date.
+  await app.dropAct(sync.all(1).find(e => e.op === 'due').id);
+  await settle(t);
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual([patches(v, 7), v.task(7).due_date], [[WEEKLY], D(5)]);
+});
+
+test('a date or a repeat that Vikunja refuses, or may not have, says so under the sheet\'s date until the sheet closes', async t => {
+  const { v, app } = sheeted(t, [{ id: 7, title: 'Water the plants', due_date: D(5), ...NEVER, done: false }, { id: 8, title: 'Feed the cat', due_date: D(5), ...NEVER, done: false }]);
+  v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await app.setDue(D(9));
+  const said = () => { const x = app.toasts.at(-1); return [x.msg, x.place, x.ms, x.action?.label]; };
+  assert.deepEqual(said(), ['Moving “Water the plants” couldn\'t be saved: HTTP 403 from the fake. It\'s kept to try again.', 'sheet:due', null, 'Outbox']);
+  assert.equal(app.dueShown, D(5), 'the sheet shows the date Vikunja has');
+  v.trouble = r => r.method === 'PATCH' ? 'unknown' : null;
+  app.sheet.id = 8;
+  await app.setRepeat('week');
+  assert.deepEqual(said(), ['Changing how “Feed the cat” repeats may not have reached Vikunja.', 'sheet:due', null, 'Outbox']);
+});
+
+test('Cancel of a change whose answer is unknown doesn\'t say what Vikunja has, and a move names both dates', async t => {
+  const { v, app } = offlineSender(t);
+  app.offline = false; v.trouble = r => r.method === 'PATCH' ? 'unknown' : null;
+  await app.act({ op: 'due', task: 8, was: v.task(8).due_date, due: ZERO, run: null, label: 'Pay the rent' });
+  await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  await app.dropAct(app.failed.find(e => e.op === 'due').id);
+  assert.equal(lastSaid(app).msg, 'Cancelled. Vikunja may have “Pay the rent” due today or without a date.');
+  await app.dropAct(app.failed.find(e => e.op === 'done').id);
+  assert.equal(lastSaid(app).msg, 'Cancelled. Vikunja may or may not have this change.');
+});
+
+test('Cancel of a template\'s date taken off partway says its repeat is gone', async t => {
+  const { v, app } = sheeted(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: D(9), ...DAILY, done: false }], 'template');
+  v.trouble = r => r.method === 'PATCH' && 'due_date' in r.body ? 403 : null;
+  await app.setDue(ZERO);
+  assert.deepEqual([app.failed[0]?.stage, v.task(7).repeat_after], [1, 0], 'the repeat is off, and the date is refused');
+  await app.dropAct(app.failed[0].id);
+  assert.equal(lastSaid(app).msg, 'Cancelled. “TEMPLATE: Closing” no longer repeats, because its date was only partly removed. Set its repeat again in its sheet.');
+});
+
+test('a move is one stage, so its entry is saved once when sent and once when answered', async t => {
+  const { app } = dated(t, [{ id: 7, title: 'Call the plumber', due_date: D(5) }]);
+  const saves = t.mock.method(sync, 'save');
+  await move(app, 7, D(9)).sending;
+  assert.equal(saves.mock.callCount(), 2);
+});
+
+test('an Undo of a repeat that gave a done template a date leaves it done, by turning the repeat off before done is sent', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: D(5), ...NEVER, done: true }]);
+  const f = { id: uuid7(), op: 'repeat', task: 7, set: { ...DAILY, due_date: D(9), done: false }, was: { ...NEVER, due_date: D(5), done: true }, run: null };
+  await app.act(f, true);
+  assert.deepEqual([v.task(7).done, v.task(7).repeat_after], [false, 86400]);
+  const { left } = app.undoOps([f]);
+  assert.deepEqual([await left, patches(v, 7).slice(1)], [0, [NEVER, { due_date: D(5), done: true }]]);
+  assert.deepEqual([v.task(7).done, v.task(7).due_date, v.task(7).repeat_after], [true, D(5), 0]);
+});
+
+test('an Undo retried with Try again puts back the repeat Vikunja had when the Undo was first sent', async t => {
+  const { v, app } = dated(t, [{ id: 7, title: 'TEMPLATE: Closing', due_date: ZERO, ...DAILY, done: true }]);
+  const f = { id: uuid7(), op: 'due', task: 7, tpl: true, was: ZERO, due: D(9), done: false, run: null };
+  await app.act(f, true);
+  Object.assign(v.task(7), WEEKLY);                                       // changed in the web app since
+  let n = 0;
+  v.trouble = r => r.method === 'PATCH' && 'due_date' in r.body && !n++ ? 403 : null;
+  const { left } = app.undoOps([f]);
+  assert.deepEqual([await left, v.task(7).repeat_after], [1, 0], 'the repeat is off, and taking the date off is refused');
+  await app.retryAct(app.failed[0].id);
+  const off = { due_date: ZERO, done: true };
+  assert.deepEqual(patches(v, 7).slice(1), [NEVER, off, off, WEEKLY], 'the refused request, then the same one again and the repeat back');
+  assert.deepEqual([v.task(7).done, v.task(7).due_date, v.task(7).repeat_after, sync.all(1)], [true, ZERO, 604800, []]);
 });

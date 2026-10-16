@@ -180,7 +180,7 @@ Vikunja's web push, in progress in [go-vikunja/vikunja#4020](https://github.com/
 
 Pocket opens without a connection and shows lists as last loaded.
 
-- **Works offline:** new tasks and subtasks, comments, and checklists. Ticking or editing other tasks needs a connection.
+- **Offline,** you can add tasks, change dates and use checklists. Ticking off and other changes need a connection.
 - **Queued items** show tinted with a dashed circle. The refresh button turns amber with a count. Tap it to open the Outbox, cancel items not yet started, or **Try now**.
 - **Nothing is lost.** Queued text survives closing the app and the session expiring. If Vikunja rejects an item for good, the text returns to the input. Notes changed elsewhere while you were editing aren't overwritten. Both versions are shown.
 - **iPhones don't allow background sending.** Items go out the next time Pocket is opened.

@@ -314,7 +314,7 @@ try {
     await page.fill('#d-cin', T('comment'));
     await page.click('#d-cform button');
     await page.waitForSelector(`#d-comments .comment.waiting:has-text("${T('comment')}"):has-text("Waiting for a connection")`);
-    if (!(await page.textContent('.offline')).includes('Ticking off or changing tasks needs a connection, except on a checklist')) throw new Error('banner: ' + await page.textContent('.offline'));
+    if (!(await page.textContent('.offline')).includes('. You can add tasks, change dates and use checklists. Ticking off and other changes need a connection.')) throw new Error('banner: ' + await page.textContent('.offline'));
     await context.setOffline(false);
     await online();
     await page.waitForSelector(`#d-comments .comment:not(.waiting):has-text("${T('comment')}")`, { timeout: 20000 });

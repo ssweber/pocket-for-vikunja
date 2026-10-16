@@ -7,7 +7,7 @@ import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { uuid7 } from '../../src/js/sync.js';
 import { stageContext } from '../../src/js/app/acts.js';
-import { noneWaiting, OPS } from '../../src/js/ops/index.js';
+import { noneWaiting, stagesOf } from '../../src/js/ops/index.js';
 
 const reply = (body, status = 200, more = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
 const lost = () => new TypeError('network error');
@@ -135,7 +135,8 @@ export function fakeVikunja(tasks = []){
 }
 
 /* A fake component made from the parts of the app that are passed in (their methods, as component.js combines them).
-   The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at.
+   The rest of the app is stubbed. Messages are recorded in `toasts`, with the `row` and `place` each was shown at, and
+   its `ms` when the caller gave one.
    There is no screen, so these are just the values the caller asked for. No task has a role in Checklists. Rows marked
    done or deleted (leaving.js) are in `leaving`, when that part is passed in. The component is signed in with the
    shared session's token, already confirmed as the user's, so a change is sent without asking Vikunja who it is. The
@@ -147,7 +148,7 @@ export function component(...parts){
     tasks: {}, view: { groups: [] }, sheet: { id: null }, route: { name: 'today' }, toasts: [], leaving: {},
     waiting: noneWaiting(), opsOn: {}, slideClaim: {}, dropping: [], failed: [],
     notify(msg, action){ this.toasts.push({ msg, action }); },
-    say(msg, { row = null, place = null, action = null, cls = '', gone } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls, ...gone && { gone } }); return 'toast'; },
+    say(msg, { row = null, place = null, action = null, cls = '', gone, ms } = {}){ this.toasts.push({ msg, action, row, place, cls: row?.cls || cls, ...gone && { gone }, ...ms !== undefined && { ms } }); return 'toast'; },
     said: '', places: {}, rowEl(){ return null; }, unsay(){},
     get toast(){ return this.toasts.at(-1); },
     render(){}, flush(){}, regroupToday(){}, role(){ return null; }, stepRun(){ return null; }, isRunTask(){ return false; }, bothWays: false,
@@ -165,5 +166,5 @@ export function component(...parts){
 // Send an op's stages one after another, as app/acts.js does, without the outbox around them.
 export async function sendStages(app, a){
   a.id ||= uuid7();
-  for (a.stage = 0; a.stage < OPS[a.op].stages.length; a.stage++) await OPS[a.op].stages[a.stage](a, stageContext(a, app).start());
+  for (a.stage = 0; a.stage < stagesOf(a).length; a.stage++) await stagesOf(a)[a.stage](a, stageContext(a, app).start());
 }

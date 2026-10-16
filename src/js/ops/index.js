@@ -4,7 +4,9 @@
    - on(a): the ids of the tasks it changes, when not just its own (opsId), such as a deleted task's parent.
    - stages: its requests, in order, as `(a, c) => Promise` (ops/stages.js). app/acts.js runs them from `a.stage`.
      A stage's requests and their bodies depend only on the entry and `a.fixed`, so each part number always carries
-     the same request, and its key gets the same answer from the relay.
+     the same request, and its key gets the same answer from the relay. An op whose number of stages depends on the
+     entry gives a function of the entry instead (stagesOf).
+   - keepReads: Try again keeps what the first try read (`a.fixed`), instead of reading Vikunja's copy again.
    - invert(a): the fields of the op that undoes entry `a`, from what `a` recorded. Null when it has none.
    - merge(older, newer): what becomes of `older`, the op queued just before `newer` on the same task, when `older`
      has sent nothing (fold, app/acts.js). It returns the entry that replaces both, CANCEL (sync.js) when the two
@@ -24,5 +26,7 @@ import {due, repeat} from './dates.js';
 // stages.js is still loading, and they fail without it.
 export {addLines, LINE, madeStage} from './add.js';
 export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add, due, repeat};
+// The stages entry `a` is sent in.
+export const stagesOf = a => { const s = OPS[a.op].stages; return typeof s === 'function' ? s(a) : s; };
 // The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
 export const noneWaiting = () => Object.fromEntries(['files', ...Object.values(OPS).map(o => o.waiting).filter(Boolean)].map(k => [k, {}]));

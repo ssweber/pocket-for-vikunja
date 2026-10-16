@@ -394,7 +394,7 @@ test('a line whose answer the relay can\'t vouch for waits in the Outbox with Tr
 test('cancelling a line whose answer is unknown sends the line under it back to the box, with no Undo', async t => {
   const { v, app, e } = await unknownSecond(t);
   await app.dropAct(e.entries[1].id);
-  assert.deepEqual([sync.all(1), app.cap.text, app.toast.msg], [[], 'Stack them', 'Cancelled. The lines under it are back where you typed them.']);
+  assert.deepEqual([sync.all(1), app.cap.text, app.toast.msg], [[], 'Stack them', 'Cancelled. Vikunja may or may not have this change. The lines under it are back where you typed them.']);
   assert.equal(app.toast.action, null);
   assert.deepEqual(v.requests.filter(x => x.body?.title === 'Stack them'), []);
 });

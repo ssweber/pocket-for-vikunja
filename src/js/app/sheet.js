@@ -21,7 +21,6 @@ let lastSave = null;
 // Notes written but not saved yet, kept on the phone as {text, base}. `base` is what the notes said when editing began.
 // An older Pocket kept only the text.
 const notesDraft = id => { const d = taskDrafts.get('desc:' + id); return d == null ? null : typeof d === 'string' ? {text: d, base: null} : d; };
-const repeats = t => t.repeat_after > 0 || t.repeat_mode === 1;
 let closeTimer;
 let lastFocus;
 
@@ -198,10 +197,10 @@ export default {
   get dueShown(){ const t = this.sheetTask; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
   /* Set the due date from the sheet, as a `due` op, which the sheet and the task's rows show at once. A template's due
      date is when it repeats. Giving a template a date leaves it not done, and removing the date makes it done again,
-     with its repeat kept (`rep`, ops/dates.js). */
+     with the repeat Vikunja has kept (ops/dates.js). */
   setDue(v){
     const t = this.sheetTask, f = {op: 'due', task: t.id, was: this.dueShown, due: v, run: null};
-    if (this.checklistRole === 'template') Object.assign(f, {tpl: true, rep: repeats(t) ? {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode} : null}, isSet(v) ? t.done && {done: false} : {done: true});
+    if (this.checklistRole === 'template') Object.assign(f, {tpl: true}, isSet(v) ? t.done && {done: false} : {done: true});
     this.sheet.dirty = true;
     return this.act(f);
   },

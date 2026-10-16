@@ -3,7 +3,7 @@ import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {older, sendState, sync, uuid7} from '../sync.js';
 import {OPS} from '../ops/index.js';
-import {UNKNOWN} from '../messages.js';
+import {UNKNOWN, UNSURE} from '../messages.js';
 import {copyOf} from './tasks.js';
 
 const whenText = at => {
@@ -85,12 +85,14 @@ export default {
   },
   /* Retry a rejected action before sending the actions queued behind it. It goes with a new key, because the relay
      would answer the old one with the refusal it stored. After Idempotency-Unknown, tapping Try again is the user
-     saying the change wasn't made. Bodies built from a read are built again, from Vikunja's copy as it is now. */
+     saying the change wasn't made. Bodies built from a read are built again, from Vikunja's copy as it is now, unless
+     the op keeps its reads (keepReads, ops/index.js). */
   async retryAct(id){
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e?.failed) return;
-      delete e.failed; delete e.fixed; e.fails = 0; e.key = uuid7();
+      if (!OPS[e.op]?.keepReads) delete e.fixed;
+      delete e.failed; e.fails = 0; e.key = uuid7();
       // A line made now writes the progress of every parent above it, which its batch may have written without it.
       if (e.above?.length) e.ups = e.above;
       await sync.save(e);
@@ -121,7 +123,10 @@ export default {
     if (photos.length && !a.parent) this.capPhotos = [...this.capPhotos, ...photos];
     if (a.op === 'add') this.linesBack(under, said); else if (a.op !== 'answer') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    const words = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), back = said.back && a.op !== 'note' && (a.op === 'add' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
+    // Vikunja may have a change whose answer is unknown, so its words say that instead of what Vikunja keeps. A move
+    // names both dates itself (OP_WORDS.due).
+    const dropped = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), words = a.failed?.message === UNKNOWN && a.op !== 'due' ? [UNSURE, a.op === 'note' && dropped] : [dropped];
+    const back = said.back && a.op !== 'note' && (a.op === 'add' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
     // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
     // again, as before.
     const undo = said.back || a.op === 'add' || a.op === 'note' ? null : {label: 'Undo', fn: async () => {
@@ -130,7 +135,7 @@ export default {
       await sync.lock(() => sync.add(e, []));
       if (e.failed) this.refreshPending(); else await this.sendActs(e.id);
     }};
-    this.say(['Cancelled.', words, back].filter(Boolean).join(' '), {place: 'sheet:top', action: undo, gone: () => { kept = null; }});
+    this.say(['Cancelled.', ...words, back].filter(Boolean).join(' '), {place: 'sheet:top', action: undo, gone: () => { kept = null; }});
     this.flush();                                                           // sends the actions that waited behind it
   },
 };

@@ -629,7 +629,7 @@ the entry after each:
 - **409 without `Idempotency-Unknown`** (the first request is still running): wait `Retry-After` seconds, at most 3
   times, then treat it as no connection (`passing`), so the entry waits.
 - **409 with `Idempotency-Unknown`**: the entry is marked failed, with a message saying Pocket can't tell whether
-  the change was made, and the outbox sheet offers Try again and Don't send it. Try again sends the stage with a new
+  the change was made, and the outbox sheet offers Try again and Cancel. Try again sends the stage with a new
   key: it is the user's call that the change wasn't made.
 
 ### The registry

@@ -6,7 +6,7 @@ import {parseStep, patiently} from '../checklists.js';
 import {CANCEL, held, heldTasks, hold, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7, waits} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
-import {OPS} from '../ops/index.js';
+import {OPS, stagesOf} from '../ops/index.js';
 import {CREATED, opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
@@ -183,10 +183,12 @@ export default {
         if (last.kept) hold(e, stopped);
         // A failed move shows its own message on the row (reorder), and a line in its add box, so none here.
         const err = last.error;
-        // A stage that knows the whole sentence gives it (`said`).
+        // A stage that knows the whole sentence gives it (`said`). A date or a repeat set in the open sheet says so under
+        // the sheet's date until the sheet closes, as the sheet's own saves do.
+        const inSheet = (e.op === 'due' || e.op === 'repeat') && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
         if (last.status === 'error' && !quiet?.has(e.id) && e.op !== 'position' && e.op !== 'add') this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
           : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err))),
-          {place: 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null});
+          {place: inSheet ? 'sheet:due' : 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null, ...inSheet && {ms: null}});
         if (last.status === 'offline' || e.id === id) break;
       }
     });
@@ -200,8 +202,8 @@ export default {
      made (`tasks`, for placeSent) and its problems, and uploads its photos once it is sent (`filesWait` while they
      wait). When Vikunja refuses an add, it and the later lines of its batch leave the outbox (refuseLines). */
   async sendAct(a){
-    const op = OPS[a.op], c = stageContext(a, this), add = a.op === 'add', none = {ids: [], tasks: [], problems: add ? a.problems ||= [] : [], uploaded: 0};
-    const got = () => ({...none, ids: add && a.stage >= op.stages.length ? [a.taskId] : [], projectId: a.projectId});
+    const op = OPS[a.op], stages = stagesOf(a), c = stageContext(a, this), add = a.op === 'add', none = {ids: [], tasks: [], problems: add ? a.problems ||= [] : [], uploaded: 0};
+    const got = () => ({...none, ids: add && a.stage >= stages.length ? [a.taskId] : [], projectId: a.projectId});
     if (add) {
       c.made = t => { this.change(w => w.answer([t], CREATED)); none.tasks.push({...t, child: a.under != null, parent: a.under, was: 'pending-' + a.id, place: a.p.position || 0}); };
       // A task that arrived done, or with progress, shows that on its row (placeSent).
@@ -226,8 +228,8 @@ export default {
         this.offline = true; return {...none, status: 'offline', reached: false};
       }
       // A busy Vikunja is retried a few times. With keys, sending a stage again is safe.
-      while (a.stage < op.stages.length) {
-        await patiently(() => op.stages[a.stage](a, c.start()));
+      while (a.stage < stages.length) {
+        await patiently(() => stages[a.stage](a, c.start()));
         a.stage++;
         await sync.save(a, [], filesOut(a));
       }
