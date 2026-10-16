@@ -618,7 +618,7 @@ try {
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     const d = new Date(Date.now() + 86400000), p = n => String(n).padStart(2, '0');
     await page.fill('#d-due', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`);
-    await page.waitForSelector('#d-saved:text("Saved")', { timeout: 10000 });
+    await synced(page);
     await page.click('#btn-sheet-close');
     await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) ${cardOf(t)}`, { timeout: 15000 });
     if (await page.isVisible(`${noDate} ${cardOf(t)}`)) throw new Error('still under Added today, no date');
@@ -3280,16 +3280,16 @@ try {
     } finally { await page.unroute(`**/api/v2/tasks/${r.id}`, refuse); await api('/tasks/' + r.id, { method: 'DELETE' }); }
   });
   /* An edit in a task's sheet shows on the task's row behind the sheet at once, before Vikunja answers. A save that
-     fails puts back only its own field, in the sheet and on the row. An edit still being saved stays. */
+     fails puts back only its own field, in the sheet and on the row. A date still being sent, as an op, stays. */
   await step('a-sheet-edit-shows-on-its-row-at-once-and-a-failed-one-puts-back-only-its-own-field', async () => {
-    const r = await make(`Pocket smoke sheet row ${stamp}`, { due_date: todayAt(23) }), at = `**/api/v2/tasks/${r.id}`;
+    const r = await make(`Pocket smoke sheet row ${stamp}`, { due_date: todayAt(23) }), at = `**/v2/tasks/${r.id}`;
     const gates = {}, gate = k => new Promise(ok => { gates[k] = ok; }), open = k => gates[k]?.();
     const due = gate('due'), prio = gate('prio');
-    // Vikunja's answer to the date waits, then the connection drops. The priority, saved after it, waits too.
+    // Vikunja's answer to the date waits. The priority, saved after it, waits too, then the connection drops.
     const hold = async x => {
       if (x.request().method() !== 'PATCH') return x.fallback();
-      if ('due_date' in x.request().postDataJSON()) { await due; return x.abort('connectionreset'); }
-      await prio; return x.fallback();
+      if ('due_date' in x.request().postDataJSON()) { await due; return x.fallback(); }
+      await prio; return x.abort('connectionreset');
     };
     const local = h => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(h)}:00`; };
     const R = `#view ${rowOf(r.title)}`, rowDue = page.locator(`${R} .when .due`), bars = page.locator(`${R} .when .bars`);
@@ -3302,20 +3302,21 @@ try {
       await page.route(at, hold);
       await page.fill('#d-due', local(22));
       await expect(rowDue).not.toHaveText(was);
+      const moved = await rowDue.textContent();
       await page.selectOption('#d-prio', '3');
       await expect(bars).toHaveClass(/\bp3\b/);
       const kept = await get(r.id);
       if (kept.priority || new Date(kept.due_date).getHours() !== 23) throw new Error('Vikunja had the changes before the rows were checked');
-      open('due');
-      await expect(placeLine(page, 'sheet:top')).toContainText('Not saved: no connection', { timeout: 20000 });
-      await expect(rowDue).toHaveText(was);
-      await expect(page.locator('#d-due')).toHaveValue(local(23));
-      await expect(page.locator('#d-prio')).toHaveValue('3');
-      await expect(bars).toHaveClass(/\bp3\b/);
       open('prio');
+      await expect(placeLine(page, 'sheet:top')).toContainText('Not saved: no connection', { timeout: 20000 });
+      await expect(page.locator(`${R} .when .bars.p3`)).toHaveCount(0);
+      await expect(page.locator('#d-prio')).not.toHaveValue('3');
+      await expect(rowDue).toHaveText(moved);
+      await expect(page.locator('#d-due')).toHaveValue(local(22));
+      open('due');
       await synced(page);
       const now = await get(r.id);
-      if (now.priority !== 3 || new Date(now.due_date).getHours() !== 23) throw new Error(`Vikunja has priority ${now.priority}, due ${now.due_date}`);
+      if (now.priority || new Date(now.due_date).getHours() !== 22) throw new Error(`Vikunja has priority ${now.priority}, due ${now.due_date}`);
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
     } finally { open('due'); open('prio'); await page.unroute(at, hold); await api('/tasks/' + r.id, { method: 'DELETE' }); }

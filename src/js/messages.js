@@ -95,6 +95,8 @@ const row = (title, repeated) => named(title || 'a step') + (repeated ? ' (repea
 const on = title => title ? ` on “${named(title)}”` : '';
 const it = title => `“${named(title || 'it')}”`;
 const REST = ' The rest of the change is not sent.';
+const EVERY = {86400: 'every day', 604800: 'every week', 1209600: 'every 2 weeks'};
+const repeatText = s => s.repeat_mode === 1 ? 'Repeats every month' : !s.repeat_after ? 'Doesn\'t repeat' : 'Repeats ' + (EVERY[s.repeat_after] || `every ${s.repeat_after / 86400} days`);
 const ticked = {saved: 'it\'s marked done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays marked done in Vikunja.${REST}` : `${it(title)} stays not done in Vikunja.`};
 const unticked = {saved: 'it\'s marked not done', dropped: (a, title) => a.stage > 0 ? `${it(title)} stays not done in Vikunja.${REST}` : `${it(title)} stays done in Vikunja.`};
 export const OP_WORDS = {
@@ -123,7 +125,12 @@ export const OP_WORDS = {
   position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
   // A new date, named as the message after a move names it. Cancel names the date before the move (`was`).
   due: {text: (a, title, r) => `${movedTo(dayName(a.due))}: ${row(title, r)}`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'),
-    dropped: (a, title) => `${it(title)} stays ${isSet(a.was) ? 'due ' + dayWord(dayName(a.was)) : 'without a date'}.`},
+    // Taking a repeating template's date off turns its repeat off first, and puts it back last (ops/dates.js).
+    dropped: (a, title) => a.tpl && a.rep && !isSet(a.due) && a.stage > 0 ? `${it(title)} doesn't repeat in Vikunja now.${REST}`
+      : `${it(title)} stays ${isSet(a.was) ? 'due ' + dayWord(dayName(a.was)) : 'without a date'}.`},
+  // How a task repeats, in the words of the sheet's Repeats list.
+  repeat: {text: (a, title, r) => `${repeatText(a.set || {})}: ${row(title, r)}`, refused: (a, title) => `Changing how ${title ? `“${named(title)}”` : 'a task'} repeats`,
+    dropped: (a, title) => `${it(title)} keeps the repeat${a.set && 'due_date' in a.set ? ' and the date' : ''} it has in Vikunja.`},
   // An add's line, under what it goes under (`a.over`).
   add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
     refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},

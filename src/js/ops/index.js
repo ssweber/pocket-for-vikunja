@@ -18,11 +18,11 @@ import {claim, unclaim} from './people.js';
 import {position} from './order.js';
 import {del} from './delete.js';
 import {add} from './add.js';
-import {due} from './dates.js';
+import {due, repeat} from './dates.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
 export {addLines, LINE, madeStage} from './add.js';
-export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add, due};
+export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add, due, repeat};
 // The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
 export const noneWaiting = () => Object.fromEntries(['files', ...Object.values(OPS).map(o => o.waiting).filter(Boolean)].map(k => [k, {}]));

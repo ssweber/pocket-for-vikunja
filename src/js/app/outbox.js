@@ -121,7 +121,7 @@ export default {
     if (photos.length && !a.parent) this.capPhotos = [...this.capPhotos, ...photos];
     if (a.op === 'add') this.linesBack(under, said); else if (a.op !== 'answer') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    const words = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), back = said.back && a.op !== 'note' && 'Its text is back where you wrote it.';
+    const words = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), back = said.back && a.op !== 'note' && (a.op === 'add' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
     // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
     // again, as before.
     const undo = said.back || a.op === 'add' || a.op === 'note' ? null : {label: 'Undo', fn: async () => {

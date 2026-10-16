@@ -799,6 +799,50 @@ try {
     }
   });
 
+  /* A date and a repeat set in a task's sheet offline show at once, and wait in the outbox as two ops, also across a
+     reload. Back online, Vikunja gets each once. Each request sent again with its key is answered from what the relay
+     kept. */
+  await step('a-date-and-repeat-set-in-the-sheet-offline-are-each-sent-once', async () => {
+    const was = new Date(); was.setDate(was.getDate() + 3); was.setHours(9, 0, 0, 0);
+    const to = new Date(); to.setDate(to.getDate() + 2); to.setHours(10, 0, 0, 0);
+    const p = n => String(n).padStart(2, '0'), local = `${to.getFullYear()}-${p(to.getMonth() + 1)}-${p(to.getDate())}T10:00`;
+    const t = await (await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('sheet date'), due_date: was.toISOString() }) })).json();
+    const patched = [], seen = r => { if (r.method() === 'PATCH' && r.url().endsWith('/v2/tasks/' + t.id)) patched.push(r.postData()); };
+    const open = async () => { await page.click(`#view .row .body:has-text("${T('sheet date')}")`, { timeout: 15000 }); await page.waitForSelector('#d-due'); };
+    page.on('request', seen);
+    try {
+      await context.setOffline(false);
+      await page.reload();
+      await open();
+      await context.setOffline(true);
+      await page.fill('#d-due', local);
+      await page.selectOption('#d-repeat', 'week');
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      await page.reload();
+      await open();
+      await expect(page.locator('#d-due')).toHaveValue(local);              // still shown after the reload
+      await expect(page.locator('#d-repeat')).toHaveValue('week');
+      await page.click('#btn-sheet-close');
+      const ops = (await outboxOf(page)).filter(e => e.task === t.id);
+      if (ops.map(e => e.op).join() !== 'due,repeat') throw new Error('waiting: ' + JSON.stringify(ops));
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const now = await (await api('/tasks/' + t.id)).json();
+      if (!sameTime(now.due_date, to.toISOString()) || now.repeat_after !== 604800 || patched.length !== 2) throw new Error(`due ${now.due_date}, repeats ${now.repeat_after}, after ${patched.length} requests`);
+      for (const [e, body] of [[ops[0], { due_date: ops[0].due }], [ops[1], ops[1].set]]) {
+        const again = await fetch(SERVER + '/api/v1/plugins/pocket/v2/tasks/' + t.id, { method: 'PATCH', body: JSON.stringify(body),
+          headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Idempotency-Key': `"${e.key || e.id}:0:0"` } });
+        if (again.headers.get('idempotent-replayed') !== 'true') throw new Error(`${e.op}: HTTP ${again.status}, not answered from what the relay kept: ${await again.text()}`);
+      }
+    } finally {
+      page.off('request', seen);
+      await context.setOffline(false);
+      await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
   /* A row thrown at two dates offline (app/throw.js) waits as one move, from its first date to the last. Back online,
      one request is sent, and Undo puts the first date back. The hold needs the page's clock, so this runs in a context
      of its own with Playwright's clock. */

@@ -175,39 +175,35 @@ export default {
     }
     return opts;
   },
+  // Change how the task repeats, as a `repeat` op. The sheet and the task's rows show it at once, online or offline.
   setRepeat(v){
     if (v === 'custom') return;
-    const patch = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
+    const t = this.sheetTask, set = v === 'month' ? {repeat_mode: 1, repeat_after: 0}
       : {repeat_mode: 0, repeat_after: {none: 0, day: 86400, week: 604800, '2weeks': 1209600}[v]};
     // A repeating task needs a due date to move forward from. A done template shows no due date (dueShown). Giving it
     // a date makes it repeat, so it is no longer done.
-    const tpl = this.checklistRole === 'template';
     if (v !== 'none' && !isSet(this.dueShown)) {
       const d = atTime(new Date(), this.dueTime);
-      patch.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString();
-      if (tpl) patch.done = false;
+      set.due_date = (d < new Date() ? addDays(d, 1) : d).toISOString();
+      if (this.checklistRole === 'template') set.done = false;
       // Tell the user which date was set, since it may surprise them. It is the next occurrence of the default due time
       // set in Vikunja.
-      const label = dueInfo(patch.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(patch.due_date));
+      const label = dueInfo(set.due_date).label, when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(set.due_date));
       this.say(`Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`, {place: 'sheet:due', ms: 8000});
     }
-    this.save(patch);
+    this.sheet.dirty = true;
+    return this.act({op: 'repeat', task: t.id, set, was: Object.fromEntries(Object.keys(set).map(k => [k, t[k]])), run: null});
   },
   // The due date the sheet shows. A template's due date is when it next repeats, so a done template has none.
   get dueShown(){ const t = this.sheetTask; return this.checklistRole === 'template' && t.done ? ZERO : t.due_date; },
-  /* Set the due date from the sheet. A template's due date is when it repeats. Giving a template a date leaves it not
-     done, and removing the date makes it done again.
-     To remove the date, Pocket first removes the repeat, then saves the date and done, then puts the repeat back.
-     Saved in one request with the repeat, Vikunja would move the template on to its next time and leave it not done.
-     Putting the repeat back means a date given later repeats as before. */
-  async setDue(v){
-    const t = this.sheetTask;
-    if (this.checklistRole !== 'template') return this.save({due_date: v});
-    if (isSet(v)) return this.save({due_date: v, ...t.done && {done: false}});
-    const rep = repeats(t) && {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode};
-    if (rep && await this.save({repeat_after: 0, repeat_mode: 0}) === false) return;
-    if (await this.save({due_date: ZERO, done: true}) === false || !rep) return;
-    return this.save(rep);
+  /* Set the due date from the sheet, as a `due` op, which the sheet and the task's rows show at once. A template's due
+     date is when it repeats. Giving a template a date leaves it not done, and removing the date makes it done again,
+     with its repeat kept (`rep`, ops/dates.js). */
+  setDue(v){
+    const t = this.sheetTask, f = {op: 'due', task: t.id, was: this.dueShown, due: v, run: null};
+    if (this.checklistRole === 'template') Object.assign(f, {tpl: true, rep: repeats(t) ? {repeat_after: t.repeat_after, repeat_mode: t.repeat_mode} : null}, isSet(v) ? t.done && {done: false} : {done: true});
+    this.sheet.dirty = true;
+    return this.act(f);
   },
   // The parent's title. For a template's step, the template's name without "TEMPLATE: ".
   get parentTitle(){ const p = this.parentTask; return p && (this.checklistRole === 'tplstep' ? templateName(p.title) : p.title); },

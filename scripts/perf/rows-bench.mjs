@@ -360,7 +360,17 @@ async function counts(){
     await page.evaluate(id => window.__pf.app().openTask(id), id); await page.locator('#d-subtasks .row').first().waitFor(); await sleep(1500);
     return { ...flat(await fx(page)), ...Object.fromEntries(Object.entries(await page.evaluate(() => window.__pf.stop())).map(([k, c]) => [k, c.n])) };
   };
-  res['a sheet with 3 subtasks'] = await sheet(await page.evaluate(() => +document.querySelector('#view .day-card').dataset.id));
+  const card = await page.evaluate(() => +document.querySelector('#view .day-card').dataset.id);
+  res['a sheet with 3 subtasks'] = await sheet(card);
+  // In that sheet, a date set, at once and once Vikunja has it. The date is put back through Vikunja's API.
+  {
+    const was = (await vikunja('GET', '/tasks/' + card)).due_date;
+    undo.push(() => vikunja('PATCH', '/tasks/' + card, { due_date: was }));
+    await fx(page);
+    await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 2); window.__pf.app().setDue(d.toISOString()); });
+    await sleep(40); res['in a sheet, its date set, at once'] = flat(await fx(page));
+    await idleSync(page); await sleep(300); res['in a sheet, its date answered'] = flat(await fx(page));
+  }
   await page.close(); for (const fn of undo.splice(0)) await fn().catch(e => console.log('not put back:', e.message));
   ({ page } = await ph.page('#/checklists'));
   await page.locator('#view .row').first().waitFor(); await loaded(page); await sleep(3000);
