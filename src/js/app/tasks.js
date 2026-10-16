@@ -176,7 +176,9 @@ function offTasks(a){
 function answered(a, got, posted = null){
   writing();
   const op = opOf(a), ids = shownOn(a);
-  const real = t => !t.comments?.some(c => c.id === a.id) ? t : {...t, comments: t.comments.map(c => c.id !== a.id ? c : posted || {...c, waiting: false})};
+  // A copy read once the comment had reached Vikunja, as after a reload, has it already, and the waiting one goes.
+  const real = t => !t.comments?.some(c => c.id === a.id) ? t
+    : {...t, comments: t.comments.flatMap(c => c.id !== a.id ? [c] : posted && t.comments.some(x => x.id === posted.id) ? [] : [posted || {...c, waiting: false}])};
   for (const id of ids) {
     const had = copies.get(id);
     if (had) { const now = real(op.apply(had, a)); answer([now], Object.keys(now)); }

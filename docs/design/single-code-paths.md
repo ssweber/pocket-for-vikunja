@@ -819,6 +819,7 @@ Phase 5 makes creates ops.
 - Only `src/js/ops/` knows which op is which. Lint holds it.
 - An op records what the user chose. What the task is like now is read from Vikunja when the op is sent. `act()` and
   the stage proxy hold it.
+- Every op passes the lifecycle checks in tests/unit/lifecycle.test.mjs. A new op needs a sample there.
 
 ### Order of work
 
@@ -1098,6 +1099,9 @@ phone check of phase 6 covers 6c, since nothing on screen changes.
 
 6c-2 is built: each op's `asks` and `saw`, the check in `actEntry` (`checkFields`), and the proxy a stage gets
 (`stageView`).
+
+6c-3 is built: `tests/unit/lifecycle.test.mjs`, with a sample for each op. Its `KNOWN` list holds the two bugs it
+found whose fix would change what the user sees, until the user decides them.
 
 ### Tests
 

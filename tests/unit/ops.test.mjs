@@ -70,7 +70,7 @@ test('each op\'s apply shows its change: a tick with the user\'s ✅, a skip wit
     'a task read without its reactions and comments gets neither, or one ✅ would read as the only one');
   assert.deepEqual([OPS.claim.apply(step, a('claim')).assignees, OPS.claim.apply(step, { user: 1 }).assignees], [[me], [{ id: 1 }]],
     'a claim adds the claimer with their name, or only their id for an entry queued before Pocket kept it');
-  assert.deepEqual([OPS.progress.apply(step, a('progress', { pct: 40 })).percent_done, OPS.finish.apply(step).done, OPS.reopen.apply(done).done], [0.4, true, false]);
+  assert.deepEqual([OPS.progress.apply(step, a('progress', { pct: 40 })).percent_done, OPS.finish.apply(step, a('finish')).done, OPS.reopen.apply(done, a('reopen')).done], [0.4, true, false]);
   const van = { id: 1, related_tasks: { subtask: [{ id: 4 }, { id: 5 }] } }, del = a('delete', { ids: [6, 4], up: 1 });
   assert.deepEqual([OPS.delete.apply(van, del).related_tasks.subtask, OPS.delete.on(del)], [[{ id: 5 }], [6, 4, 1]], 'a delete takes its tasks off the parent that stays');
 });

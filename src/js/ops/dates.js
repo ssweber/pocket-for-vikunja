@@ -7,8 +7,9 @@ import {patch} from './stages.js';
 // Vikunja writes a date in its own format, so two dates are compared as times.
 const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
 const same = (k, a, b) => k === 'due_date' ? sameTime(a, b) : a === b;
-// The date Vikunja stored for the move, from its answer. A tab that didn't see the answer has only the date it sent.
-const gotOf = a => a.got?.task?.due_date ?? a.due;
+/* The date Vikunja stored for the move, from its answer. A tab that didn't see the answer has only the date it sent. A
+   template's date taken off answers its first stage with the date still on, which is not the move's date. */
+const gotOf = a => { const d = a.got?.task?.due_date; return d && sameTime(d, a.due) ? d : a.due; };
 // Reads Vikunja's copy, or null for a task deleted since.
 const now = (a, c) => c.read('/tasks/' + a.task).catch(e => { if (e.status === 404) return null; throw e; });
 // A stage can't read the title the row showed, so the sender gives `said` the entry itself (sendAct).

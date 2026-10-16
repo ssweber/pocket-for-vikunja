@@ -8,11 +8,12 @@ import {comment, figure, mark, patch, tick, unmark, untick} from './stages.js';
 import {marked, said} from './shown.js';
 
 // doneBy: the task done at the op's time, with the user's ✅ or ⏭️, and with `note` the op's comment. Vikunja's answer
-// brings its own time.
-const closed = t => ({...t, done: true}), open = t => ({...t, done: false}), doneBy = (mark, note) => (t, a) => {
+// brings its own time. notDone: the task not done, without the user's ✅ or ⏭️.
+const doneBy = (mark, note) => (t, a) => {
   const d = marked({...t, done: true, done_at: a.at}, a, mark);
   return note ? said(d, a) : d;
 };
+const notDone = (t, a) => marked({...t, done: false, done_at: ZERO}, a, null);
 
 // An untick that waited offline may arrive after someone finished the checklist. The checklist stays finished, and the
 // step stays done.
@@ -31,14 +32,14 @@ export const doneNote = {apply: doneBy(DONE_MARK, true), stages: [tick, mark(DON
 export const skip = {apply: doneBy(SKIP_MARK, true), stages: [tick, mark(SKIP_MARK), comment, figure], cancel: 'text', ...OP_WORDS.skip,
   asks: ['html'], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, sheetPlace: null, answered: null,
   holds: null, waitsOn: null, row: null, files: null, deletes: null};
-export const undone = {apply: (t, a) => marked({...t, done: false, done_at: ZERO}, a, null), stages: [untickOpen, unmark, figure], ...OP_WORDS.undone,
+export const undone = {apply: notDone, stages: [untickOpen, unmark, figure], ...OP_WORDS.undone,
   asks: [], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
   answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
 // finishRun and reopenRun redraw the checklist's screen themselves.
-export const finish = {apply: closed, stages: [tick, mark(DONE_MARK)], answered: () => {}, ...OP_WORDS.finish,
+export const finish = {apply: doneBy(DONE_MARK), stages: [tick, mark(DONE_MARK)], answered: () => {}, ...OP_WORDS.finish,
   asks: [], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
   holds: null, waitsOn: null, row: null, files: null, deletes: null};
-export const reopen = {apply: open, stages: [untick, unmark], answered: () => {}, ...OP_WORDS.reopen,
+export const reopen = {apply: notDone, stages: [untick, unmark], answered: () => {}, ...OP_WORDS.reopen,
   asks: [], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
   holds: null, waitsOn: null, row: null, files: null, deletes: null};
 export const progress = {apply: (t, a) => ({...t, percent_done: a.pct / 100}), stages: [(a, c) => patch(a, c, {percent_done: a.pct / 100}), figure],
