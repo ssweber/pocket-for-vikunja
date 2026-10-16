@@ -884,6 +884,8 @@ is one entry, sent by `act` and `sendAct` like every other op, so `sendEntry` lo
   back the lines that weren't added.
 - When Vikunja refuses a line, that line and the later lines of its batch are dropped and go back to the box, as now.
   Each of them is under the refused line or comes after it.
+- A line whose answer is unknown (`Idempotency-Unknown`) is not refused. It stays in Waiting to send, marked failed,
+  with Try again, as other ops do, and the lines under it wait behind it.
 - A waiting row's id becomes `pending-<entry>` instead of `pending-<entry>-<index>`. `pendingTasks`, `cardAdded`,
   `aimAdded`, `aimSent`, `cancelName` and Waiting to send read the new shape.
 - A parent's progress is written when it is today: after subtasks are added to a task, or when a line under a line
