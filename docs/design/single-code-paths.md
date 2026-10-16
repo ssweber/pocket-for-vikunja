@@ -206,9 +206,9 @@ Test it in `tests/unit/` with a fake outbox. Ticking and unticking ten times whi
 
 ### The outbox's format
 
-The new entry format replaces the old one outright. Raise the IndexedDB version in `sync.open`, and clear the
-`outbox`, `files` and `claims` stores in the upgrade. Delete `claims` once nothing reads it, and the code that moves
-entries from localStorage. There is no old sender.
+The new entry format replaces the old one outright. There is no old sender, no new IndexedDB version and no upgrade
+code. The sender drops an entry it can't read, so the user empties Waiting to send before installing a phase that
+changes the format. Delete `claims` once nothing reads it.
 
 ### Traps
 
@@ -554,8 +554,8 @@ checks that Vikunja changed once.
    done goes back at once. A finished stage's task and comment are kept in the entry (`a.got`). Once a task has a
    copy, `base` lays only Pocket's own fields under its row. A task Vikunja deleted loses its row in the same change.
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
-   Delete `LINE_STEPS`' lost-reply checks, `findSent` and `claims`. Change the outbox's format. Old stored data is
-   read as it is, or ignored if it can't be read. Pocket writes no upgrade code.
+   Delete `LINE_STEPS`' lost-reply checks and `findSent`. `claims` stays until phase 10. A capture entry from before
+   phase 5 is dropped, and Pocket writes no upgrade code. "Phase 5 in detail" has the steps.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`.
@@ -831,6 +831,103 @@ bisected. The user checks the phone once, after 4d.
 - E2e: an edit in the sheet shows on its row before the answer. A failed sheet save puts back only its own field.
   Deleting a subtask on Today, then its parent, asks no question and leaves nothing in Waiting to send.
 
+## Phase 5 in detail
+
+Agreed on 2026-10-16. Nothing on screen changes in this phase. Adding a task works
+offline as it does now, and a lost reply can no longer leave a second copy of the task or a missing label.
+
+### What the code does today
+
+- Quick add (`submitCapture`) and the subtask boxes (`addSubtasks`) each save one outbox entry for everything typed.
+  The entry has one item per line, and `sendEntry` sends the items in order through `createTask`.
+- `createTask` runs `LINE_STEPS` for a line: `prepare`, `task`, `label`, `assignee`, `link` and `arrive`. None of
+  their requests has a key. After a lost reply, `task` searches for a task with the same title (`findSent`), `label`
+  reads every label again (`loadLabels(j.newLabel)`), and `arrive` reads the task to see whether the tick landed
+  (`arriving`).
+- `findSent` skips a task that another line already made, using `sync.claim` and `claimedByOther`. The same record
+  (`claims` in IndexedDB) also turns a waiting row's id (`pending-…`) into the task's id once it is sent (`taskOf`).
+  `findCopy` (runs.js) reads it too.
+- `createTask` has three callers outside the outbox, each of which waits for the result on screen: the template
+  editor (`createTemplate`, `addTemplateSteps`, `addExample`), a step's new title with @people or *labels
+  (checklists.js), and a new step inserted in a checklist (`INSERT_STEPS`).
+
+### Two commits
+
+**5a. Keyed requests.** `LINE_STEPS` keeps its shape and its callers, but every write sends a key. The key is
+`<line's key>:<stage>:<part>`, as `stageContext` makes them for an op, and the line's key becomes a `uuid7()`, because
+the relay reads a key's time from it. A retry sends each request with the key it was first sent with, so:
+
+- `task` sends `POST /projects/{id}/tasks` with its key and no search. `findSent`, `tried`, `triedAt` and
+  `claimedByOther` go.
+- `prepare` works out the body once, as now, and keeps it. Its reads (`canSee`, `userExists`, `findUser`) give each
+  person's id, which is kept in the line with the body.
+- `label` creates each label that doesn't exist yet with a keyed `POST /labels`, one part per label. Then it sets the
+  task's labels with one `PUT /tasks/{id}/labels/bulk`. The set is the labels Vikunja has on the task, read once,
+  plus the line's labels. A new task has none yet. The step-title caller in checklists.js gives an existing task, and
+  the read keeps the labels it already has. `newLabel` and the `ALREADY` code for labels go.
+- `assignee` does the same with `PUT /tasks/{id}/assignees/bulk`. The `ALREADY` code for people goes.
+- `link` sends its relation with a key.
+- `arrive` sends its `done` or `percent_done` with a key, and `arriving` and its read go. A repeating task's tick
+  that is sent twice reaches Vikunja once, because the relay answers the second from what it stored.
+- The entry's format is unchanged. The figure writes and the files are unchanged.
+
+The callers outside the outbox keep their jobs in memory, as now, and get the same keys. So the template editor's
+retry after a lost reply no longer searches either.
+
+**5b. The add op.** A line becomes an `add` op in `src/js/ops/add.js`, and `LINE_STEPS` become its stages. Each line
+is one entry, sent by `act` and `sendAct` like every other op, so `sendEntry` loses its capture branch.
+
+- A line under another line names it as `under: 'pending-<entry>'`, the way an inserted step names its run. The
+  sender already waits for a pending id's task (`sendAct`), and `taskOf` gives the id once it is sent.
+- The lines typed together share a `batch` id. The add box reads the results by batch, for its messages and to put
+  back the lines that weren't added.
+- When Vikunja refuses a line, that line and the later lines of its batch are dropped and go back to the box, as now.
+  Each of them is under the refused line or comes after it.
+- A waiting row's id becomes `pending-<entry>` instead of `pending-<entry>-<index>`. `pendingTasks`, `cardAdded`,
+  `aimAdded`, `aimSent`, `cancelName` and Waiting to send read the new shape.
+- A parent's progress is written when it is today: after subtasks are added to a task, or when a line under a line
+  arrives done or with progress. The last line of the batch under that parent writes it once, as its last stage
+  (`figure`, with `up`).
+- Photos and files stay on the first line's entry. They are sent as now, with `hasAttachment`, until phase 10.
+- Waiting rows stay in `pendingTasks`, built from the entries. Phase 11 decides whether a waiting row is shown
+  through the store.
+
+`createTask` stays for the three callers outside the outbox, and runs the `add` op's stages with their job. Phase 10
+makes those callers queue ops.
+
+### What changes elsewhere in this plan
+
+- **`claims` stays until phase 10.** `findCopy` still reads it, and `taskOf` uses it to turn a pending id into a
+  task's id. Phase 5 deletes only `claimedByOther`'s use in `findSent`. Phase 10 deletes `findCopy`, and then
+  `claims` becomes a plain record of which task each entry made.
+- **No new IndexedDB version.** "The outbox's format" says to raise the version and clear the stores. Per the rule
+  that Pocket writes no upgrade code, the version stays at 3. A capture entry saved before 5b has `items` and no
+  `op`. 5b's sender drops such an entry when it reads it, so the user empties Waiting to send before installing 5b.
+  5a reads the old entries as they are.
+
+### Traps
+
+- **A body is fixed before it is first sent.** The relay answers 422 to a key sent again with a different body. So
+  `prepare`'s body and each label and person id are worked out once and kept. Nothing reads again on a retry.
+- **A label created by another line.** Two lines in one batch with the same new label each create it, unless the
+  second reads the labels after the first is sent. `label` reads Vikunja's labels when its line is sent, not when the
+  batch was typed.
+- **`data-sync`.** An `add` op counts as busy from the tap until `refreshPending` sees its entry, as `cap.busy` and
+  `sheet.sub.adding` do now.
+
+### Tests
+
+- Unit (`tests/unit/`): the `add` op has every field. Each stage sends the same key on a retry. The labels set keeps a
+  label the task already has. A line under a pending line waits for its id.
+- `tests/offline.mjs`: a line whose `POST` reply is lost (the request reaches Vikunja and the reply is dropped) makes
+  one task, with its labels and people, once the phone is back online.
+- E2e: the quick add, subtask box and template tests pass unchanged.
+
+### Order of work
+
+5a, then 5b, each passing the full `test:local` and committed. The user checks the phone once, after 5b. Before
+installing 5b, the user empties Waiting to send on each phone.
+
 ## State on 2026-10-15
 
 For whoever carries on. Read this, then phase 4.
@@ -847,7 +944,7 @@ For whoever carries on. Read this, then phase 4.
   building it, as was done for phase 1.
 - **Phases 3 and 4 are on `dev`.** Phase 4 was built in four commits, as "Phase 4 in detail" says, and a fifth (4e)
   put every write inside `change`. A sixth (4f) closed the gaps a review of 4d and 4e found. It passed the
-  user's phone check on 2026-10-16. Phase 5 is next, and its design is agreed with the user before it is built.
+  user's phone check on 2026-10-16. "Phase 5 in detail" was agreed the same day, and 5a is being built.
 - **Known, and fixed by a later phase.**
   - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
   - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
