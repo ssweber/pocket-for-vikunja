@@ -497,11 +497,11 @@ export default {
      with it are dropped too. A line whose first request was sent can't be cancelled, because Vikunja may have its
      task. Its row has no Cancel then, but a tap can still arrive while the request goes out. */
   async cancelPending(id){
-    let raw = '', rest = 0, over = '', parent = null, sent = false;
+    let raw = '', title = '', rest = 0, over = '', parent = null, sent = false;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e || e.sent) { sent = true; return; }                              // sent while this call waited for the lock
-      raw = e.raw.trim(); parent = e.parent || null; over = e.over || '';
+      raw = e.raw.trim(); title = e.p?.title || raw; parent = e.parent || null; over = e.over || '';
       const kids = sync.all(e.user).filter(x => x.op === 'add' && x.under === 'pending-' + id);
       rest = kids.length;
       for (const x of kids) await sync.save(Object.assign(x, {under: e.under, over: e.over, pid: e.pid}));
@@ -516,7 +516,7 @@ export default {
     const box = parent ? (this.sheet.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
     const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
-    this.say(['Cancelled.', raw && box && 'It\'s back in the box.', rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`)].filter(Boolean).join(' '), {place});
+    this.say(['Cancelled.', raw && box && `“${title}” is back where you typed it.`, rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`)].filter(Boolean).join(' '), {place});
   },
   /* Line `e` leaves the outbox unsent, and the lines in `gone` leave with it. The parents' progress they were to write
      goes to the line before `e` in its batch, or else the line after it, so it is still written. Runs inside the

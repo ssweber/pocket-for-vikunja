@@ -47,7 +47,7 @@ export function stageContext(a, app, save = () => sync.save(a)){
     start(at = 0){ part = at; return this; },
     skip(){ part++; },
     async send(path, opts){
-      if (!a.sent) { a.sent = true; await save(); }                         // from now on Don't send it can't stop it
+      if (!a.sent) { a.sent = true; await save(); }                         // from now on Cancel can't stop it
       return api(path, {...opts, key: `${a.key || a.id}:${a.stage}:${part++}`});
     },
     read: path => api(path),
@@ -210,7 +210,7 @@ export default {
     try {
       // Wait for the real id of an offline step, or of the line this line goes under. Reject a step's action if the
       // step was never created. A line whose line is gone without a task leaves with the lines under it, and their
-      // text goes back to their box, as after Don't send it.
+      // text goes back to their box, as after Cancel.
       for (const k of ['task', 'under']) if (typeof a[k] === 'string') {
         const key = a[k].replace(/^pending-/, ''), id = sync.taskOf(key);
         if (!id && sync.entries.has(key)) return {...got(), status: 'offline', reached: true};

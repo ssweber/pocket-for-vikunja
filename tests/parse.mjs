@@ -14,7 +14,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-/* global endedOf, parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, roleOf, comesRound, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers */
+/* global endedOf, parseCapture, captureLines, readList, parseStep, readStepPhrase, draftSteps, stepProblems, isChecklistDesc, stepOrder, withOrder, stepsOf, isLate, placeBefore, addedText, notesOnly, withAdded, withStepLine, withLinesOf, roleOf, comesRound, templateName, templateTitle, repeatWords, vikunjaNext, nextAfter, stepAsks, textLines, copiedNotes, withAskLines, stepAnswers, OP_WORDS */
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
@@ -22,8 +22,8 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
 const CHRONO = (await readdir(resolve(ROOT, 'pocket/app'))).find(f => /^chrono-.*\.js$/.test(f));
 const PAGE = `<!doctype html><script type="module">
 import * as chrono from '/pocket/app/${CHRONO}'; window.chrono = chrono;
-const quickadd = await import('/src/js/quickadd.js'), checklists = await import('/src/js/checklists.js'), dates = await import('/src/js/dates.js'), asks = await import('/src/js/asks.js');
-Object.assign(window, quickadd, checklists, dates, asks);
+const quickadd = await import('/src/js/quickadd.js'), checklists = await import('/src/js/checklists.js'), dates = await import('/src/js/dates.js'), asks = await import('/src/js/asks.js'), messages = await import('/src/js/messages.js');
+Object.assign(window, quickadd, checklists, dates, asks, {OP_WORDS: messages.OP_WORDS});
 </script>`;
 const http = createServer(async (req, res) => {
   let file = '';
@@ -488,6 +488,10 @@ const asksRead = await page.evaluate(() => {
         author: {id: 2, name: 'Jamie'}, created: '2026-10-14T09:00:00Z'}, {id: 'e1', comment: '<p>Temp: 3 °C</p><p>pocket:answer</p>', author: {id: 1, name: 'Me'}, created: '2026-10-14T09:05:00Z', waiting: true}]},
       {id: 1, name: 'Me'}))];
 });
+// After Cancel, an answer is named by its ask's label, or by its step when it holds several answers or its ask has no
+// label.
+const answerWords = await page.evaluate(() => ['<p>Oil level: 5 mm</p>', '<p>Oil level: 5 mm</p><p>Colour: Amber</p>', '<p>5 mm</p>']
+  .map(html => OP_WORDS.answer.dropped({op: 'answer', html: html + '<p>pocket:answer</p>'}, 'Check the oil')));
 // How a finished checklist went: its skipped steps, and its comments without the answers to asks. A step's comments
 // are read as HTML. An open step has only its count of comments.
 const ended = await page.evaluate(() => {
@@ -596,14 +600,16 @@ if (!same(unknownLines, ['<p>Mind the hot plate</p><p>pocket: keys</p>', '<p>New
 if (!same(asksRead, [[['Where', ['see https://example.com', 'draft', 'code']], ['Temp', '°C']], [], ['Temp: 7 °C', 'Notes: Door open — again…', 'pocket:answer'],
   '<p>Read the probe.</p><p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal: yes-no</p><p>pocket:later 7</p><p>pocket:step Check the cooler</p>',
   '<p>Notes</p><p>Tail</p><ul><li>pocket:ask Kept: text</li></ul><p>pocket:ask Temp: number °C 0..5</p>',
-  '<p>Read.</p><p>Bring cash</p>', '<p>New</p><p>pocket:ask Where: choice see it | draft</p>', ['3 °C', false, true, 'Yes', 'Jamie', false]]))
+  '<p>Read.</p><p>Bring cash</p>', '<p>New</p><p>pocket:ask Where: choice see it | draft</p>', ['3 °C', false, 'e1', 'Yes', 'Jamie', false]]))
   { failed++; console.log(`FAIL asks and answers read from HTML: ${JSON.stringify(asksRead)}`); }
 const roundsWant = ['template', 'template', 'template', false, false, null, 'candidate', 'run', 'template', 'step', 'step', null, 'Opening up', 'Opening up', 'TEMPLATE: Opening up',
   'every day', 'every 3 days', 'every week', 'every 2 weeks', 'every month', 'every 6 hours', 'every day after a checklist starts', '',
   '2026-10-06T19:09:31.000Z', '2026-10-08T18:09:31.000Z', '2026-10-15T19:09:31.000Z', '2026-08-06T18:09:31.000Z', '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z', null];
+if (!same(answerWords, ["Your answer to “Oil level” isn't saved.", "Your answers to “Check the oil” aren't saved.", "Your answer to “Check the oil” isn't saved."]))
+  { failed++; console.log(`FAIL an answer's words after Cancel: ${JSON.stringify(answerWords)}`); }
 if (!same(ended, {1: {skipped: 1, comments: 4}})) { failed++; console.log(`FAIL how a finished checklist went: ${JSON.stringify(ended)}`); }
 if (!same(rounds, roundsWant)) { failed++; console.log(`FAIL templates that come round: ${JSON.stringify(rounds)}`); }
-const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 6, total = cases.length + lists.length + reads.length + wf;
+const wf = steps.length + templates.length + collisions.length + phrases.length + drafts.length + marks.length + orders.length + orderWrites.length + lates.length + 7, total = cases.length + lists.length + reads.length + wf;
 console.log(`${total - failed} of ${total} passed (${cases.filter(c => c.pocket).length} are Pocket-specific, ${lists.length + reads.length} are pasted lists, ${wf} are checklist steps and markers)`);
 process.exitCode = failed ? 1 : 0;

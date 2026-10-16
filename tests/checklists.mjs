@@ -1538,7 +1538,7 @@ try {
     await page.waitForSelector('#run-steps .row:has-text("Not after all")');
     await page.waitForSelector('#btn-refresh.waits', { timeout: 5000 });
     await page.click('#btn-refresh');
-    await page.click('#outbox-rows .ob-row:has-text("Not after all") .ob-drop');
+    await page.locator('#outbox-rows .ob-row:has-text("Not after all")').getByRole('button', { name: 'Cancel' }).click();
     await page.waitForSelector('#run-steps .row:has-text("Not after all")', { state: 'detached' });
     await page.click('#btn-sheet-close');
     await expect(page.locator('#run-box')).not.toHaveClass(/\binline\b/);  // the box is back at the bottom

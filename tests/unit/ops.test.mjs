@@ -73,7 +73,7 @@ test('a deleted subtask\'s figure stage skips a parent that a waiting delete del
 });
 
 /* Each op's words, as the outbox said them before the ops had words of their own: its row in the Outbox, what a
-   refusal calls it, and what Don't send it leaves in Vikunja before and after its first request. The first row of each
+   refusal calls it, and what Cancel leaves in Vikunja before and after its first request. The first row of each
    has a step's title with its time, and the second has no title. */
 const WORDS = {
   done: [['Done: Unlock the door', 'A tick on “Unlock the door”', '“Unlock the door” stays not done in Vikunja.', '“Unlock the door” stays marked done in Vikunja. The rest of the change is not sent.'],
@@ -84,10 +84,10 @@ const WORDS = {
     ['Skipped: a step', 'A skip', '“it” stays not done in Vikunja.', '“it” stays marked done in Vikunja. The rest of the change is not sent.']],
   doneNote: [['Done, with a comment: Unlock the door', 'Marking “Unlock the door” done, with its comment', '“Unlock the door” stays not done in Vikunja.', '“Unlock the door” stays marked done in Vikunja. The rest of the change is not sent.'],
     ['Done, with a comment: a step', 'Marking a step done, with its comment', '“it” stays not done in Vikunja.', '“it” stays marked done in Vikunja. The rest of the change is not sent.']],
-  note: [['A comment on “Unlock the door”', 'A comment on “Unlock the door”', 'The comment isn\'t posted. Its text goes back into the comment box.', 'The comment isn\'t posted. Its text goes back into the comment box.'],
-    ['A comment on “a step”', 'A comment', 'The comment isn\'t posted. Its text goes back into the comment box.', 'The comment isn\'t posted. Its text goes back into the comment box.']],
-  answer: [['Unlock the door', 'Answers on “Unlock the door”', '', ''],
-    ['a step', 'Answers', '', '']],
+  note: [['A comment on “Unlock the door”', 'A comment on “Unlock the door”', 'Your comment is back where you typed it.', 'Your comment is back where you typed it.'],
+    ['A comment on “a step”', 'A comment', 'Your comment is back where you typed it.', 'Your comment is back where you typed it.']],
+  answer: [['Unlock the door', 'Answers on “Unlock the door”', 'Your answer to “Unlock the door” isn\'t saved.', 'Your answer to “Unlock the door” isn\'t saved.'],
+    ['a step', 'Answers', 'Your answer to “it” isn\'t saved.', 'Your answer to “it” isn\'t saved.']],
   finish: [['Finishing “Unlock the door”', 'Finishing the checklist', 'The checklist stays open in Vikunja.', 'The checklist stays finished in Vikunja. The rest of the change is not sent.'],
     ['Finishing “a step”', 'Finishing the checklist', 'The checklist stays open in Vikunja.', 'The checklist stays finished in Vikunja. The rest of the change is not sent.']],
   reopen: [['Reopening “Unlock the door”', 'Reopening the checklist', 'The checklist stays finished in Vikunja.', 'The checklist stays open in Vikunja. The rest of the change is not sent.'],
@@ -103,10 +103,11 @@ const WORDS = {
   position: [['Moving “Unlock the door” in its list', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays where it was in Vikunja\'s list.', '“Unlock the door” stays where it was in Vikunja\'s list.'],
     ['Moving “a step” in its list', 'Moving a task', '“it” stays where it was in Vikunja\'s list.', '“it” stays where it was in Vikunja\'s list.']],
   add: [['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''], ['New task: ', 'Adding a task', '', '']],
-  due: [['Removed its due date: Unlock the door', 'Moving “Unlock the door T#5m”', '', ''], ['Removed its due date: a step', 'Moving a task', '', '']],
+  due: [['Removed its due date: Unlock the door', 'Moving “Unlock the door T#5m”', '“Unlock the door” stays without a date.', '“Unlock the door” stays without a date.'],
+    ['Removed its due date: a step', 'Moving a task', '“it” stays without a date.', '“it” stays without a date.']],
 };
 
-test('each op says what the outbox said before: its row, its refusal, and what dropping it leaves', () => {
+test('each op says what the outbox said before: its row, its refusal, and what cancelling it leaves', () => {
   assert.deepEqual(Object.keys(WORDS).sort(), Object.keys(OPS).sort());
   for (const [name, op] of Object.entries(OPS)) ['Unlock the door T#5m', ''].forEach((title, k) => {
     const a = stage => ({ op: name, task: 1, stage, pct: 40, ids: [3, 2, 1], html: '' });
@@ -219,16 +220,79 @@ const noConnection = (app, v) => { app.offline = true; v.trouble = q => q.path =
 // Fire the flush an act started (setTimeout is mocked here), and let its requests settle.
 const settle = async (t, done = () => false) => { t.mock.timers.tick(1); for (let i = 0; i < 200 && !done(); i++) await new Promise(ok => setImmediate(ok)); };
 for (const [how, mark] of [['Pocket has found no connection', noConnection], ['the browser says it is offline', () => Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })]])
-  test(`a tick made while ${how} is not tried, and can be dropped`, async t => {
+  test(`a tick made while ${how} is not tried, and can be cancelled`, async t => {
     t.after(() => { delete navigator.onLine; });
     const { v, app, r } = await offlineTick(t, mark);
     await settle(t);
     assert.deepEqual([r.status, v.requests.filter(q => q.path !== '/user').length, app.pending[0].sent, app.offline], ['offline', 0, undefined, true]);
-    assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'the Outbox offers Don\'t send it');
-    globalThis.confirm = () => true;
+    assert.deepEqual(app.outboxRows[0].drop, ['dropAct', app.pending[0].id], 'the Outbox offers Cancel');
     await app.dropAct(app.pending[0].id);
     assert.deepEqual([sync.all(1).length, v.requests.filter(q => q.path !== '/user').length, v.task(7).done], [0, 0, undefined]);
   });
+
+/* Cancel in the Outbox asks nothing. The change leaves the outbox at once, and the message says what Vikunja keeps.
+   Its Undo puts the same entry back, with its key and in its place, and it is sent once. */
+const offlineSender = t => {
+  t.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  const today = new Date(); today.setHours(9, 0, 0, 0);
+  const r = sender(t, [{ id: 7, title: 'Wipe the till' }, { id: 8, title: 'Pay the rent', due_date: today.toISOString() }, { id: 9, title: 'Lock up' }]);
+  noConnection(r.app, r.v);
+  globalThis.confirm = () => { throw new Error('Cancel asked'); };
+  return r;
+};
+const lastSaid = app => app.toasts.at(-1);
+test('Cancel asks nothing, says what Vikunja keeps, and its Undo puts the entry back in its place with its key, sent once', async t => {
+  const { v, app } = offlineSender(t);
+  for (const f of [{ op: 'done', task: 7 }, { op: 'due', task: 8, was: v.task(8).due_date, due: '0001-01-01T00:00:00Z' }, { op: 'claim', task: 9 }])
+    await app.act({ ...f, run: null, label: v.task(f.task).title });
+  const [tick, move, claim] = sync.all(1), was = JSON.parse(JSON.stringify(move));
+  await app.dropAct(move.id);
+  assert.deepEqual(sync.all(1).map(e => e.id), [tick.id, claim.id], 'the move leaves at once');
+  assert.deepEqual([lastSaid(app).msg, lastSaid(app).action.label, lastSaid(app).place], ['Cancelled. “Pay the rent” stays due today.', 'Undo', 'sheet:top']);
+  await lastSaid(app).action.fn();
+  assert.deepEqual(sync.all(1).map(e => e.id), [tick.id, move.id, claim.id], 'Undo puts it back where it was');
+  assert.deepEqual(sync.all(1)[1], was, 'the same entry, with its key');
+  assert.deepEqual(v.requests.filter(q => q.path !== '/user'), [], 'nothing is sent while offline');
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual([reached(v, 'PATCH', /^\/tasks\/8$/).length, v.task(8).due_date, sync.all(1)], [1, '0001-01-01T00:00:00Z', []]);
+});
+
+test('Cancel\'s Undo does nothing once its message has gone', async t => {
+  const { app } = offlineSender(t);
+  await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  await app.dropAct(sync.all(1)[0].id);
+  const said = lastSaid(app);
+  said.gone();
+  await said.action.fn();
+  assert.deepEqual(sync.all(1), []);
+});
+
+/* The words each op says after Cancel are in WORDS above, and parse.mjs checks an answer's, which are read from HTML.
+   A comment's text goes back to its box, so it has no Undo. Unit tests have no DOM, so these ops hold no HTML. */
+test('Cancel offers Undo except for a comment, whose text goes back to its box', async t => {
+  const { app } = offlineSender(t);
+  const cancel = async f => {
+    await app.act({ run: null, label: 'Wipe the till', task: 7, html: '', ...f });
+    await app.dropAct(sync.all(1).at(-1).id);
+    return [lastSaid(app).msg, lastSaid(app).action?.label ?? null];
+  };
+  assert.deepEqual(await cancel({ op: 'done' }), ['Cancelled. “Wipe the till” stays not done in Vikunja.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'claim' }), ['Cancelled. You are not assigned to “Wipe the till”.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'answer' }), ['Cancelled. Your answer to “Wipe the till” isn\'t saved.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'note' }), ['Cancelled. Your comment is back where you typed it.', null]);
+});
+
+test('Cancel\'s Undo puts a refused change back as refused, to try again', async t => {
+  const { v, app } = offlineSender(t);
+  app.offline = false; v.trouble = r => r.method === 'PATCH' ? 403 : null;
+  await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  const [e] = app.failed;
+  await app.dropAct(e.id);
+  assert.deepEqual([app.failed, lastSaid(app).msg], [[], 'Cancelled. “Wipe the till” stays not done in Vikunja.']);
+  await lastSaid(app).action.fn();
+  assert.deepEqual([app.failed.map(x => [x.id, x.failed.message]), reached(v, 'PATCH', /^\/tasks\/7$/).length], [[[e.id, 'HTTP 403 from the fake']], 1]);
+});
 
 test('a tick made just after a brief drop is sent once a read gets through, without waiting for the 30-second timer', async t => {
   const { v, app, r } = await offlineTick(t, app => { app.offline = true; });

@@ -141,7 +141,7 @@ try {
     await page.waitForSelector(pendingRow(T('X')), { state: 'detached' });
     // The task's text returns to the add box so the user can change it or add it again, and a message tells them.
     if (await page.inputValue('#in-capture') !== `${T('X')} tomorrow`) throw new Error('the add box holds: ' + await page.inputValue('#in-capture'));
-    await placeSays(page, 'cap', 'Cancelled. It\'s back in the box.');
+    await placeSays(page, 'cap', `Cancelled. “${T('X')}” is back where you typed it.`);
     await page.fill('#in-capture', '');
     await page.waitForSelector('#toast.show', { state: 'detached', timeout: 10000 });
   });
@@ -157,7 +157,7 @@ try {
     for (const text of [`New task: ${T('A')}`, `New task: ${T('P')}`, `Subtask of “${T('P')}”: ${T('P1')}`, `New task: ${T('Y')}`])
       await page.waitForSelector(`#outbox-rows .ob-row:has-text("${text}")`);
     if (await page.textContent('#outbox-count') !== String(await page.locator('#outbox-rows .ob-row').count())) throw new Error('the outbox count differs from the number of rows');
-    await page.click(`#outbox-rows .ob-row:has-text("${T('Y')}") .ob-drop`);
+    await page.locator(`#outbox-rows .ob-row:has-text("${T('Y')}")`).getByRole('button', { name: 'Cancel' }).click();
     await page.waitForSelector(`#outbox-rows .ob-row:has-text("${T('Y')}")`, { state: 'detached' });
     await page.click('#btn-sheet-close');
     if (await page.inputValue('#in-capture') !== `${T('Y')} tomorrow`) throw new Error('the add box holds: ' + await page.inputValue('#in-capture'));
@@ -600,7 +600,7 @@ try {
     }
   });
 
-  /* While Pocket is offline it doesn't try a tick's first request, so the Outbox still offers Don't send it.
+  /* While Pocket is offline it doesn't try a tick's first request, so the Outbox still offers Cancel.
      Tapping it unticks the step on the checklist's screen at once, and leaves it not done in Vikunja, also once Pocket
      is back online. */
   await step('a-tick-made-offline-can-be-dropped', async () => {
@@ -619,7 +619,7 @@ try {
       await page.waitForSelector('#btn-refresh.waits');
       await page.click('#btn-refresh');
       const row = `#outbox-rows .ob-row:has-text("Done: ${T('not sent')}")`;
-      await page.click(`${row} .ob-drop`);                                   // the dialog is accepted by the handler at the top
+      await page.locator(row).getByRole('button', { name: 'Cancel' }).click();
       await page.waitForSelector(row, { state: 'detached' });
       await page.click('#btn-sheet-close');
       await expect(page.locator('#run-steps').getByRole('button', { name: 'Mark done: ' + T('not sent') })).toBeVisible();
@@ -667,8 +667,8 @@ try {
       await expect(page.locator('#sheet').getByRole('button', { name: `Finish “${T('refused run')}”, with 1 step not done` })).toBeVisible();
       if ((await (await api('/tasks/' + steps[0].id)).json()).done) throw new Error('Vikunja has the refused tick');
       await page.click('#btn-sheet-close');
-      await page.click('#btn-refresh');                                      // Don't send it, so nothing is left waiting
-      await page.click(`#outbox-rows .ob-row:has-text("Done: ${T('refused one')}") .ob-drop`);
+      await page.click('#btn-refresh');                                      // Cancel, so nothing is left waiting
+      await page.locator(`#outbox-rows .ob-row:has-text("Done: ${T('refused one')}")`).getByRole('button', { name: 'Cancel' }).click();
       await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
       await page.click('#btn-sheet-close');
     } finally {
@@ -758,6 +758,44 @@ try {
       page.off('request', seen);
       await context.setOffline(false);
       for (const t of made) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+
+  /* Cancel in the Outbox asks nothing, and its message has an Undo. A move made offline, cancelled, and put back with
+     Undo is sent once when Pocket is back online. */
+  await step('a-move-cancelled-in-the-outbox-then-undone-is-sent-once', async () => {
+    const late = new Date(); late.setDate(late.getDate() - 2); late.setHours(9, 0, 0, 0);
+    const t = await (await api(`/projects/${home}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('cancelled move'), due_date: late.toISOString() }) })).json();
+    const patched = [], seen = r => { if (r.method() === 'PATCH' && r.url().endsWith('/v2/tasks/' + t.id)) patched.push(r.postData()); };
+    const asked = [], ask = d => asked.push(d.message());
+    const row = where => page.locator(`.sec.${where} ~ .list .row:has(.title:has-text("${T('cancelled move')}"))`);
+    const waiting = page.locator('#outbox-rows .ob-row', { hasText: T('cancelled move') });
+    page.on('request', seen); page.on('dialog', ask);
+    try {
+      await context.setOffline(false);
+      await page.reload();
+      await expect(row('overdue')).toBeVisible({ timeout: 15000 });
+      await context.setOffline(true);
+      await page.click('#btn-overdue-today');
+      await expect(row('today')).toBeVisible();
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.click('#btn-refresh');
+      await waiting.getByRole('button', { name: 'Cancel' }).click();
+      await expect(waiting).toHaveCount(0);
+      await expect(placeLine(page, 'sheet:top')).toContainText(`Cancelled. “${T('cancelled move')}” stays due `);
+      await placeLine(page, 'sheet:top').getByRole('button', { name: 'Undo' }).click();
+      await expect(waiting).toHaveCount(1);
+      await page.click('#btn-sheet-close');
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      if (asked.length) throw new Error('Cancel asked: ' + asked.join(' | '));
+      const due = (await (await api('/tasks/' + t.id)).json()).due_date;
+      if (new Date(due).toDateString() !== new Date().toDateString() || patched.length !== 1) throw new Error(`due ${due}, after ${patched.length} requests`);
+    } finally {
+      page.off('request', seen); page.off('dialog', ask);
+      await context.setOffline(false);
+      await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
 

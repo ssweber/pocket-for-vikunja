@@ -30,11 +30,13 @@ export default {
     if (v?.off) return {text: 'Outside the expected ' + range, cls: 'off'};
     return range ? {text: 'Expected ' + range, cls: ''} : null;
   },
-  // Beside an ask's label: who recorded the answer that counts and when, or that a done step has none.
+  // Beside an ask's label: who recorded the answer that counts and when, or that a done step has none. An answer still
+  // in the outbox shows its time until it has waited a while (waitText).
   askBy(s, a){
     const ans = s.answers?.[a.key];
     if (!ans) return s.done ? 'Not recorded' : '';
-    if (ans.waiting) return 'Waiting to send';
+    const wait = ans.waiting && this.waitText(ans.waiting);
+    if (wait) return wait;
     const at = new Date(ans.created), today = new Date().toDateString() === at.toDateString();
     return `${ans.mine ? 'You' : ans.author} · ${today ? fmtTime(at) : at.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})}`;
   },

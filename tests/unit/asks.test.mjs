@@ -4,6 +4,8 @@ import './browser.mjs';
 import { component } from './fake.mjs';
 import asksPart from '../../src/js/app/asks.js';
 import runs from '../../src/js/app/runs.js';
+import sending from '../../src/js/app/sending.js';
+import { fmtTime } from '../../src/js/dates.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { answerHtml, answerLines, answersOf, askLines, askMeta, askRows, asksOf, fieldValue, parseAsk, rangeText, readAnswers, asksText, savedValue } from '../../src/js/asks.js';
@@ -183,7 +185,25 @@ test('beside each label is who recorded the answer that counts, or that a done s
   assert.match(app.askBy(s, temp(s)), /^Jamie · /);
   assert.equal(app.askBy(s, seal(s)), '', "an open step's missing answer says nothing");
   assert.equal(app.askBy({ ...s, done: true }, seal(s)), 'Not recorded');
-  assert.equal(app.askBy({ ...s, answers: { temp: { ...s.answers.temp, waiting: true } } }, temp(s)), 'Waiting to send');
+});
+
+// An answer still in the outbox shows its time, as a comment does, and sending words only once it has waited WAIT_MS
+// (waitText), on the same clock as a comment's test in cards.test.mjs.
+test('an answer still in the outbox shows its time, and sending words only after 2.5 seconds, or at once offline', c => {
+  c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const { app, s } = cardStep();
+  Object.defineProperties(app, Object.fromEntries(['markSlow', 'waitText', 'keyWaiting'].map(n => [n, Object.getOwnPropertyDescriptor(sending, n)])));
+  const at = new Date().toISOString(), mine = { ...s, answers: { temp: { ...s.answers.temp, author: 'Me', mine: true, created: at, waiting: 'e1' } } };
+  const queue = () => { app.pending = [{ kind: 'act', id: 'e1', op: 'answer', task: 7, at: new Date().toISOString() }]; app.markSlow(); };
+  Object.assign(app, { slow: [], offline: false });
+  queue();
+  c.mock.timers.tick(2000);
+  assert.equal(app.askBy(mine, temp(s)), 'You · ' + fmtTime(new Date(at)), 'after 2 seconds it shows its time');
+  c.mock.timers.tick(1000);
+  assert.equal(app.askBy(mine, temp(s)), 'Sending…');
+  app.pending = []; app.markSlow();                                        // sent
+  app.offline = true; queue();
+  assert.equal(app.askBy(mine, temp(s)), 'Waiting for a connection', 'offline, it says so at once');
 });
 
 test('Done sends the unsent answers as their own comment before the tick and the typed comment, and Skip sends none', async () => {

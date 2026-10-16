@@ -2,9 +2,10 @@
 // the text, so the unit tests can check it.
 import {andList} from './util.js';
 import {NetError} from './api.js';
-import {dayName, dueInfo, fmtTime} from './dates.js';
+import {dayName, dueInfo, fmtTime, isSet} from './dates.js';
 import {parseStep} from './checklists.js';
 import {htmlToText} from './html.js';
+import {answerLines, textLines} from './asks.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
@@ -86,7 +87,7 @@ export const sentLater = what => `${what}. It's sent once Pocket reaches Vikunja
 /* The words for each op in the outbox (src/js/ops/), by op name. `title` is the task's title as Pocket knows it, or ''.
    - text(a, title, repeated): the op's row in the Outbox. `repeated` says the step was repeated in its checklist.
    - refused(a, title): the op in a message saying Vikunja refused it, such as "A tick on “Unlock the door”".
-   - dropped(a, title): what Vikunja keeps after Don't send it. `a.stage` above 0 means the first request was sent.
+   - dropped(a, title): what Vikunja keeps after Cancel. `a.stage` above 0 means the first request was sent.
    - saved: what Vikunja already has when it refuses a later request, as in "couldn't be saved in full (it's marked
      done)". */
 const named = title => parseStep(title).title;
@@ -109,15 +110,20 @@ export const OP_WORDS = {
   reopen: {saved: 'it\'s marked not done', text: (a, title, r) => `Reopening “${row(title, r)}”`, refused: () => 'Reopening the checklist',
     dropped: a => a.stage > 0 ? 'The checklist stays open in Vikunja.' + REST : 'The checklist stays finished in Vikunja.'},
   progress: {text: (a, title, r) => `Progress: ${a.pct}% on “${row(title, r)}”`, refused: (a, title) => 'Progress' + on(title), dropped: (a, title) => `${it(title)} keeps the progress it has in Vikunja.`},
-  note: {text: (a, title, r) => `A comment on “${row(title, r)}”`, refused: (a, title) => 'A comment' + on(title), dropped: () => 'The comment isn\'t posted. Its text goes back into the comment box.'},
-  answer: {text: (a, title, r) => row(title, r), refused: (a, title) => 'Answers' + on(title), dropped: () => ''},
+  note: {text: (a, title, r) => `A comment on “${row(title, r)}”`, refused: (a, title) => 'A comment' + on(title), dropped: () => 'Your comment is back where you typed it.'},
+  // An answer is named by its ask's label, or by its step when it holds several answers or its ask has no label.
+  answer: {text: (a, title, r) => row(title, r), refused: (a, title) => 'Answers' + on(title), dropped(a, title){
+    const lines = answerLines(textLines(a.html)) || [], label = lines.length === 1 && lines[0].match(/^(.+?): /)?.[1];
+    return lines.length > 1 ? `Your answers to ${it(title)} aren't saved.` : `Your answer to ${label ? `“${label}”` : it(title)} isn't saved.`;
+  }},
   claim: {text: (a, title, r) => `Assigning “${row(title, r)}” to you`, refused: (a, title) => `Assigning ${title ? `“${named(title)}”` : 'it'} to you`, dropped: (a, title) => `You are not assigned to ${it(title)}.`},
   unclaim: {text: (a, title, r) => `Unassigning you from “${row(title, r)}”`, refused: (a, title) => 'Unassigning you from ' + (title ? `“${named(title)}”` : 'it'), dropped: (a, title) => `${it(title)} stays assigned to you.`},
   delete: {text: (a, title, r) => `Deleting “${row(title, r)}”` + (a.ids?.length > 1 ? `, with ${plural(a.ids.length - 1, 'subtask')}` : ''),
     refused: (a, title) => 'Deleting' + (title ? ` “${named(title)}”` : ' a task'), dropped: (a, title) => `${it(title)} stays in Vikunja.`},
   position: {text: (a, title, r) => `Moving “${row(title, r)}” in its list`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: (a, title) => `${it(title)} stays where it was in Vikunja's list.`},
-  // A new date, named as the message after a move names it.
-  due: {text: (a, title, r) => `${movedTo(dayName(a.due))}: ${row(title, r)}`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},
+  // A new date, named as the message after a move names it. Cancel names the date before the move (`was`).
+  due: {text: (a, title, r) => `${movedTo(dayName(a.due))}: ${row(title, r)}`, refused: (a, title) => 'Moving' + (title ? ` “${title}”` : ' a task'),
+    dropped: (a, title) => `${it(title)} stays ${isSet(a.was) ? 'due ' + dayWord(dayName(a.was)) : 'without a date'}.`},
   // An add's line, under what it goes under (`a.over`).
   add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
     refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: () => ''},

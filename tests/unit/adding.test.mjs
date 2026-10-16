@@ -330,12 +330,12 @@ test('cancelling a waiting line moves the lines under it to its parent, and a me
     'Cancel Load chairs. The line under it moves under “Pack the van”.', 'Cancel Stack them', 'Cancel Tables']);
   await app.cancelPending(load);
   assert.deepEqual(under(), [['Pack the van', null], ['Stack them', 'pending-' + van], ['Tables', 'pending-' + van]]);
-  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 1 line under it is now under “Pack the van”.');
+  assert.equal(app.toast.msg, 'Cancelled. “Load chairs” is back where you typed it. The 1 line under it is now under “Pack the van”.');
   assert.equal(app.cap.text, 'Load chairs');
   assert.equal(app.cancelLabel(app.pendingTasks[0]), 'Cancel Pack the van. The lines under it become their own tasks.', 'the label still counts two lines waiting under the first');
   await app.cancelPending(van);
   assert.deepEqual(under(), [['Stack them', null], ['Tables', null]]);
-  assert.equal(app.toast.msg, 'Cancelled. It\'s back in the box. The 2 lines under it are now their own tasks.');
+  assert.equal(app.toast.msg, 'Cancelled. “Pack the van” is back where you typed it. The 2 lines under it are now their own tasks.');
   assert.deepEqual(app.pendingTasks.map(x => [x.id, app.cancelLabel(x)]), [['pending-' + stack, 'Cancel Stack them'], ['pending-' + tables, 'Cancel Tables']]);
   await clear();
 });
@@ -391,11 +391,11 @@ test('a line whose answer the relay can\'t vouch for waits in the Outbox with Tr
   assert.deepEqual([links(v), sync.all(1)], [[[102, 103]], []]);
 });
 
-test('dropping a line whose answer is unknown sends the line under it back to the box', async t => {
+test('cancelling a line whose answer is unknown sends the line under it back to the box, with no Undo', async t => {
   const { v, app, e } = await unknownSecond(t);
-  globalThis.confirm = () => true;
   await app.dropAct(e.entries[1].id);
-  assert.deepEqual([sync.all(1), app.cap.text, app.toast.msg], [[], 'Stack them', 'Not sent. Its text is back where you wrote it.']);
+  assert.deepEqual([sync.all(1), app.cap.text, app.toast.msg], [[], 'Stack them', 'Cancelled. Its text is back where you wrote it.']);
+  assert.equal(app.toast.action, null);
   assert.deepEqual(v.requests.filter(x => x.body?.title === 'Stack them'), []);
 });
 
@@ -510,24 +510,22 @@ test('a line whose answer is unknown keeps its waiting row, so the line under it
   await clear();
 });
 
-test('dropping a failed first line gives its photos back to the add box', async t => {
+test('cancelling a failed first line gives its photos back to the add box', async t => {
   t.after(clear);
   const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van')]);
   v.trouble = r => r.method === 'POST' ? 'unknown' : null;
   await app.sendLines(withPhoto(app, e), [photo()]);
   app.refreshPending();
-  globalThis.confirm = () => true;
   await app.dropAct(e.entries[0].id);
   assert.deepEqual([sync.all(1), app.capPhotos.map(f => f.name)], [[], ['van.jpg']]);
 });
 
-test('dropping a line passes the parents\' progress it was to write to a line of its batch that still waits', async t => {
+test('cancelling a line passes the parents\' progress it was to write to a line of its batch that still waits', async t => {
   t.after(clear);
   const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', { done: true }, 0), line('Tables', {}, 0), line('Sweep')]);
   v.trouble = r => r.method === 'POST' && r.body?.title === 'Tables' ? 'unknown' : r.method === 'POST' && r.body?.title === 'Sweep' ? 'offline' : null;
   app.flush = async () => {};
   await send(app, e);
-  globalThis.confirm = () => true;
   await app.dropAct(e.entries[2].id);
   v.trouble = () => null;
   await resend(app, e);

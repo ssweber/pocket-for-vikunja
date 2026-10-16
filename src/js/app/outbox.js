@@ -48,7 +48,7 @@ export default {
   get outboxStatus(){
     if (this.flushing) return 'Sending…';
     if (this.pending.length) return this.offline ? 'No connection. Pocket sends these when it reaches Vikunja.' : 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
-    if (this.failed.length) return 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Don\'t send it.';
+    if (this.failed.length) return 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Cancel.';
     return 'Everything has reached Vikunja.';
   },
   // Tells tests whether Pocket is sending, waiting or idle. A busy add box counts as sending before its entry is
@@ -98,27 +98,39 @@ export default {
     this.refreshPending();
     await this.flush();
   },
-  /* Drop an action, but only before sending starts or after it was rejected. Any text it held goes back to its draft.
-     The lines under a dropped line wait behind it, so they are refused, and their text goes back to their box. The
-     photos of a line whose task isn't made go back to quick add. */
+  /* Cancel an action, but only before sending starts or after it was rejected. It asks nothing, because the message
+     says what Vikunja keeps and has an Undo. Text the action held goes back to its box instead, with no Undo, so
+     the text is never both in the box and sent. An answer's text doesn't go back, because the step's comment box is
+     not where it was typed. The lines under a cancelled line wait behind it, so they are refused, and their text goes
+     back to their box. The photos of a line whose task isn't made go back to quick add. */
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
-    if (!a || !confirm(`Don't send it? ${OPS[a.op].dropped(a, a.label || this.actTitle(a.task))}`)) return;
-    let gone = false, started = false, under = [], photos = [];
+    if (!a) return;
+    let gone = false, started = false, under = [], photos = [], kept = null;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
       if (!e.failed && e.sent) { started = true; return; }
       if (e.op === 'add') { photos = await this.photosOf([e]); under = await this.dropUnder('pending-' + id, e.user); await this.passUps(e, under); }
+      kept = JSON.parse(JSON.stringify(e));
       await sync.remove(id);
     });
     this.refreshPending();
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
     const said = {};
     if (photos.length && !a.parent) this.capPhotos = [...this.capPhotos, ...photos];
-    if (a.op === 'add') this.linesBack(under, said); else this.giveBack(a, said);
+    if (a.op === 'add') this.linesBack(under, said); else if (a.op !== 'answer') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    this.say('Not sent.' + (said.back ? ' Its text is back where you wrote it.' : ''), {place: 'sheet:top'});
+    const words = OPS[a.op].dropped(a, a.label || this.actTitle(a.task)), back = said.back && a.op !== 'note' && 'Its text is back where you wrote it.';
+    // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
+    // again, as before.
+    const undo = said.back || a.op === 'add' || a.op === 'note' ? null : {label: 'Undo', fn: async () => {
+      const e = kept; kept = null;
+      if (!e) return;
+      await sync.lock(() => sync.add(e, []));
+      if (e.failed) this.refreshPending(); else await this.sendActs(e.id);
+    }};
+    this.say(['Cancelled.', words, back].filter(Boolean).join(' '), {place: 'sheet:top', action: undo, gone: () => { kept = null; }});
     this.flush();                                                           // sends the actions that waited behind it
   },
 };

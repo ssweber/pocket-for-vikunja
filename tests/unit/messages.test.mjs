@@ -8,6 +8,7 @@ import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
 import { blankSheet } from '../../src/js/app/core.js';
+import toastPart, { UNDO_MS } from '../../src/js/app/toast.js';
 
 /* The row at the end of a list of done tasks that is shown a part at a time. It offers the next part and says how many
    tasks are left. When fewer than a full part are left, it offers the last of them. When none are left, there is no
@@ -165,11 +166,27 @@ test('a tapped action runs once, and its message is removed without calling its 
   assert.deepEqual([gone, a.placeLines('overdue').length], [1, 0]);
 });
 
+// A toast's Undo keeps something until the toast ends: a held delete waits to be sent, and Cancel keeps the entry.
+test('a toast with an Undo calls its gone once when it times out, and never after its Undo is tapped', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const a = Object.defineProperties({ toast: { show: false } }, Object.getOwnPropertyDescriptors(toastPart));
+  let ran = 0, gone = 0;
+  a.notify('Deleted', { label: 'Undo', fn: () => ran++, gone: () => gone++ });
+  t.mock.timers.tick(UNDO_MS);
+  assert.deepEqual([a.toast.show, ran, gone], [false, 0, 1]);
+  a.toastGone(a.toast);                                                   // as the watch on toast.show does next
+  assert.equal(gone, 1);
+  a.notify('Deleted', { label: 'Undo', fn: () => ran++, gone: () => gone++ });
+  a.runToastAction();
+  t.mock.timers.tick(UNDO_MS);
+  assert.deepEqual([ran, gone], [1, 1]);
+});
+
 test('on a checklist, a note on a step or the checklist is called a comment, as in Vikunja, in the Outbox and its messages', () => {
   const t = 'Unlock the door';
   assert.equal(OP_WORDS.note.text({ op: 'note' }, t), 'A comment on “Unlock the door”');
   assert.equal(OP_WORDS.doneNote.text({ op: 'doneNote' }, t), 'Done, with a comment: Unlock the door');
-  assert.equal(OP_WORDS.note.dropped({ op: 'note' }, t), 'The comment isn\'t posted. Its text goes back into the comment box.');
+  assert.equal(OP_WORDS.note.dropped({ op: 'note' }, t), 'Your comment is back where you typed it.');
   assert.equal(OP_WORDS.note.refused({ op: 'note' }, t), 'A comment on “Unlock the door”');
   assert.equal(OP_WORDS.doneNote.refused({ op: 'doneNote' }, t), 'Marking “Unlock the door” done, with its comment');
 });
