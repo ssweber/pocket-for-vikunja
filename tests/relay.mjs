@@ -105,6 +105,13 @@ try {
     check('the 401 isn\'t kept, so the same key makes the task once the user is signed in', yes.status === 201 && !yes.replayed, brief(yes));
   } finally { if (scoped?.id) await v2('DELETE', '/tokens/' + scoped.id, me); }
 
+  // A forward that never reaches Vikunja releases its key. Echo decodes %25 in the path to %, so the relay builds a
+  // URL Go can't parse and gives up before it connects. A forward that reaches Vikunja and loses its answer keeps its
+  // key, but the API can't make an answer get lost.
+  const k7 = newKey(), bad = await relay('PATCH', `/tasks/${first.json.id}%25zz`, me, {done: true}, k7);
+  const badAgain = await relay('PATCH', `/tasks/${first.json.id}%25zz`, me, {done: true}, k7);
+  check('a forward that never reaches Vikunja gets 502, and the same key can be sent again', bad.status === 502 && badAgain.status === 502, `${brief(bad)}; then ${brief(badAgain)}`);
+
   // An answer over 64 KB is stored and replayed. MySQL's TEXT would cut it off (relay.go uses LONGTEXT there).
   const k5 = newKey(), big = {title: `Relay big ${run}`, description: '<p>' + 'x'.repeat(100e3) + '</p>'};
   const large = keep(await relay('POST', `/projects/${team.id}/tasks`, me, big, k5)), largeAgain = await relay('POST', `/projects/${team.id}/tasks`, me, big, k5);

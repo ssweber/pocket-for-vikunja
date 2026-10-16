@@ -149,9 +149,9 @@ export const OP_WORDS = {
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;
 export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, so the step stays done';
-/* The plugin's relay answers 409 with Idempotency-Unknown when Vikunja stopped while making a change. Pocket can't
-   tell whether the change was made, and only the user can check. So the change waits in the Outbox, and Try again
-   sends it as a new request. */
+/* The plugin's relay answers 409 with Idempotency-Unknown when it can't tell whether Vikunja made a change. Pocket
+   can't tell either, and only the user can check. So the change waits in the Outbox, and Try again sends it as a new
+   request. */
 export const UNSURE = 'Vikunja may or may not have this change.';
 export const UNKNOWN = UNSURE + ' Check, then tap Try again if it\'s missing.';
 export const notKnown = what => `${what} may not have reached Vikunja.`;

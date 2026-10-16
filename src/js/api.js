@@ -122,8 +122,8 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
     let j = {}; try { j = await res.json() } catch {}
     const reason = j.detail || j.message || res.statusText || ('HTTP ' + res.status);
     /* The relay answers 409 while the first request with this key still runs, so Pocket waits and asks again. A wait
-       is at most 10 seconds, whatever Retry-After says. With Idempotency-Unknown, that request never finished, and
-       only the user can tell whether the change was made. */
+       is at most 10 seconds, whatever Retry-After says. With Idempotency-Unknown, the relay doesn't know whether
+       that request made the change, and only the user can tell. */
     if (res.status === 409 && key) {
       if (res.headers.get('idempotency-unknown') === 'true') throw new ApiError(409, reason, 'unknown');
       if (busy >= 3) throw new ApiError(409, reason, 'running');

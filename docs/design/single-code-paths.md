@@ -50,8 +50,8 @@ As the draft says:
 
 And beyond the draft:
 
-- **A 5xx, a 408, a 429, a 401 or a failed forward isn't stored,** so the request can be sent again. Vikunja changes
-  nothing for a request that fails that way. A 401 comes when the session ends between the relay's check and Vikunja's.
+- **A 5xx, a 408, a 429, a 401, or a forward that couldn't connect to Vikunja, isn't stored,** so the request can be
+  sent again. Vikunja changes nothing for a request that fails that way. A 401 comes when the session ends between the relay's check and Vikunja's.
   Kept, it would sign the user out on every retry with that key.
 - **The forward doesn't use the request's context.** If the phone hangs up, the write still finishes and its answer
   is stored for the retry.
@@ -59,6 +59,9 @@ And beyond the draft:
   between the two, the key stays pending. A request with that key more than 2 minutes later gets 409 with
   `Idempotency-Unknown: true`. The outbox shows that entry as failed, for the user to send or drop. The window is a few
   milliseconds on the server, against today's window of any dropped connection.
+- **A lost answer.** A forward can reach Vikunja and still fail. The connection can drop, the answer can be cut short,
+  or Vikunja can take longer than the relay's 90-second timeout. Vikunja may have made the change, so the relay keeps
+  the key, marked unknown. That request and any later one with the key get 409 with `Idempotency-Unknown: true` at once.
 - **The relay decides how long keys are kept,** 30 days for now, and refuses an expired key instead of running it.
   Every key starts with a UUIDv7, which holds the time it was made, and may have more after it
   (`<uuidv7>:<stage>:<part>`, part 1). A key that doesn't start with one gets 400. A key older than the relay keeps keys gets 409 with
@@ -82,7 +85,8 @@ Run on 2026-10-15 against Vikunja 2.7.0, on Postgres and on SQLite. Every check 
 6. events fire: a mention in the description notifies the mentioned user;
 7. a repeating task ticked twice with one key moves on one day, not two;
 8. a key older than 30 days, or from 2 days ahead, gets 409 with `Idempotency-Unknown`, and makes nothing. A key that
-   isn't a UUIDv7 gets 400, and a key with a stage and part after its UUID is accepted.
+   isn't a UUIDv7 gets 400, and a key with a stage and part after its UUID is accepted;
+9. a forward that never reaches Vikunja gets 502, and its key can be sent again.
 
 The first run didn't load: Vikunja evaluates every `.go` file into one package, so `relay.go`'s second import of
 `net/http` was "redeclared". `relay.go` now imports only what `main.go` doesn't (see Yaegi below).
@@ -99,6 +103,10 @@ The first run didn't load: Vikunja evaluates every `.go` file into one package, 
   with `0.0.0.0` read as 127.0.0.1. A Vikunja that serves TLS itself needs `https` here.
 - **MySQL's `TEXT`** holds 64 KB. A large answer, such as a task with many comments, needs `MEDIUMTEXT` there.
 - **Body size.** The relay accepts 50 MB, so attachments can go through it. A reverse proxy in front may allow less.
+- **Which errors release a key.** Go reports a refused connection or a missing socket as a `*net.OpError` whose `Op`
+  is `dial`. Only those release the key. Go reports the relay's timeout the same way whether it ends the dial or the
+  wait for an answer, so a timeout keeps the key. Each forward makes its own transport. A shared one could retry a
+  request on a second connection, and that dial's error would hide that the first connection sent it.
 - **Yaegi.** Only what `pkg/yaegi_symbols` exposes can be called, plus Go's standard library. Vikunja evaluates every
   `.go` file in `pocket/` into one package, in name order (`pkg/plugins/yaegi/loader.go`). A file can use what an
   earlier file defines, but can't import a package an earlier file imports. So `relay.go` uses `main.go`'s imports,
@@ -1118,6 +1126,10 @@ or the connection drops after the request was written. Only a failure to connect
 Vikunja. That one releases the key. Every other error keeps the key and answers as the gap does
 (`Idempotency-Unknown`), which Pocket already shows as a change to check, with Try again. A plugin change, so it runs
 `test:local` on Postgres, `DB=sqlite` and `DB=mysql`.
+
+Built: `relayNotConnected` in `relay.go` decides, and a lost answer marks the key `stateUnknown`. `tests/relay.mjs`
+checks that a forward that never connects releases its key. The API can't make an answer get lost, so that branch was
+checked by locking Vikunja's comments table in Postgres past the relay's timeout.
 
 ## State on 2026-10-15
 

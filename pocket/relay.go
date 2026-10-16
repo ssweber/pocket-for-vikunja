@@ -13,10 +13,12 @@
 //   - a key already answered: that answer again, with "Idempotent-Replayed: true".
 //
 // A key whose first request never finished (Vikunja stopped while it ran) also gets 409, with
-// "Idempotency-Unknown: true", because the relay can't tell whether the change was made. So does a key older than the
-// relay keeps answers, or from a clock more than a day fast. Every key starts with a UUIDv7, which holds the time it
-// was made. A 5xx, a 408, a 429, a 401 or a failed forward isn't stored, so the request can be sent again. Vikunja
-// changes nothing for a request that fails that way.
+// "Idempotency-Unknown: true", because the relay can't tell whether the change was made. So does a key whose first
+// request reached Vikunja but whose answer the relay lost, because the connection dropped or Vikunja took longer than
+// relayTimeout. So does a key older than the relay keeps answers, or from a clock more than a day fast. Every key
+// starts with a UUIDv7, which holds the time it was made. A 5xx, a 408, a 429, a 401, or a forward that couldn't
+// connect to Vikunja, isn't stored, so the request can be sent again. Vikunja changes nothing for a request that fails
+// that way.
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
@@ -31,6 +33,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net"
 
@@ -87,6 +90,7 @@ func (r *relay) RegisterAuthenticatedRoutes(g *echo.Group) {
 const (
 	statePending = 0
 	stateDone    = 1
+	stateUnknown = 2 // Vikunja got the request, but the relay lost its answer
 )
 
 type relayRow struct {
@@ -148,21 +152,32 @@ func relayWrite(c *echo.Context) error {
 		if row.State == statePending {
 			return relayBusy(c, time.Since(time.Unix(row.Created, 0)) > relayRunning)
 		}
+		if row.State == stateUnknown {
+			return relayUnknown(c, relayLost)
+		}
 		c.Response().Header().Set("Idempotent-Replayed", "true")
 		return relayAnswer(c, row.Code, row.ContentType, []byte(row.Body))
 	}
 
 	// The phone may hang up while this runs. The forward doesn't use the request's context, so it finishes and its
 	// answer is stored for the retry.
-	code, ct, out, err := relayForward(c.Request(), target, body)
+	code, ct, out, sent, err := relayForward(c.Request(), target, body)
+	if err != nil && !sent {
+		relayRelease(u.ID, key)
+		log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
+		return echo.NewHTTPError(http.StatusBadGateway, "the relay couldn't reach Vikunja")
+	}
+	// Vikunja may have made the change before its answer was lost, and a second run would make it twice. So the key is
+	// kept, and this request and any later one with the key are told to ask the user.
+	if err != nil {
+		relayLose(u.ID, key)
+		log.Errorf("pocket: relay lost Vikunja's answer for key %q: %s", key, err)
+		return relayUnknown(c, relayLost)
+	}
 	// A 5xx, or a 408 or 429 (Vikunja busy or rate-limited), says nothing was changed, and Pocket sends it again. So
 	// does a 401: the session ended after the relay's own check. Kept, it would sign the user out on every retry.
-	if err != nil || code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
+	if code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
 		relayRelease(u.ID, key)
-		if err != nil {
-			log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
-			return echo.NewHTTPError(http.StatusBadGateway, "the relay couldn't reach Vikunja")
-		}
 		return relayAnswer(c, code, ct, out)
 	}
 	if err := relayStore(u.ID, key, code, ct, out); err != nil {
@@ -187,6 +202,8 @@ func relayUnknown(c *echo.Context, msg string) error {
 	return echo.NewHTTPError(http.StatusConflict, msg)
 }
 
+const relayLost = "the relay lost Vikunja's answer to the request with this Idempotency-Key, so it isn't known whether it made the change"
+
 // relayKeyTime reads when a key was made from the UUIDv7 it starts with, whose first 48 bits are milliseconds since
 // 1970. Pocket adds a request's stage and part after the UUID.
 func relayKeyTime(key string) (time.Time, bool) {
@@ -209,14 +226,15 @@ func relayAnswer(c *echo.Context, code int, ct string, body []byte) error {
 	return err
 }
 
-// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user.
-func relayForward(in *http.Request, target string, body []byte) (int, string, []byte, error) {
+// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user. sent is false only
+// when the request never reached Vikunja.
+func relayForward(in *http.Request, target string, body []byte) (int, string, []byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), relayTimeout)
 	defer cancel()
 	base, transport := relayTarget()
 	req, err := http.NewRequestWithContext(ctx, in.Method, base+target, bytes.NewReader(body))
 	if err != nil {
-		return 0, "", nil, err
+		return 0, "", nil, false, err
 	}
 	for _, h := range []string{"Authorization", "Content-Type", "Accept", "Accept-Language", "User-Agent"} {
 		if v := in.Header.Get(h); v != "" {
@@ -225,14 +243,24 @@ func relayForward(in *http.Request, target string, body []byte) (int, string, []
 	}
 	res, err := (&http.Client{Transport: transport}).Do(req)
 	if err != nil {
-		return 0, "", nil, err
+		return 0, "", nil, !relayNotConnected(err), err
 	}
 	defer res.Body.Close()
 	out, err := io.ReadAll(res.Body)
 	if err != nil {
-		return 0, "", nil, err
+		return 0, "", nil, true, err
 	}
-	return res.StatusCode, res.Header.Get("Content-Type"), out, nil
+	return res.StatusCode, res.Header.Get("Content-Type"), out, true, nil
+}
+
+// relayNotConnected says whether an error from the forward came from dialing Vikunja, such as a refused connection or
+// a missing socket. Only those prove Vikunja never got the request. Any other error may come after Vikunja made the
+// change. That includes relayTimeout, which Go reports the same way whether it ends the dial or the wait for the
+// answer. Each forward makes its own transport, so Go never retries it on a second connection, whose dial error would
+// hide that the first one sent it.
+func relayNotConnected(err error) bool {
+	var op *net.OpError
+	return errors.As(err, &op) && op.Op == "dial"
 }
 
 // relayTarget is Vikunja's own address: its Unix socket if it listens on one, or else its TCP interface on this
@@ -305,6 +333,19 @@ func relayStore(userID int64, key string, code int, ct string, body []byte) erro
 		return err
 	}
 	return s.Commit()
+}
+
+// relayLose marks a key whose answer was lost. If that fails, the key stays pending, and after relayRunning it gets
+// Idempotency-Unknown all the same.
+func relayLose(userID int64, key string) {
+	s := db.NewSession()
+	defer s.Close()
+	if _, err := s.Exec("UPDATE pocket_relay SET state = ? WHERE user_id = ? AND op_key = ? AND state = ?", stateUnknown, userID, key, statePending); err != nil {
+		_ = s.Rollback()
+		log.Errorf("pocket: relay couldn't mark key %q as unknown: %s", key, err)
+		return
+	}
+	_ = s.Commit()
 }
 
 func relayRelease(userID int64, key string) {
