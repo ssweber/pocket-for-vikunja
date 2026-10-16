@@ -4659,9 +4659,17 @@ ${footName('Hooks')}`);
     big.project = await (await api('/projects', { method: 'POST', headers: json, body: JSON.stringify({ title: `PocketSmokeLong${stamp}` }) })).json();
     createdProjects.push(big.project.id);
     const all = [...Array(80)].map((_, i) => [`${word} open ${i + 1}`, {}]).concat([...Array(105)].map((_, i) => [`${word} done ${i + 1}`, { done: true }]));
+    // SQLite answers some of eight writes made at once with a 500 ("database is locked"), so each is tried again.
+    const make = async (title, extra) => {
+      for (let n = 0; ; n++) {
+        const r = await api(`/projects/${big.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title, ...extra }) });
+        if (r.ok) return r.json();
+        if (r.status < 500 || n === 5) throw new Error(`HTTP ${r.status} creating ${title}`);
+        await new Promise(f => setTimeout(f, 300 * (n + 1)));
+      }
+    };
     const made = [];
-    for (let i = 0; i < all.length; i += 8) made.push(...await Promise.all(all.slice(i, i + 8).map(([title, extra]) =>
-      api(`/projects/${big.project.id}/tasks`, { method: 'POST', headers: json, body: JSON.stringify({ title, ...extra }) }).then(r => r.json()))));
+    for (let i = 0; i < all.length; i += 8) made.push(...await Promise.all(all.slice(i, i + 8).map(([title, extra]) => make(title, extra))));
     [big.open, big.done] = [made.slice(0, 80), made.slice(80)];
     await page.click('#btn-refresh');                                           // so Pocket loads the project
     await page.waitForSelector('#btn-refresh:not([disabled])');

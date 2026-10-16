@@ -627,6 +627,8 @@ try {
     await page.locator('#run-note-form').getByRole('button', { name: 'Post comment' }).click();
     await page.waitForSelector('#run-notes .comment:has-text("Line 2 ran slow today")');
     await expect(page.locator('#run-note-form button')).toBeDisabled();
+    // A waiting comment shows before it is sent, so wait for the outbox before reading Vikunja.
+    await synced(page);
     const step3 = await task((await runStep(first.id, 2)).id), run = await task(first.id);
     if ((step3.comments || []).filter(c => c.comment.includes('Looks good')).length !== 1) throw new Error('the step has the wrong comments: ' + JSON.stringify(step3.comments?.map(c => c.comment)));
     if (!(run.comments || []).some(c => c.comment.includes('Line 2 ran slow today'))) throw new Error('the checklist has no comment');
