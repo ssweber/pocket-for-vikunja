@@ -3632,8 +3632,8 @@ try {
   const holdAdds = async () => {
     let send; const sending = new Promise(ok => { send = ok; });
     const hold = async r => { if (r.request().method() === 'POST') await sending; await r.fallback(); };
-    await page.route('**/api/v2/projects/*/tasks', hold);
-    return async () => { send(); await page.unroute('**/api/v2/projects/*/tasks', hold); };
+    await page.route('**/v2/projects/*/tasks', hold);
+    return async () => { send(); await page.unroute('**/v2/projects/*/tasks', hold); };
   };
   // Moves the box under task `id` with "Add a subtask here" in the sheet's ⋯ menu, which closes the sheet. The focus
   // that action gives the box is then removed, so scrolling can send the box home, as it does when nothing is being typed.
@@ -4168,7 +4168,7 @@ ${footName('Hooks')}`);
   await step('a-change-shows-at-once-and-looks-waiting-only-after-a-few-seconds', async () => {
     let send; const sending = new Promise(ok => { send = ok; });
     const hold = async r => { if (r.request().method() === 'POST') await sending; await r.fallback(); };
-    await page.route('**/api/v2/projects/*/tasks', hold);
+    await page.route('**/v2/projects/*/tasks', hold);
     try {
       await page.fill('#in-capture', `Waits ${stamp}`);
       await page.press('#in-capture', 'Enter');
@@ -4185,7 +4185,7 @@ ${footName('Hooks')}`);
       await expect(row).toHaveClass(/\bwaits\b/);
       await expect(row.locator('.check.wait')).toHaveCount(1);
       await expect(page.locator('#btn-refresh.waits')).toBeVisible();
-    } finally { send(); await page.unroute('**/api/v2/projects/*/tasks', hold); }
+    } finally { send(); await page.unroute('**/v2/projects/*/tasks', hold); }
     await expect(page.locator(`.row:not(.pending):has(.title:has-text("Waits ${stamp}"))`)).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#btn-refresh.waits')).toHaveCount(0);
     await synced(page);

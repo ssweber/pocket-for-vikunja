@@ -16,9 +16,9 @@ const lost = () => new TypeError('network error');
    repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
    move it). A task that is read lists its current subtasks, without any that were deleted (related_tasks).
    POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
-   another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does.
-   GET /tasks?q= finds a task by its title, which the outbox uses for a line (LINE_STEPS). A task's comments, assignees
-   and position can be added to, and an assignee removed.
+   another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does. A
+   task's comments, assignees and position can be added to, and an assignee removed. GET and POST /labels list and
+   create labels (`labels`), and PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people.
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
@@ -29,7 +29,7 @@ const lost = () => new TypeError('network error');
    the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), or an HTTP status to
    answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them. */
 export function fakeVikunja(tasks = []){
-  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), requests: [], relayed: new Map(), trouble: () => null }, gone = new Set();
+  const v = { tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])), labels: [], requests: [], relayed: new Map(), trouble: () => null }, gone = new Set();
   const withSubtasks = t => {
     const subs = t.related_tasks?.subtask;
     if (!subs) return t;
@@ -57,8 +57,13 @@ export function fakeVikunja(tasks = []){
     const cut = req.path.match(/^\/tasks\/(\d+)\/relations\/(\w+)\/(\d+)$/), react = req.path.match(/^\/tasks\/(\d+)\/reactions(\/delete)?$/);
     const talk = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/comments$/) || [])[1]), placed = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/position$/) || [])[1]);
     const who = req.path.match(/^\/tasks\/(\d+)\/assignees(?:\/(\d+))?$/), people = who && v.tasks.get(+who[1]);
+    const bulk = req.path.match(/^\/tasks\/(\d+)\/(labels|assignees)\/bulk$/), set = bulk && v.tasks.get(+bulk[1]);
     let res;
-    if (talk && method === 'POST') {
+    if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
+    else if (req.path === '/labels' && method === 'POST') { const l = { id: 500 + v.labels.length, title: req.body.title }; v.labels.push(l); res = reply(l); }
+    else if (set && method === 'PUT' && bulk[2] === 'labels') { set.labels = req.body.labels.map(({ id }) => v.labels.find(l => l.id === id)); res = reply(req.body); }
+    else if (set && method === 'PUT') { set.assignees = req.body.assignees.map(({ id }) => ({ id, username: 'user' + id })); res = reply(req.body); }
+    else if (talk && method === 'POST') {
       const c = { id: 1000 + v.requests.length, comment: req.body.comment, author: { id: 1, username: 'me' }, created: new Date().toISOString() };
       (talk.comments ||= []).push(c);
       res = reply(c);
@@ -93,8 +98,7 @@ export function fakeVikunja(tasks = []){
       const rs = v.tasks.get(+react[1]).reactions ||= {}, by = (rs[req.body.value] || []).filter(u => u.id !== 1);
       rs[req.body.value] = react[2] ? by : [...by, { id: 1, username: 'me' }];
       res = reply(req.body);
-    } else if (req.path === '/tasks' && method === 'GET') res = reply({ items: [...v.tasks.values()].filter(x => x.title === new URL(url).searchParams.get('q')) });
-    else if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
+    } else if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
     else if (!t) res = reply({ message: 'The task does not exist.' }, 404);
     else if (method === 'GET') res = reply(withSubtasks(t));
     else if (method === 'DELETE') { v.tasks.delete(id); gone.add(id); res = reply({ message: 'Successfully deleted.' }); }

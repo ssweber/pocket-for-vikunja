@@ -14,7 +14,9 @@ import views from '../../src/js/app/views.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
-import { sync } from '../../src/js/sync.js';
+import runs from '../../src/js/app/runs.js';
+import { UNKNOWN } from '../../src/js/messages.js';
+import { sync, unpackParsed, uuid7 } from '../../src/js/sync.js';
 
 const DAY = 86400;
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
@@ -22,7 +24,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 // batch's timer, so the batch doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'cancelLabel'));
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'cancelLabel'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], positions: {}, projects: [], canWrite: () => true });
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   app.view = { groups: todayGroups(), route: '' };
@@ -84,10 +86,87 @@ test('a repeating task moves on to its next date as a tick does, and a lost repl
   assert.equal((await send(app, e)).status, 'offline', 'the entry is kept to try again');
   v.trouble = () => null;
   const r = await app.sendEntry(e.id);
-  assert.equal(sent(v).filter(([m]) => m === 'PATCH').length, 1, 'the task is ticked once, because Vikunja\'s copy shows the first tick arrived');
-  assert.equal(Date.parse(v.task(101).due_date) - Date.parse(due), DAY * 1000);
+  const ticks = v.requests.filter(x => x.method === 'PATCH');
+  assert.deepEqual(ticks.map(x => [x.key, !!x.replayed]), [[ticks[0].key, false], [ticks[0].key, true]], 'the tick is sent again with its key, and the relay answers from what it kept');
+  assert.equal(Date.parse(v.task(101).due_date) - Date.parse(due), DAY * 1000, 'the task moved on one date, not two');
   assert.equal(v.task(101).done, false);
   assert.equal(r.status, 'sent');
+});
+
+/* Each stage of a line sends its writes with keys (LINE_STEPS). This line is a subtask of Pack the van, with a label
+   Vikunja has, a new label and a person, and it is marked done. Its writes, in order, are the task, the new label,
+   the task's labels, its people, the link and the tick. */
+const WRITES = [['POST', '/projects/5/tasks'], ['POST', '/labels'], ['PUT', '/tasks/101/labels/bulk'], ['PUT', '/tasks/101/assignees/bulk'], ['POST', '/tasks/9/relations'], ['PATCH', '/tasks/101']];
+const labelled = t => {
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]), app = adding(t);
+  v.labels.push({ id: 1, title: 'Old' });
+  Object.assign(app, { loadLabels: views.loadLabels, canSee: async () => null, findUser: async name => ({ id: 7, username: name }) });
+  return { v, app, e: entry([line('Chairs', { labels: ['Old', 'New'], assignees: ['sam'], done: true })], { parent: { id: 9, project_id: 5, title: 'Pack the van' } }) };
+};
+test('each stage of a line sends the same key again after its reply was lost, and reads nothing before it', async t => {
+  for (const [method, path] of WRITES) await t.test(`${method} ${path}`, async t => {
+    const { v, app, e } = labelled(t), is = r => r.method === method && r.path === path;
+    let cut = true;
+    v.trouble = r => is(r) && cut ? (cut = false, 'lost') : null;
+    assert.equal((await send(app, e)).status, 'offline', 'the entry is kept to try again');
+    const lost = v.requests.find(is), from = v.requests.length;
+    assert.equal((await app.sendEntry(e.id)).status, 'sent');
+    const retry = v.requests.slice(from), again = retry.find(is);
+    assert.deepEqual([again.key, again.replayed], [lost.key, true], 'sent again with its key, and answered from what the relay kept');
+    assert.deepEqual(retry.slice(0, retry.indexOf(again)).filter(r => r.method === 'GET'), [], 'nothing is read again first');
+    const made = v.task(101);
+    assert.deepEqual([v.tasks.size, made.labels.map(l => l.title), made.assignees.map(u => u.id), made.done, v.task(9).related_tasks.subtask.map(s => s.id), v.labels.length],
+      [2, ['Old', 'New'], [7], true, [101], 2], 'one task, with its labels, its person, its link and its tick, and one new label');
+  });
+});
+
+test('a new label is not sent again once Vikunja answered it, and the requests after it keep their keys', async t => {
+  const v = fakeVikunja(), app = adding(t), stage = r => r.key.split(':').slice(1).join(':');
+  app.loadLabels = views.loadLabels;
+  const e = entry([line('Chairs', { labels: ['Spare', 'Folding'] })]);
+  let cut = true;
+  v.trouble = r => r.path === '/labels' && r.body?.title === 'Folding' && cut ? (cut = false, 'lost') : null;
+  assert.equal((await send(app, e)).status, 'offline');
+  assert.equal((await app.sendEntry(e.id)).status, 'sent');
+  const made = v.requests.filter(r => r.path === '/labels' && r.method === 'POST');
+  assert.deepEqual(made.map(r => [r.body.title, stage(r), !!r.replayed]), [['Spare', '2:0', false], ['Folding', '2:1', false], ['Folding', '2:1', true]]);
+  assert.deepEqual(v.requests.filter(r => r.path.endsWith('/labels/bulk')).map(stage), ['2:2']);
+  assert.deepEqual(v.task(101).labels.map(l => l.title), ['Spare', 'Folding']);
+});
+
+test('a line\'s labels are added to the labels the task already has, and a new label on two lines is created once', async t => {
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, labels: [{ id: 1, title: 'Old' }] }]), app = adding(t);
+  v.labels.push({ id: 1, title: 'Old' });
+  app.loadLabels = views.loadLabels;
+  // As a step's new title with *labels is applied to the step (checklists.js).
+  await app.createTask(unpackParsed(line('Pack the van', { labels: ['New'] }).p), 5, { job: { taskId: 9, done: false } });
+  assert.deepEqual(v.task(9).labels.map(l => l.title), ['Old', 'New']);
+  await send(app, entry([line('Chairs', { labels: ['Spare'] }), line('Tables', { labels: ['Spare'] })]));
+  assert.deepEqual(v.requests.filter(r => r.path === '/labels' && r.method === 'POST').map(r => r.body.title), ['New', 'Spare']);
+  assert.deepEqual([v.task(101).labels, v.task(102).labels].map(ls => ls.map(l => l.title)), [['Spare'], ['Spare']]);
+});
+
+test('a line whose key the relay can\'t vouch for goes back to the box, with words that say Vikunja may have it', async t => {
+  const v = fakeVikunja(), app = adding(t);
+  v.trouble = r => r.method === 'POST' ? 'unknown' : null;
+  const r = await send(app, entry([line('Chairs')]));
+  assert.deepEqual([r.status, r.error.message, r.unsent], ['error', UNKNOWN, ['Chairs']]);
+  assert.equal(sync.all(1).length, 0);
+});
+
+test('a step inserted in a checklist, cancelled after its reply was lost, is found by its key and deleted', async t => {
+  const v = fakeVikunja([{ id: 9, title: 'Opening', project_id: 5 }]), app = adding(t);
+  Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep });
+  const id = uuid7(), is = r => r.method === 'POST' && r.path === '/projects/5/tasks';
+  v.trouble = r => is(r) ? 'lost' : null;
+  const step = { id, kind: 'step', user: 1, at: new Date().toISOString(), items: [], files: [], fails: 0, run: 9, project: 5, title: 'Sweep up', from: null, tpl: null };
+  assert.equal((await send(app, step)).status, 'offline');
+  await sync.save({ ...sync.entries.get(id), cancelled: true });            // as dropStep does
+  v.trouble = () => null;
+  assert.equal((await app.sendEntry(id)).status, 'sent');
+  const posts = v.requests.filter(is);
+  assert.deepEqual(posts.map(r => [r.key, !!r.replayed]), [[`${id}:1:0`, false], [`${id}:1:0`, true]], 'the task\'s request is sent again with its key');
+  assert.deepEqual([v.tasks.has(101), sync.all(1).length], [false, 0], 'the task is deleted, and nothing is left waiting');
 });
 
 test('a repeating task that arrives done shows ticked with its given date, then opens at its next date', async t => {
@@ -329,7 +408,7 @@ test('in quick add, a first line ending with a colon is the parent of the other 
 const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } }, { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } }]);
-  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'findSent', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'flush'));
+  const app = component(tasks, actions, leaving, quickadd, pick(sending, 'createTask', 'linkSubtask', 'sendEntry', 'placeSent', 'pendingPlace', 'arrivedDone', 'refreshPending', 'keyWaiting', 'markSlow', 'cancelPending', 'flush'));
   Object.defineProperty(app, 'pendingTasks', Object.getOwnPropertyDescriptor(sending, 'pendingTasks'));
   const van = app.row(v.task(9)), chairs = app.row(v.task(8));
   Object.assign(app, { user: { id: 1, settings: { frontend_settings: {} } }, pending: [], failed: [], slow: [], positions: { 8: 100 }, projects: [], labels: [], people: [], access: {}, userKnown: {},

@@ -2,10 +2,9 @@
 import {raw, userCache, ZERO} from '../util.js';
 import {api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, triedSince} from '../api.js';
 import {isSet, startOfDay} from '../dates.js';
-import {addedWhere, cancelName, doneText, notKnown} from '../messages.js';
-import {patiently} from '../checklists.js';
+import {addedWhere, cancelName, doneText, notKnown, UNKNOWN} from '../messages.js';
 import {parseCapture} from '../quickadd.js';
-import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed} from '../sync.js';
+import {entryDone, fileEntry, held, heldTasks, isChild, itemDone, itemsOf, KEPT, LINE_STEPS, lineContext, NO_ROOM, NOT_KEPT, randomId, slowness, sync, underOf, unpackParsed, uuid7} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
 import {CREATED, savedScreen, TASK} from './tasks.js';
@@ -15,23 +14,29 @@ let waitTimer;
 const waitingRows = new Map();
 const lastGroups = new Map();                    // each group as listGroups last returned it, by key
 // The job for each line: the earlier try's job if the line is unchanged, else a new one.
-export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line, at: new Date().toISOString()});
+export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line === line ? kept[k] : {line});
 
 export default {
-  /* Create a task from a parsed line, one step at a time (LINE_STEPS). `job` records how far each step got, and
-     `save` stores the job. For a line in the outbox, the job is the outbox item. `made` is called as soon as the task
-     exists. `parent` makes the task a subtask of that task. Returns the task, which is just {id, project_id} if an
-     earlier try made it. It has `problems` (what couldn't be done, such as an @username who can't see the project)
-     and, for a line marked done or given a percentage, `arrived`: {now: Vikunja's copy after that was set, done}.
-     Throws on a lost connection or a busy Vikunja. */
-  async createTask(parsed, pid, {job = {}, save = async () => {}, made, at, skip, parent} = {}){
+  /* Create a task from a parsed line, one stage at a time (LINE_STEPS). `job` records how far each stage got, and
+     `save` stores the job. For a line in the outbox, the job is the outbox item. Each request is sent with a key made
+     from `job.key`, so a retry after a lost reply makes nothing twice. `made` is called as soon as the task exists.
+     `parent` makes the task a subtask of that task. Returns the task, which is just {id, project_id} if an earlier try
+     made it. It has `problems` (what couldn't be done, such as an @username who can't see the project) and, for a line
+     marked done or given a percentage, `arrived`: {now: Vikunja's copy after that was set, done}. Throws on a lost
+     connection or a busy Vikunja. */
+  async createTask(parsed, pid, {job = {}, save = async () => {}, made, parent} = {}){
     job.problems ||= [];
-    job.key ||= randomId();                      // identifies this line in the record of which task was added for it
-    const c = {parsed, pid, save, made, at, skip, parent};
-    if (!itemDone(job, !!parent)) {
-      // A busy Vikunja (on SQLite, "database is locked") is retried a few times. Each step records how far it got.
-      for (const step of LINE_STEPS) while (!step.done(job, c)) { await patiently(() => step.run(job, c)); await save(); }
-      job.done = true; await save();
+    job.key ||= uuid7();                         // the relay reads the key's time from it
+    const c = lineContext(job, {parsed, pid, save, made, parent});
+    try {
+      if (!itemDone(job, !!parent)) {
+        for (const [i, step] of LINE_STEPS.entries()) while (!step.done(job, c)) { await step.run(job, c.start(i)); await save(); }
+        job.done = true; await save();
+      }
+    } catch (e) {
+      // The relay can't tell whether Vikunja made the change. The line is refused, with words that say only the user can check.
+      if (e.code === 'unknown') e.message = UNKNOWN;
+      throw e;
     }
     return Object.assign(c.task || {id: job.taskId, project_id: job.projectId}, {problems: job.problems}, c.arrived && {arrived: c.arrived});
   },
@@ -42,20 +47,20 @@ export default {
     if (u) userCache.set(key, u);
     return u;
   },
-  linkSubtask(parentId, childId){
-    return api(`/tasks/${parentId}/relations`, {method:'POST', body:{other_task_id: childId, relation_kind: 'subtask'}});
+  linkSubtask(parentId, childId, send = api){
+    return send(`/tasks/${parentId}/relations`, {method:'POST', body:{other_task_id: childId, relation_kind: 'subtask'}});
   },
   /* Create one task per line, in order. With `parent`, each becomes a subtask of it, in the parent's project unless
      the line names one. Returns the ids created and how many lines were used, and stops at the first error. `jobs`
-     (from jobsFor) records how far each line got, so a retry carries on. A task whose reply was lost is found, not
-     added twice. `ignores` holds the chips tapped off for each line, on top of `ignore`. */
+     (from jobsFor) records how far each line got, so a retry carries on, and sends each request with the key it had.
+     `ignores` holds the chips tapped off for each line, on top of `ignore`. */
   async createLines(lines, {pid, parent, ignore = {}, ignores = [], jobs = jobsFor([], lines)} = {}){
     const ids = [], problems = []; let used = 0;
     try {
       for (const [k, line] of lines.entries()) {
         const parsed = parseCapture(line, this.projects, {...this.parseOpts, ignore: {...ignore, ...ignores[k]}});
         if (parsed.title) {
-          const job = jobs[k], t = await this.createTask(parsed, parent ? parent.project_id : pid, {job, at: job.at, skip: new Set(ids), parent: parent?.id});
+          const t = await this.createTask(parsed, parent ? parent.project_id : pid, {job: jobs[k], parent: parent?.id});
           ids.push(t.id); problems.push(...t.problems);
         }
         used++;
@@ -137,7 +142,6 @@ export default {
     if (entry.kind === 'act') return this.sendAct(entry);
     const ids = [], tasks = [], problems = entry.problems ||= [], save = () => sync.save(entry);
     const all = () => [...entry.items.flatMap(x => x.problems || []), ...problems];
-    const taken = new Set(entry.items.map(x => x.taskId).filter(Boolean));  // a pasted list can have a line twice
     let uploaded = 0;
     try {
       for (const [i, item] of entry.items.entries()) {
@@ -146,8 +150,8 @@ export default {
         // can move from that row to the task (aimSent).
         const u = underOf(entry, i), over = u === null ? null : entry.items[u], child = isChild(entry, i), under = over ? over.taskId : entry.parent?.id ?? null;
         const t = await this.createTask(unpackParsed(item.p), entry.parent ? entry.parent.project_id : over ? over.projectId ?? entry.parentProject : entry.pid, {
-          job: item, save, at: entry.at, skip: taken, parent: under,
-          made: t => { this.change(w => w.answer([t], CREATED)); taken.add(t.id); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
+          job: item, save, parent: under,
+          made: t => { this.change(w => w.answer([t], CREATED)); tasks.push({...t, child, parent: under, was: `pending-${entry.id}-${i}`, place: item.p.position || 0}); if (i === 0) entry.parentProject = t.project_id; }});
         // A task that arrived done, or with progress, shows that on its row (placeSent).
         if (t.arrived) { this.change(w => w.answer([t.arrived.now], TASK)); for (const x of tasks) if (x.id === t.id) x.arrived = t.arrived; }
         ids.push(item.taskId);
@@ -275,15 +279,6 @@ export default {
       out: () => this.bothWays && !moves() ? [] : ids,
       gone: () => { if (this.bothWays) this.moveInSearch(t, ids); else if (t.done) { this.removeRow(t.id); this.intoDoneToday(ids); } }});
   },
-  // Find the task that an earlier, cut-off try added, if it was added. It has the same title, is in this project, was
-  // created by this user since that try, and is not one of the entry's other tasks or a task Pocket added for another
-  // line.
-  async findSent(title, project, triedAt, at, skip = new Set(), key){
-    const list = items(await api('/tasks?q=' + encodeURIComponent(title)));
-    const since = triedSince(triedAt, at);
-    return list.find(t => t.title === title && t.project_id === project && t.created_by?.id === this.user?.id && !skip.has(t.id) && !sync.claimedByOther(t.id, key)
-      && new Date(t.created).getTime() >= since) || null;
-  },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
   async flush(){
     if (opening) return;                         // Pocket is still opening on the saved screen, and boot sends what's waiting once Vikunja says who is signed in
@@ -332,7 +327,7 @@ export default {
         + (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''));
     } else if (failed.length) {
       // The message shows in the box the text went back to: quick add, or the subtask box in the task's sheet.
-      this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
+      this.say(`${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message.replace(/\.$/, '')}. Its text is back in the add box.`, {place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed'});
     } else if (other.length) {
       const e = other[0].error, what = e.what || 'A change made offline';
       this.notify(e.code === 'unknown' ? notKnown(what) : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e)));

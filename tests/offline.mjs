@@ -204,7 +204,7 @@ try {
   await step('lost-reply-is-not-added-twice', async () => {
     // The first request reaches Vikunja, but its reply never arrives.
     let cut = true;
-    await page.route('**/api/v2/projects/*/tasks', async route => {
+    await page.route('**/v2/projects/*/tasks', async route => {
       if (cut && route.request().method() === 'POST') { cut = false; await route.fetch(); return route.abort('internetdisconnected'); }
       return route.fallback();
     });
@@ -216,7 +216,7 @@ try {
     if (await page.isVisible(pendingRow(T('D')))) throw new Error('the task is still shown as waiting');
     const copies = (await byTitle(T('D'))).length;
     if (copies !== 1) throw new Error(`${copies} copies`);
-    await page.unroute('**/api/v2/projects/*/tasks');
+    await page.unroute('**/v2/projects/*/tasks');
   });
 
   await step('photo-upload-cut-off-keeps-the-task', async () => {
@@ -368,32 +368,38 @@ try {
   });
 
   await step('cut-off-label-is-still-added', async () => {
-    // The task reaches Vikunja, then the connection drops before the label is added to it.
+    // The task reaches Vikunja, then the request that sets its labels reaches Vikunja, but its reply is lost.
     let cut = true;
-    const drop = r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; return r.abort('internetdisconnected'); };
-    await page.route('**/api/v2/tasks/*/labels', drop);
+    const lose = async r => { if (!cut || r.request().method() !== 'PUT') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
+    await page.route('**/v2/tasks/*/labels/bulk', lose);
     await capture(`${T('L')} tomorrow *${LABEL}`);
     await page.waitForSelector(`.row:has(.title:has-text("${T('L')}"))`);     // shown at once, because the task is already in Vikunja
     await online();
     await synced(page);
+    if (cut) throw new Error('the labels were never sent');
     if (!(await byTitle(T('L')))[0]?.labels?.some(l => l.title === LABEL)) throw new Error('the label never reached the task');
     if ((await byTitle(T('L'))).length !== 1) throw new Error((await byTitle(T('L'))).length + ' copies');
-    await page.unroute('**/api/v2/tasks/*/labels', drop);
+    await page.unroute('**/v2/tasks/*/labels/bulk', lose);
   });
 
-  if (process.env.ASSIGNEE) await step('assigned-task-whose-reply-is-lost-is-added-once', async () => {
-    // The @username is removed from the title, so the retry must search for the title as it was sent.
+  /* The relay makes the task, and its reply is lost on the way back. Once Pocket is back online it sends the request
+     again with its key, the relay answers from what it kept, and the label and the person are added to that task. */
+  if (process.env.ASSIGNEE) await step('a-task-whose-reply-is-lost-is-added-once-with-its-label-and-person', async () => {
     const who = process.env.ASSIGNEE, where = process.env.ASSIGNEE_PROJECT ? ` +"${process.env.ASSIGNEE_PROJECT}"` : '';
+    const relay = '**/api/v1/plugins/pocket/v2/projects/*/tasks';
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v2/projects/*/tasks', lose);
-    await capture(`${T('B')} tomorrow @${who}${where}`);
+    await page.route(relay, lose);
+    await capture(`${T('B')} tomorrow @${who}${where} *${LABEL}`);
     await online();
     await synced(page);
-    if (!(await byTitle(T('B')))[0]?.assignees?.some(u => u.username === who)) throw new Error('the task was never assigned');
+    await page.unroute(relay, lose);
+    if (cut) throw new Error('the task was never sent through the relay');
     await expect(page.locator('.row.pending')).toHaveCount(0);
-    if ((await byTitle(T('B'))).length !== 1) throw new Error((await byTitle(T('B'))).length + ' copies');
-    await page.unroute('**/api/v2/projects/*/tasks', lose);
+    const made = await byTitle(T('B'));
+    if (made.length !== 1) throw new Error(made.length + ' copies');
+    if (!made[0].assignees?.some(u => u.username === who)) throw new Error('the task was never assigned');
+    if (!made[0].labels?.some(l => l.title === LABEL)) throw new Error('the label never reached the task');
   });
 
   await step('no-room-on-the-phone-waits-while-open', async () => {
@@ -425,10 +431,10 @@ try {
     await capture(T('M'));
     await page.waitForSelector(`.row:not(.pending):has(.title:has-text("${T('M')}"))`);
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v2/projects/*/tasks', drop);
+    await page.route('**/v2/projects/*/tasks', drop);
     await capture(T('M'));
     await page.waitForSelector(pendingRow(T('M')));
-    await page.unroute('**/api/v2/projects/*/tasks', drop);
+    await page.unroute('**/v2/projects/*/tasks', drop);
     await online();
     await synced(page);
     if ((await byTitle(T('M'))).length !== 2) throw new Error((await byTitle(T('M'))).length + ' copies');
@@ -440,20 +446,20 @@ try {
     await api(`/projects/${me.project_id}/tasks`, { method: 'POST', body: JSON.stringify({ title: T('E') }) });
     await page.waitForTimeout(4000);                                         // the Pocket task is made later, as a person would
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v2/projects/*/tasks', drop);
+    await page.route('**/v2/projects/*/tasks', drop);
     await capture(T('E'));
     await page.waitForSelector(pendingRow(T('E')));
-    await page.unroute('**/api/v2/projects/*/tasks', drop);
+    await page.unroute('**/v2/projects/*/tasks', drop);
     await online();
     await synced(page);
     if ((await byTitle(T('E'))).length !== 2) throw new Error((await byTitle(T('E'))).length + ' copies');
   });
 
   await step('subtask-link-whose-reply-is-lost', async () => {
-    // A pasted list whose first line is the parent. The subtask link reaches Vikunja but its reply doesn't, and the retry finds the link already made.
+    // A pasted list whose first line is the parent. The subtask link reaches Vikunja but its reply doesn't. The retry sends it again with its key, and the relay answers from what it kept.
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v2/tasks/*/relations', lose);
+    await page.route('**/v2/tasks/*/relations', lose);
     await page.fill('#in-capture', `${T('K')} tomorrow\n- ${T('K1')}\n- ${T('K2')}`);
     await page.click('#cap-nest');
     await page.click('#f-capture .go');
@@ -464,7 +470,7 @@ try {
     const full = await (await api('/tasks/' + parent.id)).json();
     if ((full.related_tasks?.subtask || []).length !== 2) throw new Error('subtasks: ' + (full.related_tasks?.subtask || []).length);
     if ((await page.textContent('#toast-msg')).includes("couldn't")) throw new Error('unexpected toast: ' + await page.textContent('#toast-msg'));
-    await page.unroute('**/api/v2/tasks/*/relations', lose);
+    await page.unroute('**/v2/tasks/*/relations', lose);
   });
 
   await step('a-pasted-list-with-several-parents-waits-and-keeps-its-shape', async () => {
@@ -472,7 +478,7 @@ try {
     // reached. Each parent waits on Today with its lines under it, not as separate rows. Once sent, each line is under
     // its original parent and the done line is done.
     const drop = r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback();
-    await page.route('**/api/v2/projects/*/tasks', drop);
+    await page.route('**/v2/projects/*/tasks', drop);
     await page.fill('#in-capture', `## ${T('H1')} tomorrow\n- ${T('H1a')}\n- [x] ${T('H1b')}\n## ${T('H2')} tomorrow\n- ${T('H2a')}`);
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('H1')));
@@ -481,7 +487,7 @@ try {
     // Each parent's Cancel button has a label that says what happens to the lines waiting under it, for the second parent too.
     await expect(page.locator(`${pendingRow(T('H1'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H1')}. The lines under it become their own tasks.`);
     await expect(page.locator(`${pendingRow(T('H2'))} button[aria-label^="Cancel"]`)).toHaveAttribute('aria-label', `Cancel ${T('H2')}. The line under it becomes its own task.`);
-    await page.unroute('**/api/v2/projects/*/tasks', drop);
+    await page.unroute('**/v2/projects/*/tasks', drop);
     await online();
     await synced(page);
     const subs = async t => ((await (await api('/tasks/' + (await byTitle(t))[0]?.id)).json()).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
@@ -705,7 +711,7 @@ try {
     await capture(`${T('Y')} tomorrow`);                                    // a task is waiting at sign-out, so Pocket asks first
     await page.waitForSelector(pendingRow(T('Y')));
     // The browser goes back online for the sign-out, but the waiting task must not be sent meanwhile.
-    await page.route('**/api/v2/projects/*/tasks', r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback());
+    await page.route('**/v2/projects/*/tasks', r => r.request().method() === 'POST' ? r.abort('internetdisconnected') : r.fallback());
     await context.setOffline(false);
     await page.click('#btn-account');
     await page.click('#btn-signout');
@@ -715,7 +721,7 @@ try {
     const count = name => page.evaluate(n => new Promise(ok => { const r = indexedDB.open('pocket'); r.onsuccess = () => { const q = r.result.transaction(n).objectStore(n).count(); q.onsuccess = () => { r.result.close(); ok(q.result); }; }; }), name);
     if (await count('files')) throw new Error(`${await count('files')} waiting photos still stored`);
     if (await count('outbox')) throw new Error(`${await count('outbox')} waiting tasks still stored`);
-    await page.unroute('**/api/v2/projects/*/tasks');
+    await page.unroute('**/v2/projects/*/tasks');
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });
   if (errors.length) { failed++; console.log('FAIL page errors:', errors); }

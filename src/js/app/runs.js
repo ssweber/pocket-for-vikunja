@@ -8,7 +8,7 @@ import {htmlToText, textToHtml} from '../html.js';
 import {addedText, allComments, comesRound, isAnswer, countText, DONE_MARK, durText, inBatches, nextAfter, noteOf, notesOnly, parseStep, patiently, plainRun, runParts, plainStep, problemText, runWithoutDay, skippedBy, stepFrom, stepProblems, stepsOf, templateName, vikunjaNext, whereNext} from '../checklists.js';
 import {routeOf} from '../routing.js';
 import {stepAnswers} from '../asks.js';
-import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync} from '../sync.js';
+import {INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, resendTask, RUN_STEPS, runProgress, sync, uuid7} from '../sync.js';
 import {saved} from '../lists.js';
 import {completeAsk, sentLater, startedText} from '../messages.js';
 import {newBox, shared} from './core.js';
@@ -589,7 +589,7 @@ export default {
      before sending, so the next entry follows it. Return the entry ids. */
   async addSteps(list, {after, before, follow = false}){
     if (!list.length) return [];
-    const ids = list.map(f => f.id || randomId());
+    const ids = list.map(f => f.id || uuid7());
     if (follow && this.runBoxAt != null) { this.runBoxAt = 'pending-' + ids.at(-1); this.seatFoot('run'); }
     for (const [i, f] of list.entries()) { await this.addStep({...f, id: ids[i], before, after}); after = 'pending-' + ids[i]; }
     return ids;
@@ -607,7 +607,7 @@ export default {
   async repeatAbove(){
     const s = this.runAim?.above;
     if (!s || s.pending) return;
-    const id = randomId();
+    const id = uuid7();
     this.say(`Repeated “${s.title}”`, {place: 'cap', action: {label: 'Undo', fn: () => this.undoAdded(id, s.title)}});
     await this.repeatStep(s, id);
   },
@@ -636,7 +636,7 @@ export default {
     if (!r || !run) return;
     // If the step to insert before is itself waiting to be sent, use the step that one goes before.
     if (typeof fields.before === 'string') fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
-    const entry = {id: randomId(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], fails: 0,
+    const entry = {id: uuid7(), kind: 'step', user: this.user?.id, at: new Date().toISOString(), n: nextN(), items: [], files: [], fails: 0,
       run: r.id, runTitle: run.title, project: run.project_id, from: null, tpl: null, ...fields};
     const {kept, full} = await sync.add(entry, []);
     this.refreshPending();
@@ -701,7 +701,7 @@ export default {
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
-      tried = !!(e.taskId || e.tried || e.job?.tried);
+      tried = !!(e.taskId || e.tried || e.job?.sent);
       if (tried) await sync.save({...e, cancelled: true}); else await sync.remove(id);
       for (const a of sync.all(this.user?.id)) if (a.kind === 'act' && a.task === 'pending-' + id) await sync.remove(a.id);
     });
@@ -717,7 +717,8 @@ export default {
     try {
       let id = j.taskId || j.job?.taskId || null;
       if (!id && j.from && j.tried) id = (await this.findCopy(j.from, j, j.at, c.taken, j.id, j.run))?.id ?? null;
-      if (!id && j.job?.tried && j.job.body) id = (await this.findSent(j.job.body.title, j.job.to, j.job.triedAt, j.at, new Set(), j.job.key))?.id ?? null;
+      // A new step's task whose reply was lost: its request sent again with its key gives the task, or makes it now.
+      if (!id && j.job?.sent && j.job.body) { await resendTask(j.job, c.save); id = j.job.taskId; }
       if (id) await patiently(() => api('/tasks/' + id, {method: 'DELETE'})).catch(e => { if (e.status !== 404) throw e; });
       await sync.remove(j.id);
       return {...none, status: 'sent', changed: 0};

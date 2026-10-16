@@ -37,11 +37,10 @@ let serverOffset = null;                         // Vikunja's clock minus the ph
 // Convert a time on the phone's clock to Vikunja's.
 export const serverTime = ms => ms + (serverOffset ?? 0);
 /* The earliest moment, on Vikunja's clock, at which a send that got no reply could have created something. Before
-   sending again, Pocket looks for a task with the same name created after this moment. The 3 seconds cover the Date
-   header's whole seconds and the reply's travel time, so a same-named task made elsewhere before the send isn't taken
-   for it. An outbox entry saved before Pocket recorded send times has no `triedAt`, so 2 minutes before its capture
-   `at` is used. Vikunja can't tag a request, so a same-named task made elsewhere in those few seconds could still be
-   mistaken for it. */
+   sending a copy or a file again, Pocket looks for one created after this moment. The 3 seconds cover the Date
+   header's whole seconds and the reply's travel time, so one made elsewhere before the send isn't taken for it. An
+   outbox entry saved before Pocket recorded send times has no `triedAt`, so 2 minutes before its capture `at` is used.
+   Vikunja can't tag a request, so one made elsewhere in those few seconds could still be mistaken for it. */
 export const triedSince = (triedAt, at) => triedAt ? serverTime(triedAt) - 3000 : new Date(at).getTime() - 2 * 60000;
 /* Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
    renewal, so renewing takes Vikunja's "vikunja-token-refresh" lock. If another tab renewed while this one waited for

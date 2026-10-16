@@ -220,10 +220,10 @@ try {
     // The reply to the second step's request is lost. Pressing Create template again continues with the same template and adds nothing twice.
     let posts = 0;
     const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 3) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
-    await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await page.route(`**/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#nt-create');
     await said('sheet:top', 'Tap Create template again');
-    await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await page.unroute(`**/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#nt-create');
     await said('checklists', `Created ${TEMPLATE}`);
     const named = async title => (await api('/tasks?q=' + encodeURIComponent(title))).items.filter(t => t.title === title && t.project_id === project.id).length;
@@ -1491,13 +1491,13 @@ try {
     // If the reply is lost, the step is inserted once only.
     let cut = true;
     const lose = async r => { if (!cut || r.request().method() !== 'POST') return r.fallback(); cut = false; await r.fetch(); return r.abort('internetdisconnected'); };
-    await page.route('**/api/v2/projects/*/tasks', lose);
+    await page.route('**/v2/projects/*/tasks', lose);
     await page.click('#run-steps .row:nth-of-type(1) .body');
     await expect(what).toHaveText('Check the guards at 3pm');
     await add('Sweep up');
     await online();
     await until('the step was never inserted after its reply was lost', async () => (await titles()).includes('Sweep up'));
-    await page.unroute('**/api/v2/projects/*/tasks', lose);
+    await page.unroute('**/v2/projects/*/tasks', lose);
     if ((await titles()).split('Sweep up').length !== 2) throw new Error('the step was inserted twice: ' + await titles());
     // Offline, the new step appears in its position after the previous step, waiting to send, and is ticked meanwhile.
     // Both reach Vikunja when the connection returns. (A new step goes where the box points, not onto the card.
@@ -2034,20 +2034,20 @@ try {
     await expect(chip).toContainText('5m after');
     let posts = 0;
     const loseStep = async r => { if (r.request().method() !== 'POST' || ++posts !== 1) return r.fallback(); await r.fetch(); return r.abort('connectionreset'); };
-    await page.route(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await page.route(`**/v2/projects/${project.id}/tasks`, loseStep);
     await toastGone().catch(() => {});
     await page.press(box, 'Enter');
     await said('sheet:subtasks', 'Added 0 of 1');
-    await page.unroute(`**/api/v2/projects/${project.id}/tasks`, loseStep);
+    await page.unroute(`**/v2/projects/${project.id}/tasks`, loseStep);
     await expect(page.locator(box)).toHaveValue('Pull a sample 5 min after Warm up the press');
     // Vikunja on SQLite is briefly busy ("database is locked") while a step is linked under the template. Pocket retries.
     let locked = 0;
     const lock = r => r.request().method() === 'POST' && ++locked === 1 ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
-    await page.route('**/api/v2/tasks/*/relations', lock);
+    await page.route('**/v2/tasks/*/relations', lock);
     await toastGone().catch(() => {});
     await page.press(box, 'Enter');
     await until('the step was never added', async () => (await subtasks(template.id)).length === 4);
-    await page.unroute('**/api/v2/tasks/*/relations', lock);
+    await page.unroute('**/v2/tasks/*/relations', lock);
     if (!locked) throw new Error('no step was put under the template');
     if (await page.isVisible('.place-line:has-text("Added")')) throw new Error('the sheet showed a message: ' + await page.textContent('.place-line'));
     const sample = (await api('/tasks?q=' + encodeURIComponent('Pull a sample'))).items.filter(t => t.project_id === project.id);
@@ -2064,10 +2064,10 @@ try {
     // If Vikunja is still busy after a few tries, the step that was created is not left behind as a separate task, and the typed line stays in the box.
     const stray = `Stray step ${stamp}`, busy = r => r.request().method() === 'POST' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' }) : r.fallback();
     await page.fill(box, stray);
-    await page.route('**/api/v2/tasks/*/relations', busy);
+    await page.route('**/v2/tasks/*/relations', busy);
     await page.press(box, 'Enter');
     await said('sheet:subtasks', 'Added 0 of 1');
-    await page.unroute('**/api/v2/tasks/*/relations', busy);
+    await page.unroute('**/v2/tasks/*/relations', busy);
     await until('the step was left behind as a separate task', async () => !(await api('/tasks?q=' + encodeURIComponent(stray))).items.some(t => t.title === stray));
     await expect(page.locator(box)).toHaveValue(stray);
     await page.fill(box, '');
