@@ -50,8 +50,9 @@ As the draft says:
 
 And beyond the draft:
 
-- **A 5xx, a 408, a 429 or a failed forward isn't stored,** so the request can be sent again. Vikunja rolls back a request that fails
-  that way.
+- **A 5xx, a 408, a 429, a 401 or a failed forward isn't stored,** so the request can be sent again. Vikunja changes
+  nothing for a request that fails that way. A 401 comes when the session ends between the relay's check and Vikunja's.
+  Kept, it would sign the user out on every retry with that key.
 - **The forward doesn't use the request's context.** If the phone hangs up, the write still finishes and its answer
   is stored for the retry.
 - **The gap.** The write commits in Vikunja's transaction, and the answer is stored in a second one. If Vikunja stops

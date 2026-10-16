@@ -94,6 +94,17 @@ try {
   const days = Math.round((Date.parse((await v2('GET', `/tasks/${rep.json.id}`, me)).json?.due_date) - due.getTime()) / 864e5);
   check('a repeating task ticked twice with one key moves on one day', days === 1 && tick2.replayed, `moved ${days} day(s)`);
 
+  // Vikunja's 401 after the relay's own check isn't kept, as when a session ends between the two. A token allowed the
+  // relay but not task creation gets that 401 every time.
+  const scoped = (await v2('POST', '/tokens', me, {title: `Relay only ${run}`, permissions: {plugins: ['pocket_v2_*']}, expires_at: new Date(Date.now() + 36e5).toISOString()})).json;
+  try {
+    const k6 = newKey(), title6 = `Relay 401 ${run}`;
+    const no = await relay('POST', `/projects/${team.id}/tasks`, scoped?.token, {title: title6}, k6);
+    check('Vikunja\'s 401 after the relay\'s check is passed on', no.status === 401 && !no.replayed, brief(no));
+    const yes = keep(await relay('POST', `/projects/${team.id}/tasks`, me, {title: title6}, k6));
+    check('the 401 isn\'t kept, so the same key makes the task once the user is signed in', yes.status === 201 && !yes.replayed, brief(yes));
+  } finally { if (scoped?.id) await v2('DELETE', '/tokens/' + scoped.id, me); }
+
   // An answer over 64 KB is stored and replayed. MySQL's TEXT would cut it off (relay.go uses LONGTEXT there).
   const k5 = newKey(), big = {title: `Relay big ${run}`, description: '<p>' + 'x'.repeat(100e3) + '</p>'};
   const large = keep(await relay('POST', `/projects/${team.id}/tasks`, me, big, k5)), largeAgain = await relay('POST', `/projects/${team.id}/tasks`, me, big, k5);

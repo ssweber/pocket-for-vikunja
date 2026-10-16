@@ -15,8 +15,8 @@
 // A key whose first request never finished (Vikunja stopped while it ran) also gets 409, with
 // "Idempotency-Unknown: true", because the relay can't tell whether the change was made. So does a key older than the
 // relay keeps answers, or from a clock more than a day fast. Every key starts with a UUIDv7, which holds the time it
-// was made. A 5xx, a 408, a 429 or a failed forward isn't stored, so the request can be sent again. Vikunja rolls
-// back a request that fails that way.
+// was made. A 5xx, a 408, a 429, a 401 or a failed forward isn't stored, so the request can be sent again. Vikunja
+// changes nothing for a request that fails that way.
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
@@ -155,8 +155,9 @@ func relayWrite(c *echo.Context) error {
 	// The phone may hang up while this runs. The forward doesn't use the request's context, so it finishes and its
 	// answer is stored for the retry.
 	code, ct, out, err := relayForward(c.Request(), target, body)
-	// A 5xx, or a 408 or 429 (Vikunja busy or rate-limited), says nothing was changed, and Pocket sends it again.
-	if err != nil || code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests {
+	// A 5xx, or a 408 or 429 (Vikunja busy or rate-limited), says nothing was changed, and Pocket sends it again. So
+	// does a 401: the session ended after the relay's own check. Kept, it would sign the user out on every retry.
+	if err != nil || code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
 		relayRelease(u.ID, key)
 		if err != nil {
 			log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
