@@ -569,7 +569,9 @@ checks that Vikunja changed once. A phase that makes a change work offline also 
    batch is still waiting leaves its parent's progress unwritten. Phase 7 fixes that when it changes how progress is
    sent.
 8. **Sheet fields, project, links, people, labels.** Delete `save` and the direct calls in sheet.js.
-9. **Deletes and comments.** Delete `deleteTasks` and `deleteTree`.
+9. **Deletes and comments.** Delete `deleteTasks` and `deleteTree`. Once every change goes through the Outbox, the offline line in
+   `app.html` becomes "Offline. Changes wait in the Outbox." (the user's words, agreed on 2026-10-16), with the time
+   of the saved screen as now, and `docs/guide.md` says the same.
 10. **Checklists and files.** `startRun` and `addStep` as keyed ops. Delete `findCopy`, `duplicate`'s bookkeeping and
     `hasAttachment`. Then renames, step edits, answers and template step order. Remove the last non-permanent files
     from the writes allowlist, turn on the keys rule, delete `unchanged()` and turn on the Undo rule.
