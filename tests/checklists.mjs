@@ -1342,7 +1342,7 @@ try {
     await page.waitForSelector('#step-card .step-due:text-matches("^Due in (30|29)m$")');    // counts from the tick made here
     await page.fill('#step-note', 'Written offline');
     await page.click('#step-note-form button');
-    await page.waitForSelector('#step-extra .comment:has-text("Written offline"):has-text("Waiting to send")');
+    await page.waitForSelector('#step-extra .comment:has-text("Written offline"):has-text("Waiting for a connection")');
     await page.reload();                                                     // as if the phone closed the app
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait', { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("Warm up the press")');
@@ -1371,7 +1371,9 @@ try {
     await page.click('#step-note-form button');
     await online();
     await until('the note never reached Vikunja', async () => ((await task(id)).comments || []).some(c => c.comment.includes('Said once')));
-    await page.waitForSelector('#step-extra .comment:has-text("Said once"):not(:has-text("Waiting to send"))', { timeout: 20000 });
+    // A comment not yet sent shows its time until it is slow, like a sent one, so wait for the outbox to empty first.
+    await synced(page);
+    await page.waitForSelector('#step-extra .comment:has-text("Said once"):not(:has-text("Sending…")):not(:has-text("Waiting for a connection"))', { timeout: 20000 });
     const n = ((await task(id)).comments || []).filter(c => c.comment.includes('Said once')).length;
     if (n !== 1) throw new Error(n + ' copies of the note');
     await page.unroute('**/v2/tasks/*/comments', lose);

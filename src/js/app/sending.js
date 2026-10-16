@@ -391,6 +391,9 @@ export default {
     this.waitShown = slow.length > 0;
     if (next !== null) waitTimer = setTimeout(() => this.markSlow(), next - Date.now());
   },
+  // The words under a change still on its way, by its entry's id. A change answered within WAIT_MS shows none, so
+  // the words don't flash up on every quick add or comment.
+  waitText(id){ return !this.slow.includes(id) ? '' : this.offline ? 'Waiting for a connection' : 'Sending…'; },
   // The label of a waiting row's Cancel, which says what becomes of the lines waiting under it.
   cancelLabel(t){ return cancelName(t.title, this.pending.filter(x => x.under === t.id).length, [...this.pending, ...this.failed].find(x => x.id === t.entry)?.over); },
   /* Tasks still in the outbox, shaped like tasks so they can sit in the lists where they'll land once sent. A waiting

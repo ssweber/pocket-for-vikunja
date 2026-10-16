@@ -124,7 +124,7 @@
             <button class="icon-btn plain copy-btn" aria-label="Copy this comment" @click="copyComment(c)"><svg class="i"><use href="#i-copy"/></svg></button></div>
         </template>
         <template x-for="c in pendingComments" :key="c.id">
-          <div class="comment waiting"><div class="who"><b x-text="user?.name || user?.username || 'You'"></b> · <span x-text="offline ? 'Waiting for a connection' : 'Sending…'"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.html)"></div></div>
+          <div class="comment waiting"><div class="who"><b x-text="user?.name || user?.username || 'You'"></b> · <span class="num" x-text="waitText(c.id) || new Date(c.at).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.html)"></div></div>
         </template>
         <template x-for="line in placeLines('sheet:comments')" :key="line.n">
           <!-- include markup/place-line.html -->

@@ -20,6 +20,7 @@ import claims from '../../src/js/app/claims.js';
 import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
 import sheetPart from '../../src/js/app/sheet.js';
+import sending from '../../src/js/app/sending.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
 import { watching } from './reactive.mjs';
@@ -609,6 +610,32 @@ test('time passing recalculates a checklist only when a countdown\'s text change
   app.view.shownRun.at = 2;                                                 // C is on the card
   c.mock.timers.setTime(t0 + 29 * 60000 + 2000); app.tickRun();
   assert.deepEqual([app.runView.steps[1].late, app.runView.steps[1].countText], [true, '2s late']);
+});
+
+/* A change shows sending words only once it has waited WAIT_MS without an answer (markSlow), or at once offline, so a
+   quick answer shows none. A subtask added in a sheet, a comment in a sheet and a comment on a checklist all read the
+   words from waitText. Until then the comment on the checklist shows its time. */
+test('a subtask or a comment added in a sheet or on a checklist shows sending words only after 2.5 seconds, or at once offline', c => {
+  c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const app = Object.defineProperties(runScreen(), Object.fromEntries(['markSlow', 'waitText', 'keyWaiting', 'pendingTasks', 'pendingSubtasks', 'pendingComments']
+    .map(n => [n, Object.getOwnPropertyDescriptor(sending, n) || Object.getOwnPropertyDescriptor(sheetPart, n)])));
+  app.row(task(60)); app.sheet = { id: 60 };                               // another task's sheet is open
+  const queue = () => {
+    const at = new Date().toISOString();
+    app.pending = [{ id: 'sub', op: 'add', at, p: { title: 'Rope' }, under: 60 }, { kind: 'act', id: 'talk', op: 'note', task: 60, run: null, html: '<p>On it</p>', at },
+      { kind: 'act', id: 'run', op: 'note', task: 50, run: 50, html: '<p>Half done</p>', at }];
+    app.change(w => w.keyOps()); app.markSlow();
+    return new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  };
+  const words = () => [app.waitText(app.pendingSubtasks[0].entry), app.waitText(app.pendingComments[0].id), app.runView.notes[0].when];
+  const when = queue();
+  c.mock.timers.tick(2000);
+  assert.deepEqual(words(), ['', '', when], 'after 2 seconds nothing says it is sending, and the comment on the checklist shows its time');
+  c.mock.timers.tick(1000);
+  assert.deepEqual(words(), ['Sending…', 'Sending…', 'Sending…'], 'after 3 seconds each says it is sending');
+  app.pending = []; app.markSlow();                                        // all three are sent
+  app.offline = true; queue();
+  assert.deepEqual(words(), Array(3).fill('Waiting for a connection'), 'offline, each says so at once');
 });
 
 test('a checklist shows the time through each countdown\'s text, whether a step is due, and the day', () => {

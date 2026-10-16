@@ -329,7 +329,7 @@ export default {
   workOutRun(){
     const r = this.view.shownRun, run = this.runTask;
     if (!r || !run) return null;
-    const me = this.user;
+    const me = this.user, note = c => noteOf(c, this.waitText(c.id));
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
     // successor is gone. Omit cancelled steps. A step being inserted has no row, so its ops are applied here.
     const base = r.steps.map(id => this.tasks[id]).filter(Boolean).map(plainStep);
@@ -349,9 +349,9 @@ export default {
       if (done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000)) doneAt = kept.here;
       const by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
       const doers = () => by.map(u => u.name || u.username);
-      const notes = (s.comments || []).map(noteOf);
+      const notes = (s.comments || []).map(note);
       // The step's row shows the latest comment's first line. Answers to its asks show on the row already.
-      const talk = (s.comments || []).filter(c => !isAnswer(c.comment)).map(noteOf).at(-1);
+      const talk = (s.comments || []).filter(c => !isAnswer(c.comment)).map(note).at(-1);
       const said = talk ? {who: talk.author, text: htmlToText(talk.comment || '').split('\n').map(l => l.trim()).find(Boolean) || ''} : null;
       const people = s.pending ? [] : this.peopleOf(s.id, s.assignees);
       const slot = done ? this.doneSlot(by, people, slow ? 'wait' : skipped ? 'skip' : 'done')
@@ -405,7 +405,7 @@ export default {
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
     return {steps, total, doneCount, didCount, skippedN, allDone, at, step, finished, timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [started, `${didCount} of ${total} done`, skippedN && `${skippedN} skipped`, total - doneCount && `${total - doneCount} not done`, lateN && `${lateN} done late`].filter(Boolean).join(' · '),
-      notes: (run.comments || []).map(noteOf),
+      notes: (run.comments || []).map(note),
       ring: {...workedOut(steps.map(s => ({done: s.done, pct: s.pct}))), run: true}};
   },
   // Who started a checklist: "you" or their name. Null when Vikunja doesn't report it.

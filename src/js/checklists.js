@@ -429,8 +429,8 @@ const fmtWhen = d => new Date(d).toLocaleString([], {dateStyle: 'medium', timeSt
 // A comment as shown. An answer comment's last line, pocket:answer, is Pocket's and is left out.
 export const isAnswer = html => /pocket:answer/i.test(html || '');
 export const commentShown = html => isAnswer(html) ? notesOnly(html) : html;
-// A comment as a note. A comment an op added says it is waiting (said, ops/shown.js).
-export const noteOf = c => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: c.waiting ? 'Waiting to send' : fmtWhen(c.created)});
+// A comment as a note. `wait` is the words a comment still being sent shows in place of its time (waitText).
+export const noteOf = (c, wait = '') => ({id: c.id, comment: commentShown(c.comment), author: c.author?.name || c.author?.username || 'Someone', when: wait || fmtWhen(c.created)});
 /* Split a run's title into {template, day, name, old}. Returns null for a title not in that shape. runTitle writes
    "Opening up · Oct 8 · #2", which is the template's name, the day, and then a number or the name typed.
 
