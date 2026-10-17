@@ -150,8 +150,10 @@ export const sendingOp = a => {
     }
   return writes(on);
 };
-// Whether a read that started at `at` ran while a write to task `id` was in flight.
-const overlaps = (id, at) => !!flying.get(id)?.size || (landed.get(id) || 0) > at;
+// Whether a read that started at `at` ran while a write to task `id` was in flight, other than `except`, the write of
+// the op the read is part of.
+export const overlaps = (id, at, except = null) =>
+  [...(flying.get(id) || [])].some(x => x !== except) || (landed.get(id) || 0) > at;
 // task id -> the fields of its edits ended since it was last shown, each with whether its save failed (undo). show
 // removes such a field from the row when Vikunja's copy doesn't have it either.
 const ended = new Map();

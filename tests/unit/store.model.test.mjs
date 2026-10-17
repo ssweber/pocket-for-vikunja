@@ -281,7 +281,7 @@ class Model {
 const HEARD = {
   read(w, fn, list, asked, at) {
     const before = w.copiesNow(),
-      thrown = new Map(list.map(t => [t.id, !!w.reading && w.overlapped(t.id)]));
+      thrown = new Map(list.map(t => [t.id, w.reading ? w.overlapped(t.id) : !!w.replyOf(t).overlapped]));
     fn(list.map(strip), asked, at);
     for (const t of list)
       w.wrote({ via: 'read', id: t.id, rec: w.replyOf(t), before: before.get(t.id), asked, thrown: thrown.get(t.id) });
@@ -531,7 +531,13 @@ class World {
     const key = opts.headers?.['Idempotency-Key']?.replaceAll('"', '') || null,
       method = opts.method || 'GET';
     if (key && this.unknownKeys.has(key)) return unknownReply();
-    if (method === 'GET') return this.stamped(await this.inner(url, opts), ++this.t, false, 'get');
+    /* A read inside an op's stage, as of the task it changes, runs while no request of that op is on its way. Another
+       write of Pocket's to the task in flight then means the store throws it away. */
+    if (method === 'GET') {
+      const id = +(new URL(url).pathname.match(/\/tasks\/(\d+)$/) || [])[1],
+        overlapped = !!id && [...this.pocket.values()].some(x => x.fields.has(id));
+      return this.stamped(await this.inner(url, opts), ++this.t, false, 'get', { overlapped });
+    }
     const h = {
       url,
       opts,
@@ -581,7 +587,7 @@ class World {
     return [...this.pocket.values()].some(x => x.fields.has(id)) || (this.landedAt.get(id) || 0) > this.reading.n;
   }
   crossed(rec, id) {
-    return !!rec.write?.crossed.get(id)?.size;
+    return !!rec.write?.crossed.get(id)?.size || !!rec.overlapped;
   }
   /* Op request `h` is sent. An op's try sets what its apply sets on each task it changes, with the values it gives the
      copy as the model has it. A write to a task outside them, such as its checklist's progress, joins it. */
@@ -697,7 +703,7 @@ class World {
       return new Response(text, { status: res.status, headers: res.headers });
     }
     if (kind && body && typeof body === 'object' && 'id' in body && 'title' in body) {
-      this.replies.push({ at, kind, replayed, data: clone(body), write: h?.write });
+      this.replies.push({ at, kind, replayed, data: clone(body), write: h?.write, overlapped: h?.overlapped });
       body[MADE] = this.replies.length - 1;
     }
     return new Response(JSON.stringify(body), { status: res.status, headers: res.headers });

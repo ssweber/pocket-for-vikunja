@@ -828,6 +828,24 @@ test('an op Vikunja refuses leaves its row at once, while the op after it is sti
   await sending;
 });
 
+/* An op can keep a read of its task as Vikunja's copy, as an Undo of a date does when the date changed since. A read
+   that ran while a save of the task was in flight is thrown away, as any read is, so the title saved meanwhile stays. */
+test('a read an op keeps of its task is thrown away when a save of the task ran meanwhile', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 3, title: 'Lock up', due_date: '2026-10-19T09:00:00Z' }]),
+    app = sender();
+  read([v.task(3)]);
+  const row = app.row(copyOf(3));
+  const { go, arrived } = holding((path, method) => path.endsWith('/tasks/3') && method === 'PATCH');
+  const saving = app.saveTask(3, { title: 'Lock up early' });
+  await arrived;
+  const undo = app.act({ op: 'due', task: 3, due: '2026-10-18T09:00:00Z', check: '2026-10-17T09:00:00Z', run: null });
+  await new Promise(ok => setImmediate(ok));
+  go();
+  await Promise.all([saving, undo]);
+  assert.deepEqual([copyOf(3).title, row.title], ['Lock up early', 'Lock up early']);
+});
+
 /* A delete held for Restore shows only on the tasks it deletes. Once its batch clears, sendHeld releases it, and its
    parent stops listing the task at once, also while the outbox is busy sending something else. */
 test('a delete released from Restore leaves its parent at once, while the outbox is busy', async t => {

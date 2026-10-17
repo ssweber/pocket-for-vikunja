@@ -7,7 +7,7 @@ import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sy
 import { saved } from '../lists.js';
 import { notKnown, toOutbox, UNKNOWN } from '../messages.js';
 import { checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf } from '../ops/index.js';
-import { CREATED, opsId, sendingOp, started, TASK, writes } from './tasks.js';
+import { CREATED, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -154,11 +154,15 @@ export function stageContext(a, app, save = () => sync.save(a)) {
       if (got && typeof got === 'object') heard.set(got, from);
       return got;
     },
+    // A read kept as the op's task is thrown away, as any read is, if it ran while another write to the task was in
+    // flight (overlaps).
     async read(path) {
       const at = started(),
-        got = await api(path);
-      if (got && typeof got === 'object')
-        heard.set(got, { at, replayed: false, crossed: c.write?.crossed ?? new Map() });
+        got = await api(path),
+        id = +(path.match(/^\/tasks\/(\d+)/) || [])[1],
+        mine = c.write?.crossed ?? new Map(),
+        crossed = id && overlaps(id, at, c.write) ? new Map([...mine, [id, new Set()]]) : mine;
+      if (got && typeof got === 'object') heard.set(got, { at, replayed: false, crossed });
       return got;
     },
     async once(name, build) {
