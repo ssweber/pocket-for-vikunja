@@ -86,7 +86,7 @@ change against them, and say where it bends one. The code's own rules:
 
 1. **One object for each task.** Every list's rows are the objects in `tasks`, by id, so a change shows on all of a
    task's rows at once. Only `show(id)` (tasks.js) writes them. Every write to what it reads happens inside
-   `change()`, which shows each task it touched once. `read` and `answer` are the only writers of Vikunja's copies.
+   `change()`, which shows each task it touched once. `read`, `answer` and `made` alone write Vikunja's copies.
 2. **One row, everywhere.** `markup/task-row.html` is the row in every list, on a card, in a sheet and on a
    checklist's screen. The list's options object `g` (`screenRows`, `lists.js`) says what the row shows there. The
    gesture code cannot reach `g`, so the row writes the gestures it allows on itself (`data-gestures`). Each place

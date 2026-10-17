@@ -43,13 +43,16 @@ and empty the Outbox on each phone, before the next phone check.
 
 - **A row is Vikunja's copy, then the waiting ops, then the edits still running.** Nothing else is added without the
   user's agreement. The edits are scaffolding: each phase turns direct saves into ops.
-- **Vikunja's copies have one door,** `read` and `answer`, and every write happens inside `change`. A read carries the
-  time it started.
+- **Vikunja's copies have one door,** `read`, `answer` and `made`, and every write happens inside `change`. A read
+  carries the time it started. A reply or a change carries the write it answers.
 - **Vikunja's copy of a task only moves forward.** Agreed with the user on 2026-10-17. Vikunja gives no version
-  number, so Pocket orders answers by when it sent their requests. An answer is taken only if its request started
-  after the request behind the copy Pocket holds. A read that overlaps a write to the same task is thrown away, and
-  the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. An op sent in several
-  stages writes its last stage's answer. Writes to one task go out one at a time.
+  number, so Pocket orders what it learns by when it started each request. A field is taken only if its request
+  started after the request behind that field of the copy. A read that overlaps a write to the same task is thrown
+  away, and the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. Each field
+  of an op sent in several stages counts from the request that changed it. Ops on one task go out one at a time. When
+  a direct save and an op on one task are in flight at once, Pocket takes neither's reply, and neither's change to a
+  field the other sets to another value. The rule lives in `tasks.js`, where each write the copy learns from is a
+  `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
@@ -68,37 +71,11 @@ and empty the Outbox on each phone, before the next phone check.
 
 ## Open bugs
 
-The randomized test and the lifecycle test found these. Each is in its test's `KNOWN` list until it is fixed. Bugs 1
-to 4 break "Vikunja's copy of a task only moves forward", and the fix is that rule in `read` and `answer`. The sheet's
-direct saves go out beside the outbox until phases 7 and 8 make them ops, and then a title can't race a tick. Bugs 5
-and 6 are words: an op stopped partway says in its Cancel words what Vikunja already has. Bugs 7 to 9 are each in one
-place: `forgetTree` and `write`, the tick and skip stages, and when the rows learn the outbox changed.
+The lifecycle test found these. Each is in its test's `KNOWN` list until it is fixed. Both are words: an op stopped
+partway says in its Cancel words what Vikunja already has. They need new words, which the user agrees first.
 
-1. **A reply older than Pocket's latest news of a task overwrites the copy.** Two writes answered out of order, a
-   read taken while a write's reply is on its way, a reply the relay replays after a lost one, and an op sent in
-   several stages, which writes its first stage's reply (`c.task`) once its last stage is answered. A title saved in
-   the sheet while a tick is being sent flips back once the save ends.
-2. **A read that started earlier and finishes after a newer read of the same task puts back older data.** The
-   late-read rule compares a read only with answers.
-3. **An op with no `c.task` on a step added in this session gives the step no answer time.** A claim, a note or a
-   position on a step Pocket hasn't read yet is answered, and `answered` writes nothing, because there is no copy. A
-   checklist read that started before the answer is then taken, and the copy lacks the op.
-4. **A line that fails after its task is made writes the task's first reply with `TASK` trust** (sendAct's catch).
-   The copy loses what the later stages did, such as the line arriving done.
 5. **Cancel of a delete refused at its parent's progress** says the task stays in Vikunja, which has deleted it.
 6. **Cancel of a progress refused at its parent's progress** doesn't say that Vikunja has the new progress.
-7. **A deleted task stays in other tasks' related tasks until the next read.** `forgetTree` cleans only subtask lists.
-   A step with a second parent survives its first parent's delete, and its copy keeps `parenttask` pointing at the
-   deleted task. A read or a reply made before the delete can also bring the task back into a list the delete didn't
-   change, such as the second parent's subtasks.
-8. **A tick on a step the user skipped leaves the ⏭️ in Vikunja.** `marked()` (`ops/shown.js`) takes the user's ⏭️
-   off the copy when it adds the ✅, but the tick's stages only add the ✅. A skip after a tick leaves the ✅ the same
-   way. A user meets it when a teammate unticks a skipped step in Vikunja's web app and the user then taps Done. The
-   copy lacks the ⏭️ until the next read.
-9. **The rows learn of a change to the outbox only at the next `refreshPending`.** `sendActs` refreshes when it starts
-   and when it ends. An op that Vikunja refuses, or that leaves the outbox, partway through a flush still shows on its
-   rows until the flush ends. A delete that `sendHeld` releases from Restore shows on its parent only once the
-   outbox's lock frees.
 
 ## Phases to come
 
