@@ -944,6 +944,37 @@ test('a read in flight does not bring back a task deleted meanwhile', () => {
   assert.deepEqual([list.map(t => t.id), copyOf(1), app.rowTask(1)], [[2], undefined, null]);
 });
 
+/* A deleted task leaves every list of related tasks, in the copies and in the rows made from a parent's list. A step
+   with a second parent stops naming the parent deleted, and a read from before the delete can't bring the deleted
+   task back into the second parent's subtasks. */
+test('a deleted task leaves every related list, and a read from before the delete leaves it out', () => {
+  const app = component(tasks);
+  read([
+    { id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 3 }] } },
+    { id: 2, title: 'Load the van', related_tasks: { subtask: [{ id: 3 }, { id: 4 }] } },
+    { id: 3, title: 'Load chairs', related_tasks: { parenttask: [{ id: 1 }, { id: 2 }] } },
+  ]);
+  app.subRows(app.row(copyOf(2)));
+  app.change(w => w.base({ id: 4, title: 'Load tables', related_tasks: { parenttask: [{ id: 2 }, { id: 1 }] } }));
+  const before = started();
+  app.change(w => w.forgetTree([1]));
+  assert.deepEqual(copyOf(3).related_tasks.parenttask, [{ id: 2 }], 'the step names only the parent left');
+  assert.deepEqual(app.tasks[4].related_tasks.parenttask, [{ id: 2 }], 'and so does a row with no copy yet');
+  put(
+    [
+      { id: 2, title: 'Load the van', related_tasks: { subtask: [{ id: 1 }, { id: 3 }] } },
+      { id: 5, title: 'Lock up', related_tasks: { parenttask: [{ id: 1 }] } },
+    ],
+    TASK,
+    before,
+  );
+  assert.deepEqual(
+    [copyOf(2).related_tasks.subtask, copyOf(5).related_tasks.parenttask],
+    [[{ id: 3 }], []],
+    'a read from before the delete leaves the task out',
+  );
+});
+
 /* A read that ran while an op on a task was sent may carry the task from before the op, also when Pocket has no copy
    of the task yet. It is left out for that task, and the next read decides. */
 test('a read that ran while an op on a task with no copy was sent is left out, and the next read is taken', () => {

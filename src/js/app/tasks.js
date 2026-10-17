@@ -281,10 +281,11 @@ function gone(id) {
   host.removeRow(id);
 }
 // Give task `t`, as a read or a saved screen gave it, a row, or lay the row it has over it. Without Vikunja's copy,
-// the row is made from `t` until a read brings one.
+// the row is made from `t` until a read brings one, without the tasks deleted in this session among its related tasks.
 function base(t) {
   inChange();
-  if (!copies.has(t.id)) bases.set(t.id, own(t));
+  if (!copies.has(t.id))
+    bases.set(t.id, own(t.related_tasks ? { ...t, related_tasks: unrelated(t.related_tasks) } : t));
   given.set(t.id, t);
   touched.add(t.id);
 }
@@ -401,18 +402,14 @@ function forget(id) {
   if (!forgotten.has(id)) gone(id);
   touched.add(id);
 }
-// Forget deleted tasks, and remove them from the subtasks in Vikunja's copies, and so on screen and in the sheet.
+/* Forget deleted tasks, and remove them from every list of related tasks in Vikunja's copies and the rows' bases, and
+   so on screen and in the sheet. A step with a second parent then no longer names the parent deleted. */
 function forgetTree(ids) {
   for (const id of ids) forget(id);
-  const has = t => t?.related_tasks?.subtask?.some(s => ids.includes(s.id)),
-    left = t => ({
-      ...t,
-      related_tasks: { ...t.related_tasks, subtask: t.related_tasks.subtask.filter(s => !ids.includes(s.id)) },
-    });
-  for (const [id, t] of copies) if (has(t)) write(id, left(t), ['related_tasks'], 0);
+  for (const [id, t] of copies) if (unrelated(t.related_tasks) !== t.related_tasks) write(id, t, ['related_tasks'], 0);
   for (const [id, t] of bases)
-    if (has(t)) {
-      bases.set(id, left(t));
+    if (unrelated(t.related_tasks) !== t.related_tasks) {
+      bases.set(id, { ...t, related_tasks: unrelated(t.related_tasks) });
       touched.add(id);
     }
 }

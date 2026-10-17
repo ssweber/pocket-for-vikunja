@@ -55,10 +55,10 @@ const ALL = {
       addLines([line('Buy rope', { pct: 50, labels: ['rope'], assignees: ['bob'] })], { parent })[0],
   },
 };
-// The fields of a repeating task that Vikunja moves on when it is marked done, instead of marking it done.
-const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 // The ops that put the user's ✅ or ⏭️ on a task.
 const MARKS = ['done', 'doneNote', 'skip', 'finish'];
+// The fields of a repeating task that Vikunja moves on when it is marked done, instead of marking it done.
+const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 const clone = v => (v === undefined ? v : structuredClone(v));
 // JSON with each object's keys sorted, so two values compare by content whatever order their keys were written in.
 const canon = v =>
@@ -308,9 +308,12 @@ const HEARD = {
       if (m.bases.has(id)) m.bases.set(id, { ...m.bases.get(id), ...clone(fields) });
       return;
     }
-    // A direct save was made when its request was (saveMade). A checklist's progress has no other write on its way.
+    /* A direct save was made when its request was (saveMade). A checklist's progress has no other write on its way,
+       and is part of its op's write. */
     const after = copyOf(id),
-      fieldAt = k => w.saveMade ?? w.lastWrite.get(`${id} ${k}`) ?? w.t;
+      fieldAt = k => w.saveMade ?? w.lastWrite.get(`${id} ${k}`) ?? w.t,
+      x =
+        w.answering ?? [...w.pocket.values()].find(y => Object.keys(fields).every(k => k in (y.fields.get(id) || {})));
     m.adopt(id, before, after, [{ fields }]);
     w.judge({
       via: 'made',
@@ -320,6 +323,7 @@ const HEARD = {
       after,
       fieldAt,
       asked: fields,
+      skip: w.clashing(x, id, fields),
     });
   },
   /* An op's answer: its apply goes into each copy, then Vikunja's reply about its own task, and a deleted task leaves
@@ -337,7 +341,8 @@ const HEARD = {
         got && got.id === (typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) : a.task)
           ? got.id
           : null,
-      at = w.lastMade.get(a.id) ?? w.t;
+      at = w.lastMade.get(a.id) ?? w.t,
+      x = w.pocket.get(a.id);
     fn(a, from, reply && { ...reply, task: strip(got) }, posted);
     w.land(a.id);
     m.settled.add(a.id);
@@ -372,19 +377,15 @@ const HEARD = {
         mid = { ...b };
       for (const [k, x] of src) if (!x.rec) mid[k] = after[k];
       const asked = Object.fromEntries(differ(b, applied).map(k => [k, applied[k]]));
-      w.judge({ via: 'apply', id, at, a, before: b, after: mid, fieldAt, asked });
+      w.judge({ via: 'apply', id, at, a, before: b, after: mid, fieldAt, asked, skip: w.clashing(x, id, asked) });
       if (own === id) w.judge({ via: 'got', id, at: rec.at, rec, before: mid, after, tag: tags.get(id), thrown });
     }
-    // A copy forgetTree took a deleted subtask out of has the delete's news too.
-    if (op.deletes(a).length)
-      for (const [id, b] of before)
-        if (!op.on(a).includes(id) && !m.forgotten.has(id) && b !== copyOf(id)) m.news(id, ['related_tasks'], () => at);
   },
   base(w, fn, t) {
     const m = w.model,
       x = strip(t);
     fn(x);
-    if (!m.copies.has(x.id)) m.bases.set(x.id, clone(x));
+    if (!m.copies.has(x.id)) m.bases.set(x.id, m.unrelated(clone(x)));
     m.rows.add(String(x.id));
   },
   edit(w, fn, id, fields) {
@@ -477,6 +478,7 @@ class World {
       landedAt: new Map(), // task id -> when a write of Pocket's to it last ended, on `n`
       reading: null, // the read finishing
       saveMade: null, // when Vikunja made the direct save being answered
+      answering: null, // the direct save being answered, as fly has it
       saving: Promise.resolve(), // the direct saves, one after another (save)
       broken: [], // what check 5 found during the command
       wrote5: false, // whether the command wrote any of Vikunja's data
@@ -605,7 +607,7 @@ class World {
      another, so a field it changed that its write doesn't set, as a repeating task's next date, is unknown to Pocket
      until a read. So is a field that a write crossing it sets to another value. */
   crossing(h, fields) {
-    const x = h.e ? this.pocket.get(h.e.id) : h.opts.write;
+    const x = h.write;
     if (!x || !h.id) return;
     const mine = x.fields.get(h.id) || {},
       unheard = fields.filter(k => !(k in mine) || typeof mine[k] === 'symbol');
@@ -613,9 +615,22 @@ class World {
     if (x.crossed.get(h.id)?.size) this.model.doubt(h.id, unheard);
     this.model.doubt(h.id, this.conflicts(h));
   }
+  /* The fields of `fields` that Pocket's write `x` sets on task `id` that only Vikunja's reply can say, or that a write
+     crossing it sets to another value. The store takes none of them, so they are no news. */
+  clashing(x, id, fields) {
+    const mine = x?.fields.get(id) || {};
+    return Object.keys(fields).filter(
+      k =>
+        typeof mine[k] === 'symbol' ||
+        [...(x?.crossed.get(id) || [])].some(y => {
+          const f = y.fields.get(id) || {};
+          return k in f && (typeof f[k] === 'symbol' || !same(f[k], fields[k]));
+        }),
+    );
+  }
   // The fields request `h` changes that a write crossing its own sets to another value.
   conflicts(h) {
-    const x = h.e ? this.pocket.get(h.e.id) : h.opts.write,
+    const x = h.write,
       mine = x?.fields.get(h.id) || {};
     return touches(h).filter(
       k =>
@@ -750,6 +765,7 @@ class World {
     this.land(e);
     this.edits.splice(this.edits.indexOf(e), 1);
     this.saveMade = mine.madeAt;
+    this.answering = mine;
     try {
       this.app.change(x => {
         if (!got) return e.h.undo();
@@ -759,6 +775,7 @@ class World {
       });
     } finally {
       this.saveMade = null;
+      this.answering = null;
     }
   }
   // The store's copy of each task the test knows of. A write replaces a copy rather than changing it, so these stay
@@ -809,7 +826,10 @@ class World {
       replay: changed.length > 0 && !!ev.rec?.replayed && ev.before !== undefined,
     });
     this.wrote5 = true;
-    const excused = this.known(ev);
+    const excused = this.known(ev),
+      clashed = changed.filter(k => ev.skip?.includes(k));
+    if (clashed.length)
+      this.broken.push(`check 5: ${ev.id}'s copy took the ${clashed} of a change only a read can say (${ev.via})`);
     if ((ev.back || ev.replay) && !excused)
       this.broken.push(
         ev.back
@@ -817,15 +837,13 @@ class World {
           : `check 5: a reply the relay replayed changed the ${changed} of ${ev.id}'s copy (${ev.via})`,
       );
     /* Pocket's news of each field: a field of a reply that the copy now agrees with, and a field Pocket asked Vikunja
-       to change that the copy now has (`asked`). An op answered on a task Pocket has no copy of is news of the fields
-       it changes. */
+       to change that the copy now has (`asked`), unless only a read can say what Vikunja has there (`skip`). An op
+       answered on a task Pocket has no copy of is news of the fields it changes. */
     if (m.forgotten.has(ev.id) || ev.thrown) return;
     const agrees = k => !!ev.after && same(ev.after[k], m.unrelated({ [k]: ev.rec ? ev.rec.data[k] : ev.asked[k] })[k]);
     const fields = ev.rec
       ? trusted(ev.rec).filter(k => k in ev.rec.data && agrees(k))
-      : ev.uncopied
-        ? Object.keys(ev.asked)
-        : Object.keys(ev.asked || {}).filter(agrees);
+      : Object.keys(ev.asked || {}).filter(k => (ev.uncopied || agrees(k)) && !ev.skip?.includes(k));
     m.news(ev.id, fields, at, ev.via === 'read' ? 'read' : ev.uncopied ? 'uncopied' : 'answer');
     // A reply Vikunja made after a change it brings tells Pocket of the change.
     const unsure = m.unsure.get(ev.id);
@@ -1034,33 +1052,11 @@ function like(k, v, vikunja = null) {
 
 /* ---------- the bugs not yet fixed ---------- */
 
-// Whether task `t` names a task Pocket deleted among its related tasks of `kind`.
-const names = (w, t, kind) => !!t?.related_tasks?.[kind]?.some(x => w.model.forgotten.has(x.id));
-// The tasks whose copy or row names a task Pocket deleted as its parent, or null.
-const orphans = w => {
-  const out = [...w.copiesNow()]
-    .filter(([id, c]) => names(w, c, 'parenttask') || names(w, w.app.tasks[id], 'parenttask'))
-    .map(([id]) => [id, ['related_tasks']]);
-  return out.length ? out : null;
-};
-
 /* Bugs the user hasn't decided on yet, as docs/design/single-code-paths.md numbers them under "Open bugs". Each entry
    says what is wrong, and `meets(ev, w)` says whether a write (ev, from judge) is that bug, and which fields of which
    tasks it may leave wrong ([[id, fields]]). Meeting it excuses the write, and the checks skip those fields for the
    rest of the sequence. An entry no sequence meets in a run of 1,000 fails the test, so a fixed bug's entry goes. */
 const KNOWN = [
-  /* A deleted task stays in other tasks' related tasks until the next read. forgetTree cleans only subtask lists, so a
-     step with a second parent survives its first parent's delete, and its copy keeps parenttask pointing at the
-     deleted task. A read or a reply made before the delete brings the task back into a list the delete didn't
-     change, such as its second parent's subtasks. */
-  {
-    bug: 7,
-    meets: (ev, w) =>
-      (ev.via === 'sweep' && orphans(w)) ||
-      (ev.via !== 'apply' &&
-        names(w, ev.after, 'subtask') &&
-        !names(w, ev.before, 'subtask') && [[ev.id, ['related_tasks']]]),
-  },
   /* A tick or a skip removes the user's other mark from the copy (marked, ops/shown.js), but its stage only adds its
      own, so Vikunja keeps both. A step the user skipped and a teammate unticked in the web app shows Done, and its
      ⏭️ stays in Vikunja. */
@@ -1189,8 +1185,11 @@ class Answer extends Command {
     await w.make(h);
     if (this.how === 'arrives') return h.ok(await w.stamped(h.res, h.at, h.replayed, replyKind(h.method, h.url), h));
     if (this.how === 'lost') {
-      // A direct save Vikunja made, whose reply is lost, fails on the row, and Pocket doesn't hear of its fields.
+      /* A direct save Vikunja made, whose reply is lost, fails on the row, and Pocket doesn't hear of its fields. An
+         op's reply sent again is replayed, which the store doesn't take where it has a copy, so a field the request
+         changed that the op's change doesn't give, as a repeating task's next date, is unknown until a read. */
       if (!h.key && h.id) m.doubt(h.id, Object.keys(JSON.parse(h.opts.body)));
+      if (h.key && h.id) m.doubt(h.id, [...(h.write?.unheard.get(h.id) || [])]);
       return h.no(new TypeError('network error'));
     }
     w.unknownKeys.add(h.key);
