@@ -15,7 +15,8 @@ Pocket looks or responds to touch against `docs/design-rules.md`.
   comment says.
 - Content from Vikunja (descriptions, comments) goes through `sanitize` before it is shown. Pocket shares Vikunja's
   origin and sign-in, so a script in a description would run as the user.
-- Match the surrounding code's compact style.
+- Prettier formats the code (`npm run format`), and `npm run lint` checks it. Match the surrounding code's naming and
+  comment density.
 
 ## Checking a change
 

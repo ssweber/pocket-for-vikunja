@@ -1186,10 +1186,7 @@ the direction with the user before building. Phases 7 to 14 above are the plan a
   background with no build during it, list the choices the brief didn't settle, no lines added to
   `docs/development.md`, no upgrade code for data on phones. Discuss UI and new words with the user first. The
   user's preferences are in Claude's memory for this project, which loads on its own.
-- **Agreed, not done:** a Prettier pass after 6c: width 120, over `src/js`, `tests`, `scripts` and `styles.css`
-  (not `src/markup`), `npm run format`, `prettier --check` in `npm run lint`, one formatting-only commit listed in
-  `.git-blame-ignore-revs`, and AGENTS.md's "Match the surrounding code's compact style" becomes "Prettier formats
-  the code (`npm run format`); match the surrounding code's naming and comment density".
+- **Prettier:** done on 2026-10-17 (`.git-blame-ignore-revs` lists the commit).
 
 ### The way forward, agreed on 2026-10-17
 
@@ -1198,9 +1195,10 @@ slowdown. From here, a part is checked with `npm run lint`, `npm run test:unit` 
 is built) and `npm run test:parse`. `test:local` and the phone check run once, at the end of the major work, and
 commits stay small so a failure there can be bisected. A plugin change waits for that run too, on all three databases.
 
-1. Fix open findings 1, 3, 4, 5 and 6 above. Finding 2 goes into step 3. Then the Prettier pass.
-2. Compare Pocket with Veyrn (github.com/scottsapps/Vikunja-Tasks), read-only. What Veyrn handles that Pocket
-   doesn't may change phases 7 to 10.
+1. Fix open findings 1, 3, 4, 5 and 6 above. Finding 2 goes into step 3. Then the Prettier pass. Done on 2026-10-17.
+   Then split the largest test files where that helps.
+2. Compare Pocket with Veyrn (github.com/scottsapps/Vikunja-Tasks), read-only. Done on 2026-10-17. Its findings are
+   below.
 3. A randomized test of the store in `test:unit`, with `fast-check`: ops, reads, answers, edits and a teammate's
    changes interleaved on a few tasks, checked after each command against a simple model. It covers finding 2's gaps.
 4. Phases 7 and 8 as one phase, with one review.
@@ -1208,7 +1206,7 @@ commits stay small so a failure there can be bisected. A plugin change waits for
 
 The Veyrn comparison found these. Each goes where it is listed.
 
-- **Fixed with step 1:** a 2xx reply that isn't JSON, such as an auth proxy's login page, throws in `JSON.parse`, and
+- **Fixed with step 1:** a 2xx reply that isn't JSON, such as an auth proxy's login page, threw in `JSON.parse`, and
   the sender read that as Vikunja refusing the change. Now such a reply leaves the change waiting (`request`).
 - **Step 3, the randomized test:** a relay replay (`Idempotent-Replayed`) can carry an answer older than a read Pocket
   already took. The plan says a PATCH reply isn't trusted for labels and people, but `TASK` trusts it for both. Check
