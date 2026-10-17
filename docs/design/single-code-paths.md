@@ -1160,24 +1160,21 @@ the direction with the user before building. Phases 7 to 14 above are the plan a
     couldn't be saved in full (it's added): <reason>. It's kept to try again."), and its Cancel says "Cancelled. “X”
     stays in Vikunja. The rest of the change is not sent." Undo of a template's date taken off partway puts its
     repeat back.
-- **Open findings from the review of 6c and the relay (2026-10-17), not fixed.** Most severe first.
-  1. A `position` op refused when it is sent later (after reconnecting, by `flush`, or by another tab) is dropped
-     with no message, and the list keeps the new order while Vikunja keeps the old. Only `reorder` puts the screen
-     back, and only for a refusal in the call that queued the move. The op should put its row back itself. The
-     comment on `refusal: 'undone'` in `DEFAULTS` promises what the code doesn't do.
-  2. The lifecycle test would not catch the old "Cancel after a request was sent" bug: no rule checks that Cancel
-     leaves Vikunja as it was, or that its words say what Vikunja keeps. It also has no action where a teammate
+- **Findings from the review of 6c and the relay (2026-10-17).** All fixed on 2026-10-17 except 2, which the
+  randomized test takes over (step 3 below).
+  1. A refused `position` op was dropped with no message when sent later. Each op now declares `putBack`, which the
+     sender calls when a refusal leaves the outbox. The position op puts its task back (`positionRefused`).
+  2. Open. The lifecycle test would not catch the old "Cancel after a request was sent" bug: no rule checks that
+     Cancel leaves Vikunja as it was, or that its words say what Vikunja keeps. It also has no action where a teammate
      changes the task in the web app, the add sample is one line (no line under a line), a delete never goes through
      `holdDelete`, a reload keeps `acts.js`'s module state, and a `KNOWN` entry turns off every rule for its state.
-  3. The relay makes a new `http.Transport` per forward and never closes it, so each relayed write may leave an
-     idle connection open. Fix: `DisableKeepAlives: true`. A plugin change: `test:local` on all three databases.
-  4. `act()` accepts the sender's own fields (`fixed`, `body`, `had` and the like) when an op is queued, so a caller
-     could hand a stage the row's view. Accept only the common fields, `asks` and `saw` at queue time.
-     `createTask` (`sending.js`) runs the add's stages outside the stage proxy.
-  5. Low: add's `pid`, delete's `ids` and `up`, and position's `pos` come from Pocket's view when queued.
-  6. Low: the relay's 30-day purge can delete a key a phone with a fast clock can still send (purge at
-     `relayKeep + relayAhead`), and the doc says "slow" where it means "fast". `opOf`'s comment says an unknown op
-     takes every default, but `DEFAULTS` has no `stages`, `apply` or `text`.
+  3. The relay's transport keeps no idle connection (`DisableKeepAlives`).
+  4. `act()` refuses the sender's own fields when an op is queued. `holdDelete` builds its entry with `actEntry`, and
+     `createTask` runs a line's stages through `stageView`.
+  5. Kept as it is: a delete's `ids` are the tasks the user confirmed, and a move's `pos` is the place the user chose
+     between two rows. `up` and `pid` only say which parent's progress to work out and which project a line goes in.
+     The comment on `asks` says a choice may come from the screen when the user confirmed it.
+  6. The relay keeps an answer `relayKeep + relayAhead`, and `opOf`'s comment says what an unknown op lacks.
 - **Carried forward:** dropping a failed add with no waiting neighbour leaves its parent's progress unwritten
   (phase 7). The repeating tick's Undo still uses `unchanged()` and `saveFor`. An Undo of a cancelled refused change
   can land behind later changes (rare). `docs/roadmap.md` line 83 (phase 13). Part 2 of `today-moves.md`, after
@@ -1213,7 +1210,8 @@ After the major work, before anyone else uses Pocket:
 
 - **Upgrading stored data.** Replace the upgrade that empties every IndexedDB store with one step per version that
   never drops the outbox, and give each entry and saved screen a format version. An entry Pocket can't read shows in
-  the Outbox with Cancel instead of disappearing. Done once, after the formats stop changing.
+  the Outbox with Cancel instead of disappearing. Done once, after the formats stop changing. Today an entry whose op
+  Pocket doesn't know breaks the Outbox's list (`op.text`) and the sender (`stagesOf`).
 - **Limit what's saved on the phone.** Phase 11 bounds the kept screens. Also drop avatars not refreshed in 30 days,
   and when localStorage is full, delete the oldest saved screen and try again.
 - **The upstream drafts.** In `upstream-task-updated.md`, ask how Pocket learns of deleted tasks: an endpoint for ids

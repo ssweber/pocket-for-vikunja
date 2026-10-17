@@ -81,7 +81,8 @@ export const SENT = ['files', 'stage', 'fails', 'sent', 'key', 'fixed', 'got', '
   'taskId', 'projectId', 'to', 'body', 'people', 'labels', 'tags', 'had', 'labeled', 'assigned', 'linked', 'arrived'];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't
-   know, such as one an older Pocket saved, takes every default. */
+   know, such as one a newer Pocket saved, takes DEFAULTS. It has no stages, apply or words, so it can't be sent or
+   listed in the Outbox. */
 export const opOf = a => {
   const op = OPS[a.op];
   if (!op) return DEFAULTS;
