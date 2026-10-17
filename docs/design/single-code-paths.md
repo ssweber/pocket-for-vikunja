@@ -1193,6 +1193,41 @@ the direction with the user before building. Phases 7 to 14 above are the plan a
   `.git-blame-ignore-revs`, and AGENTS.md's "Match the surrounding code's compact style" becomes "Prettier formats
   the code (`npm run format`); match the surrounding code's naming and comment density".
 
+### The way forward, agreed on 2026-10-17
+
+The aim is to finish this plan quickly and without detours. Running `test:local` after every part was the main
+slowdown. From here, a part is checked with `npm run lint`, `npm run test:unit` (with the randomized store test once it
+is built) and `npm run test:parse`. `test:local` and the phone check run once, at the end of the major work, and
+commits stay small so a failure there can be bisected. A plugin change waits for that run too, on all three databases.
+
+1. Fix open findings 1, 3, 4, 5 and 6 above. Finding 2 goes into step 3. Then the Prettier pass.
+2. Compare Pocket with Veyrn (github.com/scottsapps/Vikunja-Tasks), read-only. What Veyrn handles that Pocket
+   doesn't may change phases 7 to 10.
+3. A randomized test of the store in `test:unit`, with `fast-check`: ops, reads, answers, edits and a teammate's
+   changes interleaved on a few tasks, checked after each command against a simple model. It covers finding 2's gaps.
+4. Phases 7 and 8 as one phase, with one review.
+5. Phases 9 to 13 as planned.
+
+After the major work, before anyone else uses Pocket:
+
+- **Upgrading stored data.** Replace the upgrade that empties every IndexedDB store with one step per version that
+  never drops the outbox, and give each entry and saved screen a format version. An entry Pocket can't read shows in
+  the Outbox with Cancel instead of disappearing. Done once, after the formats stop changing.
+- **Limit what's saved on the phone.** Phase 11 bounds the kept screens. Also drop avatars not refreshed in 30 days,
+  and when localStorage is full, delete the oldest saved screen and try again.
+- **The upstream drafts.** In `upstream-task-updated.md`, ask how Pocket learns of deleted tasks: an endpoint for ids
+  deleted since a time, a soft-delete flag a filter can see, or a table of deleted ids kept for a set time. If Vikunja
+  declines, the fallback is a change log in the plugin built from Vikunja's task events. Vikunja sends no events for
+  labels or reactions, so the log can't replace a checklist's reload.
+- **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers) after
+  opening the sheet and switching screens many times.
+- **To discuss first, since the user sees them:** screen readers (`aria-live` off `#view`, group titles as headings,
+  rows as lists), and Back restoring the scroll position.
+
+Left out: keeping an answered op as its own layer instead of writing its `apply` into Vikunja's copy. The reply
+already overwrites the task's own fields, so only fields the reply lacks hold Pocket's guess, and only until the next
+read.
+
 ## Out of scope
 
 A change to what the user sees came up alongside this plan: the Undo gap where a moved row was. It is decided and
