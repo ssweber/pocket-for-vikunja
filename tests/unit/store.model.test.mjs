@@ -26,7 +26,6 @@ import runs from '../../src/js/app/runs.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
 import { held, older, sync, uuid7 } from '../../src/js/sync.js';
-import { DONE_MARK, SKIP_MARK } from '../../src/js/checklists.js';
 import { repeats } from '../../src/js/dates.js';
 import * as ops from '../../src/js/ops/index.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
@@ -55,8 +54,6 @@ const ALL = {
       addLines([line('Buy rope', { pct: 50, labels: ['rope'], assignees: ['bob'] })], { parent })[0],
   },
 };
-// The ops that put the user's ✅ or ⏭️ on a task.
-const MARKS = ['done', 'doneNote', 'skip', 'finish'];
 // The fields of a repeating task that Vikunja moves on when it is marked done, instead of marking it done.
 const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 const clone = v => (v === undefined ? v : structuredClone(v));
@@ -1056,19 +1053,7 @@ function like(k, v, vikunja = null) {
    says what is wrong, and `meets(ev, w)` says whether a write (ev, from judge) is that bug, and which fields of which
    tasks it may leave wrong ([[id, fields]]). Meeting it excuses the write, and the checks skip those fields for the
    rest of the sequence. An entry no sequence meets in a run of 1,000 fails the test, so a fixed bug's entry goes. */
-const KNOWN = [
-  /* A tick or a skip removes the user's other mark from the copy (marked, ops/shown.js), but its stage only adds its
-     own, so Vikunja keeps both. A step the user skipped and a teammate unticked in the web app shows Done, and its
-     ⏭️ stays in Vikunja. */
-  {
-    bug: 8,
-    meets(ev, w) {
-      const rs = ev.via === 'apply' && MARKS.includes(ev.a.op) && w.v.tasks.get(ev.id)?.reactions;
-      const mine = r => (rs?.[r] || []).some(u => u.id === ME.id);
-      return mine(DONE_MARK) && mine(SKIP_MARK) && [[ev.id, ['reactions']]];
-    },
-  },
-];
+const KNOWN = [];
 
 /* ---------- the commands ---------- */
 

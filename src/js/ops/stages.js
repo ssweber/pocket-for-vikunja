@@ -15,7 +15,14 @@ export const tick = async (a, c) => {
   if (t?.done_at) c.app.keepTick(a, (a.doneAt = t.done_at));
 };
 export const untick = (a, c) => patch(a, c, { done: false });
-export const mark = value => (a, c) => c.send(`/tasks/${a.task}/reactions`, { method: 'POST', body: { value } });
+/* Put the user's ✅ or ⏭️ on the task in place of their other one, as the op shows it (marked, ops/shown.js). Vikunja
+   deletes only the user's own reaction, and a reaction the user hasn't given is no error, so the body never depends
+   on the task, as for unmark. */
+export const mark = value => async (a, c) => {
+  const other = value === DONE_MARK ? SKIP_MARK : DONE_MARK;
+  await c.send(`/tasks/${a.task}/reactions/delete`, { method: 'POST', body: { value: other } });
+  await c.send(`/tasks/${a.task}/reactions`, { method: 'POST', body: { value } });
+};
 export const unmark = async (a, c) => {
   for (const value of [DONE_MARK, SKIP_MARK])
     await c.send(`/tasks/${a.task}/reactions/delete`, { method: 'POST', body: { value } });

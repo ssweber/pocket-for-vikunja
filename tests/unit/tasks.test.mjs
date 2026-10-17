@@ -1,5 +1,5 @@
 // The tasks on screen. The app keeps one copy of each task (src/js/app/tasks.js).
-import { component, fakeVikunja, outboxOf, QUEUED } from './fake.mjs';
+import { component, fakeVikunja, outboxOf, QUEUED, sendStages } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -942,6 +942,20 @@ test('a read in flight does not bring back a task deleted meanwhile', () => {
     { id: 2, title: 'Buy milk' },
   ]);
   assert.deepEqual([list.map(t => t.id), copyOf(1), app.rowTask(1)], [[2], undefined, null]);
+});
+
+/* A tick puts the user's ✅ on a step in place of their ⏭️, and a skip the other way round, in Vikunja as on the row
+   (marked, ops/shown.js). A teammate unticked a step the user had skipped, and the user then tapped Done. */
+test("a tick takes the user's ⏭️ off a step in Vikunja, a skip takes their ✅, and a teammate's marks stay", async () => {
+  const me = { id: 1, username: 'me' },
+    bob = { id: 7, username: 'bob' };
+  const v = fakeVikunja([{ id: 5, title: 'Mop', done: false, reactions: { '⏭️': [me, bob], '✅': [bob] } }]),
+    app = component(tasks, actions, { keepTick() {} }),
+    marks = () => Object.fromEntries(Object.entries(v.task(5).reactions).map(([r, us]) => [r, us.map(u => u.id)]));
+  await sendStages(app, { op: 'done', task: 5, run: null, user: 1, who: me });
+  assert.deepEqual(marks(), { '⏭️': [7], '✅': [7, 1] });
+  await sendStages(app, { op: 'skip', task: 5, run: null, user: 1, who: me, html: '<p>No mop</p>' });
+  assert.deepEqual(marks(), { '⏭️': [7, 1], '✅': [7] });
 });
 
 /* A deleted task leaves every list of related tasks, in the copies and in the rows made from a parent's list. A step
