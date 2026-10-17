@@ -45,6 +45,13 @@ and empty the Outbox on each phone, before the next phone check.
   user's agreement. The edits are scaffolding: each phase turns direct saves into ops.
 - **Vikunja's copies have one door,** `read` and `answer`, and every write happens inside `change`. A read carries the
   time it started.
+- **Vikunja's copy of a task only moves forward.** Agreed with the user on 2026-10-17. Vikunja gives no version
+  number, so Pocket orders answers by when it sent their requests. An answer is taken only if its request started
+  after the request behind the copy Pocket holds. A read that overlaps a write to the same task is thrown away, and
+  the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. An op sent in several
+  stages writes its last stage's answer. Writes to one task go out one at a time.
+- **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
+  Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
   comment on `OPS`).
 - **An op records what the user chose** (`asks`). What the screen showed (`saw`) is only for its words and its Undo.
@@ -60,8 +67,10 @@ and empty the Outbox on each phone, before the next phone check.
 
 ## Open bugs
 
-The randomized test and the lifecycle test found these. Each is in its test's `KNOWN` list until the user decides
-its fix.
+The randomized test and the lifecycle test found these. Each is in its test's `KNOWN` list until it is fixed. Bugs 1
+to 4 break "Vikunja's copy of a task only moves forward", and the fix is that rule in `read` and `answer`. The sheet's
+direct saves go out beside the outbox until phases 7 and 8 make them ops, and then a title can't race a tick. Bugs 5
+and 6 are words: an op stopped partway says in its Cancel words what Vikunja already has.
 
 1. **A reply older than Pocket's latest news of a task overwrites the copy.** Two writes answered out of order, a
    read taken while a write's reply is on its way, a reply the relay replays after a lost one, and an op sent in
