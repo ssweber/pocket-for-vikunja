@@ -566,12 +566,11 @@ checks that Vikunja changed once. A phase that makes a change work offline also 
 5. **Adding tasks.** Quick add and the subtask boxes as keyed ops, with the set-style label and people endpoints.
    Delete `LINE_STEPS`' lost-reply checks and `findSent`. `claims` stays until phase 10. A capture entry from before
    phase 5 is dropped, and Pocket writes no upgrade code. "Phase 5 in detail" has the steps.
-   Built so far: 5a, so every request `LINE_STEPS` sends has a key, and `findSent` is gone. 5b is built, and phase 5
-   waits for the user's phone check.
+   Done, and checked on the user's phone on 2026-10-16.
 6. **Dates.** `due`, with Undo checked per field. Delete `undoMoves` and `saveEach`. "Phase 6 in detail" has the steps.
    Built so far: 6a, the `due` op with its `invert` and `merge`, sent by a held row on Today and by Move all. 6b, the
    sheet's date as a `due` op, a template's date as a `due` op with `tpl`, and the sheet's repeat as a `repeat` op.
-   Phase 6 waits for the user's phone check.
+   Then 6c ("Phase 6c in detail"). Phase 6 waits for the user's phone check.
 7. **Ticks and progress.** One tick for every row, card, sheet and checklist, with pruning. Delete `signTick`,
    `arrivedDone`'s own save, `closeSubtasks` and `reopen`. Dropping a failed add from the Outbox when no line of its
    batch is still waiting leaves its parent's progress unwritten. Phase 7 fixes that when it changes how progress is
@@ -1132,28 +1131,67 @@ Built: `relayNotConnected` in `relay.go` decides, and a lost answer marks the ke
 checks that a forward that never connects releases its key. The API can't make an answer get lost, so that branch was
 checked by locking Vikunja's comments table in Postgres past the relay's timeout.
 
-## State on 2026-10-15
+## State on 2026-10-17
 
-For whoever carries on. Read this, then phase 4.
+For whoever carries on. The user paused here to re-plan and speed development up, so read this first, then agree
+the direction with the user before building. Phases 7 to 14 above are the plan as it stood. The user may change it.
 
-- **Where the work is.** Phases 0, 1 and 2 are on `dev` and pushed. They were built on a branch and
-  fast-forwarded onto `dev`. The `pocket` folder at that point is installed on the user's server
-  (Cloudron, Postgres), and passed `scripts/relay-check.js` and a phone check online and offline.
-- **How it has been built.** One build agent at a time, each with a written brief: the parts of this plan it needs,
-  `AGENTS.md`, `docs/development.md`, the exact scope, "nothing on screen changes" where that holds, the checks, and
-  "list every choice the brief didn't settle". The briefs used so far are in `scratchpad/ground/brief-*.md`. Every
-  commit passed `npm run lint`, `npm run test:unit`, `test:parse` and the full `test:local` first. Check lint's exit
-  code itself, not through a pipe. A change to `pocket/*.go` also runs `DB=sqlite` and `DB=mysql npm run test:local`.
-  New words the user reads are proposed to the user before they ship. Discuss a phase's design with the user before
-  building it, as was done for phase 1.
-- **Phases 3 and 4 are on `dev`.** Phase 4 was built in four commits, as "Phase 4 in detail" says, and a fifth (4e)
-  put every write inside `change`. A sixth (4f) closed the gaps a review of 4d and 4e found. It passed the
-  user's phone check on 2026-10-16. "Phase 5 in detail" was agreed the same day, and 5a is being built.
-- **Known, and fixed by a later phase.**
-  - `docs/roadmap.md` line 83 still says a checklist's progress calls `api()` itself (phase 13).
-  - A phone that once used token sign-in keeps `pocket.token` in localStorage, unused.
-  - Part 2 of `today-moves.md`, the gap where a moved row was, is built after phase 6.
-- **For the user.** Two issue drafts to file upstream: `upstream-idempotency-key.md` and `upstream-task-updated.md`.
+- **Built and pushed on `dev`:** phases 0 to 6, and 6c, through `3884c88`.
+  - Phases 0 to 5 passed the user's phone check (phase 5 on 2026-10-16).
+  - Phase 6 and 6c have not been checked on the phone. Phase 6 is the date ops, Move all, the sheet's date and
+    repeat, a template's date, Cancel with Undo, and "Sending…" after 2.5 s. 6c changes nothing on screen except
+    the words of the last bullet.
+  - Every commit up to `7f254fa` passed the full `test:local`, and the relay fix also passed it on SQLite and MySQL.
+    `3884c88` (the last) passed lint, unit tests, `test:parse` and the build, but **`test:local` was not run**. The
+    user asked to skip long test runs while re-planning.
+  - The relay changed (`7f254fa`), so the user's server needs the `pocket/` folder uploaded again before a phone
+    check. Empty the Outbox on each phone first.
+- **What 6c holds now** (see "Phase 6c in detail" and "Store invariants"):
+  - Lint stops code outside `src/js/ops/` from testing which op an entry is. Each op declares its differences as
+    fields, listed in the comment on `OPS` in `src/js/ops/index.js`.
+  - Each op declares `asks` (what the user chose) and `saw` (what the screen showed). `act()` throws on any other
+    field, and a stage that reads a `saw` field throws.
+  - `tests/unit/lifecycle.test.mjs` runs every op through every state and action and checks shared rules. A new op
+    needs a sample there. Its `KNOWN` list is empty.
+  - The relay releases a key only when the request never reached Vikunja. A lost answer marks the key unknown
+    (`state = 2`), and every retry with it gets `Idempotency-Unknown`.
+  - New words the user agreed on 2026-10-17: a line added but refused afterwards stays in the Outbox ("Adding “X”
+    couldn't be saved in full (it's added): <reason>. It's kept to try again."), and its Cancel says "Cancelled. “X”
+    stays in Vikunja. The rest of the change is not sent." Undo of a template's date taken off partway puts its
+    repeat back.
+- **Open findings from the review of 6c and the relay (2026-10-17), not fixed.** Most severe first.
+  1. A `position` op refused when it is sent later (after reconnecting, by `flush`, or by another tab) is dropped
+     with no message, and the list keeps the new order while Vikunja keeps the old. Only `reorder` puts the screen
+     back, and only for a refusal in the call that queued the move. The op should put its row back itself. The
+     comment on `refusal: 'undone'` in `DEFAULTS` promises what the code doesn't do.
+  2. The lifecycle test would not catch the old "Cancel after a request was sent" bug: no rule checks that Cancel
+     leaves Vikunja as it was, or that its words say what Vikunja keeps. It also has no action where a teammate
+     changes the task in the web app, the add sample is one line (no line under a line), a delete never goes through
+     `holdDelete`, a reload keeps `acts.js`'s module state, and a `KNOWN` entry turns off every rule for its state.
+  3. The relay makes a new `http.Transport` per forward and never closes it, so each relayed write may leave an
+     idle connection open. Fix: `DisableKeepAlives: true`. A plugin change: `test:local` on all three databases.
+  4. `act()` accepts the sender's own fields (`fixed`, `body`, `had` and the like) when an op is queued, so a caller
+     could hand a stage the row's view. Accept only the common fields, `asks` and `saw` at queue time.
+     `createTask` (`sending.js`) runs the add's stages outside the stage proxy.
+  5. Low: add's `pid`, delete's `ids` and `up`, and position's `pos` come from Pocket's view when queued.
+  6. Low: the relay's 30-day purge can delete a key a phone with a fast clock can still send (purge at
+     `relayKeep + relayAhead`), and the doc says "slow" where it means "fast". `opOf`'s comment says an unknown op
+     takes every default, but `DEFAULTS` has no `stages`, `apply` or `text`.
+- **Carried forward:** dropping a failed add with no waiting neighbour leaves its parent's progress unwritten
+  (phase 7). The repeating tick's Undo still uses `unchanged()` and `saveFor`. An Undo of a cancelled refused change
+  can land behind later changes (rare). `docs/roadmap.md` line 83 (phase 13). Part 2 of `today-moves.md`, after
+  phase 6. Two issue drafts for upstream: `upstream-idempotency-key.md` and `upstream-task-updated.md`.
+- **How the work has run.** One build agent at a time, each with a written brief, then a read-only review whose
+  findings are fixed at once. Briefs, reviews and test logs are in `scratchpad/store/` (`brief-6c1.md` and
+  `brief-review-6c.md` are good templates). Each brief carries the rules: never stop a process by name, Git Bash eats
+  backslashes in heredocs, check lint's exit code itself, `BROWSER_CHANNEL=chrome npm run test:local` in the
+  background with no build during it, list the choices the brief didn't settle, no lines added to
+  `docs/development.md`, no upgrade code for data on phones. Discuss UI and new words with the user first. The
+  user's preferences are in Claude's memory for this project, which loads on its own.
+- **Agreed, not done:** a Prettier pass after 6c: width 120, over `src/js`, `tests`, `scripts` and `styles.css`
+  (not `src/markup`), `npm run format`, `prettier --check` in `npm run lint`, one formatting-only commit listed in
+  `.git-blame-ignore-revs`, and AGENTS.md's "Match the surrounding code's compact style" becomes "Prettier formats
+  the code (`npm run format`); match the surrounding code's naming and comment density".
 
 ## Out of scope
 
