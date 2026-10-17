@@ -40,8 +40,12 @@ export const figureOf = async (c, up, name = 'figure') => {
       return c.app.role(now) === 'template' ? null : figurePatch(now);
     });
     if (!body) return;
-    const t = (await c.send('/tasks/' + up, { method: 'PATCH', body })) || (await c.read('/tasks/' + up));
-    c.app.change(w => w.answer([t], TASK));
+    const sent = await c.send('/tasks/' + up, { method: 'PATCH', body, on: { [up]: body } }),
+      t = sent || (await c.read('/tasks/' + up));
+    c.app.change(w => {
+      w.made(up, body, c.from(sent));
+      w.answer([t], TASK, c.from(t));
+    });
   } catch (e) {
     if (e.status !== 404) throw e;
   }

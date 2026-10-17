@@ -7,7 +7,7 @@ import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sy
 import { saved } from '../lists.js';
 import { notKnown, toOutbox, UNKNOWN } from '../messages.js';
 import { checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf } from '../ops/index.js';
-import { CREATED, opsId, TASK } from './tasks.js';
+import { CREATED, opsId, sendingOp, started, TASK, writes } from './tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -53,24 +53,66 @@ export const waits = (e, stopped) => {
   return w;
 };
 
+/* When each request of an entry was first sent in this session, by the entry's id and the request's key. A reply the
+   relay replayed counts from then. When another tab or an earlier session sent it, Pocket can't know when it reached
+   Vikunja, and it counts from its send now, so the op's change still goes into the copy. A change an earlier try made
+   counts from the entry's first request. The store orders what it learns by these times (tasks.js). */
+const sends = new Map();
+// The fields of a task that a write to `path` changes, as Vikunja's API has them, so each field of an op's change
+// counts from the request that made it.
+const PATHS = [
+  [/\/reactions(\/delete)?$/, 'reactions'],
+  [/\/comments$/, 'comments'],
+  [/\/assignees(\/\w+)?$/, 'assignees'],
+  [/\/labels(\/\w+)?$/, 'labels'],
+  [/\/position$/, 'position'],
+  [/\/relations/, 'related_tasks'],
+  [/^\/tasks\/\d+$/, 'related_tasks'],
+];
+const changes = (path, { method, body } = {}) =>
+  method === 'PATCH'
+    ? [...Object.keys(body || {}), ...('done' in (body || {}) ? ['done_at'] : [])]
+    : PATHS.filter(([re]) => re.test(path)).map(([, k]) => k);
+// Each reply a stage got, with when its request started, whether the relay replayed it, and the tasks another write
+// crossed it on (writes, tasks.js), for answer.
+const heard = new WeakMap();
+// Where each entry's kept task (`c.task`) came from, as heard has it. A task kept before a reload has no entry here.
+const told = new Map();
+
 /* What a stage is given to make its requests. `send` is a write with the next key: the entry's key, the stage's index,
    and the part, counted from 0 each time the stage runs. So a stage sent again after a lost reply sends each request
-   with the key it had, and the relay answers the ones already made from what it stored. `once` keeps a body built from
-   a read in the entry, so a retry sends the same body. `a.key` replaces the entry's id after Try again. A stage puts
-   Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. Both are kept in the entry (`a.got`),
-   so the answer has them when a later stage finishes on another try. `start(at)` starts the parts at `at`, and `skip`
-   counts a part without sending it, so the requests after it keep their keys. A job that is not in the outbox, such as
-   the template editor's, passes its own `save` (createTask, sending.js). */
+   with the key it had, and the relay answers the ones already made from what it stored. A write to a task the op
+   doesn't change, such as its checklist's progress, names it in `on` (writes), which joins it to the op's write.
+   `once` keeps a body built from a read in the entry, so a retry sends the same body. `a.key` replaces the entry's id
+   after Try again. A stage puts Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. Both
+   are kept in the entry (`a.got`), so the answer has them when a later stage finishes on another try. `reply` is the
+   task with where it came from, for answer, and `from(t)` where any reply came from. `start(at)` starts the parts at
+   `at`, and `skip` counts a part without sending it, so the requests after it keep their keys. A job that is not in
+   the outbox, such as the template editor's, passes its own `save` (createTask, sending.js). */
 export function stageContext(a, app, save = () => sync.save(a)) {
   let part = 0;
-  return {
+  const id = a.id ?? a.key,
+    none = { at: 0, replayed: true, crossed: new Map() };
+  const c = {
     app,
     save,
+    // The write of this try (writes, tasks.js), which `begin` starts with its first request, and for each field the
+    // earliest start of a request of it that Vikunja made and that changed the field.
+    write: null,
+    begin: null,
+    fieldsAt: new Map(),
+    // Where reply `t` came from. A reply Pocket doesn't know counts as replayed, as old as anything.
+    from: t => (t && heard.get(t)) || none,
     get task() {
       return a.got?.task ?? null;
     },
     set task(t) {
       (a.got ||= {}).task = t;
+      told.set(id, c.from(t));
+    },
+    get reply() {
+      const t = c.task;
+      return t && { ...(told.get(id) || none), task: t };
     },
     get comment() {
       return a.got?.comment ?? null;
@@ -80,19 +122,44 @@ export function stageContext(a, app, save = () => sync.save(a)) {
     },
     start(at = 0) {
       part = at;
-      return this;
+      return c;
     },
     skip() {
       part++;
     },
-    async send(path, opts) {
+    async send(path, { on, ...opts } = {}) {
       if (!a.sent) {
         a.sent = true;
         await save();
       } // from now on Cancel can't stop it
-      return api(path, { ...opts, key: `${a.key || a.id}:${a.stage}:${part++}` });
+      c.write ||= c.begin?.() ?? null;
+      const key = `${a.key || a.id}:${a.stage}:${part++}`,
+        keys = sends.get(id) ?? sends.set(id, new Map()).get(id),
+        first = keys.get(key),
+        own = on && !c.write ? writes(on) : null,
+        w = own ?? c.write;
+      if (on && c.write) for (const [t, fields] of Object.entries(on)) c.write.add(+t, fields);
+      const at = started();
+      if (first === undefined) keys.set(key, at);
+      let replayed = false,
+        got;
+      try {
+        got = await api(path, { ...opts, key, replayed: r => (replayed = r) });
+      } finally {
+        own?.end();
+      }
+      const from = { at: replayed ? (first ?? at) : at, replayed, crossed: w?.crossed ?? new Map(), fields: w?.fields };
+      for (const k of changes(path, opts)) c.fieldsAt.set(k, Math.min(c.fieldsAt.get(k) ?? Infinity, from.at));
+      if (got && typeof got === 'object') heard.set(got, from);
+      return got;
     },
-    read: path => api(path),
+    async read(path) {
+      const at = started(),
+        got = await api(path);
+      if (got && typeof got === 'object')
+        heard.set(got, { at, replayed: false, crossed: c.write?.crossed ?? new Map() });
+      return got;
+    },
     async once(name, build) {
       const f = (a.fixed ||= {});
       if (!(name in f)) {
@@ -102,6 +169,7 @@ export function stageContext(a, app, save = () => sync.save(a)) {
       return f[name];
     },
   };
+  return c;
 }
 
 export default {
@@ -322,8 +390,10 @@ export default {
       projectId: a.projectId,
     });
     // A stage that makes a task puts it on screen at once, and shows on its row that it arrived done, or with progress.
+    // A new task's first reply comes before its labels, people and parent, so it is trusted for CREATED only.
     c.made = t => {
-      this.change(w => w.answer([t], CREATED));
+      c.write.add(t.id);
+      this.change(w => w.answer([t], CREATED, c.from(t)));
       none.tasks.push({
         ...t,
         child: a.under != null,
@@ -332,8 +402,11 @@ export default {
         place: a.p.position || 0,
       });
     };
-    c.arrive = x => {
-      this.change(w => w.answer([x.now], TASK));
+    c.arrive = (x, body) => {
+      this.change(w => {
+        w.made(x.now.id, body, c.from(x.now));
+        w.answer([x.now], TASK, c.from(x.now));
+      });
       for (const t of none.tasks) t.arrived = x;
     };
     try {
@@ -361,13 +434,22 @@ export default {
         this.offline = true;
         return { ...none, status: 'offline', reached: false };
       }
-      // A busy Vikunja is retried a few times. With keys, sending a stage again is safe.
+      // A busy Vikunja is retried a few times. With keys, sending a stage again is safe. The op's write starts with its
+      // first request (sendingOp), so an op that stops before sending one crosses no other write.
+      c.begin = () => sendingOp(a);
       while (a.stage < stages.length) {
         await patiently(() => stages[a.stage](seen, c.start()));
         a.stage++;
         await sync.save(a, [], filesOut(a));
       }
-      this.change(w => w.answered(a, c.task, c.comment));
+      /* Each field of the op's change counts from the earliest request of this try that Vikunja made and that changed
+         it. A field an earlier try changed counts from the op's first request in this session, or from now. */
+      const r = c.reply,
+        w = (c.write ||= sendingOp(a)),
+        at = k => c.fieldsAt.get(k) ?? Math.min(...(sends.get(a.id)?.values() ?? []), w.at);
+      this.change(x => x.answered(a, { at, crossed: w.crossed, fields: w.fields }, r, c.comment));
+      sends.delete(a.id);
+      told.delete(a.id);
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
@@ -398,7 +480,9 @@ export default {
       if (refusal === 'undone') error.drop = true;
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && op.saved) error.saved = op.saved;
-      if (c.task) this.change(w => w.answer([c.task], TASK));
+      // Vikunja's copy of the op's own task, as a stage before the refusal kept it. A line's task has it already (made).
+      const r = c.reply;
+      if (r && r.task.id === opsId(a.task)) this.change(w => w.answer([r.task], TASK, r));
       if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
       error.what = op.refused(a, a.label || this.actTitle(a.task));
       // A stage can't read the title the row showed (stageView), so a sentence that names it is a function of the entry.
@@ -422,6 +506,8 @@ export default {
       a.fails = 0;
       await c.save();
       return { ...got(), status: 'error', error, kept: true };
+    } finally {
+      c.write?.end();
     }
   },
   /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so

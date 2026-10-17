@@ -796,7 +796,8 @@ test("a template gets no ✅ when it is saved done, even if Vikunja's reply leav
 });
 test("finishing a checklist puts the user's ✅ on it, and reopening it takes the ✅ off", async () => {
   const v = fakeVikunja([{ id: 1, title: 'Closing up · Oct 14', done: false }]);
-  const app = component(tasks, actions);
+  // A countdown keeps the time a step was ticked (keepTick). This checklist has none.
+  const app = component(tasks, actions, { keepTick() {} });
   await sendStages(app, { op: 'finish', task: 1, run: 1 });
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
   await sendStages(app, { op: 'reopen', task: 1, run: 1 });

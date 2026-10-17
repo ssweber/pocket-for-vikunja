@@ -134,8 +134,12 @@ export async function api(path, opts = {}) {
   }
 }
 /* With `key`, a write goes through the plugin's relay with that Idempotency-Key, so sending it again never makes the
-   change twice. Once Vikunja reads the header itself, only the address changes. */
-async function request(path, { method = 'GET', body, raw = false, auth = true, retry = true, key, busy = 0 } = {}) {
+   change twice. Once Vikunja reads the header itself, only the address changes. `replayed(yes)` is told whether the
+   relay gave the answer it kept from an earlier send, which is as old as that send. */
+async function request(
+  path,
+  { method = 'GET', body, raw = false, auth = true, retry = true, key, replayed, busy = 0 } = {},
+) {
   // While Pocket opens on its saved screen, a write waits until Vikunja reports who is signed in. It is sent only if
   // that is still the person the screen belonged to.
   if (auth && method !== 'GET' && opening) {
@@ -190,7 +194,7 @@ async function request(path, { method = 'GET', body, raw = false, auth = true, r
       app.offline = true;
       throw e;
     }
-    if (renewed) return api(path, { method, body, raw, auth, retry: false, key });
+    if (renewed) return api(path, { method, body, raw, auth, retry: false, key, replayed });
   }
   if (res.status === 401 && auth) {
     app.signOut('Your session ended. Sign in again.', { tellServer: false });
@@ -211,10 +215,11 @@ async function request(path, { method = 'GET', body, raw = false, auth = true, r
       if (busy >= 3) throw new ApiError(409, reason, 'running');
       const s = parseFloat(res.headers.get('retry-after'));
       await new Promise(ok => setTimeout(ok, Math.min(s >= 0 ? s : 2, 10) * 1000));
-      return request(path, { method, body, raw, auth, retry, key, busy: busy + 1 });
+      return request(path, { method, body, raw, auth, retry, key, replayed, busy: busy + 1 });
     }
     throw new ApiError(res.status, reason, j.code);
   }
+  replayed?.(res.headers.get('idempotent-replayed') === 'true');
   if (raw) return res;
   if (res.status === 204 || res.status === 304) return null; // 304: the change made no difference
   // A reply cut off half way is a lost connection too, not an error from Vikunja.

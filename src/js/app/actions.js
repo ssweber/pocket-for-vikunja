@@ -27,7 +27,7 @@ import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
 import { addLines, waitingPositions } from '../ops/index.js';
 import { shared } from './core.js';
 import { UNDO_MS } from './toast.js';
-import { copyOf, started, TASK } from './tasks.js';
+import { copyOf, started, TASK, writes, writing } from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -79,16 +79,29 @@ export default {
         const before = saved || copyOf(id),
           body = rebase ? rebase(saved) : patch;
         if (body) {
+          const w = writes({ [id]: body });
+          let lost = null;
           try {
             saved = await patchTask(id, body);
           } catch (e) {
+            lost = e;
+          } finally {
+            w.end();
+          }
+          if (!lost)
+            this.change(x => {
+              x.made(id, body, w);
+              x.answer([saved], TASK, w);
+            });
+          else {
             // After a lost reply, read the task to see whether the save arrived. Sending a tick again on a repeating
             // task that was already saved would skip a date.
-            const now = e instanceof NetError && (await api('/tasks/' + id).catch(() => null));
-            if (!now || !landed(now, body, before)) throw e;
+            const at = started(),
+              now = lost instanceof NetError && (await api('/tasks/' + id).catch(() => null));
+            if (!now || !landed(now, body, before)) throw lost;
             saved = now;
+            this.change(x => x.read([now], TASK, at));
           }
-          this.change(w => w.answer([saved], TASK));
         }
         if (
           body &&
@@ -1258,19 +1271,25 @@ export default {
   /* ---------- people and labels ---------- */
   // Save assignee changes before applying them to the screen and to Vikunja's copy.
   async addAssignee(t, u) {
-    await api(`/tasks/${t.id}/assignees`, { method: 'POST', body: { user_id: u.id } });
-    this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id);
+    const [, w] = await writing({ [t.id]: ['assignees'] }, () =>
+      api(`/tasks/${t.id}/assignees`, { method: 'POST', body: { user_id: u.id } }),
+    );
+    this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id, w);
   },
   async removeAssignee(t, uid) {
-    await api(`/tasks/${t.id}/assignees/${uid}`, { method: 'DELETE' });
+    const [, w] = await writing({ [t.id]: ['assignees'] }, () =>
+      api(`/tasks/${t.id}/assignees/${uid}`, { method: 'DELETE' }),
+    );
     this.setAssignees(
       (t.assignees || []).filter(u => u.id !== uid),
       t.id,
+      w,
     );
   },
-  setAssignees(assignees, id = this.sheet.id) {
+  // The people of task `id` once write `w` (writes, tasks.js) has set them.
+  setAssignees(assignees, id, w) {
     if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(w => w.answer([{ id, assignees }], ['assignees']));
+    if (copyOf(id)) this.change(x => x.made(id, { assignees }, w));
   },
   // Add a label, creating it with title first when l is null.
   async addLabelTo(t, l, title) {
@@ -1278,18 +1297,24 @@ export default {
       l = await api('/labels', { method: 'POST', body: { title } });
       this.labels.push(l);
     }
-    await api(`/tasks/${t.id}/labels`, { method: 'POST', body: { label_id: l.id } });
-    this.setLabels([...(t.labels || []), l], t.id);
+    const [, w] = await writing({ [t.id]: ['labels'] }, () =>
+      api(`/tasks/${t.id}/labels`, { method: 'POST', body: { label_id: l.id } }),
+    );
+    this.setLabels([...(t.labels || []), l], t.id, w);
   },
   async removeLabelFrom(t, lid) {
-    await api(`/tasks/${t.id}/labels/${lid}`, { method: 'DELETE' });
+    const [, w] = await writing({ [t.id]: ['labels'] }, () =>
+      api(`/tasks/${t.id}/labels/${lid}`, { method: 'DELETE' }),
+    );
     this.setLabels(
       (t.labels || []).filter(l => l.id !== lid),
       t.id,
+      w,
     );
   },
-  setLabels(labels, id = this.sheet.id) {
+  // The labels of task `id` once write `w` (writes, tasks.js) has set them.
+  setLabels(labels, id, w) {
     if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(w => w.answer([{ id, labels }], ['labels']));
+    if (copyOf(id)) this.change(x => x.made(id, { labels }, w));
   },
 };

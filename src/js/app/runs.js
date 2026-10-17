@@ -53,7 +53,16 @@ import { newBox, shared } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks, nextN } from './acts.js';
 import { lastTick } from '../ops/index.js';
-import { copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import {
+  copyOf,
+  opsId,
+  putting,
+  savedScreen,
+  started,
+  TASK_COMMENTS,
+  TASK_REACTIONS_COMMENTS,
+  writing,
+} from './tasks.js';
 
 const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -437,11 +446,13 @@ export default {
     try {
       // Wait for an earlier save so changing assignees does not overwrite a new name.
       const saving = shared.saveChain.then(() =>
-        api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
+        writing({ [run.id]: ['assignees'] }, () =>
+          api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
+        ),
       );
       shared.saveChain = saving.catch(() => {});
-      await saving;
-      this.change(w => w.answer([{ id: run.id, assignees: who }], ['assignees']));
+      const [, w] = await saving;
+      this.change(x => x.made(run.id, { assignees: who }, w));
       this.saveRun();
       this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
     } catch (err) {
@@ -1259,7 +1270,7 @@ export default {
       await patiently(() => api('/tasks/' + s.id, { method: 'DELETE' })).catch(e => {
         if (e.status !== 404) throw e;
       });
-      this.change(w => w.answer([s], null)); // Vikunja deleted the step
+      this.change(w => w.forget(s.id)); // Vikunja deleted the step
       if (run) this.writeFigure(run).catch(() => {}); // recompute the checklist's stored progress without this step
       await sync.lock(async () => {
         for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id);

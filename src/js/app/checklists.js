@@ -32,7 +32,17 @@ import { jobsFor } from './sending.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
-import { copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import {
+  copyOf,
+  putting,
+  savedScreen,
+  started,
+  TASK,
+  TASK_COUNT,
+  TASK_REACTIONS_COMMENTS,
+  writes,
+  writing,
+} from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -864,19 +874,30 @@ export default {
       x.job = jobs[k];
     });
     const under = this.sheet.subAt;
+    let links = null;
     try {
       // The sheet's step rows read each step's own copy, so each answer goes into the store.
       for (const { key, title } of d.renames) {
-        const got = await patiently(() => patchTask(+key.slice(5), { title }));
-        this.change(w => w.answer([got], TASK));
+        const id = +key.slice(5),
+          [got, w] = await writing({ [id]: { title } }, () => patiently(() => patchTask(id, { title })));
+        this.change(x => {
+          x.made(id, { title }, w);
+          x.answer([got], TASK, w);
+        });
       }
-      Object.assign(
-        r,
-        await this.createLines(d.added, { parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs }),
+      // Linking the new steps changes the template's subtasks.
+      const [added, w] = await writing({ [t.id]: ['related_tasks'] }, () =>
+        this.createLines(d.added, { parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs }),
       );
+      Object.assign(r, added);
+      links = w;
       for (const id of r.ids)
-        await patiently(() => patchTask(id, { done: true })).then(
-          got => this.change(w => w.answer([got], TASK)),
+        await writing({ [id]: { done: true } }, () => patiently(() => patchTask(id, { done: true }))).then(
+          ([got, w]) =>
+            this.change(x => {
+              x.made(id, { done: true }, w);
+              x.answer([got], TASK, w);
+            }),
           e => r.problems.push(e.message),
         );
       // If the box is under a step, put the new steps after that step in the order line. Start from the order Vikunja
@@ -921,20 +942,19 @@ export default {
         // The steps added before it stopped are in Vikunja, so its copy of the template lists them.
         const c = copyOf(t.id),
           had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
-        this.change(w =>
-          w.answer(
-            [
+        if (links)
+          this.change(w =>
+            w.made(
+              t.id,
               {
-                id: t.id,
                 related_tasks: {
                   ...c?.related_tasks,
                   subtask: [...had, ...r.ids.map((id, k) => ({ id, title: d.added[k], done: true }))],
                 },
               },
-            ],
-            ['related_tasks'],
-          ),
-        );
+              links,
+            ),
+          );
       } else {
         // If the box was under a step, move it under the last added step.
         this.sheet.addRows = [];
@@ -1117,15 +1137,16 @@ export default {
       }
       // Remove the assignees and labels the user tapped off.
       for (const k of drops) {
-        const id = +k.slice(1);
-        await patiently(() =>
-          api(`/tasks/${e.id}/${k[0] === 'u' ? 'assignees' : 'labels'}/${id}`, { method: 'DELETE' }),
-        ).catch(err => {
-          if (err.status !== 404) throw err;
-        });
-        const field = k[0] === 'u' ? 'assignees' : 'labels',
-          had = copyOf(e.id)?.[field];
-        if (had) this.change(w => w.answer([{ id: e.id, [field]: had.filter(x => x.id !== id) }], [field]));
+        const id = +k.slice(1),
+          field = k[0] === 'u' ? 'assignees' : 'labels',
+          w = writes({ [e.id]: [field] });
+        await patiently(() => api(`/tasks/${e.id}/${field}/${id}`, { method: 'DELETE' }))
+          .catch(err => {
+            if (err.status !== 404) throw err;
+          })
+          .finally(() => w.end());
+        const had = copyOf(e.id)?.[field];
+        if (had) this.change(x => x.made(e.id, { [field]: had.filter(x => x.id !== id) }, w));
         this.sheet.dirty = true;
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
@@ -1184,6 +1205,8 @@ export default {
     if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Checklists already started keep it.`))
       return;
     this.sheet.checklistBusy = true;
+    // Deleting the step changes the template's subtasks.
+    const w = writes({ [st.id]: [], [t.id]: ['related_tasks'] });
     try {
       // Treat the step as removed if Vikunja no longer has it. That means a 404, or a lost reply when the step is gone.
       await patiently(() => api('/tasks/' + st.id, { method: 'DELETE' })).catch(async e => {
@@ -1198,19 +1221,17 @@ export default {
           throw e;
       });
       const c = copyOf(t.id);
-      this.change(w => {
-        w.answer([st], null); // Vikunja deleted the step
-        w.answer(
-          [
-            {
-              id: t.id,
-              related_tasks: {
-                ...c?.related_tasks,
-                subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id),
-              },
+      this.change(x => {
+        x.forget(st.id); // Vikunja deleted the step
+        x.made(
+          t.id,
+          {
+            related_tasks: {
+              ...c?.related_tasks,
+              subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id),
             },
-          ],
-          ['related_tasks'],
+          },
+          w,
         );
       });
       this.keepTemplate(t);
@@ -1219,6 +1240,7 @@ export default {
     } catch (err) {
       this.say('Not removed: ' + why(err), { place: 'sheet:subtasks', cls: 'failed' });
     } finally {
+      w.end();
       this.sheet.checklistBusy = false;
     }
   },

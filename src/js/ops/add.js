@@ -199,18 +199,18 @@ async function link(a, c) {
    it. This stage comes once the task is under its parent.
 
    The mark is sent with a key, so a repeating task whose reply was lost is ticked once, not twice. `c.arrived` gives
-   the row Vikunja's copy afterwards (`now`) and whether the task was marked done. */
+   the row Vikunja's copy afterwards (`now`) and whether the task was marked done, and `c.arrive` is told what was
+   sent. */
 async function arrive(a, c) {
   const p = a.p;
   if (a.arrived || !(p.done || p.pct > 0)) return;
   const done = !!p.done || p.pct >= 100,
-    path = '/tasks/' + a.taskId;
-  const t =
-    (await c.send(path, { method: 'PATCH', body: done ? { done: true } : { percent_done: p.pct / 100 } })) ||
-    (await c.read(path));
+    path = '/tasks/' + a.taskId,
+    body = done ? { done: true } : { percent_done: p.pct / 100 };
+  const t = (await c.send(path, { method: 'PATCH', body })) || (await c.read(path));
   a.arrived = true;
   c.arrived = { now: t, done };
-  c.arrive?.(c.arrived);
+  c.arrive?.(c.arrived, body);
 }
 /* Write the progress of the parents whose subtasks this line finishes (`ups`), deepest first, because each counts in
    the one above it. A task's progress drops when subtasks are added to it, and changes when a line under a line arrives

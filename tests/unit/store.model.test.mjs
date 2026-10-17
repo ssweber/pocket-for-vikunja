@@ -10,7 +10,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { component, fakeVikunja } from './fake.mjs';
-import tasks, { copyOf, CREATED, putting, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import tasks, {
+  copyOf,
+  CREATED,
+  putting,
+  started,
+  TASK,
+  TASK_REACTIONS_COMMENTS,
+  writes,
+} from '../../src/js/app/tasks.js';
 import acts from '../../src/js/app/acts.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
@@ -19,10 +27,11 @@ import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
 import { held, older, sync, uuid7 } from '../../src/js/sync.js';
 import { DONE_MARK, SKIP_MARK } from '../../src/js/checklists.js';
+import { repeats } from '../../src/js/dates.js';
 import * as ops from '../../src/js/ops/index.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
-const { OPS, opOf, madeStage } = ops;
+const { OPS, opOf } = ops;
 /* CI=1 fixes the seed. FC_RUNS sets the number of sequences, and FC_SEED a seed to run again. FC_PATH and FC_REPLAY
    replay a failure's path and replayPath at once. FC_STATS=1 prints how often each command ran, each KNOWN bug was
    met, and checks 4 and 5 ran with nothing skipped. */
@@ -46,6 +55,8 @@ const ALL = {
       addLines([line('Buy rope', { pct: 50, labels: ['rope'], assignees: ['bob'] })], { parent })[0],
   },
 };
+// The fields of a repeating task that Vikunja moves on when it is marked done, instead of marking it done.
+const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 // The ops that put the user's ✅ or ⏭️ on a task.
 const MARKS = ['done', 'doneNote', 'skip', 'finish'];
 const clone = v => (v === undefined ? v : structuredClone(v));
@@ -126,15 +137,17 @@ const replyKind = (method, url) =>
 /* ---------- the model ---------- */
 
 /* What the store should hold. The model hears of each write from the writers that change() hands out, and makes each
-   copy from the fake Vikunja's reply behind the write, trusting it for the fields its kind of request brings. An
-   answer is always taken. A read is taken when the store took it, because which read is new enough is check 5's to
-   judge, from the fake Vikunja's log. The ops waiting on a task are read from the outbox's database. */
+   copy from the fake Vikunja's reply behind the write, trusting it for the fields its kind of request brings, and from
+   each op's apply and each save's fields. A reply or a change is taken when the store took it, because which is new
+   enough is check 5's to judge, from the fake Vikunja's log. Each field the store changed must come from the reply or
+   the change it was given. The ops waiting on a task are read from the outbox's database. */
 class Model {
   constructor(w) {
     this.w = w;
     this.copies = new Map(); // task id -> Vikunja's copy, as the replies taken give it
     this.bases = new Map(); // task id -> what its row was made from while there is no copy
-    this.tags = new Map(); // task id -> {at, from}: the newest data Pocket has of the task, on the fake Vikunja's log
+    // task id -> field -> {at, from}: the newest data Pocket has of each field, on the fake Vikunja's log
+    this.tags = new Map();
     this.forgotten = new Set(); // tasks Pocket deleted
     this.rows = new Set(); // the ids with a row, as strings
     this.edits = new Map(); // task id -> its edits still running, oldest first: {fields}
@@ -142,29 +155,41 @@ class Model {
     this.frozen = new Map(); // task id -> {snap, touched}: a row marked done, as it was marked
     this.settled = new Set(); // ops answered, still in the outbox
     this.unsure = new Map(); // task id -> field -> when Vikunja changed it without Pocket being told
-    this.uncopied = new Map(); // task id -> the ops answered on it while Pocket had no copy of it
     this.relaxed = new Map(); // task id -> the fields a KNOWN bug met in this sequence may have left wrong
     this.met = new Set(); // the KNOWN entries met in this sequence
   }
   relaxes(id, k) {
     return !!this.relaxed.get(id)?.has(k);
   }
-  /* Take Vikunja's reply `rec` into the copy of task `id`, for the fields it is trusted for. A task Pocket deleted
-     stays deleted, also among the related tasks of a reply made before the delete. */
-  take(id, rec) {
-    if (this.forgotten.has(id)) return;
-    const t = rec.data,
-      trust = trusted(rec);
-    if (!this.copies.has(id) && !trust.some(k => k in t)) return;
-    const c = { ...this.copies.get(id) };
-    for (const k of trust) if (k in t) c[k] = clone(t[k]);
-    this.copies.set(id, this.unrelated(c));
+  // Pocket has news of `fields` of task `id`, each from the time `at` gives it, unless it has newer.
+  news(id, fields, at, from = 'answer') {
+    const t = this.tags.get(id) || new Map();
+    for (const k of fields) if (!(t.get(k)?.at >= at(k))) t.set(k, { at: at(k), from });
+    this.tags.set(id, t);
   }
   unrelated(t) {
     const out = list => list && list.filter(s => !this.forgotten.has(s.id));
     return !t.related_tasks
       ? t
       : { ...t, related_tasks: Object.fromEntries(Object.entries(t.related_tasks).map(([k, l]) => [k, out(l)])) };
+  }
+  /* Take into task `id`'s copy each field the store changed from `before` to `after`, each from the first of `sources`
+     ({fields}) that gives that value. Returns the source of each field. A field none of them gives breaks check 1. */
+  adopt(id, before, after, sources) {
+    const from = new Map();
+    for (const k of differ(before, after)) {
+      const s = sources.find(x => k in x.fields && same(after[k], this.unrelated({ [k]: x.fields[k] })[k]));
+      if (s) from.set(k, s);
+      else
+        this.w.broken.push(
+          `check 1: the store wrote ${id}'s ${k} as ${canon(after?.[k])}, which nothing it was given says`,
+        );
+    }
+    if (!after) return from;
+    const c = { ...this.copies.get(id) };
+    for (const [k, s] of from) c[k] = clone(s.fields[k]);
+    this.copies.set(id, this.unrelated(c));
+    return from;
   }
   // The op's apply, with the comment Vikunja made (`posted`) in place of the op's waiting one.
   applied(t, a, posted) {
@@ -258,53 +283,102 @@ class Model {
    which takes it into the model and judges it (check 5). */
 const HEARD = {
   read(w, fn, list, asked, at) {
-    const before = w.copiesNow();
+    const before = w.copiesNow(),
+      thrown = new Map(list.map(t => [t.id, !!w.reading && w.overlapped(t.id)]));
     fn(list.map(strip), asked, at);
-    for (const t of list) w.wrote({ via: 'read', id: t.id, rec: w.replyOf(t), before: before.get(t.id), asked });
-  },
-  answer(w, fn, list, asked) {
-    const before = w.copiesNow();
-    fn(list.map(strip), asked);
     for (const t of list)
-      if (asked === null) w.model.gone(t.id);
-      else w.wrote({ via: 'answer', id: t.id, rec: w.replyOf(t), before: before.get(t.id), asked });
+      w.wrote({ via: 'read', id: t.id, rec: w.replyOf(t), before: before.get(t.id), asked, thrown: thrown.get(t.id) });
+  },
+  answer(w, fn, list, asked, from) {
+    const before = w.copiesNow();
+    fn(list.map(strip), asked, from);
+    for (const t of list) {
+      const rec = w.replyOf(t);
+      w.wrote({ via: 'answer', id: t.id, rec, before: before.get(t.id), asked, thrown: w.crossed(rec, t.id) });
+    }
+  },
+  // A change Vikunja made, as Pocket asked for it: a direct save's fields, or a checklist's progress an op wrote. Each
+  // field is judged with the time Vikunja last made a request that changed it (lastWrite).
+  made(w, fn, id, fields, from) {
+    const m = w.model,
+      before = w.copiesNow().get(id);
+    fn(id, fields, from);
+    if (m.forgotten.has(id)) return;
+    if (!before) {
+      if (m.bases.has(id)) m.bases.set(id, { ...m.bases.get(id), ...clone(fields) });
+      return;
+    }
+    // A direct save was made when its request was (saveMade). A checklist's progress has no other write on its way.
+    const after = copyOf(id),
+      fieldAt = k => w.saveMade ?? w.lastWrite.get(`${id} ${k}`) ?? w.t;
+    m.adopt(id, before, after, [{ fields }]);
+    w.judge({
+      via: 'made',
+      id,
+      at: Math.max(...Object.keys(fields).map(fieldAt)),
+      before,
+      after,
+      fieldAt,
+      asked: fields,
+    });
   },
   /* An op's answer: its apply goes into each copy, then Vikunja's reply about its own task, and a deleted task leaves
-     every list. Each field the apply changes is judged with the time Vikunja made the op's last request that changed
-     that field of that task (madeField). The reply is judged with its own time, against Pocket's news of the task
-     before the answer, since the apply's news isn't about the fields the reply brings. */
-  answered(w, fn, a, got, posted) {
+     every list. Each field the store took from the apply is judged with the time Vikunja made the op's last request
+     that changed that field of that task (madeField). The reply is judged with its own time, against Pocket's news of
+     the task before the answer, since the apply's news isn't about the fields the reply brings. */
+  answered(w, fn, a, from, reply, posted) {
     const m = w.model,
       op = opOf(a),
+      got = reply?.task ?? null,
       rec = got ? w.replyOf(got) : null,
       before = w.copiesNow(),
-      tags = new Map(m.tags),
-      own = got && got.id === (typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) : a.task),
+      tags = new Map([...m.tags].map(([id, t]) => [id, new Map(t)])),
+      own =
+        got && got.id === (typeof a.task === 'string' ? sync.taskOf(a.task.replace(/^pending-/, '')) : a.task)
+          ? got.id
+          : null,
       at = w.lastMade.get(a.id) ?? w.t;
-    fn(a, strip(got), posted);
+    fn(a, from, reply && { ...reply, task: strip(got) }, posted);
+    w.land(a.id);
     m.settled.add(a.id);
     if (op.deletes(a).length) m.forgetTree(op.deletes(a));
-    for (const id of op.on(a)) {
+    for (const id of new Set([...op.on(a), ...(own ? [own] : [])])) {
       if (m.forgotten.has(id)) continue;
       const b = before.get(id),
-        uncopied = !b && !m.bases.has(id) && !own;
-      if (m.copies.has(id)) m.copies.set(id, m.applied(m.copies.get(id), a, posted));
-      else if (m.bases.has(id)) m.bases.set(id, m.applied(m.bases.get(id), a, posted));
-      if (uncopied) m.uncopied.set(id, [...(m.uncopied.get(id) || []), a]);
-      const after = b && m.applied(b, a, posted),
         fieldAt = k => w.madeField.get(`${a.id} ${id} ${k}`) ?? at;
-      w.judge({ via: 'apply', id, at, a, before: b, after, uncopied, fieldAt });
+      if (!b) {
+        const uncopied = !m.bases.has(id) && own !== id;
+        if (m.bases.has(id) && op.on(a).includes(id)) m.bases.set(id, m.applied(m.bases.get(id), a, posted));
+        const x = m.applied({ id }, a, posted),
+          asked = Object.fromEntries(differ({ id }, x).map(k => [k, x[k]]));
+        if (uncopied) w.judge({ via: 'apply', id, at, a, before: b, after: undefined, uncopied, fieldAt, asked });
+        if (own === id) w.wrote({ via: 'got', id, rec, before: b, tag: tags.get(id), thrown: w.crossed(rec, id) });
+        continue;
+      }
+      // Each field the store changed comes from the reply or the apply. Each is judged as a write of its own.
+      const after = copyOf(id),
+        applied = op.on(a).includes(id) ? m.applied(b, a, posted) : b,
+        trust = own === id ? trusted(rec).filter(k => k in rec.data) : [],
+        replied = { fields: Object.fromEntries(trust.map(k => [k, rec.data[k]])), rec },
+        thrown = own === id && w.crossed(rec, id),
+        // A replayed reply explains only what the apply doesn't, so a field both give counts as the apply's. A reply to
+        // a write that crossed another explains nothing.
+        sources = thrown
+          ? [{ fields: applied }]
+          : rec?.replayed
+            ? [{ fields: applied }, replied]
+            : [replied, { fields: applied }],
+        src = m.adopt(id, b, after, sources),
+        mid = { ...b };
+      for (const [k, x] of src) if (!x.rec) mid[k] = after[k];
+      const asked = Object.fromEntries(differ(b, applied).map(k => [k, applied[k]]));
+      w.judge({ via: 'apply', id, at, a, before: b, after: mid, fieldAt, asked });
+      if (own === id) w.judge({ via: 'got', id, at: rec.at, rec, before: mid, after, tag: tags.get(id), thrown });
     }
     // A copy forgetTree took a deleted subtask out of has the delete's news too.
     if (op.deletes(a).length)
       for (const [id, b] of before)
-        if (!op.on(a).includes(id) && !m.forgotten.has(id) && b !== copyOf(id) && !(m.tags.get(id)?.at >= at))
-          m.tags.set(id, { at, from: 'answer' });
-    if (own) {
-      const b = before.get(got.id);
-      const mid = b && op.on(a).includes(got.id) ? m.applied(b, a, posted) : b;
-      w.wrote({ via: 'got', id: got.id, rec, before: mid, tag: tags.get(got.id) });
-    }
+        if (!op.on(a).includes(id) && !m.forgotten.has(id) && b !== copyOf(id)) m.news(id, ['related_tasks'], () => at);
   },
   base(w, fn, t) {
     const m = w.model,
@@ -318,10 +392,8 @@ const HEARD = {
       e = m.edit(id, fields),
       h = fn(id, fields);
     return {
-      ok: got => {
-        const before = w.copiesNow().get(id);
-        h.ok(strip(got));
-        if (got) w.wrote({ via: 'edit', id, rec: w.replyOf(got), before });
+      ok: () => {
+        h.ok();
         m.ended(id, e);
       },
       undo: () => {
@@ -401,6 +473,13 @@ class World {
       madeAt: new Map(), // key -> when Vikunja made it
       lastMade: new Map(), // entry id -> when Vikunja made its latest request
       madeField: new Map(), // 'entry task field' -> when Vikunja made the entry's latest request that changed the field
+      lastWrite: new Map(), // 'task field' -> when Vikunja made the latest request that changed the field
+      pocket: new Map(), // Pocket's writes in flight (fly)
+      n: 0, // counts reads starting and Pocket's writes ending, to order them
+      landedAt: new Map(), // task id -> when a write of Pocket's to it last ended, on `n`
+      reading: null, // the read finishing
+      saveMade: null, // when Vikunja made the direct save being answered
+      saving: Promise.resolve(), // the direct saves, one after another (save)
       broken: [], // what check 5 found during the command
       wrote5: false, // whether the command wrote any of Vikunja's data
     });
@@ -456,18 +535,94 @@ class World {
       method = opts.method || 'GET';
     if (key && this.unknownKeys.has(key)) return unknownReply();
     if (method === 'GET') return this.stamped(await this.inner(url, opts), ++this.t, false, 'get');
-    return new Promise((ok, no) =>
-      this.held.push({
-        url,
-        opts,
-        key,
-        method,
-        e: key && this.entryOf(key),
-        id: +(new URL(url).pathname.match(/\/tasks\/(\d+)/) || [])[1] || null,
-        res: null,
-        ok,
-        no,
-      }),
+    const h = {
+      url,
+      opts,
+      key,
+      method,
+      e: key && this.entryOf(key),
+      id: +(new URL(url).pathname.match(/\/tasks\/(\d+)/) || [])[1] || null,
+      res: null,
+    };
+    if (h.e?.kind === 'act') this.flyOp(h);
+    h.write = h.e ? this.pocket.get(h.e.id) : opts.write;
+    return new Promise((ok, no) => this.held.push(Object.assign(h, { ok, no })));
+  }
+  /* Pocket's writes in flight, as the store tracks them (writes, tasks.js): a direct save from its send to its reply,
+     and an op from its first request in a try to its answer or its failure. Each is {fields, crossed}: what it sets
+     on each task, and the writes in flight on each task at the same time. Two writes that set one field to different
+     values can reach Vikunja in either order, so the store takes neither, and Vikunja's value is unknown to Pocket
+     until a read (doubt, when Vikunja makes each). `key` is the op's entry id, or the save. */
+  fly(key, id, fields) {
+    /* Vikunja sets done_at itself when done changes. It moves a repeating task marked done on to its next dates
+       instead, so only its reply says what the write leaves there. */
+    const unknown = Symbol('unknown'),
+      t = this.model.copies.get(id) ?? this.model.bases.get(id);
+    if ('done' in fields && !('done_at' in fields)) fields = { ...fields, done_at: unknown };
+    if (fields.done === true && t && repeats(t))
+      fields = { ...fields, ...Object.fromEntries(MOVED.map(k => [k, unknown])) };
+    let x = this.pocket.get(key);
+    if (!x) this.pocket.set(key, (x = { fields: new Map(), crossed: new Map(), unheard: new Map() }));
+    x.fields.set(id, { ...x.fields.get(id), ...fields });
+    for (const y of this.pocket.values())
+      if (y !== x && y.fields.has(id)) {
+        x.crossed.set(id, (x.crossed.get(id) || new Set()).add(y));
+        y.crossed.set(id, (y.crossed.get(id) || new Set()).add(x));
+        for (const z of [x, y]) this.model.doubt(id, [...(z.unheard.get(id) || [])]);
+      }
+    return x;
+  }
+  land(key) {
+    for (const id of this.pocket.get(key)?.fields.keys() || []) this.landedAt.set(id, ++this.n);
+    this.pocket.delete(key);
+  }
+  /* Whether a read (`reading`) ran while a write of Pocket's to task `id` was in flight, so the store throws it away
+     for that task. Whether reply `rec` answers a write that crossed another on task `id`, so the store takes none of
+     it there. Neither is Pocket's news of the task. */
+  overlapped(id) {
+    return [...this.pocket.values()].some(x => x.fields.has(id)) || (this.landedAt.get(id) || 0) > this.reading.n;
+  }
+  crossed(rec, id) {
+    return !!rec.write?.crossed.get(id)?.size;
+  }
+  /* Op request `h` is sent. An op's try sets what its apply sets on each task it changes, with the values it gives the
+     copy as the model has it. A write to a task outside them, such as its checklist's progress, joins it. */
+  flyOp(h) {
+    const e = h.e,
+      m = this.model,
+      own = typeof e.task === 'string' ? sync.taskOf(e.task.replace(/^pending-/, '')) : e.task;
+    if (!this.pocket.has(e.id)) {
+      for (const id of new Set([...opOf(e).on(e), own]))
+        if (typeof id === 'number') {
+          const t = m.copies.get(id) ?? m.bases.get(id) ?? { id },
+            x = opOf(e).apply(clone(t), e),
+            sets = new Set([...differ(t, x), ...differ({ id }, opOf(e).apply({ id }, e))]);
+          this.fly(e.id, id, Object.fromEntries([...sets].map(k => [k, x[k]])));
+        }
+      this.fly(e.id, null, {});
+    }
+    if (h.id && h.method === 'PATCH' && h.id !== own) this.fly(e.id, h.id, JSON.parse(h.opts.body));
+  }
+  /* Vikunja made request `h`, which changed `fields` of its task. The store takes no reply of a write that crossed
+     another, so a field it changed that its write doesn't set, as a repeating task's next date, is unknown to Pocket
+     until a read. So is a field that a write crossing it sets to another value. */
+  crossing(h, fields) {
+    const x = h.e ? this.pocket.get(h.e.id) : h.opts.write;
+    if (!x || !h.id) return;
+    const mine = x.fields.get(h.id) || {},
+      unheard = fields.filter(k => !(k in mine) || typeof mine[k] === 'symbol');
+    x.unheard.set(h.id, new Set([...(x.unheard.get(h.id) || []), ...unheard]));
+    if (x.crossed.get(h.id)?.size) this.model.doubt(h.id, unheard);
+    this.model.doubt(h.id, this.conflicts(h));
+  }
+  // The fields request `h` changes that a write crossing its own sets to another value.
+  conflicts(h) {
+    const x = h.e ? this.pocket.get(h.e.id) : h.opts.write,
+      mine = x?.fields.get(h.id) || {};
+    return touches(h).filter(
+      k =>
+        k in mine &&
+        [...(x.crossed.get(h.id) || [])].some(y => k in y.fields.get(h.id) && !same(y.fields.get(h.id)[k], mine[k])),
     );
   }
   heldAt(i) {
@@ -481,7 +636,8 @@ class World {
   async make(h) {
     if (h.res) return;
     // Deleting a task changes the related tasks of each task it is related to.
-    const related = h.method === 'DELETE' && h.id && Object.values(this.v.tasks.get(h.id)?.related_tasks || {}).flat();
+    const related = h.method === 'DELETE' && h.id && Object.values(this.v.tasks.get(h.id)?.related_tasks || {}).flat(),
+      was = clone(this.v.tasks.get(h.id));
     h.res = await this.inner(h.url, h.opts);
     h.replayed = h.res.headers.get('Idempotent-Replayed') === 'true';
     h.at = h.replayed ? this.madeAt.get(h.key) : ++this.t;
@@ -489,6 +645,12 @@ class World {
     if (h.key) this.madeAt.set(h.key, h.at);
     if (h.e) this.lastMade.set(h.e.id, h.at);
     if (h.e && h.id) for (const k of touches(h)) this.madeField.set(`${h.e.id} ${h.id} ${k}`, h.at);
+    if (h.id) for (const k of touches(h)) this.lastWrite.set(`${h.id} ${k}`, h.at);
+    this.crossing(
+      h,
+      differ(was, this.v.tasks.get(h.id)).filter(k => CHECKED.includes(k)),
+    );
+    if (h.opts.write) h.opts.write.madeAt = h.at;
     if (h.e && related) for (const r of related) this.madeField.set(`${h.e.id} ${r.id} related_tasks`, h.at);
     // A field Vikunja changes that the op's answer doesn't carry, such as a position, is new to Pocket until it reads.
     const unseen = h.e && Object.entries(ALL).find(([n, s]) => (s.op ?? n) === h.e.op)?.[1].unseen;
@@ -515,7 +677,7 @@ class World {
     return res;
   }
   // Reply `res` as Pocket gets it, with a task stamped with the reply's number (replyOf).
-  async stamped(res, at, replayed, kind) {
+  async stamped(res, at, replayed, kind, h = null) {
     const text = await res.text();
     let body;
     try {
@@ -524,7 +686,7 @@ class World {
       return new Response(text, { status: res.status, headers: res.headers });
     }
     if (kind && body && typeof body === 'object' && 'id' in body && 'title' in body) {
-      this.replies.push({ at, kind, replayed, data: clone(body) });
+      this.replies.push({ at, kind, replayed, data: clone(body), write: h?.write });
       body[MADE] = this.replies.length - 1;
     }
     return new Response(JSON.stringify(body), { status: res.status, headers: res.headers });
@@ -556,26 +718,50 @@ class World {
       this.replies.push({ at: when, kind: 'read', asked, data: clone(t) });
       t[MADE] = this.replies.length - 1;
     }
-    this.reads.push({ at, list, asked });
+    this.reads.push({ at, list, asked, n: ++this.n });
   }
   // A read reaches Pocket, as a screen's load does: its tasks go into the store, then get rows.
   finishRead(i) {
     const [r] = this.reads.splice(i % this.reads.length, 1);
-    for (const t of putting(r.asked, r.at)(structuredClone(r.list))) this.app.row(t);
+    this.reading = r;
+    const list = putting(r.asked, r.at)(structuredClone(r.list));
+    this.reading = null;
+    for (const t of list) this.app.row(t);
   }
-  // A direct save of edit `e` is sent, and ends when its reply arrives.
-  async save(e) {
+  // A direct save of edit `e` is sent once the saves before it have ended, and ends when its reply arrives, as saveTask
+  // (actions.js) sends and answers it.
+  save(e) {
+    const run = this.saving.then(() => this.send(e));
+    this.saving = run.catch(() => {});
+    return run;
+  }
+  async send(e) {
+    const write = writes({ [e.id]: e.fields }),
+      mine = this.fly(e, e.id, e.fields);
     let got = null;
     try {
       const res = await this.gate(SERVER + '/tasks/' + e.id, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(e.fields),
+        write: mine,
       });
       got = res.ok ? await res.json() : null;
     } catch {}
+    write.end();
+    this.land(e);
     this.edits.splice(this.edits.indexOf(e), 1);
-    this.app.change(() => (got ? e.h.ok(got) : e.h.undo()));
+    this.saveMade = mine.madeAt;
+    try {
+      this.app.change(x => {
+        if (!got) return e.h.undo();
+        x.made(e.id, e.fields, write);
+        x.answer([got], TASK, write);
+        e.h.ok();
+      });
+    } finally {
+      this.saveMade = null;
+    }
   }
   // The store's copy of each task the test knows of. A write replaces a copy rather than changing it, so these stay
   // as they were.
@@ -587,28 +773,39 @@ class World {
       }),
     );
   }
-  /* A write of Vikunja's data (`rec`) into the copy of task `ev.id`. The model takes an answer always, and a read when
-     the store took it. Then check 5 judges it. */
+  /* A write of Vikunja's data (`rec`) into the copy of task `ev.id`. The model takes it when the store took it. A copy
+     made where the row was made from a read keeps the changes Vikunja made to that. Then check 5 judges it. */
   wrote(ev) {
     const m = this.model,
-      after = copyOf(ev.id);
+      after = copyOf(ev.id),
+      trust = trusted(ev.rec).filter(k => k in ev.rec.data);
     ev.at = ev.rec.at;
     ev.after = after;
-    ev.ops = m.uncopied.get(ev.id) || [];
-    if (ev.via !== 'read' || !same(ev.before, after)) m.take(ev.id, ev.rec);
+    if (ev.thrown && !same(ev.before, after))
+      this.broken.push(`check 5: ${ev.id}'s copy took a ${ev.via} that ran while another write to it was in flight`);
+    else if (!same(ev.before, after))
+      m.adopt(ev.id, ev.before, after, [
+        { fields: Object.fromEntries(trust.map(k => [k, ev.rec.data[k]])), rec: ev.rec },
+        ...(ev.before ? [] : [{ fields: m.bases.get(ev.id) || {} }]),
+      ]);
     this.judge(ev);
   }
-  /* Check 5: Vikunja's copy of a task only moves forward. A write that changes the copy with data Vikunja made before
-     Pocket's latest news of the task goes back, and a reply the relay replays changes nothing in a copy Pocket has. A
-     KNOWN entry that meets the write excuses it, and relaxes the checks it names for the rest of the sequence. */
+  /* Check 5: Vikunja's copy of a task only moves forward. A write that changes a field of the copy with data Vikunja
+     made before Pocket's latest news of that field goes back. A reply the relay replays changes nothing in a copy
+     Pocket has. A read that ran while a write of Pocket's to the task was in flight, and a reply to a write that
+     crossed another, change nothing (`thrown`) and are no news. A KNOWN entry that meets the write excuses it, and
+     relaxes the checks it names for the rest of the sequence. */
   judge(ev) {
     const m = this.model,
-      tag = 'tag' in ev ? ev.tag : m.tags.get(ev.id),
-      changed = differ(ev.before, ev.after);
+      tags = ('tag' in ev ? ev.tag : m.tags.get(ev.id)) || new Map(),
+      /* Check 5 judges the fields check 4 compares, the same way. An op guesses the times Vikunja sets itself, such as
+         done_at, so only a reply has them, and a list of people Vikunja gives as null is an op's []. */
+      changed = differ(ev.before, ev.after).filter(
+        k => CHECKED.includes(k) && !same(like(k, ev.before?.[k]), like(k, ev.after?.[k])),
+      );
     const at = k => ev.fieldAt?.(k) ?? ev.at,
-      older = tag ? changed.filter(k => at(k) < tag.at) : [];
+      older = changed.filter(k => tags.has(k) && at(k) < tags.get(k).at);
     Object.assign(ev, {
-      tag,
       changed,
       back: older.length > 0,
       replay: changed.length > 0 && !!ev.rec?.replayed && ev.before !== undefined,
@@ -618,15 +815,20 @@ class World {
     if ((ev.back || ev.replay) && !excused)
       this.broken.push(
         ev.back
-          ? `check 5: ${ev.id}'s copy went back. ${ev.via === 'read' ? 'A read' : 'An answer'} (${ev.via}) wrote ${older.map(k => `${k} from ${at(k)}`).join(', ')} after Pocket had news of the task from ${tag.at}`
+          ? `check 5: ${ev.id}'s copy went back. ${ev.via === 'read' ? 'A read' : 'An answer'} (${ev.via}) wrote ${older.map(k => `${k} from ${at(k)} after Pocket had news of it from ${tags.get(k).at}`).join(', ')}`
           : `check 5: a reply the relay replayed changed the ${changed} of ${ev.id}'s copy (${ev.via})`,
       );
-    // Pocket's news of the task: an answer always, and a read that the copy now agrees with.
-    const agrees =
-      ev.via !== 'read' ||
-      (!!ev.after && trusted(ev.rec).every(k => !(k in ev.rec.data) || same(ev.after[k], ev.rec.data[k])));
-    if (agrees && !m.forgotten.has(ev.id) && (ev.after || ev.uncopied) && !(m.tags.get(ev.id)?.at >= ev.at))
-      m.tags.set(ev.id, { at: ev.at, from: ev.via === 'read' ? 'read' : ev.uncopied ? 'uncopied' : 'answer' });
+    /* Pocket's news of each field: a field of a reply that the copy now agrees with, and a field Pocket asked Vikunja
+       to change that the copy now has (`asked`). An op answered on a task Pocket has no copy of is news of the fields
+       it changes. */
+    if (m.forgotten.has(ev.id) || ev.thrown) return;
+    const agrees = k => !!ev.after && same(ev.after[k], m.unrelated({ [k]: ev.rec ? ev.rec.data[k] : ev.asked[k] })[k]);
+    const fields = ev.rec
+      ? trusted(ev.rec).filter(k => k in ev.rec.data && agrees(k))
+      : ev.uncopied
+        ? Object.keys(ev.asked)
+        : Object.keys(ev.asked || {}).filter(agrees);
+    m.news(ev.id, fields, at, ev.via === 'read' ? 'read' : ev.uncopied ? 'uncopied' : 'answer');
     // A reply Vikunja made after a change it brings tells Pocket of the change.
     const unsure = m.unsure.get(ev.id);
     if (ev.rec && ev.after && unsure)
@@ -731,8 +933,8 @@ const WAITING_STEP = {
 };
 
 /* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, then the edits, a row marked
-   done is as it was marked, each copy is the model's, a task Pocket deleted is gone, and the step not yet made shows
-   its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
+   done is as it was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
+   given, a task Pocket deleted is gone, and the step not yet made shows its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
    4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. A field a KNOWN bug
    met in the sequence may have left wrong is skipped. */
 function checks(w) {
@@ -834,17 +1036,13 @@ function like(k, v, vikunja = null) {
 
 /* ---------- the bugs not yet fixed ---------- */
 
-// A reply about a new task written with more trust than CREATED, once the line is past the stage that made the task.
-const overTrusted = (ev, w) =>
-  ev.via === 'answer' &&
-  ev.rec.kind === 'create' &&
-  ev.asked.some(k => !CREATED.includes(k)) &&
-  w.acts().some(e => e.taskId === ev.id && e.stage > madeStage);
 // Whether task `t` names a task Pocket deleted among its related tasks of `kind`.
 const names = (w, t, kind) => !!t?.related_tasks?.[kind]?.some(x => w.model.forgotten.has(x.id));
-// The tasks whose copy names a task Pocket deleted as its parent, or null.
+// The tasks whose copy or row names a task Pocket deleted as its parent, or null.
 const orphans = w => {
-  const out = [...w.copiesNow()].filter(([, c]) => names(w, c, 'parenttask')).map(([id]) => [id, ['related_tasks']]);
+  const out = [...w.copiesNow()]
+    .filter(([id, c]) => names(w, c, 'parenttask') || names(w, w.app.tasks[id], 'parenttask'))
+    .map(([id]) => [id, ['related_tasks']]);
   return out.length ? out : null;
 };
 // The fields op `a` changes on task `t`.
@@ -855,30 +1053,6 @@ const opFields = (a, t) => (t ? differ(t, opOf(a).apply(clone(t), a)) : []);
    tasks it may leave wrong ([[id, fields]]). Meeting it excuses the write, and the checks skip those fields for the
    rest of the sequence. An entry no sequence meets in a run of 1,000 fails the test, so a fixed bug's entry goes. */
 const KNOWN = [
-  /* A reply older than Pocket's latest news of a task overwrites the copy, and so does a reply the relay replays. Two
-     writes answered out of order, a read taken while a write's reply is on its way, and an op sent in several stages,
-     which writes its first stage's reply (c.task) once its last stage is answered. So a title saved in the sheet while
-     a tick is being sent flips back once the tick is answered. */
-  {
-    bug: 1,
-    meets: (ev, w) => ev.via !== 'read' && (ev.back || ev.replay) && !overTrusted(ev, w) && [[ev.id, ev.changed]],
-  },
-  /* A read that started earlier and finishes after a newer read of the same task puts back older data. The late-read
-     rule compares a read only with answers. */
-  { bug: 2, meets: ev => ev.via === 'read' && ev.back && ev.tag.from === 'read' && [[ev.id, ev.changed]] },
-  /* An op whose stage gives no c.task (claim, unclaim, note, answer, position), answered on a step added in this
-     session that Pocket has no copy of, gives the step no answer time. A checklist read that started before the answer
-     is then taken, and the copy lacks the op. */
-  {
-    bug: 3,
-    meets: ev =>
-      ev.via === 'read' &&
-      ev.back &&
-      ev.tag.from === 'uncopied' && [[ev.id, ev.ops.flatMap(a => opFields(a, ev.after))]],
-  },
-  /* A line that fails after its task is made writes the task's first reply with TASK trust (sendAct's catch). The copy
-     loses what the later stages did, such as the line arriving done, and takes the reply's empty labels and people. */
-  { bug: 4, meets: (ev, w) => overTrusted(ev, w) && [[ev.id, TASK]] },
   /* A deleted task stays in other tasks' related tasks until the next read. forgetTree cleans only subtask lists, so a
      step with a second parent survives its first parent's delete, and its copy keeps parenttask pointing at the
      deleted task. A read or a reply made before the delete brings the task back into a list the delete didn't
@@ -940,6 +1114,8 @@ class Command {
     count(STATS.commands, (w.draining ? 'drain: ' : '') + this.name());
     await this.act(w, m);
     await w.settle();
+    // An op's try that a stage ended, as a claim someone else took ends it, has no request left on its way.
+    for (const k of w.pocket.keys()) if (typeof k === 'string' && !w.held.some(h => h.e?.id === k)) w.land(k);
     const broken = checks(w);
     if (broken.length) throw new Error(`${this} broke a check:\n  ${broken.join('\n  ')}`);
   }
@@ -1032,12 +1208,13 @@ class Answer extends Command {
   async act(w, m) {
     const h = w.heldAt(this.i);
     w.held.splice(w.held.indexOf(h), 1);
+    if (this.how !== 'arrives' && h.e) w.land(h.e.id);
     if (this.how === 'refused') {
       w.unheard(h.e);
       return h.ok(await w.refuse(h));
     }
     await w.make(h);
-    if (this.how === 'arrives') return h.ok(await w.stamped(h.res, h.at, h.replayed, replyKind(h.method, h.url)));
+    if (this.how === 'arrives') return h.ok(await w.stamped(h.res, h.at, h.replayed, replyKind(h.method, h.url), h));
     if (this.how === 'lost') {
       // A direct save Vikunja made, whose reply is lost, fails on the row, and Pocket doesn't hear of its fields.
       if (!h.key && h.id) m.doubt(h.id, Object.keys(JSON.parse(h.opts.body)));

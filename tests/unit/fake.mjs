@@ -16,7 +16,8 @@ const lost = () => new TypeError('network error');
 /* The fake keeps tasks by id and behaves as Vikunja does. GET, PATCH and DELETE /tasks/:id read and change a task. A
    repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
    move it). A task that is read, or a PATCH's reply, lists no deleted task among its related tasks (related_tasks),
-   and a read lists each subtask as the subtask is now.
+   and a read lists each subtask as the subtask is now. A task marked done gets the time in done_at, and a task opened
+   again loses it.
    POST /projects/:id/tasks creates a task with the next id, never one a deleted task had. POST /tasks/:id/relations
    makes one task a subtask of another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
    tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
@@ -220,10 +221,13 @@ export function fakeVikunja(tasks = []) {
       gone.add(id);
       res = reply({ message: 'Successfully deleted.' });
     } else if (method === 'PATCH') {
-      const next = req.body.done && !t.done && vikunjaNext(t);
+      const next = req.body.done && !t.done && vikunjaNext(t),
+        was = !!t.done,
+        now = new Date().toISOString();
       Object.assign(t, req.body, next ? { done: false, due_date: new Date(next).toISOString() } : {}, {
-        updated: new Date().toISOString(),
+        updated: now,
       });
+      if (t.done !== was) t.done_at = t.done ? now : '0001-01-01T00:00:00Z';
       res = reply(pruned(t));
     } else res = reply({ message: `the fake has no ${method} ${req.path}` }, 405);
     if (key && res.status < 500) v.relayed.set(key, { fp, status: res.status, text: await res.clone().text() });
