@@ -264,9 +264,10 @@ func relayNotConnected(err error) bool {
 }
 
 // relayTarget is Vikunja's own address: its Unix socket if it listens on one, or else its TCP interface on this
-// machine. The transport ignores HTTP_PROXY, which must not see a request to Vikunja itself.
+// machine. The transport ignores HTTP_PROXY, which must not see a request to Vikunja itself. Each forward makes its own
+// transport, so it keeps no idle connection, which nothing would ever close.
 func relayTarget() (string, *http.Transport) {
-	t := &http.Transport{Proxy: nil}
+	t := &http.Transport{Proxy: nil, DisableKeepAlives: true}
 	if sock := viper.GetString("service.unixsocket"); sock != "" {
 		t.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
@@ -287,8 +288,9 @@ func relayClaim(userID int64, key, fp string) (bool, error) {
 	s := db.NewSession()
 	defer s.Close()
 	now := time.Now()
-	// Old answers go as new keys come in. The table stays small, so a scan is cheap.
-	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep).Unix()); err != nil {
+	// Old answers go as new keys come in. The table stays small, so a scan is cheap. A phone whose clock is fast can
+	// send a key for up to relayAhead after relayKeep has passed on the server, so its answer is kept that long.
+	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
 		_ = s.Rollback()
 		return false, err
 	}

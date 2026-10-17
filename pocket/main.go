@@ -14,7 +14,7 @@
 //
 //   - By default, nothing of its own. It serves the files in app/. relay.go passes Pocket's changes on to Vikunja's
 //     own API, as the signed-in user, so Vikunja checks and records them as it does any request. It keeps Vikunja's
-//     answer to each in a table, pocket_relay, for 30 days, so a change sent twice is made once. The answers include
+//     answer to each in a table, pocket_relay, for 31 days, so a change sent twice is made once. The answers include
 //     the tasks they changed.
 //   - With step times turned on, one thing. When a step of a checklist run is marked done, it sets the due date of the
 //     steps in that run that are timed from it (T#40m in their template step means 40 minutes after). It writes only

@@ -67,10 +67,11 @@ And beyond the draft:
   (`<uuidv7>:<stage>:<part>`, part 1). A key that doesn't start with one gets 400. A key older than the relay keeps keys gets 409 with
   `Idempotency-Unknown: true`, as for the gap. So does a key made more than a day in the future, by a phone whose
   clock is wrong. The outbox has no rule about age of its own, and the relay can change how long it keeps keys
-  without breaking old entries. A phone's clock that is a day slow can still slip a key past the check. That margin
-  is why the relay keeps keys for weeks, not hours.
+  without breaking old entries. A key from a phone whose clock is up to a day fast is accepted for up to 31 days
+  after the relay stored its answer, so the relay keeps each answer for 31 days. That margin is why the relay keeps
+  keys for weeks, not hours.
 - **The table, `pocket_relay`,** is plain SQL that SQLite, Postgres and MySQL accept. A Go struct would be a type Yaegi
-  makes at runtime, and xorm may not read it. It holds each stored answer, which includes task content, for 30 days.
+  makes at runtime, and xorm may not read it. It holds each stored answer, which includes task content, for 31 days.
 
 ### The spike: passed
 
