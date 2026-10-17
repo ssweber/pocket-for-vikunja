@@ -16,7 +16,7 @@ import {
   SPACING,
 } from '../../src/js/order.js';
 import { nestSubtasks } from '../../src/js/lists.js';
-import { component } from './fake.mjs';
+import { component, outboxOf } from './fake.mjs';
 import tasks from '../../src/js/app/tasks.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import actions from '../../src/js/app/actions.js';
@@ -380,7 +380,7 @@ test('a cursor row ticked done keeps the box until the batch clears, then its ta
 // A delete of `ids` waiting in the outbox, put on its tasks as the outbox does (keyOps, tasks.js). No ids: nothing waits.
 const deleting = (app, ids) => {
   app.pending = ids.length ? [{ kind: 'act', id: 'd' + ids, op: 'delete', task: ids[0], ids, items: [] }] : [];
-  app.change(w => w.keyOps());
+  outboxOf(app, app.pending);
 };
 test('the cursor never points at a row that has left the list', async () => {
   const { app, van, chairs, tables, lights } = projectList();

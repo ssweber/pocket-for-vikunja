@@ -18,6 +18,28 @@ import {
 } from './checklists.js';
 import { repeats } from './dates.js';
 
+/* The rows show the ops waiting in the outbox (keyOps, app/tasks.js), so each change to it in this tab tells them,
+   once for all the changes made together. Deletes held for Restore change what the rows show too. */
+let telling = false;
+const tell = () => {
+  if (telling) return;
+  telling = true;
+  queueMicrotask(() => {
+    telling = false;
+    app?.keyOutbox?.();
+  });
+};
+class Told extends Set {
+  add(v) {
+    tell();
+    return super.add(v);
+  }
+  delete(v) {
+    tell();
+    return super.delete(v);
+  }
+}
+
 /* An entry is one of:
    - an op (`kind: 'act'`, `op`), sent through its stages. A line typed in an add box is an `add` op (ops/add.js):
      {id, kind, op: 'add', batch, raw, p, pid, under, over, parent, ups, files, ...its stages}. `p` is the line as parsed
@@ -37,7 +59,7 @@ export const sync = {
   volatile: new Set(), // ids of entries kept in memory only
   bytes: new Map(), // key -> File, for files kept in memory only
   claimed: new Map(), // task id -> {key, at}, see claim()
-  held: new Set(), // ids of deletions in this tab that can still be restored, not sent yet
+  held: new Told(), // ids of deletions in this tab that can still be restored, not sent yet
   db: null,
   asked: false,
   channel: 'BroadcastChannel' in self ? new BroadcastChannel('pocket-sync') : null,
@@ -123,6 +145,7 @@ export const sync = {
   // `full` whether the phone is out of space.
   async add(entry, files) {
     this.entries.set(entry.id, entry);
+    tell();
     try {
       const data = await Promise.all(
         files.map(async f => ({ name: f.name, type: f.type, data: await f.arrayBuffer() })),
@@ -144,6 +167,7 @@ export const sync = {
   async save(entry, drop = [], more = []) {
     const all = [entry, ...more];
     for (const e of all) this.entries.set(e.id, e);
+    tell();
     for (const k of drop) this.bytes.delete(k);
     if (this.volatile.has(entry.id)) {
       for (const e of more) this.volatile.add(e.id);
@@ -167,6 +191,7 @@ export const sync = {
       name = 'pending-' + id;
     this.entries.delete(id);
     this.volatile.delete(id);
+    tell();
     for (const k of keys) this.bytes.delete(k);
     if (task != null) for (const x of this.entries.values()) named(x, name, task);
     try {
@@ -191,6 +216,7 @@ export const sync = {
       const e = await this.tx(['outbox'], 'readonly', s => s('outbox').get(id));
       if (e) this.entries.set(id, e);
       else this.entries.delete(id);
+      tell();
       return e || null;
     } catch {
       return this.entries.get(id) || null;

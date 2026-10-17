@@ -2,7 +2,7 @@
 // cards on Today and what brought each, where each card sits, which subtask is its top row, its peek, opening it and
 // its count. They also cover a card in search, where a checklist goes next (one rule shared by its card and its
 // screen), and the add box at the bottom aimed at a checklist's step.
-import { component, fakeVikunja } from './fake.mjs';
+import { component, fakeVikunja, outboxOf } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
@@ -801,7 +801,7 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   // As act does, the tick is in the outbox at once, and shows on the step's row through its op. Sending answers later.
   const outbox = list => {
     app.pending = list;
-    app.change(w => w.keyOps());
+    outboxOf(app, app.pending);
   };
   const act = f => {
     outbox([...app.pending, { kind: 'act', id: 'tick' + f.task, ...f }]);
@@ -1207,7 +1207,7 @@ test('a checklist is calculated once while nothing changes, and a tick recalcula
   app.clock += 1000; // a second passes
   assert.deepEqual([app.runView, worked], [v, 1], 'a second later, nothing is recalculated');
   app.pending = [{ kind: 'act', id: 'a1', run: 50, task: 53, op: 'done', at: new Date().toISOString() }]; // C is ticked and waiting to be sent
-  app.change(w => w.keyOps());
+  outboxOf(app, app.pending);
   const w = app.runView;
   assert.notEqual(w, v, 'a tick recalculates the checklist at once');
   assert.equal(worked, 2);
@@ -1300,7 +1300,7 @@ test('a subtask or a comment added in a sheet or on a checklist shows sending wo
       { kind: 'act', id: 'talk', op: 'note', task: 60, run: null, html: '<p>On it</p>', at },
       { kind: 'act', id: 'run', op: 'note', task: 50, run: 50, html: '<p>Half done</p>', at },
     ];
-    app.change(w => w.keyOps());
+    outboxOf(app, app.pending);
     app.markSlow();
     return new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   };
@@ -1766,7 +1766,7 @@ test('a change waiting to be sent recalculates only the rings of the checklists 
   worked.length = 0;
   const outbox = list => {
     app.pending = list;
-    app.change(w => w.keyOps());
+    outboxOf(app, app.pending);
     flush();
   };
   outbox([{ kind: 'act', id: 'n', op: 'note', task: 999, run: 998 }]);

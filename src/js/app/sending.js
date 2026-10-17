@@ -602,7 +602,7 @@ export default {
     this.failed = all.filter(e => e.failed);
     this.unsent = this.user ? all.length : null;
     this.keyWaiting();
-    this.change(w => w.keyOps());
+    this.keyOutbox();
     this.markSlow();
   },
   /* How many photos and files wait to upload for each task, by task id (`waiting.files`), and the tasks whose op has

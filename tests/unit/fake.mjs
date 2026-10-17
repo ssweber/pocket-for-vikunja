@@ -5,7 +5,7 @@ import { setApp } from '../../src/js/util.js';
 import tasks, { dropCopies } from '../../src/js/app/tasks.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
-import { uuid7 } from '../../src/js/sync.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
 import { stageContext } from '../../src/js/app/acts.js';
 import { noneWaiting, stagesOf, stageView } from '../../src/js/ops/index.js';
 
@@ -318,9 +318,19 @@ export function component(...parts) {
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   dropCopies();
   setApp(c);
+  // The outbox the last test left in memory isn't this app's (outboxOf).
+  sync.entries = new Map();
   return c;
 }
 
+/* The outbox holding the entries in `list`, in that order, as keyOps reads it, and each task's rows showing them. An
+   entry is the signed-in user's, made at QUEUED, unless it says otherwise. */
+export const QUEUED = '2026-10-17T09:00:00.000Z';
+export function outboxOf(app, list) {
+  app.user ||= { id: 1 };
+  sync.entries = new Map(list.map((e, n) => [e.id, Object.assign(e, { user: app.user.id, at: QUEUED, n, ...e })]));
+  app.change(w => w.keyOps());
+}
 // Send an op's stages one after another, as app/acts.js does, without the outbox around them.
 export async function sendStages(app, a) {
   a.id ||= uuid7();

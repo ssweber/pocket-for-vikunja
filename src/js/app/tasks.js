@@ -318,20 +318,19 @@ function leave(id, kind) {
   else delete host.leaving[id];
   touched.add(id);
 }
-/* Write the waiting ops into opsOn, under each task they change, in the order they will be sent. A task whose ops are
-   unchanged keeps its list, so only the keys of tasks whose ops changed are written (rule 10). A held delete is not in
-   `pending`, but its rows hide at once. It shows only on the tasks it deletes, so their gaps keep Restore until the
-   batch clears, and their parent lists them until then. */
+/* Write the ops waiting in the outbox into opsOn, under each task they change, in the order they will be sent. The
+   outbox tells the rows of each change to it (sync.js), and a refused op stops waiting. A task whose ops are unchanged
+   keeps its list, so only the keys of tasks whose ops changed are written (rule 10). A held delete shows only on the
+   tasks it deletes, so their gaps keep Restore until the batch clears, and their parent lists them until then. */
 function keyOps() {
   inChange();
   const c = host,
     was = raw(c.opsOn),
     out = {},
-    ids = list => list.map(e => e.id).join();
-  const held = c.user ? sync.all(c.user.id).filter(e => sync.held.has(e.id) && !e.failed) : [],
-    all = [...c.pending, ...held];
-  const listed = new Set([...all, ...(c.failed || [])].map(e => e.id));
-  for (const id of settled) if (!listed.has(id)) settled.delete(id);
+    ids = list => list.map(e => e.id).join(),
+    listed = c.user ? sync.all(c.user.id) : [],
+    all = listed.filter(e => !e.failed);
+  for (const id of settled) if (!listed.some(e => e.id === id)) settled.delete(id);
   for (const e of all)
     if (e.kind === 'act' && OPS[e.op] && !settled.has(e.id))
       for (const id of shownOn(e)) if (!sync.held.has(e.id) || e.ids.includes(id)) (out[id] ||= []).push(e);
@@ -575,6 +574,10 @@ export default {
       }
     });
     return kept.map(t => this.tasks[t.id]);
+  },
+  // Show each task's waiting ops as the outbox has them now (keyOps).
+  keyOutbox() {
+    this.change(w => w.keyOps());
   },
   // Whether a waiting delete, held for Restore or not, deletes task `id`.
   beingDeleted(id) {

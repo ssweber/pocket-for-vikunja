@@ -17,7 +17,7 @@ import {
   shareText,
 } from '../../src/js/share.js';
 import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee } from '../../src/js/quickadd.js';
-import { component } from './fake.mjs';
+import { component, outboxOf } from './fake.mjs';
 import sharing from '../../src/js/app/sharing.js';
 import cards from '../../src/js/app/cards.js';
 import runs from '../../src/js/app/runs.js';
@@ -728,7 +728,7 @@ test("the text shared from a checklist's screen matches its ring, counting a tic
   for (const x of [run, ...steps]) app.row(x);
   app.view = { groups: [], shownRun: { id: 50, steps: steps.map(s => s.id), at: null, last: null } };
   app.pending = [{ kind: 'act', id: 9, run: 50, task: 53, op: 'done', at: new Date().toISOString() }]; // "Lock up" was ticked and the tick is not sent yet
-  app.change(w => w.keyOps());
+  outboxOf(app, app.pending);
   const ring = app.ringOf(run),
     head = shareText(app.shareDoc('run'), NOW).split('\n')[0];
   assert.deepEqual([ring.pct, ring.done, ring.total], [63, 2, 4], '(100 + 50 + 100 + 0) / 4');

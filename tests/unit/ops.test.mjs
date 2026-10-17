@@ -2,7 +2,7 @@
 // sender asks the op what to do. sender.test.mjs tests the sender, and ops-dates.test.mjs the date ops.
 import './browser.mjs';
 import { sender, noConnection, offlineSender, lastSaid } from './ops-helpers.mjs';
-import { fakeVikunja, component } from './fake.mjs';
+import { component, fakeVikunja, outboxOf } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -170,7 +170,7 @@ test("a deleted subtask's figure stage skips a parent that a waiting delete dele
   const v = fakeVikunja([{ id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 3 }] } }]),
     app = component(tasks);
   app.pending = [{ kind: 'act', op: 'delete', id: 'd1', task: 1, ids: [1], items: [] }];
-  app.change(w => w.keyOps());
+  outboxOf(app, app.pending);
   const a = { id: 'd2', op: 'delete', task: 2, ids: [2], up: 1, stage: 1 };
   await figure(a, stageContext(a, app).start());
   assert.deepEqual(v.requests, [], 'the parent is neither read nor written');

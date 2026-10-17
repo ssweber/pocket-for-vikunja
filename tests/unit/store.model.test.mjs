@@ -406,9 +406,7 @@ const HEARD = {
     w.model.leave(id, kind);
     return fn(id, kind);
   },
-  // The outbox as keyOps sees it, so a row that lags behind the database can be told from a wrong one (bug 9).
   keyOps(w, fn) {
-    w.model.keyed = { list: sync.all(ME.id), holding: new Set(sync.held) };
     return fn();
   },
   offTasks(w, fn, a) {
@@ -1045,8 +1043,6 @@ const orphans = w => {
     .map(([id]) => [id, ['related_tasks']]);
   return out.length ? out : null;
 };
-// The fields op `a` changes on task `t`.
-const opFields = (a, t) => (t ? differ(t, opOf(a).apply(clone(t), a)) : []);
 
 /* Bugs the user hasn't decided on yet, as docs/design/single-code-paths.md numbers them under "Open bugs". Each entry
    says what is wrong, and `meets(ev, w)` says whether a write (ev, from judge) is that bug, and which fields of which
@@ -1074,29 +1070,6 @@ const KNOWN = [
       const rs = ev.via === 'apply' && MARKS.includes(ev.a.op) && w.v.tasks.get(ev.id)?.reactions;
       const mine = r => (rs?.[r] || []).some(u => u.id === ME.id);
       return mine(DONE_MARK) && mine(SKIP_MARK) && [[ev.id, ['reactions']]];
-    },
-  },
-  /* The rows learn of a change to the outbox only at the next refreshPending. sendActs refreshes when it starts and
-     when it ends, so an op refused or dropped partway through a flush shows on its rows until the flush ends. A delete
-     that sendHeld releases from Restore shows on its parent only once the outbox's lock frees. Met when a task's rows
-     show the ops keyOps last saw, and the database has others. */
-  {
-    bug: 9,
-    meets(ev, w) {
-      const m = w.model;
-      if (ev.via !== 'sweep' || !m.keyed) return null;
-      const ids = list => list.map(e => e.id).join(),
-        out = [];
-      for (const k of [...m.rows, 'pending-' + STEP]) {
-        const id = /^\d+$/.test(k) ? +k : k,
-          shows = w.app.opsOf(id),
-          now = m.waitingOn(id);
-        if (ids(shows) === ids(now) || ids(shows) !== ids(m.waitingIn(m.keyed.list, m.keyed.holding, id))) continue;
-        const t = m.copies.get(id) ?? m.bases.get(id) ?? WAITING_STEP,
-          only = (xs, ys) => xs.filter(a => !ys.some(b => b.id === a.id));
-        out.push([id, [...only(shows, now), ...only(now, shows)].flatMap(a => opFields(a, t))]);
-      }
-      return out.length ? out : null;
     },
   },
 ];

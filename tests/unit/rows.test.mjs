@@ -1,6 +1,6 @@
 // The shared row (src/markup/task-row.html) renders a task, a subtask in a sheet and a step on a checklist's screen.
 // These tests check what the row asks the component, given the options of the list it is in (`g`).
-import { component } from './fake.mjs';
+import { component, outboxOf } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
 import tasks, { started, TASK } from '../../src/js/app/tasks.js';
@@ -812,7 +812,7 @@ test("waiting claims and files are kept by task, and only that task's row is upd
   const act = (task, op) => ({ kind: 'act', id: op + task, task, op, user: me.id, who: me, items: [] });
   const outbox = list => {
     app.pending = list;
-    app.change(w => w.keyOps());
+    outboxOf(app, app.pending);
     app.keyWaiting();
     flush();
   };
