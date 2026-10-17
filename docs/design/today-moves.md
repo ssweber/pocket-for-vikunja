@@ -63,7 +63,7 @@ Things to check while building it:
 
 ### Tests
 
-In `tests/unit/actions.test.mjs`, beside the existing `reschedule` tests (`moveTo`):
+In `tests/unit/reschedule.test.mjs`, beside the existing `reschedule` tests (`moveTo`):
 
 - A row thrown from Next 7 days to Today leaves a gap in Next 7 days saying "Moved to Today", and the task is in Today.
 - The gap is gone once the batch clears, and stays while a finger is down.
