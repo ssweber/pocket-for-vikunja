@@ -58,8 +58,9 @@ export const waits = (e, stopped) => {
    Vikunja, and it counts from its send now, so the op's change still goes into the copy. A change an earlier try made
    counts from the entry's first request. The store orders what it learns by these times (tasks.js). */
 const sends = new Map();
-// The fields of a task that a write to `path` changes, as Vikunja's API has them, so each field of an op's change
-// counts from the request that made it.
+/* The fields of a task that a write to `path` changes, as Vikunja's API has them, so each field of an op's change
+   counts from the request that made it. A PATCH changes the fields it sends, and deleting a task changes the related
+   tasks of the tasks it was related to. */
 const PATHS = [
   [/\/reactions(\/delete)?$/, 'reactions'],
   [/\/comments$/, 'comments'],
@@ -448,8 +449,6 @@ export default {
         w = (c.write ||= sendingOp(a)),
         at = k => c.fieldsAt.get(k) ?? Math.min(...(sends.get(a.id)?.values() ?? []), w.at);
       this.change(x => x.answered(a, { at, crossed: w.crossed, fields: w.fields }, r, c.comment));
-      sends.delete(a.id);
-      told.delete(a.id);
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
@@ -508,6 +507,10 @@ export default {
       return { ...got(), status: 'error', error, kept: true };
     } finally {
       c.write?.end();
+      if (!sync.entries.has(a.id)) {
+        sends.delete(a.id);
+        told.delete(a.id);
+      }
     }
   },
   /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so
