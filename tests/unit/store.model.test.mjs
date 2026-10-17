@@ -549,7 +549,7 @@ class World {
      and an op from its first request in a try to its answer or its failure. Each is {fields, crossed}: what it sets
      on each task, and the writes in flight on each task at the same time. Two writes that set one field to different
      values can reach Vikunja in either order, so the store takes neither, and Vikunja's value is unknown to Pocket
-     until a read (doubt, when Vikunja makes each). `key` is the op's entry id, or the save. */
+     until a read (doubt, as they cross and as Vikunja makes each). `key` is the op's entry id, or the save. */
   fly(key, id, fields) {
     /* Vikunja sets done_at itself when done changes. It moves a repeating task marked done on to its next dates
        instead, so only its reply says what the write leaves there. */
@@ -566,6 +566,7 @@ class World {
         x.crossed.set(id, (x.crossed.get(id) || new Set()).add(y));
         y.crossed.set(id, (y.crossed.get(id) || new Set()).add(x));
         for (const z of [x, y]) this.model.doubt(id, [...(z.unheard.get(id) || [])]);
+        this.model.doubt(id, this.clashing(x, id, x.fields.get(id)));
       }
     return x;
   }
