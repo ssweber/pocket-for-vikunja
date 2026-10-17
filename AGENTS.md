@@ -20,9 +20,13 @@ Pocket looks or responds to touch against `docs/design-rules.md`.
 
 ## Checking a change
 
-- `npm run lint` and `npm run test:parse` need no server and take seconds.
-- `npm run test:local` starts a local Vikunja in Docker and runs every test. Run it before saying a change works.
-- A change in behaviour comes with a test, in the test file for that area.
+- `npm run lint`, `npm run test:unit` and `npm run test:parse` need no server and take seconds. Run them after each
+  change.
+- `npm run test:local` starts a local Vikunja in Docker and runs every test, which takes minutes. Run it once a piece
+  of work is finished, before it is checked on a phone or merged into `main`. Keep commits small, so a failure it
+  finds can be traced to one of them.
+- A change in behaviour comes with a test, in the test file for that area. Prefer a unit test, which finds the
+  problem in seconds.
 
 ## Writing
 
