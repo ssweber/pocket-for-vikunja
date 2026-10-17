@@ -136,6 +136,14 @@ test('a refusal gives Vikunja\'s detail, or else the relay\'s message, or else t
   await assert.rejects(api('/tasks/5'), { status: 500, message: 'HTTP 500' });
 });
 
+test('a reply that isn\'t JSON, such as a sign-in proxy\'s page, leaves the change waiting instead of refusing it', async () => {
+  const app = component();
+  globalThis.fetch = async () => new Response('<!doctype html><title>Sign in</title>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+  const e = await api('/tasks/5', { method: 'POST', body: {}, key: KEY }).catch(e => e);
+  assert.ok(passing(e), 'the outbox sends it again later');
+  assert.equal(app.offline, true);
+});
+
 test('a 409 from the relay is sent again with the same key after Retry-After, and the answer that follows is returned', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   component(); const sent = relay([409, { message: 'still running' }, { 'Retry-After': '1' }], [201, { id: 5 }]);

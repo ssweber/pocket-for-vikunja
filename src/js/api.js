@@ -137,7 +137,9 @@ async function request(path, {method='GET', body, raw=false, auth=true, retry=tr
   if (res.status === 204 || res.status === 304) return null;              // 304: the change made no difference
   // A reply cut off half way is a lost connection too, not an error from Vikunja.
   let t; try { t = await res.text(); } catch (e) { app.offline = true; throw new NetError(e.message); }
-  return t ? JSON.parse(t) : null;
+  // A reply that isn't JSON came from something in front of Vikunja, such as a sign-in proxy's page. Vikunja hasn't
+  // refused the change, so it waits, as with no connection.
+  try { return t ? JSON.parse(t) : null; } catch { app.offline = true; throw new NetError('the reply wasn\'t from Vikunja'); }
 }
 // Change some of a task's fields and return Vikunja's copy. When nothing changes Vikunja sends no body back, so the
 // task is read instead.

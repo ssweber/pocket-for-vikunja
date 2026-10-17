@@ -1206,6 +1206,23 @@ commits stay small so a failure there can be bisected. A plugin change waits for
 4. Phases 7 and 8 as one phase, with one review.
 5. Phases 9 to 13 as planned.
 
+The Veyrn comparison found these. Each goes where it is listed.
+
+- **Fixed with step 1:** a 2xx reply that isn't JSON, such as an auth proxy's login page, throws in `JSON.parse`, and
+  the sender read that as Vikunja refusing the change. Now such a reply leaves the change waiting (`request`).
+- **Step 3, the randomized test:** a relay replay (`Idempotent-Replayed`) can carry an answer older than a read Pocket
+  already took. The plan says a PATCH reply isn't trusted for labels and people, but `TASK` trusts it for both. Check
+  which is right against Vikunja 2.7.
+- **Phases 7 to 9:** an op refused with 404, because its task was deleted in Vikunja, stays failed for good. Its
+  `refusal` should drop it. A `flush` asked for while one runs is lost until the 30-second timer. Run one more pass.
+- **Phase 8:** the labels and people an add sets never reach Vikunja's copy (`CREATED` leaves them out).
+- **Phase 10:** an op on a checklist step that was never added stays failed. It should leave with the step's add.
+- **Phase 11:** `dropCopies` leaves `clock` as it is, so a read still running at sign-out writes the old user's tasks.
+  Check whether v2's `/tasks` returns tasks from archived projects, for the changed-tasks query.
+- **Phase 12:** the sign-out confirm calls every waiting op that isn't a line "a change to a checklist".
+- **After the major work:** honour a 429's `Retry-After`, which the relay also has to pass on. It matters only with
+  Vikunja's rate limits on. Accept `default_due_time` only as `HH:MM`.
+
 After the major work, before anyone else uses Pocket:
 
 - **Upgrading stored data.** Replace the upgrade that empties every IndexedDB store with one step per version that
