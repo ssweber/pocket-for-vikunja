@@ -15,15 +15,15 @@ const lost = () => new TypeError('network error');
 
 /* The fake keeps tasks by id and behaves as Vikunja does. GET, PATCH and DELETE /tasks/:id read and change a task. A
    repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
-   move it). A task that is read lists its current subtasks, without any that were deleted, and no deleted task among its
-   other related tasks (related_tasks).
-   POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
-   another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does. A
-   task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added to, and an assignee
-   removed. GET and POST /labels list and create labels (`labels`), and POST /tasks/:id/labels adds one to a task.
-   PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label that doesn't
-   exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them is refused
-   whole.
+   move it). A task that is read, or a PATCH's reply, lists no deleted task among its related tasks (related_tasks),
+   and a read lists each subtask as the subtask is now.
+   POST /projects/:id/tasks creates a task with the next id, never one a deleted task had. POST /tasks/:id/relations
+   makes one task a subtask of another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
+   tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
+   to, and an assignee removed. GET and POST /labels list and create labels (`labels`), and POST /tasks/:id/labels adds
+   one to a task. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
+   that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
+   is refused whole.
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
@@ -32,7 +32,8 @@ const lost = () => new TypeError('network error');
    Every request is recorded in `requests`, with its `key`, and `replayed` when the relay answered it from what it
    kept. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja but
    the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), or an HTTP status to
-   answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them. */
+   answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them.
+   `refuses(request)` gives an HTTP status for Vikunja itself to refuse a request with, which the relay keeps. */
 export function fakeVikunja(tasks = []) {
   const v = {
       tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])),
@@ -41,16 +42,20 @@ export function fakeVikunja(tasks = []) {
       requests: [],
       relayed: new Map(),
       trouble: () => null,
+      refuses: () => null,
     },
     gone = new Set();
-  const withSubtasks = t => {
+  const pruned = t => {
     for (const [kind, list] of Object.entries(t.related_tasks || {}))
-      if (kind !== 'subtask' && list) t.related_tasks[kind] = list.filter(s => !gone.has(s.id));
-    const subs = t.related_tasks?.subtask;
+      if (list) t.related_tasks[kind] = list.filter(s => !gone.has(s.id));
+    return t;
+  };
+  const withSubtasks = t => {
+    const subs = pruned(t).related_tasks?.subtask;
     if (!subs) return t;
-    t.related_tasks.subtask = subs
-      .filter(s => !gone.has(s.id))
-      .map(s => (v.tasks.has(s.id) ? { ...v.tasks.get(s.id), related_tasks: undefined } : s));
+    t.related_tasks.subtask = subs.map(s =>
+      v.tasks.has(s.id) ? { ...v.tasks.get(s.id), related_tasks: undefined } : s,
+    );
     return t;
   };
   v.task = id => v.tasks.get(id);
@@ -99,7 +104,9 @@ export function fakeVikunja(tasks = []) {
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
       noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
     let res;
-    if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
+    const no = v.refuses(req);
+    if (no) res = reply({ message: `HTTP ${no} from Vikunja` }, no);
+    else if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
     else if (req.path === '/labels' && method === 'POST') {
       const l = { id: 500 + v.labels.length, title: req.body.title };
       v.labels.push(l);
@@ -162,7 +169,7 @@ export function fakeVikunja(tasks = []) {
       }
     } else if (into && method === 'POST') {
       const made = {
-        id: Math.max(100, ...v.tasks.keys()) + 1,
+        id: Math.max(100, ...v.tasks.keys(), ...gone) + 1,
         done: false,
         done_at: '0001-01-01T00:00:00Z',
         percent_done: 0,
@@ -217,7 +224,7 @@ export function fakeVikunja(tasks = []) {
       Object.assign(t, req.body, next ? { done: false, due_date: new Date(next).toISOString() } : {}, {
         updated: new Date().toISOString(),
       });
-      res = reply(t);
+      res = reply(pruned(t));
     } else res = reply({ message: `the fake has no ${method} ${req.path}` }, 405);
     if (key && res.status < 500) v.relayed.set(key, { fp, status: res.status, text: await res.clone().text() });
     if (trouble === 'lost') throw lost();
