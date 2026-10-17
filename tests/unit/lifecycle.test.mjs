@@ -104,26 +104,41 @@ registerHooks({
 });
 const tab = async name => {
   const from = path => import(new URL(`${path}?tab=${name}`, import.meta.url));
-  const [fake, tasks, acts, sending, outbox, runs, sync, ops] = await Promise.all(
+  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages] = await Promise.all(
     [
       './fake.mjs',
-      ...['app/tasks', 'app/acts', 'app/sending', 'app/outbox', 'app/runs', 'sync', 'ops/index'].map(
-        p => `../../src/js/${p}.js`,
-      ),
+      ...[
+        'app/tasks',
+        'app/acts',
+        'app/sending',
+        'app/outbox',
+        'app/runs',
+        'app/actions',
+        'sync',
+        'ops/index',
+        'messages',
+      ].map(p => `../../src/js/${p}.js`),
     ].map(from),
   );
+  // A delete is held for Restore and sent as the app sends it (holdDelete, sendHeld).
+  const deletes = Object.fromEntries(['holdDelete', 'sendHeld', 'parentIdOf'].map(k => [k, actions.default[k]]));
   return {
     fake,
     tasks,
     sync: sync.sync,
     uuid7: sync.uuid7,
     ops,
-    parts: [tasks, acts, sending, outbox, runs].map(m => m.default),
+    messages,
+    parts: [tasks, acts, sending, outbox, runs].map(m => m.default).concat(deletes),
   };
 };
+/* A reload opens tab R, whose modules hold nothing of the scenario, as a new page holds nothing of the page before it.
+   Only the database, the lock and the messages between tabs carry over. */
 const A = await tab('a'),
-  B = await tab('b');
+  B = await tab('b'),
+  R = await tab('r');
 const { OPS, opOf, refusalOf, addLines } = A.ops;
+const { UNSURE } = A.messages;
 
 const ME = { id: 1, username: 'me', name: '' },
   ZERO = '0001-01-01T00:00:00Z',
@@ -170,10 +185,11 @@ const line = (title, p) => ({
 });
 
 /* What each op is tried with: the tasks Vikunja has before (`tasks`), the fields it is queued with (`fields`), and what
-   Vikunja has once it is made (`made`). The fake Vikunja answers each request as Vikunja does. `cannot` names the
-   states that can't arise for the op: an op whose requests are all in one stage is never partly done. `unseen` names
-   the fields Vikunja changes that the task's row doesn't show. Keep each sample small. Unit tests have no DOM, so a
-   comment holds no HTML. */
+   Vikunja has once it is made (`made`). The fake Vikunja answers each request as Vikunja does. `fields` may list
+   several ops queued together, and the last is the one tried. `queue(app, fields)` queues it where the app has its own
+   way. `cannot` names the states that can't arise for the op: an op whose requests are all in one stage is never
+   partly done. `unseen` names the fields Vikunja changes that the task's row doesn't show. A sample named other than
+   its op says which op it tries (`op`). Keep each sample small. Unit tests have no DOM, so a comment holds no HTML. */
 const SAMPLES = {
   done: {
     tasks: checklist(),
@@ -234,9 +250,14 @@ const SAMPLES = {
     made: v => !v.task(2).assignees.length,
     cannot: ['partly done'],
   },
+  // A delete is held while Restore shows, then sent as the batch clears.
   delete: {
     tasks: checklist({ 1: { percent_done: 0.5 }, 2: { done: true } }),
     fields: { op: 'delete', task: 3, ids: [3], up: 1, run: null },
+    async queue(app, f) {
+      f.id = (await app.holdDelete(app.tasks[f.task], null, f.ids)).id;
+      return app.sendHeld(f.id);
+    },
     made: v => !v.task(3) && v.task(1).percent_done === 1,
   },
   // A list's order is kept by view in `positions`, not on the task's row (`unseen`).
@@ -253,6 +274,20 @@ const SAMPLES = {
     fields: () =>
       addLines([line('Buy rope', { done: true })], { parent: { id: 1, project_id: 5, title: 'Closing' } })[0],
     made: v => v.task(101).done && v.task(1).related_tasks.subtask.length === 3 && v.task(1).percent_done === 0.33,
+  },
+  // Two lines in the checklist's subtask box, the second under the first. The second waits for the first's task.
+  'add, a line under a line': {
+    op: 'add',
+    tasks: checklist(),
+    fields: () =>
+      addLines([line('Buy rope'), { ...line('Cut it', { done: true }), under: 0 }], {
+        parent: { id: 1, project_id: 5, title: 'Closing' },
+      }),
+    made: v =>
+      v.task(102).done &&
+      v.task(101).related_tasks.subtask[0].id === 102 &&
+      v.task(101).percent_done === 1 &&
+      v.task(1).related_tasks.subtask.length === 3,
   },
   // A template's date taken off: its repeat off, its date off and done, and its repeat back.
   due: {
@@ -290,8 +325,9 @@ const reply = (status, body, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 
 /* What becomes of the request a state picks (x.one). Vikunja refuses it, and the relay keeps the refusal. The relay
-   can't say whether Vikunja made it (unknown), though Vikunja did (arrived). The connection drops as it is sent (cut)
-   and stays down. Or it waits until finish lets it go (held), and arrives, or arrives with its reply lost. */
+   can't say whether Vikunja made it (unknown), though Vikunja did (arrived). The connection drops as it is sent (cut),
+   or once Vikunja has made it (lost), and stays down. Or it waits until finish lets it go (held), and arrives, or
+   arrives with its reply lost. */
 const unknown = () =>
   reply(
     409,
@@ -308,6 +344,11 @@ const TROUBLE = {
   cut(send, x) {
     x.down = true;
     throw new TypeError('Failed to fetch');
+  },
+  async lost(send, x) {
+    await send();
+    x.down = true;
+    throw new TypeError('network error');
   },
   async held(send, x) {
     x.held.resolve();
@@ -368,8 +409,8 @@ async function open(tab, x) {
 }
 
 /* A scenario's world: the fake Vikunja with the sample's tasks, an empty outbox, and tab A open (x.app). Every request
-   fails while the connection is down (x.down). The first write whose key x.one picks gets the TROUBLE x.one names, and
-   the relay answers that key the same way from then on. */
+   fails while the connection is down (x.down). The first write of the op tried whose key x.one picks gets the TROUBLE
+   x.one names, and the relay answers that key the same way from then on. */
 async function world(sample) {
   for (const s of stores.values()) s.clear();
   const v = A.fake.fakeVikunja(sample.tasks.map(t => structuredClone(t))),
@@ -387,17 +428,20 @@ async function world(sample) {
       stuck.set(key, TROUBLE[what === 'arrived' ? 'unknown' : what]);
     return TROUBLE[what](() => send(url, opts), x);
   };
-  const fields = typeof sample.fields === 'function' ? sample.fields() : sample.fields;
-  x.fields = { id: A.uuid7(), ...fields };
-  x.queue = () => x.app.actAll([x.fields]);
+  const fields = [typeof sample.fields === 'function' ? sample.fields() : sample.fields].flat(),
+    before = fields.slice(0, -1);
+  x.fields = { id: A.uuid7(), ...fields.at(-1) };
+  x.queue = () => (sample.queue ? sample.queue(x.app, x.fields) : x.app.actAll([...before, x.fields]));
   x.app = await open(A, x);
   return x;
 }
-// Pick the first write sent in stage `at` (any stage when null) for `what`.
+// Pick the first write of the op tried (x.fields) sent in stage `at` (any stage when null) for `what`.
 const first =
-  (what, at = null) =>
-  key =>
-    (at === null || key.split(':')[1] === String(at)) && what;
+  (x, what, at = null) =>
+  key => {
+    const [id, stage] = key.split(':');
+    return id === x.fields.id && (at === null || stage === String(at)) && what;
+  };
 
 /* The connection comes back, and every open tab sends what is waiting, at the same time, until nothing more is sent.
    `end` is what Vikunja has then. */
@@ -414,13 +458,13 @@ async function finish(x) {
     await settle();
   }
   x.end = vikunja(x.v);
-  x.answered = !x.cancelled && !x.givenBack && !outbox().some(e => e.failed);
+  x.answered = !x.cancelWords && !x.givenBack && !outbox().some(e => e.failed);
 }
 
 /* The states an op can be in when the user acts. Each sample's partly done states are made from the stages its
    requests are sent in (statesOf). `not` names the actions the user wouldn't take there. */
 const troubled = (what, at) => async x => {
-  x.one = first(what, at);
+  x.one = first(x, what, at);
   await x.queue();
   x.one = null;
 };
@@ -438,7 +482,7 @@ const STATES = [
     async reach(x) {
       x.held = deferred();
       x.released = deferred();
-      x.one = first('held');
+      x.one = first(x, 'held');
       x.sending = x.queue();
       await x.held;
     },
@@ -446,6 +490,8 @@ const STATES = [
   { name: 'answered', reach: x => x.queue() },
   { name: 'refused', reach: troubled('refused') },
   { name: 'unknown', reach: troubled('unknown') },
+  // Vikunja made it, and the change waits to be sent again.
+  { name: 'reply lost', reach: troubled('lost') },
   // The user checks Vikunja, finds the change there, and doesn't tap Try again.
   { name: 'unknown, but made', reach: troubled('arrived'), not: ['Try again'] },
 ];
@@ -464,10 +510,14 @@ const row = x => {
   x.app.refreshPending();
   return x.app.outboxRows.find(r => r.key === x.fields.id);
 };
+/* Cancel records what its message says, and what Vikunja has as it is tapped. Ops queued before the op tried may
+   still be waiting then, and are sent after it, so Vikunja is recorded only when nothing else waits. */
 const cancel = async x => {
-  const [how, ...args] = row(x).drop;
+  const [how, ...args] = row(x).drop,
+    alone = outbox().every(e => e.id === x.fields.id);
   await x.app[how](...args);
-  if (/^Cancelled\./.test(x.app.toasts.at(-1)?.msg)) x.cancelled = vikunja(x.v);
+  const said = x.app.toasts.at(-1)?.msg;
+  if (/^Cancelled\./.test(said)) Object.assign(x, { cancelWords: said, cancelled: alone ? vikunja(x.v) : null });
 };
 /* What the user does in a state, when `can` says the state offers it. `run` returns false when what it needs isn't
    there after all. */
@@ -492,7 +542,7 @@ const ACTIONS = [
       await cancel(x);
       const undo = x.app.toasts.at(-1)?.action;
       if (undo?.label !== 'Undo') return false;
-      x.cancelled = null;
+      x.cancelWords = x.cancelled = null;
       await undo.fn();
     },
   },
@@ -503,7 +553,7 @@ const ACTIONS = [
     async run(x) {
       x.released?.resolve('lost');
       await x.sending;
-      x.app = await open(A, x);
+      x.app = await open(R, x);
     },
   },
   {
@@ -570,7 +620,7 @@ const RULES = [
     "a change the user didn't take back is made exactly once, or waits in the Outbox",
     x => {
       if (
-        x.cancelled ||
+        x.cancelWords ||
         x.undone !== undefined ||
         x.givenBack ||
         same(x.end, x.ref.made) ||
@@ -583,6 +633,24 @@ const RULES = [
   [
     'Cancel sends nothing more',
     x => x.cancelled && !same(x.end, x.cancelled) && `Vikunja has ${diff(x.cancelled, x.end)}`,
+  ],
+  /* x.ref.nothingKept is what Cancel says of the op before anything is sent. Cancel may say it only when Vikunja has
+     none of the change, and must say it then, unless it says that Vikunja may or may not have the change. */
+  [
+    'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
+    x =>
+      x.cancelWords === x.ref.nothingKept &&
+      !same(x.end, x.before) &&
+      `Cancel said “${x.cancelWords}”, and Vikunja has ${diff(x.before, x.end)}`,
+  ],
+  [
+    "Cancel's words say what Vikunja keeps",
+    x =>
+      x.cancelWords &&
+      x.cancelWords !== x.ref.nothingKept &&
+      !x.cancelWords.includes(UNSURE) &&
+      same(x.end, x.before) &&
+      `Cancel said “${x.cancelWords}”, and Vikunja has none of the change`,
   ],
   [
     'Undo puts back what the op changed',
@@ -648,34 +716,61 @@ const RULES = [
   ],
 ];
 
-/* The sample's op sent with nothing in the way: what Vikunja has then (`made`), and the stages that sent a request. */
+/* The sample's op sent with nothing in the way: what Vikunja has then (`made`), and the stages that sent a request. And
+   what Cancel says of the op before anything is sent (`nothingKept`), and what Vikunja has once the ops queued before
+   it are sent without it (`before`). */
 async function reference(sample) {
   const x = await world(sample);
   await x.queue();
   await finish(x);
   assert.ok(sample.made(x.v), `the sample makes its change: ${diff(x.before, x.end)}`);
   assert.deepEqual(outbox(), [], 'the outbox is empty once it is sent');
-  return { made: x.end, stages: [...new Set(x.v.requests.filter(r => r.key).map(r => +r.key.split(':')[1]))] };
+  const keys = x.v.requests.filter(r => r.key?.startsWith(x.fields.id + ':')).map(r => +r.key.split(':')[1]);
+  const y = await world(sample);
+  await STATES[0].reach(y);
+  await cancel(y);
+  assert.ok(y.cancelWords, 'Cancel takes back the op before anything is sent');
+  await finish(y);
+  return { made: x.end, stages: [...new Set(keys)], nothingKept: y.cancelWords, before: y.end };
 }
 
 test('every op in OPS has a sample', () => {
+  const tried = new Set(Object.entries(SAMPLES).map(([name, s]) => s.op ?? name));
   assert.deepEqual(
-    Object.keys(OPS).filter(name => !SAMPLES[name]),
+    Object.keys(OPS).filter(name => !tried.has(name)),
     [],
     'a new op needs a sample in SAMPLES',
   );
 });
 
-/* Bugs this test found whose fix would change what the user sees or need new words, listed until that is decided. A
-   scenario here may break the rules, and t.diagnostic names it. An entry that no scenario breaks any more fails the
-   test, so it is removed once the bug is fixed. */
-const KNOWN = [];
+/* Bugs this test found whose fix would change what the user sees or need new words, listed until that is decided. Each
+   entry excuses one rule (`rule`, its name in RULES) for the sample named `sample`, in the states that `state` matches,
+   after `action` (any action when left out). t.diagnostic names each scenario it excuses. An entry that no scenario
+   needs any more fails the test, so it is removed once the bug is fixed. */
+const KNOWN = [
+  /* Cancel of a progress refused at its parent's progress says the step "keeps the progress it has in Vikunja", the
+     same words as before anything was sent. Vikunja has the new progress, and the words don't say so. */
+  {
+    sample: 'progress',
+    state: /^partly done, refused/,
+    action: 'Cancel',
+    rule: 'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
+    why: "Cancel of a partly sent progress doesn't say Vikunja has the new progress",
+  },
+  /* Cancel of a delete refused at its parent's progress says the task "stays in Vikunja". Vikunja has deleted it. The
+     delete's `dropped` words don't look at a.stage. */
+  {
+    sample: 'delete',
+    state: /^partly done, refused/,
+    action: 'Cancel',
+    rule: 'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
+    why: 'Cancel of a partly sent delete says the task stays in Vikunja, which has deleted it',
+  },
+];
 
-for (const name of Object.keys(OPS))
+for (const [name, sample] of Object.entries(SAMPLES))
   test(`${name} passes the lifecycle checks`, async t => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
-    const sample = SAMPLES[name];
-    assert.ok(sample, `${name} has no sample in SAMPLES`);
     const ref = await reference(sample),
       several = ref.stages.length > 1;
     assert.equal(
@@ -686,13 +781,13 @@ for (const name of Object.keys(OPS))
         : `${name} sends its requests in one stage, so its sample says it can't be partly done`,
     );
     const failures = [],
-      known = KNOWN.filter(k => k.op === name),
+      known = KNOWN.filter(k => k.sample === name),
       seen = new Set();
     for (const state of statesOf(sample, ref.stages))
       for (const action of ACTIONS) {
         if (state.not?.includes(action.name)) continue;
         const x = await world(sample);
-        x.ref = ref;
+        Object.assign(x, { ref, before: ref.before });
         await state.reach(x);
         x.givenBack = state.name === 'refused' && refusalOf(x.fields) !== 'kept';
         if ((action.can && !action.can(x)) || (await action.run(x)) === false) {
@@ -700,17 +795,20 @@ for (const name of Object.keys(OPS))
           continue;
         }
         await finish(x);
-        const broken = RULES.map(([rule, check]) => [rule, check(x)])
-          .filter(([, broke]) => broke)
-          .map(([rule, broke]) => `${state.name}, then ${action.name}: ${rule}. ${broke}`);
-        const k = broken.length && known.find(k => k.state.test(state.name) && (!k.action || k.action === action.name));
-        if (k) {
-          seen.add(k);
-          t.diagnostic(`known: ${broken.join(' ')} (${k.why})`);
-        } else failures.push(...broken);
+        for (const [rule, check] of RULES) {
+          const broke = check(x);
+          if (!broke) continue;
+          const said = `${state.name}, then ${action.name}: ${rule}. ${broke}`,
+            k = known.find(k => k.rule === rule && k.state.test(state.name) && (!k.action || k.action === action.name));
+          if (!k) failures.push(said);
+          else {
+            seen.add(k);
+            t.diagnostic(`known: ${said} (${k.why})`);
+          }
+        }
       }
     for (const k of known)
       if (!seen.has(k))
-        failures.push(`no scenario breaks a rule any more for the KNOWN bug "${k.why}". Remove it from KNOWN.`);
+        failures.push(`no scenario breaks "${k.rule}" any more for the KNOWN bug "${k.why}". Remove it from KNOWN.`);
     assert.deepEqual(failures, []);
   });
