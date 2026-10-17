@@ -14,8 +14,10 @@
    - invert(a): the fields of the op that undoes entry `a`, from what `a` recorded, or null for no Undo.
    - merge(older, newer): what replaces an unsent `older` and the `newer` op on its task: an entry, CANCEL or null.
    - waiting: the key of the component's `waiting` that marks its task's rows once it has waited a while.
-   - refusal: what becomes of it when Vikunja refuses it (the values are beside DEFAULTS).
-   - cancel: what Cancel gives back, and so whether Cancel offers Undo (the values are beside DEFAULTS).
+   - refusal: what becomes of it when Vikunja refuses it (the values are beside DEFAULTS), or a function of the entry
+     giving that (refusalOf).
+   - cancel: what Cancel gives back, and so whether Cancel offers Undo (the values are beside DEFAULTS), or a function
+     of the entry giving that (cancelOf).
    - sheetPlace: where the open sheet of its task says it was refused, instead of the usual place.
    - answered(app, a, c): what the screen does once Vikunja has answered it.
    - holds(a): the ids it holds back once it fails, so the ops after it on them wait (heldTasks, app/acts.js).
@@ -58,6 +60,7 @@ export const DEFAULTS = {
   // 'undo': nothing goes back, and Cancel offers Undo. 'text': its text goes back to its box and Cancel says so, or
   // with no text Cancel offers Undo. 'back': its text goes back, and its `dropped` words say so. 'lines': the lines
   // under it go back to their box. An unsent line is cancelled as its waiting row's Cancel does it (cancelPending).
+  // 'made': the task it made stays, and the lines under it are sent under that task. Cancel offers no Undo.
   cancel: 'undo',
   sheetPlace: null,
   answered: (app, a) => { if (app.view.shownRun?.id === a.run) app.refreshRunTask(a.task); },
@@ -100,5 +103,8 @@ export const stageView = a => {
 // The stages entry `a` is sent in. A stage builds its requests only from the entry and `a.fixed`, so each part always
 // carries the same request, and its key gets the same answer from the relay.
 export const stagesOf = a => { const s = OPS[a.op].stages; return typeof s === 'function' ? s(a) : s; };
+// What a refusal of entry `a` does, and what its Cancel gives back. An add's line decides by whether its task is made.
+export const refusalOf = a => { const r = opOf(a).refusal; return typeof r === 'function' ? r(a) : r; };
+export const cancelOf = a => { const r = opOf(a).cancel; return typeof r === 'function' ? r(a) : r; };
 // The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
 export const noneWaiting = () => Object.fromEntries(['files', ...Object.values(OPS).map(o => o.waiting).filter(Boolean)].map(k => [k, {}]));

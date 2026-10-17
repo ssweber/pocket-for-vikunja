@@ -2,7 +2,7 @@
 import {fmtSize, taskDrafts} from '../util.js';
 import {addedText, parseStep} from '../checklists.js';
 import {older, sendState, sync, uuid7} from '../sync.js';
-import {dropUnder, opOf, passUps, photosOf} from '../ops/index.js';
+import {cancelOf, dropUnder, opOf, passUps, photosOf} from '../ops/index.js';
 import {UNKNOWN} from '../messages.js';
 import {copyOf} from './tasks.js';
 
@@ -30,7 +30,7 @@ export default {
         // waiting row's Cancel does it, until its first request is sent.
         const why = e.failed?.message, failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why, op = opOf(e);
         rows.push({key: e.id, text: op.text(e, e.label || this.actTitle(e.task), this.isRepeat(e.task)), when, failed, retry: !!e.failed,
-          drop: e.failed ? ['dropAct', e.id] : e.sent ? null : [op.cancel === 'lines' ? 'cancelPending' : 'dropAct', e.id]});
+          drop: e.failed ? ['dropAct', e.id] : e.sent ? null : [cancelOf(e) === 'lines' ? 'cancelPending' : 'dropAct', e.id]});
       }
       // The photos and files of a line, or added from a task's sheet.
       const to = copyOf(e.taskId)?.title || e.p?.title;
@@ -104,19 +104,20 @@ export default {
      says what Vikunja keeps and has an Undo. Text the action held goes back to its box instead, with no Undo, so
      the text is never both in the box and sent. What goes back is the op's (cancel). The lines under a cancelled line
      wait behind it, so they are refused, and their text goes back to their box. The photos of a line whose task isn't
-     made go back to quick add. */
+     made go back to quick add. The lines under a line whose task is made are sent under that task. */
   async dropAct(id){
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a) return;
-    const how = opOf(a).cancel;
+    const how = cancelOf(a);
     let gone = false, started = false, under = [], photos = [], kept = null;
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e) { gone = true; return; }
       if (!e.failed && e.sent) { started = true; return; }
       if (how === 'lines') { photos = await photosOf([e]); under = await dropUnder('pending-' + id, e.user); await passUps(e, under); }
+      if (how === 'made') await passUps(e);
       kept = JSON.parse(JSON.stringify(e));
-      await sync.remove(id);
+      await sync.remove(id, e.taskId ?? null);
     });
     this.refreshPending();
     if (gone || started) { this.say(gone ? 'It was sent before it could be stopped.' : 'It is being sent and can\'t be stopped now.', {place: 'sheet:top'}); return; }
@@ -129,7 +130,7 @@ export default {
     const back = said.back && how !== 'back' && (how === 'lines' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
     // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
     // again, as before.
-    const undo = said.back || how === 'lines' || how === 'back' ? null : {label: 'Undo', fn: async () => {
+    const undo = said.back || ['lines', 'back', 'made'].includes(how) ? null : {label: 'Undo', fn: async () => {
       const e = kept; kept = null;
       if (!e) return;
       await sync.lock(() => sync.add(e, []));

@@ -142,9 +142,10 @@ export const OP_WORDS = {
   // How a task repeats, in the words of the sheet's Repeats list. Cancel names the repeat before the change (`was`).
   repeat: {text: (a, title, r) => `${repeatText(a.set || {})}: ${row(title, r)}`, refused: (a, title) => `Changing how ${title ? `“${named(title)}”` : 'a task'} repeats`,
     dropped: keeps((a, title) => `${it(title)} still ${repeatText(a.was || {}).toLowerCase()}.`)},
-  // An add's line, under what it goes under (`a.over`).
-  add: {text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
-    refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: keeps(() => '')},
+  // An add's line, under what it goes under (`a.over`). Only a line whose task is made (`taskId`) is cancelled in the
+  // Outbox with these words. Before that, its Cancel gives the lines back (cancelOf).
+  add: {saved: 'it\'s added', text: (a, title) => a.taskId ? `Finishing “${named(title)}”` : a.over ? `Subtask of “${named(a.over)}”: ${title}` : `New task: ${title}`,
+    refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'), dropped: keeps((a, title) => a.taskId ? `${it(title)} stays in Vikunja.${REST}` : '')},
 };
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names => `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;

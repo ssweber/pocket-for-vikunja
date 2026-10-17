@@ -6,7 +6,7 @@ import {parseStep, patiently} from '../checklists.js';
 import {CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7} from '../sync.js';
 import {saved} from '../lists.js';
 import {notKnown, toOutbox, UNKNOWN} from '../messages.js';
-import {checkFields, dropUnder, opOf, refuseLines, stageView, stagesOf} from '../ops/index.js';
+import {checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf} from '../ops/index.js';
 import {CREATED, opsId, TASK} from './tasks.js';
 
 let actCount = 0;                                // orders things done in the same millisecond
@@ -33,7 +33,7 @@ const filesOut = a => {
 };
 
 // A line typed in an add box. Its box shows and says what became of it (sendLines, reportSent), as its refusal says.
-const boxed = e => !!e && opOf(e).refusal === 'lines';
+const boxed = e => !!e && refusalOf(e) === 'lines';
 // The ids that failed acts hold back (their op's holds). Later acts on those ids wait, so an untick never arrives
 // before its tick.
 export const heldTasks = entries => new Set(entries.filter(e => e.kind === 'act' && e.failed).flatMap(e => opOf(e).holds(e)));
@@ -119,11 +119,12 @@ export default {
     }
   },
   /* Undo the ops queued from `list` (their fields, with each entry's id). The rows show the Undo at once, though the
-     outbox may be busy sending. Then, in the outbox's lock, an op that has sent nothing, or that Vikunja refused,
-     leaves the outbox, and its rows show the task without it. An op whose answer is unknown leaves too, and its
-     invert is queued, checked against what it sent. Any other op's invert is queued, built from Vikunja's answer when
-     this tab saw it. An op that a later op replaced (fold) counts as changed since, and stays. Returns `left`, which
-     resolves to how many Undos were left alone: changed since, or refused. */
+     outbox may be busy sending. Then, in the outbox's lock, an op that has sent nothing, or that Vikunja refused at
+     its first stage, leaves the outbox, and its rows show the task without it. An op whose answer is unknown, or that
+     Vikunja refused after an earlier stage was made, leaves too, and its invert is queued, checked against what it
+     sent. Any other op's invert is queued, built from Vikunja's answer when this tab saw it. An op that a later op
+     replaced (fold) counts as changed since, and stays. Returns `left`, which resolves to how many Undos were left
+     alone: changed since, or refused. */
   undoOps(list){
     const now = list.filter(f => !folded.has(f.id)), invert = (f, e) => e ? opOf(f).invert(e) : inverts.get(f.id) ?? opOf(f).invert(f);
     const shown = this.change(w => now.flatMap(f => {
@@ -140,7 +141,7 @@ export default {
           if (folded.has(f.id)) { left++; continue; }                     // replaced while Undo waited for the lock
           const e = await sync.fresh(f.id), unknown = e?.failed?.message === UNKNOWN;
           if (e && (!e.sent || e.failed)) await sync.remove(f.id);
-          const inv = (!e || (e.sent && (!e.failed || unknown))) && invert(f, e);
+          const inv = (!e || (e.sent && (!e.failed || unknown || e.stage > 0))) && invert(f, e);
           if (inv) back.push({...inv, run: null, undo: true});
         }
       });
@@ -193,14 +194,17 @@ export default {
           break;
         }
         last = await this.sendEntry(e.id);
-        out.push({...last, id: e.id, batch: e.batch, boxed: boxed(e)});
+        // A line whose task is made is kept when refused, and reported here rather than by its box. The entry as sent
+        // has its task, and the entry as queued may not.
+        const now = sync.entries.get(e.id) ?? e, inBox = boxed(now);
+        out.push({...last, id: e.id, batch: e.batch, boxed: inBox});
         if (last.kept) hold(e, stopped);
         // A failed move shows its own message on the row (reorder), and a line in its add box, so none here (refusal).
         const err = last.error, op = opOf(e);
         // A stage that knows the whole sentence gives it (`said`). An op that names a place in its task's open sheet
         // says it there until the sheet closes (sheetPlace).
         const inSheet = op.sheetPlace && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
-        if (last.status === 'error' && !quiet?.has(e.id) && op.refusal !== 'undone' && op.refusal !== 'lines') this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
+        if (last.status === 'error' && !quiet?.has(e.id) && refusalOf(now) !== 'undone' && !inBox) this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
           : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err))),
           {place: inSheet ? op.sheetPlace : 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null, ...inSheet && {ms: null}});
         if (last.status === 'offline' || e.id === id) break;
@@ -259,7 +263,7 @@ export default {
         return {...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401};
       }
       // The relay can't tell whether Vikunja made the change. Only the user can check, so it is kept for Try again.
-      const unknown = error.code === 'unknown', refusal = unknown ? 'kept' : op.refusal;
+      const unknown = error.code === 'unknown', refusal = unknown ? 'kept' : refusalOf(a);
       if (unknown) error.message = UNKNOWN;
       if (refusal === 'undone') error.drop = true;
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.

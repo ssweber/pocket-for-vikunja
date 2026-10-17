@@ -1108,8 +1108,9 @@ phone check of phase 6 covers 6c, since nothing on screen changes.
 6c-2 is built: each op's `asks` and `saw`, the check in `actEntry` (`checkFields`), and the proxy a stage gets
 (`stageView`).
 
-6c-3 is built: `tests/unit/lifecycle.test.mjs`, with a sample for each op. Its `KNOWN` list holds the two bugs it
-found whose fix would change what the user sees, until the user decides them.
+6c-3 is built: `tests/unit/lifecycle.test.mjs`, with a sample for each op. The two bugs it found whose fix changed
+what the user sees are fixed, as the user decided on 2026-10-17, and its `KNOWN` list is empty. A line refused after
+its task was made stays in the Outbox. Undo of a template's date taken off partway puts back its repeat.
 
 ### Tests
 

@@ -545,7 +545,7 @@ test('a line made by Try again after its batch\'s progress was written writes it
   assert.deepEqual([v.task(9).percent_done, sync.all(1)], [0.5, []]);
 });
 
-test('a line refused after its task was made gives nothing back, and the message doesn\'t say its text is back', async t => {
+test('a line refused after its task was made gives nothing back, and is kept in the Outbox', async t => {
   t.after(clear);
   const v = fakeVikunja(), app = adding(t), e = entry([line('Pack the van'), line('Load chairs', {}, 0)]);
   v.trouble = () => 'offline';
@@ -553,7 +553,8 @@ test('a line refused after its task was made gives nothing back, and the message
   v.trouble = r => r.path.endsWith('/relations') ? 403 : null;
   app.flush = sending.flush;
   await app.flush();
-  assert.deepEqual([app.cap.text, app.toast.msg, app.toast.action], ['', 'Adding “Load chairs” couldn\'t be sent: HTTP 403 from the fake.', null], 'nothing is kept, so no Outbox button');
+  assert.deepEqual([app.cap.text, app.toast.msg, app.toast.action?.label], ['', 'Adding “Load chairs” couldn\'t be sent: HTTP 403 from the fake. It\'s kept to try again.', 'Outbox']);
+  assert.deepEqual(app.outboxRows.map(x => [x.text, x.retry]), [['Finishing “Load chairs”', true]]);
 });
 
 test('when another tab sends a whole batch first, the add box is told it is gone, not saved offline', async t => {

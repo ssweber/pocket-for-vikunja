@@ -4,7 +4,7 @@ import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { COMMON, DEFAULTS, opOf, OPS, SENT, stageView } from '../../src/js/ops/index.js';
+import { addLines, cancelOf, COMMON, DEFAULTS, opOf, OPS, refusalOf, SENT, stageView } from '../../src/js/ops/index.js';
 import acts, { heldTasks, stageContext, waits } from '../../src/js/app/acts.js';
 import tasks, { copyOf, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
@@ -29,7 +29,9 @@ test('every op defines every field, null for the default, and the comment on OPS
     assert.ok(stages.length && stages.every(s => typeof s === 'function'), `${name} has its requests`);
     const full = opOf({ op: name });
     for (const f of ['on', 'answered', 'holds', 'waitsOn', 'row', 'files', 'deletes']) assert.equal(typeof full[f], 'function', `${name}.${f}`);
-    assert.deepEqual([typeof full.keepReads, ['kept', 'back', 'lines', 'undone'].includes(full.refusal), ['undo', 'text', 'back', 'lines'].includes(full.cancel)], ['boolean', true, true], name);
+    // A refusal and a Cancel may depend on the entry, here one whose task isn't made yet and one whose task is.
+    for (const a of [{ op: name }, { op: name, taskId: 4 }])
+      assert.deepEqual([typeof full.keepReads, ['kept', 'back', 'lines', 'undone'].includes(refusalOf(a)), ['undo', 'text', 'back', 'lines', 'made'].includes(cancelOf(a))], ['boolean', true, true], name);
     assert.ok(Array.isArray(op.asks) && Array.isArray(op.saw), `${name} declares asks and saw`);
     assert.deepEqual(op.asks.filter(k => op.saw.includes(k)), [], `${name}: no field is in both asks and saw`);
     assert.deepEqual([...op.asks, ...op.saw].filter(k => COMMON.includes(k) || SENT.includes(k)), [], `${name}: asks and saw leave out the fields every entry has`);
@@ -712,6 +714,77 @@ test('an Undo retried with Try again puts back the repeat Vikunja had when the U
   const off = { due_date: ZERO, done: true };
   assert.deepEqual(patches(v, 7).slice(1), [NEVER, off, off, WEEKLY], 'the refused request, then the same one again and the repeat back');
   assert.deepEqual([v.task(7).done, v.task(7).due_date, v.task(7).repeat_after, sync.all(1)], [true, ZERO, 604800, []]);
+});
+
+/* Taking a template's date off turns its repeat off first. Its Undo puts back the repeat that first request read from
+   Vikunja, so the template ends as it was, however far the change got. */
+const TEMPLATE = id => ({ id, title: 'TEMPLATE: Closing', due_date: D(9), ...DAILY, done: false });
+const dateOff = (app, task) => { const f = { id: uuid7(), op: 'due', task, tpl: true, was: D(9), due: ZERO, done: true, run: null }; return { f, sending: app.act(f, true) }; };
+const asBefore = (v, id) => [v.task(id).due_date, v.task(id).done, v.task(id).repeat_after];
+test('an Undo of a template\'s date taken off and refused partway puts back its date and its repeat', async t => {
+  const { v, app } = dated(t, [TEMPLATE(6), TEMPLATE(7), TEMPLATE(8)]);
+  // Vikunja refuses 6's first request (its repeat off), 7's second (its date off) and 8's third (its repeat back).
+  const refused = { '/tasks/6': b => b.repeat_after === 0, '/tasks/7': b => 'due_date' in b, '/tasks/8': b => b.repeat_after > 0 };
+  v.trouble = r => r.method === 'PATCH' && refused[r.path]?.(r.body) ? 403 : null;
+  const offs = [6, 7, 8].map(id => dateOff(app, id));
+  for (const o of offs) await o.sending;
+  assert.deepEqual([app.failed.map(e => [e.task, e.stage]), [6, 7, 8].map(id => v.task(id).repeat_after)], [[[6, 0], [7, 1], [8, 2]], [86400, 0, 0]]);
+  v.trouble = () => null;
+  const { left } = app.undoOps(offs.map(o => o.f));
+  assert.deepEqual([app.tasks[8].due_date, app.tasks[8].done, app.tasks[8].repeat_after], [D(9), false, 86400], 'the row shows the Undo at once');
+  assert.equal(await left, 0);
+  assert.deepEqual([6, 7, 8].map(id => asBefore(v, id)), [[D(9), false, 86400], [D(9), false, 86400], [D(9), false, 86400]]);
+  assert.deepEqual([patches(v, 6).length, patches(v, 7).at(-1), patches(v, 8).at(-1), sync.all(1)], [1, DAILY, { due_date: D(9), done: false, ...DAILY }, []],
+    'nothing is sent for 6, whose first request changed nothing, and each field still as the change left it is put back');
+});
+
+test('an Undo of a template\'s date taken off whose answer is unknown puts back the repeat if Vikunja made it, and sends nothing if not', async t => {
+  const { v, app } = dated(t, [TEMPLATE(7), TEMPLATE(8)]);
+  v.trouble = r => r.method === 'PATCH' && r.body.repeat_after === 0 ? 'unknown' : null;
+  const offs = [7, 8].map(id => dateOff(app, id));
+  for (const o of offs) await o.sending;
+  assert.deepEqual(app.failed.map(e => [e.task, e.stage, e.failed.message]), [[7, 0, UNKNOWN], [8, 0, UNKNOWN]]);
+  v.trouble = () => null;
+  Object.assign(v.task(7), NEVER);                                         // Vikunja made 7's first request
+  const { left } = app.undoOps(offs.map(o => o.f));
+  assert.deepEqual([await left, asBefore(v, 7), asBefore(v, 8)], [0, [D(9), false, 86400], [D(9), false, 86400]]);
+  assert.deepEqual([patches(v, 7).slice(1), patches(v, 8).slice(1), sync.all(1)], [[DAILY], [], []]);
+});
+
+/* A line refused after its task was made is kept in the Outbox, as any change is. `halfAdded` adds two lines in task
+   9's subtask box, the second under the first. Vikunja refuses to put the first under task 9. */
+const halfAdded = async t => {
+  const { v, app } = sender(t, [{ id: 9, title: 'Pack the van', project_id: 5, related_tasks: {} }]);
+  t.after(async () => { for (const x of sync.all(1)) await sync.remove(x.id); });
+  v.trouble = r => r.path === '/tasks/9/relations' ? 403 : null;
+  const line = (title, under = null) => ({ raw: title, p: { title, due: null, priority: 0, repeat: null, labels: [], assignees: [], project: null, remind: false, done: false, pct: 0 }, under });
+  const es = addLines([line('Load chairs'), line('Stack them', 0)], { parent: { id: 9, project_id: 5, title: 'Pack the van' } }).map(f => app.actEntry(f));
+  return { v, app, es, r: await app.sendLines(es) };
+};
+const made = v => reached(v, 'POST', /^\/projects\/5\/tasks$/).map(r => r.body.title);
+test('a line refused after its task was made stays in the Outbox, says it is added, and the line under it waits', async t => {
+  const { v, app, r } = await halfAdded(t);
+  assert.deepEqual([lastSaid(app).msg, lastSaid(app).action?.label], ['Adding “Load chairs” couldn\'t be saved in full (it\'s added): HTTP 403 from the fake. It\'s kept to try again.', 'Outbox']);
+  assert.deepEqual([r.error, r.unsent], [undefined, []], 'the add box has nothing of its own to say, and nothing goes back to it');
+  assert.deepEqual(app.outboxRows.map(x => [x.text, x.failed, x.retry, x.drop?.[0]]),
+    [['Finishing “Load chairs”', 'Vikunja refused it: HTTP 403 from the fake', true, 'dropAct'], ['Subtask of “Load chairs”: Stack them', '', false, 'cancelPending']]);
+  assert.deepEqual(made(v), ['Load chairs']);
+});
+
+test('Try again of a line whose task was made sends only the stages left, then the line under it', async t => {
+  const { v, app, es } = await halfAdded(t);
+  v.trouble = () => null;
+  await app.retryAct(es[0].id);
+  assert.deepEqual([made(v), reached(v, 'POST', /\/relations$/).map(r => r.path), sync.all(1)], [['Load chairs', 'Stack them'], ['/tasks/9/relations', '/tasks/9/relations', '/tasks/101/relations'], []]);
+});
+
+test('Cancel of a line whose task was made leaves the task in Vikunja, offers no Undo, and sends the line under it under that task', async t => {
+  const { v, app, es } = await halfAdded(t);
+  v.trouble = () => null;
+  await app.dropAct(es[0].id);
+  assert.deepEqual([lastSaid(app).msg, lastSaid(app).action], ['Cancelled. “Load chairs” stays in Vikunja. The rest of the change is not sent.', null]);
+  await settle(t, () => !sync.all(1).length);
+  assert.deepEqual([made(v), reached(v, 'POST', /\/relations$/).map(r => r.path), sync.all(1)], [['Load chairs', 'Stack them'], ['/tasks/9/relations', '/tasks/101/relations'], []]);
 });
 
 /* `madeUp` is an op no code outside src/js/ops/ knows by name. Each test gives it one field and shows that the shared

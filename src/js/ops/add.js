@@ -148,8 +148,10 @@ export const madeStage = LINE.indexOf(made);
 const pending = a => 'pending-' + a.id;
 /* A line shows as a waiting row of its own until its task is made, so it changes no task's row. A line that fails
    holds back the lines under it (`pending`) and the ops on its task. A line waits only for a failed line it goes under,
-   never for another op on its parent. */
-export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figures], refusal: 'lines', cancel: 'lines', ...OP_WORDS.add,
+   never for another op on its parent. A line refused before its task is made goes back to its box with the lines after
+   it. Once the task is made, the line is kept in the Outbox like any change, so Try again sends only the stages left. */
+export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figures], ...OP_WORDS.add,
+  refusal: a => a.taskId ? 'kept' : 'lines', cancel: a => a.taskId ? 'made' : 'lines',
   // `parent` is the task whose subtask box the line was typed in. A refused line goes back to that box.
   asks: ['batch', 'raw', 'p', 'pid', 'under', 'ups', 'above'], saw: ['label', 'over', 'parent'],
   holds: a => [pending(a), ...a.taskId ? [a.taskId] : []],
@@ -182,14 +184,14 @@ export async function dropUnder(name, user){
 }
 // The photos waiting on `lines`, read before the lines leave the outbox and their bytes with them.
 export async function photosOf(lines){ return (await Promise.all(lines.flatMap(e => (e.files || []).filter(f => !f.sent).map(f => sync.file(f.key))))).filter(Boolean); }
-/* A refused line, and the lines typed after it that are not sent yet, leave the outbox. Each of them goes under it or
-   was meant to come after it. Returns their text for the box they were typed in (`unsent`), the photos added with
-   them, and the task the box added to (`parent`). Runs inside the outbox's lock. */
+/* A line refused before its task was made, and the lines typed after it that are not sent yet, leave the outbox. Each
+   of them goes under it or was meant to come after it. Returns their text for the box they were typed in (`unsent`),
+   the photos added with them, and the task the box added to (`parent`). Runs inside the outbox's lock. */
 export async function refuseLines(a){
   const rest = sync.all(a.user).filter(e => e.op === a.op && e.batch === a.batch && (e.id === a.id || (!e.sent && (e.n || 0) > (a.n || 0))));
   const photos = await photosOf(rest);
-  for (const e of rest) await sync.remove(e.id, e.taskId ?? null);
-  return {unsent: rest.filter(e => !e.taskId).map(e => e.raw), photos, parent: a.parent || null};
+  for (const e of rest) await sync.remove(e.id);
+  return {unsent: rest.map(e => e.raw), photos, parent: a.parent || null};
 }
 /* Line `e` leaves the outbox unsent, and the lines in `gone` leave with it. The parents' progress they were to write
    goes to the line before `e` in its batch, or else the line after it, so it is still written. Runs inside the

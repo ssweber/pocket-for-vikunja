@@ -22,9 +22,10 @@ export const jobsFor = (kept, lines) => lines.map((line, k) => kept[k]?.line ===
 export const resendTask = (app, j, save) => { j.stage = madeStage; return LINE[madeStage](j, stageContext(j, app, save).start()); };
 /* What became of the lines typed together (`entries`), from sendActs' results, as one result for their add box. It is
    'error' if Vikunja refused a line or can't tell whether it has one, 'offline' if a line or its photos still wait,
-   'gone' if another tab sent them, and else 'sent'. `unsent` is the text of the lines that go back to the box. */
+   'gone' if another tab sent them, and else 'sent'. `unsent` is the text of the lines that go back to the box. A line
+   kept in the Outbox once its task is made is not the box's error, because sendActs said what became of it. */
 export const batchOf = (r, entries) => {
-  const mine = (r.all || []).filter(x => x.batch === entries[0].batch), err = mine.find(x => x.status === 'error'), all = k => mine.flatMap(x => x[k] || []);
+  const mine = (r.all || []).filter(x => x.batch === entries[0].batch), err = mine.find(x => x.status === 'error' && x.boxed), all = k => mine.flatMap(x => x[k] || []);
   const status = err ? 'error' : mine.some(x => x.status === 'offline' || x.filesWait) ? 'offline'
     : !mine.length ? (entries.some(e => sync.entries.has(e.id)) ? 'offline' : 'gone') : mine.every(x => x.status === 'gone') ? 'gone' : 'sent';
   return {status, error: err?.error, ids: all('ids'), tasks: all('tasks'), problems: all('problems'), unsent: all('unsent'), photos: all('photos'),
@@ -325,7 +326,7 @@ export default {
      sheet isn't open are named in the message instead, so they aren't lost. Then Pocket says what went wrong. */
   reportSent(rs){
     const tasks = rs.flatMap(r => r.tasks || []), problems = rs.flatMap(r => r.problems || []), errors = rs.filter(r => r.status === 'error');
-    // A line refused after its task was made gives nothing back, so it is reported as any other change.
+    // A line refused after its task was made is kept in the Outbox, so it is reported as any other change.
     const failed = errors.filter(r => r.unsent?.length || r.photos?.length), other = errors.filter(r => !failed.includes(r));
     const sent = rs.some(r => r.status === 'sent' && ((r.ids || []).length || r.uploaded || r.changed));
     this.placeSent(tasks);

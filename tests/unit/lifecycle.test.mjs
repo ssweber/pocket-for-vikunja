@@ -56,7 +56,7 @@ const tab = async name => {
   return { fake, tasks, sync: sync.sync, uuid7: sync.uuid7, ops, parts: [tasks, acts, sending, outbox, runs].map(m => m.default) };
 };
 const A = await tab('a'), B = await tab('b');
-const { OPS, opOf, addLines } = A.ops;
+const { OPS, opOf, refusalOf, addLines } = A.ops;
 
 const ME = { id: 1, username: 'me', name: '' }, ZERO = '0001-01-01T00:00:00Z', D9 = '2026-10-09T09:00:00.000Z';
 const task = (id, title, more = {}) => ({ id, title, project_id: 5, done: false, percent_done: 0, due_date: ZERO, repeat_after: 0, repeat_mode: 0, position: 100,
@@ -290,11 +290,7 @@ test('every op in OPS has a sample', () => {
 /* Bugs this test found whose fix would change what the user sees or need new words, listed until that is decided. A
    scenario here may break the rules, and t.diagnostic names it. An entry that no scenario breaks any more fails the
    test, so it is removed once the bug is fixed. */
-const KNOWN = [
-  { op: 'add', state: /^partly done, refused/, why: 'a line refused after its task was made leaves the Outbox, and the rest of it (its link, its done, its parent\'s progress) is lost' },
-  { op: 'due', state: /^(unknown, but made|partly done, refused)/, action: 'Undo',
-    why: 'Undo of a template\'s date taken off partway leaves the template without its repeat, and says nothing' },
-];
+const KNOWN = [];
 
 for (const name of Object.keys(OPS)) test(`${name} passes the lifecycle checks`, async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -309,7 +305,7 @@ for (const name of Object.keys(OPS)) test(`${name} passes the lifecycle checks`,
     const x = await world(sample);
     x.ref = ref;
     await state.reach(x);
-    x.givenBack = state.name === 'refused' && opOf(x.fields).refusal !== 'kept';
+    x.givenBack = state.name === 'refused' && refusalOf(x.fields) !== 'kept';
     if (action.can && !action.can(x) || await action.run(x) === false) { await finish(x); continue; }
     await finish(x);
     const broken = RULES.map(([rule, check]) => [rule, check(x)]).filter(([, broke]) => broke).map(([rule, broke]) => `${state.name}, then ${action.name}: ${rule}. ${broke}`);
