@@ -8,7 +8,7 @@ import {parseCapture} from '../quickadd.js';
 import {fileEntry, held, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7} from '../sync.js';
 import {dayGroup, intoGroup, intoKeys, keptGroups, listItems, nestSubtasks, sameGroup, saved, screenRows, todayAt, todayGroups, todayOrder, viewKey} from '../lists.js';
 import {positionOrder, SPACING} from '../order.js';
-import {addLines, LINE, linesUnder, madeStage, noneWaiting, opOf, passUps} from '../ops/index.js';
+import {addLines, LINE, linesUnder, madeStage, noneWaiting, opOf, passUps, stageView} from '../ops/index.js';
 import {heldTasks, hold, stageContext, waits} from './acts.js';
 import {opsId, savedScreen} from './tasks.js';
 
@@ -41,7 +41,7 @@ export default {
      project) and, for a line marked done or given a percentage, `arrived`: {now: Vikunja's copy after that was set,
      done}. Throws on a lost connection or a busy Vikunja. */
   async createTask(parsed, pid, {job = {}, save = async () => {}, made, parent} = {}){
-    Object.assign(job, {p: parsed, pid, under: parent ?? null});
+    Object.assign(job, {op: 'add', p: parsed, pid, under: parent ?? null});
     job.problems ||= []; job.stage ||= 0;
     job.key ||= uuid7();                         // the relay reads the key's time from it
     const c = stageContext(job, this, save);
@@ -53,7 +53,8 @@ export default {
         if (navigator.onLine !== false) setTimeout(() => this.flush());
         this.offline = true; throw new NetError('offline');
       }
-      while (job.stage < LINE.length) { await patiently(() => LINE[job.stage](job, c.start())); job.stage++; await save(); }
+      const seen = stageView(job);
+      while (job.stage < LINE.length) { await patiently(() => LINE[job.stage](seen, c.start())); job.stage++; await save(); }
     } catch (e) {
       // The relay can't tell whether Vikunja made the change. The line is refused, with words that say only the user can
       // check. These callers keep nothing in the Outbox, so the words don't offer its Try again.

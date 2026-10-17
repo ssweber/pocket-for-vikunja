@@ -886,7 +886,10 @@ test('the files an op still has to upload move to an entry of their own once a s
   madeUp(t, { stages: [async () => {}, OPS.done.stages[0]], files: a => a.files.filter(f => !f.sent) });
   v.trouble = r => r.method === 'PATCH' ? 403 : null;
   const photo = { key: 'k1', name: 'till.jpg', size: 1, type: 'image/jpeg', sent: false };
-  await app.act({ op: 'madeUp', task: 7, taskId: 7, run: null, files: [photo] });
+  // The sender gives an entry its photos and the task it made, as submitCapture and a stage do.
+  const e = Object.assign(app.actEntry({ op: 'madeUp', task: 7, run: null }), { taskId: 7, files: [photo] });
+  await app.queue([e]);
+  await app.sendActs(e.id);
   const op = sync.all(1).find(e => e.kind === 'act'), own = sync.all(1).find(e => !e.kind);
   assert.deepEqual([op.files, op.filed, own.taskId, own.files], [[], own.id, 7, [photo]]);
 });
@@ -896,6 +899,8 @@ test('the files an op still has to upload move to an entry of their own once a s
 test('act() throws on a field the op doesn\'t declare, naming the op and the field, and queues nothing', async t => {
   const { app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
   await assert.rejects(app.act({ op: 'done', task: 7, run: null, html: '<p>Done early</p>' }), /The done op doesn't declare the field html/);
+  await assert.rejects(app.act({ op: 'done', task: 7, run: null, fixed: { body: {} } }), /The done op is queued with the sender's field fixed/,
+    'a caller can\'t hand a stage what it would otherwise read from Vikunja');
   assert.deepEqual(sync.all(1), []);
 });
 

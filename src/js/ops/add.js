@@ -215,7 +215,7 @@ export function addLines(items, {pid = null, parent = null}){
     const u = x.under, home = parent ? parent.project_id : u !== null ? to[u] : pid;
     to[i] = x.p.project?.id || home;
     return {id: id[i], op: 'add', batch: id[0], raw: x.raw, p: x.p, pid: home, under: u !== null ? 'pending-' + id[u] : parent?.id ?? null,
-      over: u !== null ? items[u].p.title : parent?.title ?? null, parent, label: x.p.title, run: null, problems: [], ups: ups[i]};
+      over: u !== null ? items[u].p.title : parent?.title ?? null, parent, label: x.p.title, run: null, ups: ups[i]};
   });
   const inside = (j, i) => { for (let k = items[j].under; k !== null; k = items[k].under) if (k === i) return true; return false; };
   const needs = [];

@@ -2,11 +2,12 @@
    which op is which. The shared code asks the op what to do (opOf), and lint fails on code elsewhere that compares an
    op's name. An op sets every field below, to its own value or to null for the default in DEFAULTS, so a new op
    decides each one. The registry test checks that it does.
-   - asks: the fields of its entry that hold what the user chose. Its stages build their requests from these.
+   - asks: the fields of its entry that hold what the user chose. Its stages build their requests from these. A choice
+     may be worked out from the screen when the user confirmed it, such as the tasks a delete asked about.
    - saw: the fields that hold what the screen showed when the user chose, for its words and its Undo. The task may
      have changed by the time the op is sent, so a stage that reads one throws (stageView). A request that depends on
      the task is built from Vikunja's copy, read once with c.once. act() throws on a field in none of asks, saw, COMMON
-     and SENT (checkFields).
+     and SENT, and when it is queued, on a field in SENT too (checkFields).
    - apply(t, a): the task as it will be once the op is made, as a new object. It changes neither argument.
    - on(a): the ids of the tasks it changes, whose rows show it while it waits (shownOn, tasks.js).
    - stages: its requests in order, `(a, c) => Promise` each (stages.js), or a function of the entry giving them.
@@ -87,10 +88,13 @@ export const opOf = a => {
   if (!full.has(op)) full.set(op, Object.fromEntries(Object.entries({...DEFAULTS, ...op}).map(([k, v]) => [k, v ?? DEFAULTS[k]])));
   return full.get(op);
 };
-// Throw on a field of entry `a` that its op doesn't declare. Nothing reads such a field on purpose, so it is a bug.
-export const checkFields = a => {
-  const op = opOf(a), known = new Set([...COMMON, ...SENT, ...op.asks, ...op.saw]);
-  for (const k of Object.keys(a)) if (!known.has(k)) throw new Error(`The ${a.op} op doesn't declare the field ${k}`);
+/* Throw on a field of entry `a` that its op doesn't declare. Nothing reads such a field on purpose, so it is a bug. The
+   fields an op is queued with (`queued`) can't include the sender's own (SENT), so no caller can hand a stage a body
+   or a read made from what the row showed. */
+export const checkFields = (a, queued = false) => {
+  const op = opOf(a), known = new Set([...COMMON, ...queued ? [] : SENT, ...op.asks, ...op.saw]);
+  for (const k of Object.keys(a)) if (!known.has(k))
+    throw new Error(queued && SENT.includes(k) ? `The ${a.op} op is queued with the sender's field ${k}` : `The ${a.op} op doesn't declare the field ${k}`);
   return a;
 };
 /* Entry `a` as its stages get it. Reading a field in the op's `saw` throws, because what the screen showed when the op

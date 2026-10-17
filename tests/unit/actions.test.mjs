@@ -502,7 +502,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 const deleting = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, actions, pick(sending.default ?? sending, 'refreshPending', 'keyWaiting', 'markSlow', 'sendEntry'),
-    pick(acts, 'sendActs', 'sendAct', 'wordsBack', 'giveBack'), pick(outbox, 'actTitle'), pick(runs, 'refreshRunTask'));
+    pick(acts, 'actEntry', 'sendActs', 'sendAct', 'wordsBack', 'giveBack'), pick(outbox, 'actTitle'), pick(runs, 'refreshRunTask'));
   Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], canWrite: () => true, flushing: false, cap: {}, sheet: { id: null, sub: {} } });
   Object.defineProperty(app, 'syncState', Object.getOwnPropertyDescriptor(outbox, 'syncState'));
   globalThis.confirm = () => true;

@@ -161,6 +161,7 @@ export default {
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
   actEntry(fields){
     const me = this.user;
+    checkFields(fields, true);
     return checkFields({id: uuid7(), kind: 'act', user: me?.id, who: me && {id: me.id, username: me.username, name: me.name || ''}, at: new Date().toISOString(), n: nextN(),
       files: [], stage: 0, fails: 0, run: this.view.shownRun?.id, label: this.actTitle(fields.task), ...fields});
   },
