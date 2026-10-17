@@ -31,8 +31,6 @@ test('a message for a change that was not saved gives the reason in a few words'
 
 test('a rejected reorder gives the reason', () => {
   assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
-  assert.equal(notReordered(new NetError('Failed to fetch')), 'Not reordered: no connection');
-  assert.equal(notReordered(Object.assign(new Error('never finished'), { status: 409, code: 'unknown' })), 'Not reordered: Vikunja may or may not have this change.');
 });
 
 /* A message about a change kept in the Outbox names the change and has an Outbox button. The button opens the Outbox

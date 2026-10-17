@@ -128,7 +128,7 @@ async function open(tab, x){
   for (const c of await s.tx(['claims'], 'readonly', st => st('claims').getAll())) s.claimed.set(c.id, c);
   const app = tab.fake.component(...tab.parts);
   Object.assign(app, { user: ME, pending: [], failed: [], slow: [], flushing: false, cap: { text: '' }, capPhotos: [], sheet: { id: null, sub: { text: '' } },
-    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, aimCancelled(){}, positionSent(){} });
+    view: { groups: [], shownRun: null }, places: {}, endPlace(){}, aimSent(){}, aimCancelled(){}, positionSent(){}, positionRefused(){} });
   Object.defineProperty(app, 'toast', { value: {} });
   // A read lists only the subtasks that still exist, as Vikunja's does.
   const list = [...x.v.tasks.values()].map(t => structuredClone({ ...t, ...t.related_tasks && { related_tasks: Object.fromEntries(Object.entries(t.related_tasks)

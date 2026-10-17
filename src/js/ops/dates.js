@@ -67,7 +67,7 @@ export const due = {apply: (t, a) => ({...t, due_date: a.due, ...a.done !== unde
   // It keeps the earlier move's `done` when it has none of its own, because Vikunja doesn't have that `done` yet.
   merge: (older, newer) => older.op === 'due' ? {...older.done !== undefined && {done: older.done}, ...newer, was: older.was} : null,
   ...OP_WORDS.due,
-  asks: ['due', 'done', 'check', 'repeat'], saw: ['label', 'was', 'tpl'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  asks: ['due', 'done', 'check', 'repeat'], saw: ['label', 'was', 'tpl'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, putBack: null, deletes: null};
 
 // The fields an Undo of a repeat compares. The repeat is two fields, compared together.
 const PARTS = [['repeat_after', 'repeat_mode'], ['due_date'], ['done']];
@@ -107,4 +107,4 @@ export const repeat = {apply: (t, a) => ({...t, ...a.set}), stages: a => SETS.sl
   // A change replaces an earlier one that hasn't been sent, with the fields of both, and keeps the oldest `was`.
   merge: (older, newer) => older.op === 'repeat' ? {...newer, set: {...older.set, ...newer.set}, was: {...newer.was, ...older.was}} : null,
   ...OP_WORDS.repeat,
-  asks: ['set', 'check'], saw: ['label', 'was'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  asks: ['set', 'check'], saw: ['label', 'was'], on: null, refusal: null, cancel: null, answered: null, holds: null, waitsOn: null, row: null, files: null, putBack: null, deletes: null};

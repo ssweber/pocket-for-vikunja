@@ -4,10 +4,10 @@ import {OP_WORDS} from '../messages.js';
 // Vikunja's reply has the position it kept (a.got). That differs from the one sent when Vikunja renumbered the view.
 const place = async (a, c) => { a.got = (await c.send(`/tasks/${a.task}/position`, {method: 'PUT', body: {project_view_id: a.view, position: a.pos}}))?.position; };
 
-/* A refused move leaves the outbox at once instead of waiting to be tried again, and reorder puts the old order back.
-   Once Vikunja answers, positionSent reloads the list if Vikunja renumbered it. */
-export const position = {apply: t => ({...t}), stages: [place], refusal: 'undone', answered: (app, a) => app.positionSent(a), ...OP_WORDS.position,
-  asks: ['view', 'pos'], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, cancel: null, sheetPlace: null, holds: null,
+/* A refused move leaves the outbox at once instead of waiting to be tried again, and its task goes back to where it
+   was (`was`), whichever code sent it. Once Vikunja answers, positionSent reloads the list if Vikunja renumbered it. */
+export const position = {apply: t => ({...t}), stages: [place], refusal: 'undone', answered: (app, a) => app.positionSent(a),
+  putBack: (app, a, error) => app.positionRefused(a, error), ...OP_WORDS.position, asks: ['view', 'pos'], saw: ['label', 'was'], on: null, keepReads: null, invert: null, merge: null, waiting: null, cancel: null, sheetPlace: null, holds: null,
   waitsOn: null, row: null, files: null, deletes: null};
 
 // The positions the moves among the outbox's `entries` give their tasks, by task id.

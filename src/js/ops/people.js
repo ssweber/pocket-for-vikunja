@@ -21,7 +21,7 @@ const letGo = (a, c) => c.send(`/tasks/${a.task}/assignees/${a.user}`, {method: 
 
 export const claim = {apply: (t, a) => ({...t, assignees: [...(t.assignees || []).filter(u => u.id !== a.user), whoOf(a)]}), stages: [claimIt], ...OP_WORDS.claim,
   asks: [], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
-  answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  answered: null, holds: null, waitsOn: null, row: null, files: null, putBack: null, deletes: null};
 export const unclaim = {apply: (t, a) => ({...t, assignees: (t.assignees || []).filter(u => u.id !== a.user)}), stages: [letGo], ...OP_WORDS.unclaim,
   asks: [], saw: ['label'], on: null, keepReads: null, invert: null, merge: null, waiting: null, refusal: null, cancel: null, sheetPlace: null,
-  answered: null, holds: null, waitsOn: null, row: null, files: null, deletes: null};
+  answered: null, holds: null, waitsOn: null, row: null, files: null, putBack: null, deletes: null};

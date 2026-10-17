@@ -83,7 +83,7 @@ test('subtasks added right under a task go before its first subtask, each after 
    Pack the van (with subtasks Load chairs and Tables), then Lights. `lit` is what each row reads. It holds the
    highlighted row by its id. */
 function projectList(){
-  const app = component(tasks, quickadd, { reorder: actions.reorder });
+  const app = component(tasks, quickadd, { reorder: actions.reorder, positionRefused: actions.positionRefused });
   Object.assign(app, { route: { name: 'project', id: 1 }, cursor: null, lit: {}, pendingTasks: [], capPhotos: [], checklistIds: new Set(), canWrite: () => true });
   const van = app.row({ id: 10, title: 'Pack the van', project_id: 1, done: false, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } });
   const sub = (id, title) => app.row({ id, title, project_id: 1, done: false, related_tasks: { parenttask: [{ id: 10 }] } });
@@ -288,15 +288,30 @@ test('the cursor never points at a row that has left the list', async () => {
 
 /* The box goes back to adding a task once the highlighted row is out of sight (watchCursor). The browser's
    IntersectionObserver reports this. The test uses a fake one that reports whatever `see` gives it. */
-test('a move whose answer is unknown says so with a button that opens the Outbox, and a refused one has no button', async () => {
+test('a refused move puts back the moves not queued yet, and leaves the refused one to the op', async () => {
   const { app, chairs, tables } = projectList();
+  const sent = [], said = [];
+  Object.assign(app, { saveProject(){}, say: msg => said.push(msg), positions: { [chairs.id]: 100, [tables.id]: 200 } });
+  app.act = async f => { sent.push([f.task, f.pos, f.was]); return { status: 'error', error: new Error('Forbidden') }; };
+  assert.equal(await app.reorder(tables, [chairs, tables], 0, 5), false);
+  const [[task, pos, was]] = sent, other = task === chairs.id ? tables.id : chairs.id;
+  assert.deepEqual([sent.length, app.positions[task], app.positions[other], said], [1, pos, other === chairs.id ? 100 : 200, []],
+    'the refused move stays for its op to put back, the other goes back, and reorder says nothing');
+  assert.notEqual(was, pos, 'the move records where its task was');
+});
+
+test('a refused move puts its task back and says why on its row, whichever code sent it', () => {
+  const { app, chairs } = projectList();
   const said = [];
-  Object.assign(app, { saveProject(){}, say: (msg, o) => said.push([msg, o.action?.label ?? null]), openOutbox(){} });
-  for (const error of [Object.assign(new Error('never finished'), { code: 'unknown' }), Object.assign(new Error('Forbidden'), { status: 403 })]) {
-    app.act = async () => ({ status: 'error', error });
-    await app.reorder(tables, [chairs, tables], 0, 5);
-  }
-  assert.deepEqual(said, [['Not reordered: Vikunja may or may not have this change.', 'Outbox'], ['Not reordered: Forbidden', null]]);
+  Object.assign(app, { render(){}, saveProject(){}, say: (msg, o) => said.push([msg, o.row.id]), route: { name: 'project' }, sheet: {} });
+  app.positions[chairs.id] = 150;
+  app.pending = [{ id: 'e1', kind: 'act', op: 'position', task: chairs.id, pos: 150, was: 100 }];
+  app.positionRefused(app.pending[0], new Error('Forbidden'));
+  assert.deepEqual([app.positions[chairs.id], said], [100, [['Not reordered: Forbidden', chairs.id]]]);
+  app.positions[chairs.id] = 300;
+  app.pending.push({ id: 'e2', kind: 'act', op: 'position', task: chairs.id, pos: 300, was: 150 });
+  app.positionRefused(app.pending[0], new Error('Forbidden'));
+  assert.equal(app.positions[chairs.id], 300, 'a later move still waiting keeps its place');
 });
 
 test('the box adds a task again when the highlighted row scrolls out of sight', () => {

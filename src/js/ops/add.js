@@ -167,7 +167,7 @@ export const add = {apply: t => ({...t}), on: () => [], stages: [...LINE, figure
   },
   // Once the line's task is made, its photos still waiting move to an entry of their own (filesOut, app/acts.js).
   files: a => a.taskId ? (a.files || []).filter(f => !f.sent) : [],
-  keepReads: null, invert: null, merge: null, waiting: null, sheetPlace: null, answered: null, deletes: null};
+  keepReads: null, invert: null, merge: null, waiting: null, sheetPlace: null, answered: null, putBack: null, deletes: null};
 
 /* The lines under waiting id `name` among the outbox's `entries`, in the order they were typed: only those right under
    it, or with `deep` those at every level. */

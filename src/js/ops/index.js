@@ -20,6 +20,7 @@
      of the entry giving that (cancelOf).
    - sheetPlace: where the open sheet of its task says it was refused, instead of the usual place.
    - answered(app, a, c): what the screen does once Vikunja has answered it.
+   - putBack(app, a, error): what puts the screen back and says why when a refusal leaves the outbox ('undone').
    - holds(a): the ids it holds back once it fails, so the ops after it on them wait (heldTasks, app/acts.js).
    - waitsOn(a): the ids it waits behind when an op on one of them has failed.
    - row(a): the waiting row it shows in a list until its task is made, or null (pendingTasks).
@@ -54,8 +55,8 @@ export const DEFAULTS = {
   waiting: null,
   // 'kept': it waits in the Outbox, marked failed, for Try again or Cancel. 'back': it leaves the outbox, and its text
   // goes back where it was typed. 'lines': it and the lines typed after it go back to their add box, which says what
-  // became of them (reportSent), so the sender says nothing of such an op. 'undone': it leaves the outbox, and the
-  // code that queued it puts the screen back and says why (reorder). A change whose answer is unknown is always kept.
+  // became of them (reportSent), so the sender says nothing of such an op. 'undone': it leaves the outbox, and its
+  // putBack puts the screen back and says why, whichever code sent it. A change whose answer is unknown is always kept.
   refusal: 'kept',
   // 'undo': nothing goes back, and Cancel offers Undo. 'text': its text goes back to its box and Cancel says so, or
   // with no text Cancel offers Undo. 'back': its text goes back, and its `dropped` words say so. 'lines': the lines
@@ -64,6 +65,7 @@ export const DEFAULTS = {
   cancel: 'undo',
   sheetPlace: null,
   answered: (app, a) => { if (app.view.shownRun?.id === a.run) app.refreshRunTask(a.task); },
+  putBack: () => {},
   holds: a => [a.task],
   waitsOn: a => [a.task],
   row: () => null,

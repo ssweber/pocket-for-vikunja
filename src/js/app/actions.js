@@ -11,7 +11,7 @@ import {DONE_MARK, patiently, stepsOf} from '../checklists.js';
 import {between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks} from '../order.js';
 import {dayGroup, parentIds} from '../lists.js';
 import {itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7} from '../sync.js';
-import {addLines, checkFields} from '../ops/index.js';
+import {addLines, checkFields, waitingPositions} from '../ops/index.js';
 import {shared} from './core.js';
 import {UNDO_MS} from './toast.js';
 import {copyOf, started, TASK} from './tasks.js';
@@ -395,13 +395,11 @@ export default {
       if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]);              // keeps the add box on the task at its new level
       this.sheet.dirty = true;
     };
+    // A refused move puts the task back itself (positionRefused).
     const place = async pos => {
       const had = this.positions[t.id];
       this.positions[t.id] = pos;
-      const r = await this.act({op: 'position', task: t.id, view, pos, run: null});
-      if (r.status !== 'error') return;
-      this.positions[t.id] = had;
-      this.say(notReordered(r.error), {place: 'sheet:top', cls: 'failed', action: r.error.code === 'unknown' ? toOutbox(this) : null});
+      await this.act({op: 'position', task: t.id, view, pos, was: had, run: null});
     };
     try {
       // A 404 means the task is already not a subtask of this parent, for example because it was detached elsewhere.
@@ -516,8 +514,9 @@ export default {
 
   /* ---------- reordering ---------- */
   /* Move `t` among its siblings `sibs` in the project's List view `view`. The screen updates at once, and the new
-     positions are queued through the outbox. If a move is rejected, the old order comes back and a message on the
-     row says why. If Vikunja renumbers the positions, positionSent reloads the view. Returns whether the task moved. */
+     positions are queued through the outbox. If Vikunja refuses one, that task goes back (positionRefused), and so do
+     the ones not queued yet. If Vikunja renumbers the positions, positionSent reloads the view. Returns whether the
+     task moved. */
   async reorder(t, sibs, to, view){
     const from = sibs.findIndex(s => s.id === t.id);
     if (from < 0 || to === from || to < 0 || to >= sibs.length || !view) return false;
@@ -525,12 +524,10 @@ export default {
     const was = Object.fromEntries(writes.map(([id]) => [id, this.positions[id]]));
     for (const [id, pos] of writes) this.positions[id] = pos;
     this.said = `${t.title} is now ${to + 1} of ${sibs.length}`;
-    for (const [id, pos] of writes) {
-      const r = await this.act({op: 'position', task: id, view, pos, run: null});
+    for (const [i, [id, pos]] of writes.entries()) {
+      const r = await this.act({op: 'position', task: id, view, pos, was: was[id], run: null});
       if (r.status !== 'error') continue;
-      Object.assign(this.positions, was);
-      // A move whose answer is unknown stays in the Outbox, so the message opens it.
-      this.say(notReordered(r.error), {row: {id: t.id, stays: true, cls: 'failed'}, place: 'sheet:top', action: r.error.code === 'unknown' ? toOutbox(this) : null});
+      for (const [rest] of writes.slice(i + 1)) this.positions[rest] = was[rest];
       return false;
     }
     this.saveProject();
@@ -541,6 +538,13 @@ export default {
     if (typeof a.got !== 'number' || Math.abs(a.got - a.pos) < 1e-6) return;
     this.positions[a.task] = a.got;
     if (this.route.name === 'project') this.render();
+    if (this.sheet.subView) this.loadSubOrder(this.sheetTask);
+  },
+  // Put a refused move's task back where it was, or where a later move of it still waiting puts it, and say why.
+  positionRefused(a, error){
+    this.positions[a.task] = waitingPositions(this.pending.filter(e => e.id !== a.id))[a.task] ?? a.was;
+    this.say(notReordered(error), {row: {id: a.task, stays: true, cls: 'failed'}, place: 'sheet:top'});
+    if (this.route.name === 'project') { this.render(); this.saveProject(); }
     if (this.sheet.subView) this.loadSubOrder(this.sheetTask);
   },
   // Move a task one position up (-1) or down (1) from its menu. `where` is passed to orderOf.

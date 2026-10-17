@@ -812,8 +812,11 @@ test('what a refusal does is the op\'s: kept in the Outbox, its text back, its l
   assert.deepEqual([sync.all(1), given, lastSaid(app).msg], [[], [back.entry], 'A made-up change couldn\'t be saved: HTTP 403 from the fake. Its text is back in the box.'], 'its text back');
   const lines = await refused('lines', [{ batch: 'b', raw: 'Rope' }, { batch: 'b', raw: 'Tape' }]);
   assert.deepEqual([sync.all(1), lines.all[0].unsent, app.toasts], [[], ['Rope', 'Tape'], []], 'it and the line after it go back to their box, which says so');
-  const undone = await refused('undone', [{}]);
-  assert.deepEqual([undone.status, sync.all(1), app.toasts], ['error', [], []], 'undone, and the code that queued it says why');
+  const put = [];
+  madeUp(t, { refusal: 'undone', putBack: (app, a, error) => put.push([a.task, error.status]) });
+  await emptied(app);
+  const undone = await app.actAll([{ op: 'madeUp', task: 7, run: null, label: 'Wipe the till' }]);
+  assert.deepEqual([undone.status, sync.all(1), app.toasts, put], ['error', [], [], [[7, 403]]], 'undone, and its putBack says why');
 });
 
 test('what Cancel gives back is the op\'s, and Cancel offers Undo only when nothing went back', async t => {

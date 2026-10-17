@@ -199,12 +199,12 @@ export default {
         const now = sync.entries.get(e.id) ?? e, inBox = boxed(now);
         out.push({...last, id: e.id, batch: e.batch, boxed: inBox});
         if (last.kept) hold(e, stopped);
-        // A failed move shows its own message on the row (reorder), and a line in its add box, so none here (refusal).
+        // A refusal that puts the screen back says why itself (putBack), and a line says so in its add box (refusal).
         const err = last.error, op = opOf(e);
         // A stage that knows the whole sentence gives it (`said`). An op that names a place in its task's open sheet
         // says it there until the sheet closes (sheetPlace).
         const inSheet = op.sheetPlace && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
-        if (last.status === 'error' && !quiet?.has(e.id) && refusalOf(now) !== 'undone' && !inBox) this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
+        if (last.status === 'error' && !quiet?.has(e.id) && (last.kept || refusalOf(now) !== 'undone') && !inBox) this.say(err.said || (err.code === 'unknown' ? notKnown(err.what)
           : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` + (last.kept ? KEPT : this.wordsBack(err))),
           {place: inSheet ? op.sheetPlace : 'step', cls: 'failed', action: last.kept ? toOutbox(this) : null, ...inSheet && {ms: null}});
         if (last.status === 'offline' || e.id === id) break;
@@ -276,6 +276,7 @@ export default {
       // Reload after a permanent rejection when no retry remains queued.
       if (error.drop) {
         await sync.remove(a.id);
+        op.putBack(this, a, error);
         if (this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
         if (this.sheetTask && this.sheet.kind === 'task') this.loadSubPeople(this.sheetTask);
         return {...none, status: 'error', error};
