@@ -15,7 +15,8 @@ const lost = () => new TypeError('network error');
 
 /* The fake keeps tasks by id and behaves as Vikunja does. GET, PATCH and DELETE /tasks/:id read and change a task. A
    repeating task marked done moves to its next date instead (vikunjaNext, which is where Pocket expects Vikunja to
-   move it). A task that is read lists its current subtasks, without any that were deleted (related_tasks).
+   move it). A task that is read lists its current subtasks, without any that were deleted, and no deleted task among its
+   other related tasks (related_tasks).
    POST /projects/:id/tasks creates a task with the next id. POST /tasks/:id/relations makes one task a subtask of
    another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both tasks, as Vikunja does. A
    task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added to, and an assignee
@@ -43,6 +44,8 @@ export function fakeVikunja(tasks = []) {
     },
     gone = new Set();
   const withSubtasks = t => {
+    for (const [kind, list] of Object.entries(t.related_tasks || {}))
+      if (kind !== 'subtask' && list) t.related_tasks[kind] = list.filter(s => !gone.has(s.id));
     const subs = t.related_tasks?.subtask;
     if (!subs) return t;
     t.related_tasks.subtask = subs
@@ -161,8 +164,14 @@ export function fakeVikunja(tasks = []) {
       const made = {
         id: Math.max(100, ...v.tasks.keys()) + 1,
         done: false,
+        done_at: '0001-01-01T00:00:00Z',
         percent_done: 0,
         due_date: '0001-01-01T00:00:00Z',
+        repeat_after: 0,
+        repeat_mode: 0,
+        priority: 0,
+        assignees: null,
+        labels: null,
         ...req.body,
         project_id: into,
         created: new Date().toISOString(),
