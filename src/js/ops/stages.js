@@ -50,7 +50,7 @@ export const figureOf = async (c, up, name = 'figure') => {
     const sent = await c.send('/tasks/' + up, { method: 'PATCH', body, on: { [up]: body } }),
       t = sent || (await c.read('/tasks/' + up));
     c.app.change(w => {
-      w.made(up, body, c.from(sent));
+      w.made(up, c.from(sent), body);
       w.answer([t], TASK, c.from(t));
     });
   } catch (e) {

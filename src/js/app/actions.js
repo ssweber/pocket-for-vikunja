@@ -90,7 +90,7 @@ export default {
           }
           if (!lost)
             this.change(x => {
-              x.made(id, body, w);
+              x.made(id, w);
               x.answer([saved], TASK, w);
             });
           else {
@@ -1270,26 +1270,23 @@ export default {
 
   /* ---------- people and labels ---------- */
   // Save assignee changes before applying them to the screen and to Vikunja's copy.
-  async addAssignee(t, u) {
-    const [, w] = await writing({ [t.id]: ['assignees'] }, () =>
+  addAssignee(t, u) {
+    return this.setAssignees(t, [...(t.assignees || []).filter(x => x.id !== u.id), u], () =>
       api(`/tasks/${t.id}/assignees`, { method: 'POST', body: { user_id: u.id } }),
     );
-    this.setAssignees([...(t.assignees || []).filter(x => x.id !== u.id), u], t.id, w);
   },
-  async removeAssignee(t, uid) {
-    const [, w] = await writing({ [t.id]: ['assignees'] }, () =>
-      api(`/tasks/${t.id}/assignees/${uid}`, { method: 'DELETE' }),
-    );
-    this.setAssignees(
+  removeAssignee(t, uid) {
+    return this.setAssignees(
+      t,
       (t.assignees || []).filter(u => u.id !== uid),
-      t.id,
-      w,
+      () => api(`/tasks/${t.id}/assignees/${uid}`, { method: 'DELETE' }),
     );
   },
-  // The people of task `id` once write `w` (writes, tasks.js) has set them.
-  setAssignees(assignees, id, w) {
-    if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(x => x.made(id, { assignees }, w));
+  // Give task `t` the people `assignees` with `request`, and put them in Vikunja's copy once it is made.
+  async setAssignees(t, assignees, request) {
+    const [, w] = await writing({ [t.id]: { assignees } }, request);
+    if (this.sheet.id === t.id) this.sheet.dirty = true;
+    this.change(x => x.made(t.id, w));
   },
   // Add a label, creating it with title first when l is null.
   async addLabelTo(t, l, title) {
@@ -1297,24 +1294,21 @@ export default {
       l = await api('/labels', { method: 'POST', body: { title } });
       this.labels.push(l);
     }
-    const [, w] = await writing({ [t.id]: ['labels'] }, () =>
+    return this.setLabels(t, [...(t.labels || []), l], () =>
       api(`/tasks/${t.id}/labels`, { method: 'POST', body: { label_id: l.id } }),
     );
-    this.setLabels([...(t.labels || []), l], t.id, w);
   },
-  async removeLabelFrom(t, lid) {
-    const [, w] = await writing({ [t.id]: ['labels'] }, () =>
-      api(`/tasks/${t.id}/labels/${lid}`, { method: 'DELETE' }),
-    );
-    this.setLabels(
+  removeLabelFrom(t, lid) {
+    return this.setLabels(
+      t,
       (t.labels || []).filter(l => l.id !== lid),
-      t.id,
-      w,
+      () => api(`/tasks/${t.id}/labels/${lid}`, { method: 'DELETE' }),
     );
   },
-  // The labels of task `id` once write `w` (writes, tasks.js) has set them.
-  setLabels(labels, id, w) {
-    if (this.sheet.id === id) this.sheet.dirty = true;
-    if (copyOf(id)) this.change(x => x.made(id, { labels }, w));
+  // Give task `t` the labels `labels` with `request`, and put them in Vikunja's copy once it is made.
+  async setLabels(t, labels, request) {
+    const [, w] = await writing({ [t.id]: { labels } }, request);
+    if (this.sheet.id === t.id) this.sheet.dirty = true;
+    this.change(x => x.made(t.id, w));
   },
 };

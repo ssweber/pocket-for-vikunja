@@ -409,7 +409,7 @@ export default {
     };
     c.arrive = (x, body) => {
       this.change(w => {
-        w.made(x.now.id, body, c.from(x.now));
+        w.made(x.now.id, c.from(x.now), body);
         w.answer([x.now], TASK, c.from(x.now));
       });
       for (const t of none.tasks) t.arrived = x;

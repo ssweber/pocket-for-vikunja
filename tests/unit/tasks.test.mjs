@@ -26,8 +26,10 @@ import views from '../../src/js/app/views.js';
 import claims from '../../src/js/app/claims.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import lines from '../../src/js/app/lines.js';
+import checklists from '../../src/js/app/checklists.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { saved } from '../../src/js/lists.js';
+import { ApiError } from '../../src/js/api.js';
 import { sync } from '../../src/js/sync.js';
 
 // A read as a screen's load makes it: started, answered, then put into Vikunja's copies, inside a change.
@@ -45,7 +47,7 @@ const answerSave = (e, id, fields, got) => {
   const w = writes({ [id]: fields });
   w.end();
   current.change(x => {
-    x.made(id, fields, w);
+    x.made(id, w);
     x.answer([got], TASK, w);
     e.ok();
   });
@@ -1288,4 +1290,126 @@ test('a task Vikunja deleted loses its row in the same change as its copy', () =
   app.view.groups = [{ key: 'open', tasks: rows }];
   app.change(w => w.forget(1));
   assert.deepEqual([copyOf(1), app.rowTask(1), app.view.groups[0].tasks.map(t => t.id)], [undefined, null, [2]]);
+});
+
+/* A direct write names the values it sets (writes), and its answer puts those values into Vikunja's copy. Each kind of
+   caller is tested below: the sheet's people and labels, a checklist's people, a step's people and labels removed in
+   its edit box, a step removed from a template, and the steps a template's Add made before it stopped. */
+test('a write names the values it sets, so field names alone are refused', () => {
+  component(tasks);
+  assert.throws(() => writes({ 1: ['labels'] }), /names the values/);
+});
+
+test("people and labels changed in a task's sheet show in Vikunja's copy and on the row", async () => {
+  const v = fakeVikunja([{ id: 1, title: 'Buy rope', assignees: [], labels: [] }]),
+    app = component(tasks, actions);
+  v.labels.push({ id: 500, title: 'rope' });
+  Object.assign(app, { labels: [], sheet: { id: 1 } });
+  read([v.task(1)]);
+  const row = app.row(copyOf(1)),
+    ids = list => (list || []).map(x => x.id),
+    shown = () => [ids(copyOf(1).assignees), ids(copyOf(1).labels), ids(row.assignees), ids(row.labels)];
+  await app.addAssignee(row, { id: 7, username: 'bob' });
+  await app.addLabelTo(row, v.labels[0]);
+  assert.deepEqual(shown(), [[7], [500], [7], [500]], 'added');
+  await app.removeAssignee(row, 7);
+  await app.removeLabelFrom(row, 500);
+  assert.deepEqual(shown(), [[], [], [], []], 'removed');
+});
+
+test("a checklist's people changed in its sheet show in Vikunja's copy", async () => {
+  const v = fakeVikunja([{ id: 1, title: 'Closing', assignees: [{ id: 1, username: 'me' }] }]),
+    app = component(tasks, runs);
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  const people = [
+    { id: 1, username: 'me' },
+    { id: 7, username: 'bob' },
+  ];
+  Object.assign(app, {
+    view: { groups: [], shownRun: { id: 1 } },
+    sheet: { id: 1, runEdit: { forIds: [1], people } },
+    saveRun() {},
+    forText: () => 'For me and bob',
+  });
+  await app.setRunFor(people[1]);
+  assert.deepEqual(
+    copyOf(1).assignees.map(u => u.id),
+    [1, 7],
+  );
+});
+
+// A template's sheet, open on template 1 with step 2, for the step's edit box and its Remove.
+const templateSheet = v => {
+  const app = component(tasks, actions, sending, checklists);
+  read([v.task(1), v.task(2)]);
+  app.row(copyOf(1));
+  const step = app.row(copyOf(2));
+  for (const [k, value] of Object.entries({
+    canEdit: true,
+    subtasks: [step],
+    stepWordsOnly: t => t,
+  }))
+    Object.defineProperty(app, k, { value, configurable: true });
+  Object.assign(app, {
+    sheet: { id: 1, kind: 'task', stepEdit: null },
+    showTask() {},
+    loadSubPeople() {},
+    keepTemplate() {},
+  });
+  return app;
+};
+const template = () =>
+  fakeVikunja([
+    { id: 1, title: 'TEMPLATE: Closing', done: true, related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } },
+    {
+      id: 2,
+      title: 'Mop',
+      done: true,
+      assignees: [{ id: 7, username: 'bob' }],
+      labels: [{ id: 500, title: 'floor' }],
+      related_tasks: { parenttask: [{ id: 1 }] },
+    },
+  ]);
+
+test("a step's people and labels tapped off in its edit box leave Vikunja's copy of the step", async () => {
+  const v = template(),
+    app = templateSheet(v);
+  Object.defineProperty(app, 'stepEditDraft', { value: () => ({ titles: ['Mop'] }) });
+  app.sheet.stepEdit = { id: 2, text: 'Mop', drop: { u7: true, l500: true } };
+  await app.saveStepEdit(0);
+  assert.deepEqual([copyOf(2).assignees, copyOf(2).labels], [[], []]);
+});
+
+test("a step removed from a template leaves Vikunja's copy of the template", async () => {
+  const v = template(),
+    app = templateSheet(v);
+  v.trouble = req => (req.method === 'GET' ? 'offline' : null); // only the removal's own answer counts
+  globalThis.confirm = () => true;
+  try {
+    await app.removeStep(0);
+  } finally {
+    delete globalThis.confirm;
+  }
+  assert.deepEqual(copyOf(1).related_tasks.subtask, []);
+});
+
+test("the steps a template's Add made before Vikunja refused the rest show in Vikunja's copy of the template", async () => {
+  const v = template(),
+    app = templateSheet(v);
+  v.trouble = req => (req.method === 'GET' ? 'offline' : null); // the template isn't read again
+  Object.defineProperty(app, 'draft', { value: () => ({ added: ['Lock up', 'Turn off'], renames: [] }) });
+  Object.defineProperty(app, 'draftIgnores', { value: () => [] });
+  app.sheet.addRows = [{ text: 'Lock up' }, { text: 'Turn off' }];
+  app.sheet.addBox = { text: '' };
+  // Vikunja makes the first step, then refuses the second.
+  app.createLines = async () => {
+    v.tasks.set(3, { id: 3, title: 'Lock up', done: true, related_tasks: { parenttask: [{ id: 1 }] } });
+    return { ids: [3], used: 1, problems: [], error: new ApiError(403, 'Forbidden') };
+  };
+  await app.addTemplateSteps();
+  assert.deepEqual(
+    copyOf(1).related_tasks.subtask.map(s => s.id),
+    [2, 3],
+  );
 });

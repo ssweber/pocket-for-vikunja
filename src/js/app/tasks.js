@@ -82,20 +82,21 @@ export const started = () => ++clock;
 const since = new Map(); // task id -> field -> when the request behind that field of its copy started
 const flying = new Map(); // task id -> the writes to it in flight (writes)
 const landed = new Map(); // task id -> when the last write to it ended
-/* A write to Vikunja starts now. `on` gives what it sets on each task it changes ({id: {field: value}}), or only the
-   fields' names ({id: [field]}) when their values aren't known yet. Returns the write, for answer and made: `at` is
-   when it started, `crossed` the other writes in flight on each of its tasks at the same time, `add(id, fields)` adds
-   a task or fields, such as a task the write made, and `end()` ends it once it is answered, fails or comes back
-   unknown. Two writes in flight at once can reach Vikunja in either order. So neither's reply is taken for a task both
-   change, and neither's own change of a field the other sets to something else. */
+/* A write to Vikunja starts now. `on` gives the values it sets on each task it changes ({id: {field: value}}), and
+   made takes those values once Vikunja has made it. Returns the write, for answer and made: `at` is when it started,
+   `crossed` the other writes in flight on each of its tasks at the same time, `add(id, fields)` adds a task or fields,
+   such as a task the write made, and `end()` ends it once it is answered, fails or comes back unknown. Two writes in
+   flight at once can reach Vikunja in either order. So neither's reply is taken for a task both change, and neither's
+   own change of a field the other sets to something else. */
 export function writes(on = {}) {
   const w = {
     at: started(),
     crossed: new Map(),
     fields: new Map(),
     add(id, fields = {}) {
+      if (Array.isArray(fields)) throw new Error('A write names the values it sets ({field: value}).');
       if (typeof id !== 'number' || w.ended) return;
-      const set = Array.isArray(fields) ? Object.fromEntries(fields.map(k => [k, UNKNOWN])) : { ...fields },
+      const set = { ...fields },
         t = copies.get(id) ?? bases.get(id);
       /* Vikunja sets done_at itself when done changes. It moves a repeating task marked done on to its next dates
          instead, so only its reply says what such a write leaves. */
@@ -248,20 +249,22 @@ function answer(list, asked, w) {
     if (id && !forgotten.has(id) && !w.crossed.has(id) && !(w.replayed && copies.has(id))) write(id, t, asked, w.at);
   }
 }
-/* Vikunja made write `w` (writes), which set `fields` of task `id`. `w.at` may give each field its own time. The
-   fields go into the copy, unless another write in flight at the same time sets the same field to something else, or
-   only Vikunja's reply can say what the write left in a field. A task shown from what its parent says of it (bases)
-   takes them there, with their times, so a copy made later keeps them. */
-function made(id, fields, w) {
+/* Vikunja made write `w` (writes) on task `id`, setting the values the write names there. An op's answer passes what
+   its apply sets now instead (`fields`), and so does a write that only learns its values from its outcome. `w.at` may
+   give each field its own time. The fields go into the copy, unless another write in flight at the same time sets the
+   same field to something else, or only Vikunja's reply can say what the write left in a field. A task shown from
+   what its parent says of it (bases) takes them there, with their times, so a copy made later keeps them. */
+function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   inChange();
   if (!['number', 'function'].includes(typeof w?.at))
     throw new Error('A change Vikunja made needs its write (writes()).');
   if (forgotten.has(id)) return;
   if (!copies.has(id)) {
     if (bases.has(id)) {
-      const s = since.get(id) || new Map();
-      for (const k of Object.keys(fields)) s.set(k, typeof w.at === 'function' ? w.at(k) : w.at);
-      bases.set(id, { ...bases.get(id), ...fields });
+      const s = since.get(id) || new Map(),
+        known = Object.entries(fields).filter(([, v]) => v !== UNKNOWN);
+      for (const [k] of known) s.set(k, typeof w.at === 'function' ? w.at(k) : w.at);
+      bases.set(id, { ...bases.get(id), ...Object.fromEntries(known) });
       since.set(id, s);
     }
     touched.add(id);
@@ -391,7 +394,7 @@ function answered(a, w, reply = null, posted = null) {
     const had = copies.get(id) ?? bases.get(id);
     if (!had) continue;
     const now = real(op.apply(had, a));
-    made(id, Object.fromEntries(Object.entries(now).filter(([k, v]) => !same(had[k], v))), w);
+    made(id, w, Object.fromEntries(Object.entries(now).filter(([k, v]) => !same(had[k], v))));
   }
   if (reply && reply.task.id === opsId(a.task)) answer([reply.task], TASK, reply);
   offTasks(a);

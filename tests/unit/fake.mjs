@@ -21,8 +21,8 @@ const lost = () => new TypeError('network error');
    POST /projects/:id/tasks creates a task with the next id, never one a deleted task had. POST /tasks/:id/relations
    makes one task a subtask of another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
    tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
-   to, and an assignee removed. GET and POST /labels list and create labels (`labels`), and POST /tasks/:id/labels adds
-   one to a task. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
+   to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
+   one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
    that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
    is refused whole.
 
@@ -100,6 +100,7 @@ export function fakeVikunja(tasks = []) {
     const bulk = req.path.match(/^\/tasks\/(\d+)\/(labels|assignees)\/bulk$/),
       set = bulk && v.tasks.get(+bulk[1]);
     const tag = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/labels$/) || [])[1]),
+      untag = req.path.match(/^\/tasks\/(\d+)\/labels\/(\d+)$/),
       label = id => v.labels.find(l => l.id === id);
     const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
@@ -133,6 +134,13 @@ export function fakeVikunja(tasks = []) {
       else {
         list.push(l);
         res = reply(req.body);
+      }
+    } else if (untag && method === 'DELETE' && v.tasks.has(+untag[1])) {
+      const t = v.tasks.get(+untag[1]);
+      if (!t.labels?.some(l => l.id === +untag[2])) res = reply({ message: 'The label is not on that task.' }, 404);
+      else {
+        t.labels = t.labels.filter(l => l.id !== +untag[2]);
+        res = reply({ message: 'Successfully deleted.' });
       }
     } else if (attach && method === 'POST') {
       const f = req.body.get('files'),

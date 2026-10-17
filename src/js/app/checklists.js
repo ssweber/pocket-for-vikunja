@@ -881,12 +881,12 @@ export default {
         const id = +key.slice(5),
           [got, w] = await writing({ [id]: { title } }, () => patiently(() => patchTask(id, { title })));
         this.change(x => {
-          x.made(id, { title }, w);
+          x.made(id, w);
           x.answer([got], TASK, w);
         });
       }
-      // Linking the new steps changes the template's subtasks.
-      const [added, w] = await writing({ [t.id]: ['related_tasks'] }, () =>
+      // Linking the new steps changes the template's subtasks. Which steps it linked is known only once it ends.
+      const [added, w] = await writing({ [t.id]: {} }, () =>
         this.createLines(d.added, { parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs }),
       );
       Object.assign(r, added);
@@ -895,7 +895,7 @@ export default {
         await writing({ [id]: { done: true } }, () => patiently(() => patchTask(id, { done: true }))).then(
           ([got, w]) =>
             this.change(x => {
-              x.made(id, { done: true }, w);
+              x.made(id, w);
               x.answer([got], TASK, w);
             }),
           e => r.problems.push(e.message),
@@ -944,16 +944,12 @@ export default {
           had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
         if (links)
           this.change(w =>
-            w.made(
-              t.id,
-              {
-                related_tasks: {
-                  ...c?.related_tasks,
-                  subtask: [...had, ...r.ids.map((id, k) => ({ id, title: d.added[k], done: true }))],
-                },
+            w.made(t.id, links, {
+              related_tasks: {
+                ...c?.related_tasks,
+                subtask: [...had, ...r.ids.map((id, k) => ({ id, title: d.added[k], done: true }))],
               },
-              links,
-            ),
+            }),
           );
       } else {
         // If the box was under a step, move it under the last added step.
@@ -1139,14 +1135,14 @@ export default {
       for (const k of drops) {
         const id = +k.slice(1),
           field = k[0] === 'u' ? 'assignees' : 'labels',
-          w = writes({ [e.id]: [field] });
+          had = copyOf(e.id)?.[field],
+          w = writes({ [e.id]: had ? { [field]: had.filter(x => x.id !== id) } : {} });
         await patiently(() => api(`/tasks/${e.id}/${field}/${id}`, { method: 'DELETE' }))
           .catch(err => {
             if (err.status !== 404) throw err;
           })
           .finally(() => w.end());
-        const had = copyOf(e.id)?.[field];
-        if (had) this.change(x => x.made(e.id, { [field]: had.filter(x => x.id !== id) }, w));
+        this.change(x => x.made(e.id, w));
         this.sheet.dirty = true;
       }
       if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
@@ -1206,7 +1202,16 @@ export default {
       return;
     this.sheet.checklistBusy = true;
     // Deleting the step changes the template's subtasks.
-    const w = writes({ [st.id]: [], [t.id]: ['related_tasks'] });
+    const c = copyOf(t.id),
+      w = writes({
+        [st.id]: {},
+        [t.id]: {
+          related_tasks: {
+            ...c?.related_tasks,
+            subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id),
+          },
+        },
+      });
     try {
       // Treat the step as removed if Vikunja no longer has it. That means a 404, or a lost reply when the step is gone.
       await patiently(() => api('/tasks/' + st.id, { method: 'DELETE' })).catch(async e => {
@@ -1220,19 +1225,9 @@ export default {
         )
           throw e;
       });
-      const c = copyOf(t.id);
       this.change(x => {
         x.forget(st.id); // Vikunja deleted the step
-        x.made(
-          t.id,
-          {
-            related_tasks: {
-              ...c?.related_tasks,
-              subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id),
-            },
-          },
-          w,
-        );
+        x.made(t.id, w);
       });
       this.keepTemplate(t);
       this.sheet.dirty = true;

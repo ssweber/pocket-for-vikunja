@@ -446,13 +446,13 @@ export default {
     try {
       // Wait for an earlier save so changing assignees does not overwrite a new name.
       const saving = shared.saveChain.then(() =>
-        writing({ [run.id]: ['assignees'] }, () =>
+        writing({ [run.id]: { assignees: who } }, () =>
           api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
         ),
       );
       shared.saveChain = saving.catch(() => {});
       const [, w] = await saving;
-      this.change(x => x.made(run.id, { assignees: who }, w));
+      this.change(x => x.made(run.id, w));
       this.saveRun();
       this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
     } catch (err) {

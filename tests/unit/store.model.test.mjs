@@ -296,10 +296,13 @@ const HEARD = {
   },
   // A change Vikunja made, as Pocket asked for it: a direct save's fields, or a checklist's progress an op wrote. Each
   // field is judged with the time Vikunja last made a request that changed it (lastWrite).
-  made(w, fn, id, fields, from) {
+  made(w, fn, id, from, given) {
     const m = w.model,
-      before = w.copiesNow().get(id);
-    fn(id, fields, from);
+      before = w.copiesNow().get(id),
+      fields = Object.fromEntries(
+        Object.entries(given ?? from.fields?.get(id) ?? {}).filter(([, v]) => typeof v !== 'symbol'),
+      );
+    fn(id, from, given);
     if (m.forgotten.has(id)) return;
     if (!before) {
       if (m.bases.has(id)) m.bases.set(id, { ...m.bases.get(id), ...clone(fields) });
@@ -773,7 +776,7 @@ class World {
     try {
       this.app.change(x => {
         if (!got) return e.h.undo();
-        x.made(e.id, e.fields, write);
+        x.made(e.id, write);
         x.answer([got], TASK, write);
         e.h.ok();
       });
