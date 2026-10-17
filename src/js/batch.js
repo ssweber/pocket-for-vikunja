@@ -8,24 +8,55 @@ export const BATCH_MS = 3000;
    enough to see the tick and to tap it again to undo it. */
 export const TOP_MS = 1500;
 
-export function batchTimer(go, ms = BATCH_MS){
-  let waiting = false, scrolling = false, timer = null;
+export function batchTimer(go, ms = BATCH_MS) {
+  let waiting = false,
+    scrolling = false,
+    timer = null;
   const fingers = new Set();
-  const arm = () => { clearTimeout(timer); timer = waiting && !fingers.size && !scrolling ? setTimeout(fire, ms) : null; };
-  const fire = () => { timer = null; waiting = false; go(); };
+  const arm = () => {
+    clearTimeout(timer);
+    timer = waiting && !fingers.size && !scrolling ? setTimeout(fire, ms) : null;
+  };
+  const fire = () => {
+    timer = null;
+    waiting = false;
+    go();
+  };
   return {
-    get waiting(){ return waiting; },
+    get waiting() {
+      return waiting;
+    },
     // A row was marked. Everything waiting leaves `ms` from now, or from when the user stops touching the screen.
-    mark(){ waiting = true; arm(); },
+    mark() {
+      waiting = true;
+      arm();
+    },
     // A touch holds everything. When it ends, the wait starts over. `id` is the pointer's id, because two touches can
     // be down at once.
-    down(id){ fingers.add(id); arm(); },
-    up(id){ if (fingers.delete(id)) arm(); },
+    down(id) {
+      fingers.add(id);
+      arm();
+    },
+    up(id) {
+      if (fingers.delete(id)) arm();
+    },
     // Scrolling holds everything until it stops.
-    scroll(on){ if (scrolling === on) return; scrolling = on; arm(); },
+    scroll(on) {
+      if (scrolling === on) return;
+      scrolling = on;
+      arm();
+    },
     // The caller already cleared the rows, because the user left the screen or put Pocket away. Nothing is waiting.
-    now(){ clearTimeout(timer); timer = null; fingers.clear(); waiting = false; },
+    now() {
+      clearTimeout(timer);
+      timer = null;
+      fingers.clear();
+      waiting = false;
+    },
     // Every mark was undone, so nothing is left to clear.
-    stop(){ waiting = false; arm(); },
+    stop() {
+      waiting = false;
+      arm();
+    },
   };
 }

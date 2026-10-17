@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "lint": "eslint . && node scripts/check.mjs",
+    "lint": "eslint . && node scripts/check.mjs && prettier --check \"src/js/**/*.js\" \"tests/**/*.mjs\" \"scripts/**/*.{js,mjs}\" src/styles.css",
     "dev": "node scripts/dev.mjs",
     "test": "npm run test:unit && node tests/parse.mjs && node tests/smoke.mjs && node tests/checklists.mjs",
     "test:unit": "node --test --test-reporter=spec \"tests/unit/*.test.mjs\"",
@@ -20,7 +20,8 @@
     "demo": "node scripts/demo.mjs",
     "specimen": "node scripts/specimen.mjs",
     "perf": "node scripts/perf/app-bench.mjs",
-    "perf:rows": "node scripts/perf/rows-bench.mjs"
+    "perf:rows": "node scripts/perf/rows-bench.mjs",
+    "format": "prettier --write \"src/js/**/*.js\" \"tests/**/*.mjs\" \"scripts/**/*.{js,mjs}\" src/styles.css"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -29,6 +30,7 @@
     "gifenc": "^1.0.3",
     "globals": "^17.13.0",
     "playwright": "^1.63.0",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "prettier": "3.9.9"
   }
 }

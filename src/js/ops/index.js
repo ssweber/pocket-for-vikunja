@@ -28,22 +28,39 @@
    - files(a): the files it still has to upload once its task is made. They move to an entry of their own.
    - deletes(a): the ids of the tasks it deletes, hidden while it waits and forgotten once it is answered.
    - text, refused, dropped and saved: its words, from messages.js. */
-import {opsId} from '../app/tasks.js';
-import {done, doneNote, finish, progress, reopen, skip, undone} from './ticks.js';
-import {answer, note} from './comments.js';
-import {claim, unclaim} from './people.js';
-import {position} from './order.js';
-import {del} from './delete.js';
-import {add} from './add.js';
-import {due, repeat} from './dates.js';
+import { opsId } from '../app/tasks.js';
+import { done, doneNote, finish, progress, reopen, skip, undone } from './ticks.js';
+import { answer, note } from './comments.js';
+import { claim, unclaim } from './people.js';
+import { position } from './order.js';
+import { del } from './delete.js';
+import { add } from './add.js';
+import { due, repeat } from './dates.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
-export {addLines, dropUnder, LINE, linesUnder, madeStage, passUps, photosOf, refuseLines} from './add.js';
-export {waitingComments} from './comments.js';
-export {waitingPositions} from './order.js';
-export {lastTick} from './ticks.js';
-export const OPS = {done, undone, skip, doneNote, note, answer, finish, reopen, progress, claim, unclaim, delete: del, position, add, due, repeat};
+export { addLines, dropUnder, LINE, linesUnder, madeStage, passUps, photosOf, refuseLines } from './add.js';
+export { waitingComments } from './comments.js';
+export { waitingPositions } from './order.js';
+export { lastTick } from './ticks.js';
+export const OPS = {
+  done,
+  undone,
+  skip,
+  doneNote,
+  note,
+  answer,
+  finish,
+  reopen,
+  progress,
+  claim,
+  unclaim,
+  delete: del,
+  position,
+  add,
+  due,
+  repeat,
+};
 
 // What each field is when an op sets it to null.
 export const DEFAULTS = {
@@ -65,7 +82,9 @@ export const DEFAULTS = {
   // 'made': the task it made stays, and the lines under it are sent under that task. Cancel offers no Undo.
   cancel: 'undo',
   sheetPlace: null,
-  answered: (app, a) => { if (app.view.shownRun?.id === a.run) app.refreshRunTask(a.task); },
+  answered: (app, a) => {
+    if (app.view.shownRun?.id === a.run) app.refreshRunTask(a.task);
+  },
   putBack: () => {},
   holds: a => [a.task],
   waitsOn: a => [a.task],
@@ -77,8 +96,32 @@ export const DEFAULTS = {
 export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
 /* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
    answered. `until` holds a delete back while Restore shows, and an add's stages keep the task they made. */
-export const SENT = ['files', 'stage', 'fails', 'sent', 'key', 'fixed', 'got', 'failed', 'filed', 'until', 'problems', 'doneAt',
-  'taskId', 'projectId', 'to', 'body', 'people', 'labels', 'tags', 'had', 'labeled', 'assigned', 'linked', 'arrived'];
+export const SENT = [
+  'files',
+  'stage',
+  'fails',
+  'sent',
+  'key',
+  'fixed',
+  'got',
+  'failed',
+  'filed',
+  'until',
+  'problems',
+  'doneAt',
+  'taskId',
+  'projectId',
+  'to',
+  'body',
+  'people',
+  'labels',
+  'tags',
+  'had',
+  'labeled',
+  'assigned',
+  'linked',
+  'arrived',
+];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't
    know, such as one a newer Pocket saved, takes DEFAULTS. It has no stages, apply or words, so it can't be sent or
@@ -86,32 +129,61 @@ const full = new WeakMap();
 export const opOf = a => {
   const op = OPS[a.op];
   if (!op) return DEFAULTS;
-  if (!full.has(op)) full.set(op, Object.fromEntries(Object.entries({...DEFAULTS, ...op}).map(([k, v]) => [k, v ?? DEFAULTS[k]])));
+  if (!full.has(op))
+    full.set(op, Object.fromEntries(Object.entries({ ...DEFAULTS, ...op }).map(([k, v]) => [k, v ?? DEFAULTS[k]])));
   return full.get(op);
 };
 /* Throw on a field of entry `a` that its op doesn't declare. Nothing reads such a field on purpose, so it is a bug. The
    fields an op is queued with (`queued`) can't include the sender's own (SENT), so no caller can hand a stage a body
    or a read made from what the row showed. */
 export const checkFields = (a, queued = false) => {
-  const op = opOf(a), known = new Set([...COMMON, ...queued ? [] : SENT, ...op.asks, ...op.saw]);
-  for (const k of Object.keys(a)) if (!known.has(k))
-    throw new Error(queued && SENT.includes(k) ? `The ${a.op} op is queued with the sender's field ${k}` : `The ${a.op} op doesn't declare the field ${k}`);
+  const op = opOf(a),
+    known = new Set([...COMMON, ...(queued ? [] : SENT), ...op.asks, ...op.saw]);
+  for (const k of Object.keys(a))
+    if (!known.has(k))
+      throw new Error(
+        queued && SENT.includes(k)
+          ? `The ${a.op} op is queued with the sender's field ${k}`
+          : `The ${a.op} op doesn't declare the field ${k}`,
+      );
   return a;
 };
 /* Entry `a` as its stages get it. Reading a field in the op's `saw` throws, because what the screen showed when the op
    was queued may be wrong by the time it is sent. Writes reach the entry. */
 export const stageView = a => {
   const saw = new Set(opOf(a).saw);
-  return new Proxy(a, {get(t, k){
-    if (saw.has(k)) throw new Error(`The ${t.op} op's stage read ${k}, what the screen showed. Read Vikunja's copy with c.once instead.`);
-    return t[k];
-  }});
+  return new Proxy(a, {
+    get(t, k) {
+      if (saw.has(k))
+        throw new Error(
+          `The ${t.op} op's stage read ${k}, what the screen showed. Read Vikunja's copy with c.once instead.`,
+        );
+      return t[k];
+    },
+  });
 };
 // The stages entry `a` is sent in. A stage builds its requests only from the entry and `a.fixed`, so each part always
 // carries the same request, and its key gets the same answer from the relay.
-export const stagesOf = a => { const s = OPS[a.op].stages; return typeof s === 'function' ? s(a) : s; };
+export const stagesOf = a => {
+  const s = OPS[a.op].stages;
+  return typeof s === 'function' ? s(a) : s;
+};
 // What a refusal of entry `a` does, and what its Cancel gives back. An add's line decides by whether its task is made.
-export const refusalOf = a => { const r = opOf(a).refusal; return typeof r === 'function' ? r(a) : r; };
-export const cancelOf = a => { const r = opOf(a).cancel; return typeof r === 'function' ? r(a) : r; };
+export const refusalOf = a => {
+  const r = opOf(a).refusal;
+  return typeof r === 'function' ? r(a) : r;
+};
+export const cancelOf = a => {
+  const r = opOf(a).cancel;
+  return typeof r === 'function' ? r(a) : r;
+};
 // The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
-export const noneWaiting = () => Object.fromEntries(['files', ...Object.values(OPS).map(o => o.waiting).filter(Boolean)].map(k => [k, {}]));
+export const noneWaiting = () =>
+  Object.fromEntries(
+    [
+      'files',
+      ...Object.values(OPS)
+        .map(o => o.waiting)
+        .filter(Boolean),
+    ].map(k => [k, {}]),
+  );
