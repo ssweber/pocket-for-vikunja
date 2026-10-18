@@ -291,7 +291,9 @@ const HEARD = {
      every list. Each field the store took from the apply is judged with the time Vikunja made the op's last request
      that changed that field of that task (madeField). The reply is judged with its own time, against Pocket's news of
      the task before the answer, since the apply's news isn't about the fields the reply brings. An op that sent no
-     request changed nothing in Vikunja, so its apply is no news. */
+     request changed nothing in Vikunja. It sent none because its stage read the task and found Vikunja had its change
+     already, as an Undo of a change a teammate made too, so its apply is news, as of now, of the fields Vikunja has as
+     the apply leaves them. */
   answered(w, fn, a, from, reply, posted) {
     const m = w.model,
       op = opOf(a),
@@ -342,7 +344,12 @@ const HEARD = {
         src = m.adopt(id, b, after, sources),
         mid = { ...b };
       for (const [k, x] of src) if (!x.rec) mid[k] = after[k];
-      const asked = w.lastMade.has(a.id) ? Object.fromEntries(differ(b, applied).map(k => [k, applied[k]])) : {};
+      const t = w.v.tasks.get(id),
+        asked = Object.fromEntries(
+          differ(b, applied)
+            .filter(k => w.lastMade.has(a.id) || (t && same(like(k, applied[k]), like(k, t[k]))))
+            .map(k => [k, applied[k]]),
+        );
       w.judge({ via: 'apply', id, at, a, before: b, after: mid, fieldAt, asked, vikunja });
       if (own === id) w.judge({ via: 'got', id, at: rec.at, rec, before: mid, after, tag: tags.get(id), thrown });
     }
@@ -1724,6 +1731,30 @@ test('a step a teammate made repeat takes nothing into the copy when Make templa
       new Teammate(2, 'repeat_after'),
       new Teammate(2, 'due_date'),
       new StartRead([1], false),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A repeat on step 101 reaches Vikunja, and its Undo waits. A teammate turns the repeat off, so the Undo finds its
+   change there already and sends nothing. The copy takes the Undo's change as of then, and a read that started before
+   the teammate's change, which still has the repeat, is too old for it. */
+test('an Undo that finds its change made by a teammate keeps the copy from going back to a read from before', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('repeat', STEP),
+      new StepMade(),
+      new Send(false),
+      new Answer('arrives', 0),
+      new Undo(0),
+      new StartRead([STEP], true),
+      new Teammate(STEP, 'repeat_after'),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
