@@ -220,6 +220,22 @@ test('a template deleted while a refused start of it waits deletes the checklist
   await app.deleteNow([[8, 9, 7]]);
   assert.deepEqual([[...v.tasks.keys()], sync.all(1)], [[], []]);
 });
+
+// A step Vikunja made but refused to link under the checklist isn't among the checklist's steps the delete deletes.
+test('a checklist deleted while a refused add of a step waits deletes the step the add made', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja(structuredClone(SAMPLES.addStep.tasks)),
+    app = sender(v);
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  v.trouble = r => (r.method === 'POST' && r.path === '/tasks/1/relations' ? 403 : null);
+  assert.equal((await app.act({ id: uuid7(), ...SAMPLES.addStep.fields(OPS) })).status, 'error');
+  assert.deepEqual([...v.tasks.keys()], [1, 2, 3, 101]);
+  v.trouble = () => null;
+  await app.deleteNow([[2, 3, 1]]);
+  assert.deepEqual([[...v.tasks.keys()], sync.all(1)], [[], []]);
+});
 // The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
 // The test controls the timers, so timers that have not fired yet (the Undo's, for example) don't keep Node waiting.

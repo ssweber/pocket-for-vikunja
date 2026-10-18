@@ -29,7 +29,8 @@ Built on `dev`, and described by the code and its comments:
 - people and labels from the sheet, a checklist's people and a template's label, as `assign` and `label` ops, each
   sending the set Vikunja has with one change;
 - every delete of a task as a `delete` op: held for Restore from a row or a task's sheet, and sent at once from
-  everywhere else (`deleteNow`), which first takes the changes still waiting on those tasks out of the outbox;
+  everywhere else (`deleteNow`), which first takes the changes still waiting on those tasks out of the outbox, and
+  cancels one that made tasks;
 - starting a checklist and adding a step to one as `startRun` and `addStep` ops, which keep what they made in their
   entry. Cancel, and a start's Undo, delete it with the same op marked `cancelled`;
 - Make template, New template, the example template and the steps added under a template as `makeTemplate` and
