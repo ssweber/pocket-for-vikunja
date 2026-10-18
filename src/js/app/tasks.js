@@ -135,10 +135,15 @@ export async function writing(on, request) {
     w.end();
   }
 }
+const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
 /* The write of op entry `a` as the sender sends it (writes): the tasks it changes, each with what its apply sets
    there. A field the apply sets to the value the copy has is one it sets too, so it is found by applying the op to
-   a task with nothing in it as well. */
+   a task with nothing in it as well. The write starts with the op's first request and stays in flight across tries,
+   because a request whose reply was lost may still reach Vikunja. It ends once the op is answered (answered), or stops
+   waiting in the outbox (keyOps). */
 export const sendingOp = a => {
+  const was = opWrites.get(a.id);
+  if (was && !was.ended) return was;
   const op = opOf(a),
     on = {},
     changed = (t, x) => Object.keys(x).filter(k => !same(t[k], x[k]));
@@ -149,7 +154,9 @@ export const sendingOp = a => {
         sets = new Set([...changed(t, x), ...changed({ id }, op.apply({ id }, a))]);
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
     }
-  return writes(on);
+  const w = writes(on);
+  opWrites.set(a.id, w);
+  return w;
 };
 // Whether a read that started at `at` ran while a write to task `id` was in flight, other than `except`, the write of
 // the op the read is part of.
@@ -337,6 +344,13 @@ function keyOps() {
     listed = c.user ? sync.all(c.user.id) : [],
     all = listed.filter(e => !e.failed);
   for (const id of settled) if (!listed.some(e => e.id === id)) settled.delete(id);
+  // An op that stops waiting, refused or gone from the outbox, has no request left on its way.
+  const waits = new Set(all.map(e => e.id));
+  for (const [id, w] of opWrites)
+    if (!waits.has(id)) {
+      w.end();
+      opWrites.delete(id);
+    }
   for (const e of all)
     if (e.kind === 'act' && OPS[e.op] && !settled.has(e.id))
       for (const id of shownOn(e)) if (!sync.held.has(e.id) || e.ids.includes(id)) (out[id] ||= []).push(e);
@@ -368,10 +382,11 @@ function offTasks(a) {
   return ids;
 }
 /* An op's answer. Vikunja did what the op asked, so each task the op changes takes the op's apply into Vikunja's copy
-   (made), also when the reply is not a task, as for a claim, a comment or a ✅. `w` is the op's write, with when each
-   field reached Vikunja (sendAct). Then its own task takes the `reply` its stages kept (answer), and the op stops
-   waiting, all in one change. The comment Vikunja made (`posted`) takes the place of the op's waiting one. If the op
-   stopped waiting first, a row would show the old value until the answer was written. A deleted task is forgotten. */
+   (made), also when the reply is not a task, as for a claim, a comment or a ✅. `w` is the op's write (sendingOp), with
+   when each field reached Vikunja (sendAct), and it ends here. Then its own task takes the `reply` its stages kept
+   (answer), and the op stops waiting, all in one change. The comment Vikunja made (`posted`) takes the place of the
+   op's waiting one. If the op stopped waiting first, a row would show the old value until the answer was written. A
+   deleted task is forgotten. */
 function answered(a, w, reply = null, posted = null) {
   inChange();
   const op = opOf(a),
@@ -397,6 +412,7 @@ function answered(a, w, reply = null, posted = null) {
     made(id, w, Object.fromEntries(Object.entries(now).filter(([k, v]) => !same(had[k], v))));
   }
   if (reply && reply.task.id === opsId(a.task)) answer([reply.task], TASK, reply);
+  opWrites.get(a.id)?.end();
   offTasks(a);
   const deleted = op.deletes(a);
   if (deleted.length) forgetTree(deleted);
@@ -469,7 +485,7 @@ export const putting =
   };
 export const copyOf = id => copies.get(id);
 export const dropCopies = () => {
-  for (const m of [copies, edits, bases, since, flying, landed, ended, settled, forgotten, given]) m.clear();
+  for (const m of [copies, edits, bases, since, flying, landed, opWrites, ended, settled, forgotten, given]) m.clear();
 };
 // Whether a direct save of task `id` is still running, or of any task without `id`.
 export const savesRunning = id =>

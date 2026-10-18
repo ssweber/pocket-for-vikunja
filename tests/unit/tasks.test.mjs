@@ -1413,3 +1413,29 @@ test("the steps a template's Add made before Vikunja refused the rest show in Vi
     [2, 3],
   );
 });
+
+/* A request whose reply never came may reach Vikunja later. The op's write stays in flight until a later try is
+   answered, so a read taken meanwhile, which may be from before Vikunja made it, is thrown away. */
+test('an op whose request was lost stays in flight until it is sent again, so a read taken meanwhile is thrown away', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', percent_done: 0 }]),
+    app = sender(),
+    real = globalThis.fetch;
+  read([v.task(1)]);
+  const row = app.row(copyOf(1));
+  // The first PATCH is lost on its way, and reaches Vikunja only after the read below.
+  let late = null;
+  globalThis.fetch = async (url, o = {}) => {
+    if (!late && o.method === 'PATCH') {
+      late = () => real(url, o);
+      throw new TypeError('Failed to fetch');
+    }
+    return real(url, o);
+  };
+  const first = await app.act({ op: 'progress', task: 1, pct: 40, run: null });
+  assert.equal(first.status, 'offline');
+  read([structuredClone(v.task(1))]);
+  await late();
+  await app.sendActs(first.entry);
+  assert.deepEqual([copyOf(1).percent_done, row.percent_done], [0.4, 0.4]);
+});

@@ -97,10 +97,11 @@ export function stageContext(a, app, save = () => sync.save(a)) {
   const c = {
     app,
     save,
-    // The write of this try (writes, tasks.js), which `begin` starts with its first request, and for each field the
-    // earliest start of a request of it that Vikunja made and that changed the field.
+    // The op's write (sendingOp, tasks.js), which `begin` starts with its first request or takes up from an earlier
+    // try, and for each field the earliest start of a request of it that Vikunja made and that changed the field.
     write: null,
     begin: null,
+    earlier: false,
     fieldsAt: new Map(),
     // Where reply `t` came from. A reply Pocket doesn't know counts as replayed, as old as anything.
     from: t => (t && heard.get(t)) || none,
@@ -154,14 +155,15 @@ export function stageContext(a, app, save = () => sync.save(a)) {
       if (got && typeof got === 'object') heard.set(got, from);
       return got;
     },
-    // A read kept as the op's task is thrown away, as any read is, if it ran while another write to the task was in
-    // flight (overlaps).
+    /* A read kept as the op's task is thrown away, as any read is, if it ran while another write to the task was in
+       flight (overlaps). The op's own write counts too once an earlier try sent a request (`earlier`), since that
+       request may still be on its way. */
     async read(path) {
       const at = started(),
         got = await api(path),
         id = +(path.match(/^\/tasks\/(\d+)/) || [])[1],
         mine = c.write?.crossed ?? new Map(),
-        crossed = id && overlaps(id, at, c.write) ? new Map([...mine, [id, new Set()]]) : mine;
+        crossed = id && overlaps(id, at, c.earlier ? null : c.write) ? new Map([...mine, [id, new Set()]]) : mine;
       if (got && typeof got === 'object') heard.set(got, { at, replayed: false, crossed });
       return got;
     },
@@ -440,8 +442,11 @@ export default {
         return { ...none, status: 'offline', reached: false };
       }
       // A busy Vikunja is retried a few times. With keys, sending a stage again is safe. The op's write starts with its
-      // first request (sendingOp), so an op that stops before sending one crosses no other write.
+      // first request (sendingOp), so an op that stops before sending one crosses no other write. An op that has sent
+      // one is in flight from the start of the try.
       c.begin = () => sendingOp(a);
+      if (a.sent) c.write = c.begin();
+      c.earlier = !!a.sent;
       while (a.stage < stages.length) {
         await patiently(() => stages[a.stage](seen, c.start()));
         a.stage++;
@@ -452,7 +457,7 @@ export default {
       const r = c.reply,
         w = (c.write ||= sendingOp(a)),
         at = k => c.fieldsAt.get(k) ?? Math.min(...(sends.get(a.id)?.values() ?? []), w.at);
-      this.change(x => x.answered(a, { at, crossed: w.crossed, fields: w.fields }, r, c.comment));
+      this.change(x => x.answered(a, { ...w, at }, r, c.comment));
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
@@ -510,7 +515,6 @@ export default {
       await c.save();
       return { ...got(), status: 'error', error, kept: true };
     } finally {
-      c.write?.end();
       if (!sync.entries.has(a.id)) {
         sends.delete(a.id);
         told.delete(a.id);
