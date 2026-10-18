@@ -853,7 +853,9 @@ test('a done top step of a checklist card stays the top row while the outbox tak
   assert.deepEqual([top(), app.leaving, app.tasks[12].done], ['Chairs', {}, false]);
 });
 
-test('Today’s groups place a card by what brought it, and show the brought-in tasks as rows if the card’s task cannot be read', () => {
+// At noon, so a time an hour later is still today.
+test('Today’s groups place a card by what brought it, and show the brought-in tasks as rows if the card’s task cannot be read', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) });
   const app = component(cards, views, alerts, tasks, leaving),
     now = new Date();
   const soon = new Date(now.getTime() + 36e5).toISOString(),
