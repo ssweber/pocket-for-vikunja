@@ -31,6 +31,7 @@ export const note = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 // An answer's text doesn't go back on Cancel, because the step's comment box is not where it was typed.
 export const answer = {
@@ -54,6 +55,7 @@ export const answer = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 
 // The comments still waiting to be posted on task `id` from its sheet, among the outbox's `entries`.

@@ -49,6 +49,7 @@ export const claim = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 export const unclaim = {
   apply: (t, a) => ({ ...t, assignees: (t.assignees || []).filter(u => u.id !== a.user) }),
@@ -71,4 +72,5 @@ export const unclaim = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };

@@ -107,6 +107,7 @@ export const due = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 
 // The fields an Undo of a repeat compares. The repeat is two fields, compared together.
@@ -183,4 +184,5 @@ export const repeat = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };

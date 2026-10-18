@@ -142,13 +142,14 @@ export async function writing(on, request) {
 const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
 /* The write of op entry `a` as the sender sends it (writes): the tasks it changes, each with what its apply sets
    there. A field the apply sets to the value the copy has is one it sets too, so it is found by applying the op to
-   a task with nothing in it as well. The write starts with the op's first request and stays in flight across tries,
-   because a request whose reply was lost may still reach Vikunja. It ends once the op stops waiting in the outbox:
-   answered, refused or gone (keyOps). The op's change counts from its first request in this session (`at`), also when
-   Try again sends it after it was refused. An op sent before this page loaded was made at a time the page doesn't
-   know, so it counts from before all of the page's reads (EARLIER) until it makes a request fresh (`start`,
-   stageContext). From then on its part made earlier can overwrite a teammate's change the page read, so its tasks are
-   read again once it is answered (`replays`). */
+   a task with nothing in it as well. A field only Vikunja's reply can say (replyOnly) is unknown until it comes. The
+   write starts with the op's first request and stays in flight across tries, because a request whose reply was lost
+   may still reach Vikunja. It ends once the op stops waiting in the outbox: answered, refused or gone (keyOps). The
+   op's change counts from its first request in this session (`at`), also when Try again sends it after it was
+   refused. An op sent before this page loaded was made at a time the page doesn't know, so it counts from before all
+   of the page's reads (EARLIER) until it makes a request fresh (`start`, stageContext). From then on its part made
+   earlier can overwrite a teammate's change the page read, so its tasks are read again once it is answered
+   (`replays`). */
 export const sendingOp = a => {
   const was = opWrites.get(a.id);
   if (was && !was.ended) return was;
@@ -161,6 +162,7 @@ export const sendingOp = a => {
         x = op.apply(t, a),
         sets = new Set([...changed(t, x), ...changed({ id }, op.apply({ id }, a))]);
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
+      if (id === opsId(a.task)) for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
     }
   const w = writes(on);
   Object.assign(

@@ -94,6 +94,7 @@ export const done = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 // Cancel gives a done note's text, or a skip's reason, back to the step's box.
 export const doneNote = {
@@ -117,6 +118,7 @@ export const doneNote = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 export const skip = {
   apply: doneBy(SKIP_MARK, true),
@@ -139,6 +141,7 @@ export const skip = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 // Undo ticks the task again. An Undo of a repeating task's tick has no Undo.
 export const undone = {
@@ -162,6 +165,7 @@ export const undone = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 // finishRun and reopenRun redraw the checklist's screen themselves. Each is the other's Undo.
 export const finish = {
@@ -185,6 +189,7 @@ export const finish = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 export const reopen = {
   apply: notDone,
@@ -207,6 +212,7 @@ export const reopen = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 /* The progress before (`was`) is for its Undo. A progress replaces an earlier one on its task that hasn't been sent,
    and keeps its `was`, so Undo goes back to where the first one started. */
@@ -235,6 +241,7 @@ export const progress = {
   files: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 
 // The last tick, skip or untick among a step's waiting ops. The step looks waiting while one is in the outbox.

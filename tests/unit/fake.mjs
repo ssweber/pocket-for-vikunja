@@ -179,6 +179,7 @@ export function fakeVikunja(tasks = []) {
     } else if (into && method === 'POST') {
       const made = {
         id: Math.max(100, ...v.tasks.keys(), ...gone) + 1,
+        description: '',
         done: false,
         done_at: '0001-01-01T00:00:00Z',
         percent_done: 0,
@@ -188,6 +189,7 @@ export function fakeVikunja(tasks = []) {
         priority: 0,
         assignees: null,
         labels: null,
+        reminders: null,
         ...req.body,
         project_id: into,
         created: new Date().toISOString(),

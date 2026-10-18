@@ -279,6 +279,7 @@ export const add = {
   answered: null,
   putBack: null,
   deletes: null,
+  replyOnly: null,
 };
 
 /* The lines under waiting id `name` among the outbox's `entries`, in the order they were typed: only those right under

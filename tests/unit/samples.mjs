@@ -7,6 +7,7 @@ export const ME = { id: 1, username: 'me', name: '' },
 export const task = (id, title, more = {}) => ({
   id,
   title,
+  description: '',
   project_id: 5,
   done: false,
   done_at: ZERO,
@@ -17,6 +18,7 @@ export const task = (id, title, more = {}) => ({
   position: 100,
   assignees: [],
   labels: [],
+  reminders: null,
   reactions: {},
   comments: [],
   ...more,
@@ -166,6 +168,62 @@ export const SAMPLES = {
       run: null,
     },
     made: v => v.task(7).repeat_after === 604800,
+    cannot: ['partly done'],
+  },
+  edit: {
+    tasks: [task(7, 'Wipe the till')],
+    fields: {
+      op: 'edit',
+      task: 7,
+      set: { title: 'Wipe the till and the counter' },
+      was: { title: 'Wipe the till' },
+      run: null,
+    },
+    made: v => v.task(7).title === 'Wipe the till and the counter',
+    cannot: ['partly done'],
+  },
+  // Notes are written over the notes Vikunja has, only while they are the ones the user began from (`base`).
+  'edit, notes': {
+    op: 'edit',
+    tasks: [task(7, 'Wipe the till', { description: '<p>Use the blue cloth</p>' })],
+    fields: {
+      op: 'edit',
+      task: 7,
+      rebase: 'notes',
+      text: 'Use the green cloth',
+      base: 'Use the blue cloth',
+      run: null,
+    },
+    made: v => v.task(7).description === '<p>Use the green cloth</p>',
+    cannot: ['partly done'],
+  },
+  // A reminder an hour before the due time takes the place of the one at the due time.
+  'edit, reminders': {
+    op: 'edit',
+    tasks: [task(7, 'Wipe the till', { due_date: D9, reminders: [{ relative_to: 'due_date', relative_period: 0 }] })],
+    fields: {
+      op: 'edit',
+      task: 7,
+      rebase: 'reminders',
+      add: [{ relative_to: 'due_date', relative_period: -3600 }],
+      drop: [{ relative_to: 'due_date', relative_period: 0 }],
+      run: null,
+    },
+    made: v => v.task(7).reminders.length === 1 && v.task(7).reminders[0].relative_period === -3600,
+    cannot: ['partly done'],
+  },
+  // The checklist's second step moves up, in its order line.
+  'edit, order': {
+    op: 'edit',
+    tasks: checklist({ 1: { description: '<p>pocket:order 2 3</p>' } }),
+    fields: {
+      op: 'edit',
+      task: 1,
+      rebase: 'order',
+      moves: [{ step: 3, dir: -1, after: null, to: 0, dragged: false, from: 2, at: 1 }],
+      run: null,
+    },
+    made: v => v.task(1).description === '<p>pocket:order 3 2</p>',
     cannot: ['partly done'],
   },
 };

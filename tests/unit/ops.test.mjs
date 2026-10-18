@@ -351,6 +351,20 @@ const WORDS = {
       "“it” stays where it was in Vikunja's list.",
     ],
   ],
+  edit: [
+    [
+      'Renaming “Unlock the door” to “Unlock the back door”',
+      'Renaming “Unlock the door”',
+      '“Unlock the door” keeps its title in Vikunja.',
+      '“Unlock the door” keeps its title in Vikunja.',
+    ],
+    [
+      'Renaming a task to “Unlock the back door”',
+      'Renaming a task',
+      '“it” keeps its title in Vikunja.',
+      '“it” keeps its title in Vikunja.',
+    ],
+  ],
   add: [
     ['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''],
     ['New task: ', 'Adding a task', '', ''],
@@ -383,7 +397,15 @@ test('each op says what the outbox said before: its row, its refusal, and what c
   assert.deepEqual(Object.keys(WORDS).sort(), Object.keys(OPS).sort());
   for (const [name, op] of Object.entries(OPS))
     ['Unlock the door T#5m', ''].forEach((title, k) => {
-      const a = stage => ({ op: name, task: 1, stage, pct: 40, ids: [3, 2, 1], html: '' });
+      const a = stage => ({
+        op: name,
+        task: 1,
+        stage,
+        pct: 40,
+        ids: [3, 2, 1],
+        html: '',
+        set: { title: 'Unlock the back door' },
+      });
       assert.deepEqual(
         [op.text(a(0), title), op.refused(a(0), title), op.dropped(a(0), title), op.dropped(a(1), title)],
         WORDS[name][k],

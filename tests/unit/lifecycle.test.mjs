@@ -152,6 +152,7 @@ async function open(tab, x) {
     aimCancelled() {},
     positionSent() {},
     positionRefused() {},
+    notesRefused() {},
   });
   Object.defineProperty(app, 'toast', { value: {} });
   // A read lists only the subtasks that still exist, as Vikunja's does.

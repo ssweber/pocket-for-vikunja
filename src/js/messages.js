@@ -1,6 +1,6 @@
 // The messages Pocket shows when something happens. lines.js decides where each is shown. These functions only build
 // the text, so the unit tests can check it.
-import { andList } from './util.js';
+import { andList, PRIOS } from './util.js';
 import { NetError } from './api.js';
 import { dayName, dueInfo, fmtTime, isSet } from './dates.js';
 import { parseStep } from './checklists.js';
@@ -146,6 +146,38 @@ const unticked = {
     a.stage > 0 ? `${it(title)} stays not done in Vikunja.${REST}` : `${it(title)} stays done in Vikunja.`,
   ),
 };
+// An edit's words, by the field it changes (ops/edit.js).
+const task = title => (title ? `“${named(title)}”` : 'a task');
+const EDITED = {
+  title: {
+    text: (a, title) => `Renaming ${task(title)} to “${a.set.title}”`,
+    refused: title => 'Renaming ' + task(title),
+    dropped: title => `${it(title)} keeps its title in Vikunja.`,
+  },
+  priority: {
+    text: (a, title) =>
+      (a.set.priority ? `Priority: ${PRIOS[a.set.priority]?.label ?? a.set.priority}` : 'No priority') +
+      ` on ${task(title)}`,
+    refused: title => 'Priority' + on(title),
+    dropped: title => `${it(title)} keeps the priority it has in Vikunja.`,
+  },
+  notes: {
+    text: (a, title) => `Notes on ${task(title)}`,
+    refused: title => 'Notes' + on(title),
+    dropped: title => `${it(title)} keeps the notes it has in Vikunja.`,
+  },
+  reminders: {
+    text: (a, title) => `Reminders on ${task(title)}`,
+    refused: title => 'Reminders' + on(title),
+    dropped: title => `${it(title)} keeps the reminders it has in Vikunja.`,
+  },
+  order: {
+    text: (a, title) => `Moving a step in ${task(title)}`,
+    refused: title => 'Moving a step' + (title ? ` in “${named(title)}”` : ''),
+    dropped: title => `${it(title)} keeps its order of steps in Vikunja.`,
+  },
+};
+const edited = a => EDITED[a.rebase ?? Object.keys(a.set)[0]];
 export const OP_WORDS = {
   done: { ...ticked, text: (a, title, r) => `Done: ${row(title, r)}`, refused: (a, title) => 'A tick' + on(title) },
   doneNote: {
@@ -247,6 +279,11 @@ export const OP_WORDS = {
     text: (a, title, r) => `${repeatText(a.set || {})}: ${row(title, r)}`,
     refused: (a, title) => `Changing how ${title ? `“${named(title)}”` : 'a task'} repeats`,
     dropped: keeps((a, title) => `${it(title)} still ${repeatText(a.was || {}).toLowerCase()}.`),
+  },
+  edit: {
+    text: (a, title) => edited(a).text(a, title),
+    refused: (a, title) => edited(a).refused(title),
+    dropped: keeps((a, title) => edited(a).dropped(title)),
   },
   // An add's line, under what it goes under (`a.over`). Only a line whose task is made (`taskId`) is cancelled in the
   // Outbox with these words. Before that, its Cancel gives the lines back (cancelOf).

@@ -19,7 +19,8 @@
      and Vikunja's refusal giving that (refusalOf).
    - cancel: what Cancel gives back, and so whether Cancel offers Undo (the values are beside DEFAULTS), or a function
      of the entry giving that (cancelOf).
-   - sheetPlace: where the open sheet of its task says it was refused, instead of the usual place.
+   - sheetPlace: where the open sheet of its task says it was refused, instead of the usual place, or a function of
+     the entry giving that (sheetPlaceOf).
    - answered(app, a, c): what the screen does once Vikunja has answered it.
    - putBack(app, a, error): what puts the screen back and says why when a refusal leaves the outbox ('undone').
    - holds(a): the ids it holds back once it fails, so the ops after it on them wait (heldTasks, app/acts.js).
@@ -27,6 +28,8 @@
    - row(a): the waiting row it shows in a list until its task is made, or null (pendingTasks).
    - files(a): the files it still has to upload once its task is made. They move to an entry of their own.
    - deletes(a): the ids of the tasks it deletes, hidden while it waits and forgotten once it is answered.
+   - replyOnly(a): the fields of its task that only Vikunja's reply can say, because a stage builds them from Vikunja's
+     copy as it is sent. Its apply's value for them is only a guess, which Vikunja's copy never takes (sendingOp).
    - text, refused, dropped and saved: its words, from messages.js. */
 import { opsId } from '../app/tasks.js';
 import { done, doneNote, finish, progress, reopen, skip, undone } from './ticks.js';
@@ -36,6 +39,7 @@ import { position } from './order.js';
 import { del } from './delete.js';
 import { add } from './add.js';
 import { due, repeat } from './dates.js';
+import { edit } from './edit.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
@@ -43,6 +47,7 @@ export { addLines, dropUnder, LINE, linesUnder, madeStage, passUps, photosOf, re
 export { waitingComments } from './comments.js';
 export { waitingPositions } from './order.js';
 export { lastTick, movedFrom } from './ticks.js';
+export { movedSteps, notesText } from './edit.js';
 export const OPS = {
   done,
   undone,
@@ -60,6 +65,7 @@ export const OPS = {
   add,
   due,
   repeat,
+  edit,
 };
 
 // What each field is when an op sets it to null.
@@ -92,6 +98,7 @@ export const DEFAULTS = {
   row: () => null,
   files: () => [],
   deletes: () => [],
+  replyOnly: () => [],
 };
 // The fields any op's entry may have when it is queued (actEntry). `undo` marks an op that undoes another, by the id of
 // that op's entry (undoOps).
@@ -179,6 +186,11 @@ export const refusalOf = (a, error = null) => {
 export const cancelOf = a => {
   const r = opOf(a).cancel;
   return typeof r === 'function' ? r(a) : r;
+};
+// Where the open sheet of entry `a`'s task says it was refused. An edit says it beside the field it changes.
+export const sheetPlaceOf = a => {
+  const p = opOf(a).sheetPlace;
+  return typeof p === 'function' ? p(a) : p;
 };
 // The component's `waiting` with nothing waiting: the files to upload by task, and the key each op names.
 export const noneWaiting = () =>

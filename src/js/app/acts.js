@@ -6,7 +6,16 @@ import { parseStep, patiently } from '../checklists.js';
 import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import { changedSince, notKnown, toOutbox, UNKNOWN } from '../messages.js';
-import { checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf } from '../ops/index.js';
+import {
+  checkFields,
+  dropUnder,
+  opOf,
+  refuseLines,
+  refusalOf,
+  sheetPlaceOf,
+  stageView,
+  stagesOf,
+} from '../ops/index.js';
 import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
@@ -333,11 +342,11 @@ export default {
         out.push({ ...last, id: e.id, batch: e.batch, boxed: inBox });
         if (last.kept) hold(e, stopped);
         // A refusal that puts the screen back says why itself (putBack), and a line says so in its add box (refusal).
-        const err = last.error,
-          op = opOf(e);
+        const err = last.error;
         // A stage that knows the whole sentence gives it (`said`). An op that names a place in its task's open sheet
         // says it there until the sheet closes (sheetPlace). An Undo says it on its task's row, where it was tapped.
-        const inSheet = op.sheetPlace && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
+        const sheetAt = sheetPlaceOf(e),
+          inSheet = sheetAt && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
         if (last.status === 'error' && !quiet?.has(e.id) && (last.kept || refusalOf(now, err) !== 'undone') && !inBox)
           this.say(
             err.said ||
@@ -347,7 +356,7 @@ export default {
                   (last.kept ? KEPT : this.wordsBack(err))),
             {
               row: e.undo ? { id: opsId(e.task), stays: true } : null,
-              place: inSheet ? op.sheetPlace : 'step',
+              place: inSheet ? sheetAt : 'step',
               cls: 'failed',
               action: last.kept ? toOutbox(this) : null,
               ...(inSheet && { ms: null }),

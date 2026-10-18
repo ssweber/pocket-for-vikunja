@@ -511,6 +511,7 @@ class World {
       aimCancelled() {},
       positionSent() {},
       positionRefused() {},
+      notesRefused() {},
       // The commands send. Nothing sends on its own.
       flush: async () => {},
       // Vikunja refuses the search for who can see the project, so a line's person is assigned and Vikunja decides.

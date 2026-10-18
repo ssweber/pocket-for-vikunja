@@ -40,4 +40,5 @@ export const del = {
   row: null,
   files: null,
   putBack: null,
+  replyOnly: null,
 };

@@ -31,6 +31,7 @@ export const position = {
   row: null,
   files: null,
   deletes: null,
+  replyOnly: null,
 };
 
 // The positions the moves among the outbox's `entries` give their tasks, by task id.
