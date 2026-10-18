@@ -30,7 +30,7 @@ export function movedSteps(steps, m) {
   if (fresh.length) throw new Error(problemText(fresh.map(p => ({ ...p, i: steps.indexOf(out[p.i]) }))));
   return out;
 }
-// The order line after each move in `moves`, or null when none moves.
+// The description with its order line after each move in `moves`, or null when none moves.
 const orderOf = (t, moves) => {
   let steps = stepsOf(t),
     moved = false;
