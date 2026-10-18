@@ -163,7 +163,7 @@ export const sendingOp = a => {
         x = op.apply(t, a),
         sets = new Set([...changed(t, x), ...changed({ id }, op.apply({ id }, a))]);
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
-      if (id === opsId(a.task)) for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
+      for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
     }
   const w = writes(on);
   Object.assign(
