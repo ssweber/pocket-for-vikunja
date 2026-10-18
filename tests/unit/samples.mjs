@@ -99,7 +99,7 @@ export const SAMPLES = {
   },
   progress: {
     tasks: checklist(),
-    fields: { op: 'progress', task: 2, run: 1, pct: 40 },
+    fields: { op: 'progress', task: 2, run: 1, pct: 40, was: 0 },
     made: v => v.task(2).percent_done === 0.4 && v.task(1).percent_done === 0.2,
   },
   claim: {

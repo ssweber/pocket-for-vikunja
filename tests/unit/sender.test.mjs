@@ -28,7 +28,11 @@ test("a tick on a repeating step whose reply is lost moves the step's date once 
     [reached(v, 'PATCH', /^\/tasks\/2$/).length, v.task(2).due_date],
     [1, new Date(vikunjaNext(step)).toISOString()],
   );
-  assert.deepEqual([v.task(2).reactions['✅'].length, sync.all(1).length], [1, 0]);
+  assert.deepEqual(
+    [v.task(2).reactions?.['✅'], sync.all(1).length],
+    [undefined, 0],
+    'the step moved on to its next date is open, so it gets no ✅',
+  );
 });
 test('a comment whose reply is lost is posted once when it is sent again', async t => {
   const { v, app } = sender(t, [{ id: 5, title: 'Call the plumber' }]);

@@ -16,7 +16,7 @@
    - merge(older, newer): what replaces an unsent `older` and the `newer` op on its task: an entry, CANCEL or null.
    - waiting: the key of the component's `waiting` that marks its task's rows once it has waited a while.
    - refusal: what becomes of it when Vikunja refuses it (the values are beside DEFAULTS), or a function of the entry
-     giving that (refusalOf).
+     and Vikunja's refusal giving that (refusalOf).
    - cancel: what Cancel gives back, and so whether Cancel offers Undo (the values are beside DEFAULTS), or a function
      of the entry giving that (cancelOf).
    - sheetPlace: where the open sheet of its task says it was refused, instead of the usual place.
@@ -42,7 +42,7 @@ import { due, repeat } from './dates.js';
 export { addLines, dropUnder, LINE, linesUnder, madeStage, passUps, photosOf, refuseLines } from './add.js';
 export { waitingComments } from './comments.js';
 export { waitingPositions } from './order.js';
-export { lastTick } from './ticks.js';
+export { lastTick, movedFrom } from './ticks.js';
 export const OPS = {
   done,
   undone,
@@ -74,7 +74,8 @@ export const DEFAULTS = {
   // 'kept': it waits in the Outbox, marked failed, for Try again or Cancel. 'back': it leaves the outbox, and its text
   // goes back where it was typed. 'lines': it and the lines typed after it go back to their add box, which says what
   // became of them (reportSent), so the sender says nothing of such an op. 'undone': it leaves the outbox, and its
-  // putBack puts the screen back and says why, whichever code sent it. A change whose answer is unknown is always kept.
+  // putBack puts the screen back and says why, whichever code sent it. 'dropped': it leaves the outbox, and the sender
+  // says why. A change whose answer is unknown is always kept.
   refusal: 'kept',
   // 'undo': nothing goes back, and Cancel offers Undo. 'text': its text goes back to its box and Cancel says so, or
   // with no text Cancel offers Undo. 'back': its text goes back, and its `dropped` words say so. 'lines': the lines
@@ -92,7 +93,8 @@ export const DEFAULTS = {
   files: () => [],
   deletes: () => [],
 };
-// The fields any op's entry may have when it is queued (actEntry). `undo` marks an op that undoes another (undoOps).
+// The fields any op's entry may have when it is queued (actEntry). `undo` marks an op that undoes another, by the id of
+// that op's entry (undoOps).
 export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
 /* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
    answered. `until` holds a delete back while Restore shows, and an add's stages keep the task they made. */
@@ -168,10 +170,11 @@ export const stagesOf = a => {
   const s = OPS[a.op].stages;
   return typeof s === 'function' ? s(a) : s;
 };
-// What a refusal of entry `a` does, and what its Cancel gives back. An add's line decides by whether its task is made.
-export const refusalOf = a => {
+/* What Vikunja's refusal `error` of entry `a` does, and what its Cancel gives back. An add's line decides by whether its
+   task is made, and a tick by whether its task is gone. */
+export const refusalOf = (a, error = null) => {
   const r = opOf(a).refusal;
-  return typeof r === 'function' ? r(a) : r;
+  return typeof r === 'function' ? r(a, error) : r;
 };
 export const cancelOf = a => {
   const r = opOf(a).cancel;

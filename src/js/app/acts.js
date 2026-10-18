@@ -5,7 +5,7 @@ import { htmlToText } from '../html.js';
 import { parseStep, patiently } from '../checklists.js';
 import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
-import { notKnown, toOutbox, UNKNOWN } from '../messages.js';
+import { changedSince, notKnown, toOutbox, UNKNOWN } from '../messages.js';
 import { checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf } from '../ops/index.js';
 import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
 
@@ -194,8 +194,9 @@ export default {
       const m = x && !x.sent && !x.failed && !x.undo && !held(x) && merge(x, e);
       if (!m) continue;
       if (inverts.delete(x.id)) folded.add(x.id);
+      // The task is as the new op leaves it, so the new op's Undo stays: an Undo of an untick that cancelled a tick
+      // ticks the task again.
       if (m === CANCEL) {
-        if (inverts.delete(e.id)) folded.add(e.id);
         await sync.remove(e.id);
         await sync.remove(x.id);
         continue;
@@ -212,8 +213,9 @@ export default {
      Vikunja refused after an earlier stage was made, leaves too, and its invert is queued, checked against what it
      sent. Any other op's invert is queued, built from Vikunja's answer when this tab saw it. An op that a later op
      replaced (fold) counts as changed since, and stays. Returns `left`, which resolves to how many Undos were left
-     alone: changed since, or refused. */
-  undoOps(list) {
+     alone: changed since, or refused. With `quiet` false, Pocket says on each task's row why its Undo was left
+     alone, and the caller says nothing. */
+  undoOps(list, quiet = true) {
     const now = list.filter(f => !folded.has(f.id)),
       invert = (f, e) => (e ? opOf(f).invert(e) : (inverts.get(f.id) ?? opOf(f).invert(f)));
     const shown = this.change(w =>
@@ -239,9 +241,12 @@ export default {
             unknown = e?.failed?.message === UNKNOWN;
           if (e && (!e.sent || e.failed)) await sync.remove(f.id);
           const inv = (!e || (e.sent && (!e.failed || unknown || e.stage > 0))) && invert(f, e);
-          if (inv) back.push({ ...inv, run: null, undo: true });
+          if (inv) back.push({ run: null, ...inv, undo: f.id });
         }
       });
+      if (!quiet)
+        for (const f of list.filter(f => folded.has(f.id)))
+          this.say(changedSince(this.actTitle(f.task)), { row: { id: opsId(f.task), stays: true, cls: 'failed' } });
       this.forgetUndo(list);
       const entries = back.map(f => this.actEntry(f)),
         ids = new Set(entries.map(e => e.id)),
@@ -251,7 +256,7 @@ export default {
       this.change(() => {
         for (const x of shown) x.undo();
       });
-      const r = entries.length ? await this.sendActs(entries.at(-1).id, kept, full, ids) : { all: [] };
+      const r = entries.length ? await this.sendActs(entries.at(-1).id, kept, full, quiet ? ids : null) : { all: [] };
       return left + r.all.filter(x => ids.has(x.id) && x.status === 'error').length;
     };
     return { left: undo() };
@@ -331,16 +336,17 @@ export default {
         const err = last.error,
           op = opOf(e);
         // A stage that knows the whole sentence gives it (`said`). An op that names a place in its task's open sheet
-        // says it there until the sheet closes (sheetPlace).
+        // says it there until the sheet closes (sheetPlace). An Undo says it on its task's row, where it was tapped.
         const inSheet = op.sheetPlace && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
-        if (last.status === 'error' && !quiet?.has(e.id) && (last.kept || refusalOf(now) !== 'undone') && !inBox)
+        if (last.status === 'error' && !quiet?.has(e.id) && (last.kept || refusalOf(now, err) !== 'undone') && !inBox)
           this.say(
             err.said ||
               (err.code === 'unknown'
                 ? notKnown(err.what)
-                : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message}.` +
+                : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message.replace(/\.$/, '')}.` +
                   (last.kept ? KEPT : this.wordsBack(err))),
             {
+              row: e.undo ? { id: opsId(e.task), stays: true } : null,
               place: inSheet ? op.sheetPlace : 'step',
               cls: 'failed',
               action: last.kept ? toOutbox(this) : null,
@@ -432,6 +438,10 @@ export default {
       const r = c.reply;
       this.change(x => x.answered(a, c.write ?? writes(), r, c.comment));
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
+      // An Undo queued before the op was answered, as after a lost reply, is made again from Vikunja's answer.
+      if (op.invert)
+        for (const u of sync.all(a.user).filter(u => u.undo === a.id && !u.sent))
+          await sync.save(Object.assign(u, op.invert(a)));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
       // says so.
@@ -456,9 +466,9 @@ export default {
       }
       // The relay can't tell whether Vikunja made the change. Only the user can check, so it is kept for Try again.
       const unknown = error.code === 'unknown',
-        refusal = unknown ? 'kept' : refusalOf(a);
+        refusal = unknown ? 'kept' : refusalOf(a, error);
       if (unknown) error.message = UNKNOWN;
-      if (refusal === 'undone') error.drop = true;
+      if (refusal === 'undone' || refusal === 'dropped') error.drop = true;
       // If part of the action saved before rejection, show that result from Vikunja and explain the partial save.
       if (a.stage > 0 && op.saved) error.saved = op.saved;
       // Vikunja's copy of the op's own task, as a stage before the refusal kept it. A line's task has it already (made).

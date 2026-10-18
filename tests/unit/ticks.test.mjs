@@ -17,8 +17,9 @@ import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
 import checklists from '../../src/js/app/checklists.js';
 import { todayGroups } from '../../src/js/lists.js';
-import { uuid7 } from '../../src/js/sync.js';
-import { OPS } from '../../src/js/ops/index.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
+import { movedFrom, OPS } from '../../src/js/ops/index.js';
+import { lastSaid, lostOnce, noConnection, reached, sender } from './ops-helpers.mjs';
 import { figure } from '../../src/js/ops/stages.js';
 
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
@@ -835,4 +836,113 @@ test("the ✅ requests go out in the order the ticks saved, so a slow untick doe
   release();
   for (let i = 0; i < 5; i++) await settled();
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
+});
+
+/* Ticks and progress are ops (ops/ticks.js), sent through the outbox, each with an Undo that is an op too. `ticking`
+   gives a sender whose tasks have rows and copies. */
+const ticking = (t, list) => {
+  const s = sender(t, list);
+  s.app.change(w =>
+    w.read(
+      list.map(x => structuredClone(x)),
+      TASK,
+      started(),
+    ),
+  );
+  for (const x of list) s.app.row(structuredClone(x));
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  return s;
+};
+const op = (op, task, more = {}) => ({ id: uuid7(), op, task, run: null, ...more });
+test('a tick and an untick made offline cancel out, and a second progress takes the place of the first', async t => {
+  const { v, app } = ticking(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
+  noConnection(app, v);
+  for (const name of ['done', 'undone', 'done', 'undone']) await app.act(op(name, 1));
+  assert.deepEqual([sync.all(1).length, app.tasks[1].done], [0, false], 'ticking and unticking leaves nothing to send');
+  await app.act(op('progress', 1, { pct: 50, was: 0 }));
+  const second = op('progress', 1, { pct: 75, was: 50 });
+  await app.act(second);
+  assert.deepEqual(
+    sync.all(1).map(e => [e.pct, e.was]),
+    [[75, 0]],
+    'one progress is left, from the progress before the first to the last',
+  );
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual(
+    reached(v, 'PATCH', /^\/tasks\/1$/).map(r => r.body),
+    [{ percent_done: 0.75 }],
+  );
+  await app.undoOps([second]).left;
+  assert.equal(v.task(1).percent_done, 0, "the second's Undo goes back to the progress before the first");
+});
+test('an Undo leaves a progress a teammate changed since, and says so on the row', async t => {
+  const { v, app } = ticking(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
+  const f = op('progress', 1, { pct: 50, was: 0 });
+  await app.act(f);
+  v.task(1).percent_done = 0.6;
+  assert.equal(await app.undoOps([f], false).left, 1);
+  assert.deepEqual(
+    [v.task(1).percent_done, app.tasks[1].percent_done],
+    [0.6, 0.6],
+    "Vikunja keeps the teammate's progress, and the row shows it",
+  );
+  assert.deepEqual(
+    [lastSaid(app).msg, lastSaid(app).row.id, lastSaid(app).cls],
+    ['Not undone: “Paint the fence” has changed since then', 1, 'failed'],
+  );
+  assert.equal(sync.all(1).length, 0, 'the Undo leaves the outbox');
+});
+test("the Undo of a repeating task's tick puts back its dates, also after a lost reply, and leaves a date changed since", async t => {
+  const due = '2026-10-07T09:00:00Z',
+    plants = {
+      id: 1,
+      title: 'Water the plants',
+      done: false,
+      due_date: due,
+      start_date: '2026-10-07T08:00:00Z',
+      repeat_after: DAY,
+      reminders: [{ reminder: '2026-10-07T08:30:00Z' }],
+    };
+  const { v, app } = ticking(t, [plants]);
+  const tick = () => op('done', 1, { was: movedFrom(app.tasks[1]) });
+  let f = tick();
+  assert.deepEqual(f.was, {
+    due_date: due,
+    start_date: '2026-10-07T08:00:00Z',
+    reminders: [{ reminder: '2026-10-07T08:30:00Z' }],
+  });
+  await app.act(f);
+  assert.notEqual(v.task(1).due_date, due, 'Vikunja moves the task on to its next date');
+  assert.equal(v.task(1).reactions, undefined, 'a task moved on is open, so it gets no ✅');
+  assert.equal(await app.undoOps([f]).left, 0);
+  assert.deepEqual([v.task(1).due_date, v.task(1).done], [due, false], 'Undo puts its date back');
+  // The tick's reply is lost, and Undo is tapped before it is sent again. The Undo waits behind the tick, and is made
+  // from Vikunja's answer once the tick has it.
+  lostOnce(v, 'PATCH', /^\/tasks\/1$/);
+  f = tick();
+  assert.equal((await app.act(f)).status, 'offline');
+  assert.equal(await app.undoOps([f]).left, 0);
+  assert.deepEqual([v.task(1).due_date, sync.all(1).length], [due, 0]);
+  // A date changed in Vikunja since stays, and Undo says so.
+  f = tick();
+  await app.act(f);
+  v.task(1).due_date = '2026-10-20T09:00:00Z';
+  assert.equal(await app.undoOps([f], false).left, 1);
+  assert.deepEqual(
+    [v.task(1).due_date, lastSaid(app).msg],
+    ['2026-10-20T09:00:00Z', 'Not undone: “Water the plants” has changed since then'],
+  );
+});
+test('a tick on a task deleted in Vikunja since leaves the outbox, and says why', async t => {
+  const { v, app } = ticking(t, [{ id: 1, title: 'Call Jo', done: false }]);
+  v.tasks.delete(1);
+  const r = await app.act(op('done', 1));
+  assert.deepEqual([r.status, sync.all(1).length], ['error', 0], 'nothing is kept to try again');
+  assert.deepEqual(
+    [lastSaid(app).msg, lastSaid(app).action],
+    ["A tick on “Call Jo” couldn't be saved: The task does not exist.", null],
+  );
 });
