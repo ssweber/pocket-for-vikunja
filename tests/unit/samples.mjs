@@ -293,6 +293,14 @@ export const SAMPLES = {
     made: v => !v.task(2).labels.length,
     cannot: ['partly done'],
   },
+  // A template step's ask, a temperature in °C, becomes one in °F. The rest of its notes stays.
+  'edit, asks': {
+    op: 'edit',
+    tasks: [task(7, 'Check the fridge', { description: '<p>Use the probe</p><p>pocket:ask number °C</p>' })],
+    fields: { op: 'edit', task: 7, rebase: 'asks', lines: ['pocket:ask number °F'], run: null },
+    made: v => v.task(7).description === '<p>Use the probe</p><p>pocket:ask number °F</p>',
+    cannot: ['partly done'],
+  },
   // The checklist's second step moves up, in its order line.
   'edit, order': {
     op: 'edit',

@@ -1,9 +1,8 @@
 /* What a checklist step asks to record (asks.js): the fields on its card, and sending what is typed in them. What is
    typed or picked is kept on the phone with the step's comment draft, under "<step id>:<ask key>", until it is sent.
    A field with no draft shows the answer that counts. */
-import { answerHtml, askLines, askRows, fieldValue, rangeText, stepAsks, withAskLines } from '../asks.js';
+import { answerHtml, askLines, askRows, fieldValue, rangeText, stepAsks } from '../asks.js';
 import { fmtTime } from '../dates.js';
-import { NetError } from '../api.js';
 
 let rowKey = 0; // keys the editor's rows, so a removed row takes its fields with it
 
@@ -117,28 +116,17 @@ export default {
     this.sheet.asksEdit = null;
     this.initAskRows();
   },
-  // Write the rows into the step's notes as ask lines, in place of the ones there, leaving the rest of the notes.
+  /* Write the rows into the step's notes as ask lines, in place of the ones there, as an `edit` op made on the notes
+     Vikunja has when it is sent, so the rest of the notes stay as they are there. The sheet shows the asks at once.
+     Offline they wait in the Outbox. A refusal waits there too, and the sender says why beside the asks. */
   async saveAskRows() {
     const t = this.sheetTask,
       made = this.askRowsMade;
     if (!t || made.some(m => m.problem)) return;
-    try {
-      const got = await this.saveTask(t.id, null, now => ({
-        description: withAskLines(
-          now.description,
-          made.map(m => m.line),
-        ),
-      }));
-      if (this.sheet.id !== t.id) return;
-      this.showTask(got);
-      this.sheet.asksEdit = null;
-      this.initAskRows();
-      this.say('Asks saved. Checklists started from now on ask them.', { place: 'sheet:asks' });
-    } catch (e) {
-      this.say(e instanceof NetError ? 'Asks not saved: no connection.' : 'Asks not saved: ' + e.message, {
-        place: 'sheet:asks',
-        cls: 'failed',
-      });
-    }
+    const r = await this.act({ op: 'edit', task: t.id, run: null, rebase: 'asks', lines: made.map(m => m.line) });
+    if (this.sheet.id !== t.id || r.status === 'error') return;
+    this.sheet.asksEdit = null;
+    this.initAskRows();
+    if (r.status === 'sent') this.say('Asks saved. Checklists started from now on ask them.', { place: 'sheet:asks' });
   },
 };

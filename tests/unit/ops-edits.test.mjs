@@ -11,6 +11,7 @@ import { sync, uuid7 } from '../../src/js/sync.js';
 import { taskDrafts } from '../../src/js/util.js';
 import sheet from '../../src/js/app/sheet.js';
 import checklists from '../../src/js/app/checklists.js';
+import asks from '../../src/js/app/asks.js';
 
 // A sender whose tasks have rows and copies.
 const listed = (t, list) => {
@@ -182,6 +183,7 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       words({ rebase: 'notes' }),
       words({ rebase: 'reminders' }),
       words({ rebase: 'order' }),
+      words({ rebase: 'asks' }),
     ],
     [
       ['Renaming “Wipe the till” to “Wipe the counter”', 'Renaming “Wipe the till”', '“it” keeps its title.'],
@@ -190,6 +192,7 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       ['Notes on “Wipe the till”', 'Notes on “Wipe the till”', '“it” notes stay as they are.'],
       ['Reminders on “Wipe the till”', 'Reminders on “Wipe the till”', '“it” reminders stay as they are.'],
       ['Moving a step in “Wipe the till”', 'Moving a step in “Wipe the till”', '“it” steps stay in their order.'],
+      ['Asks on “Wipe the till”', 'Asks on “Wipe the till”', '“it” asks stay as they are.'],
     ],
   );
 });
@@ -271,4 +274,25 @@ test("a template's step moves at once in its sheet, and a move that gives the te
       'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
     ],
   );
+});
+
+test("a step's asks are written over the ask lines Vikunja has when they are sent, and the rest of its notes stay", async t => {
+  const { v, app } = inSheet(t, [{ id: 7, title: 'Check the fridge', description: '<p>pocket:ask number °C</p>' }]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(asks));
+  app.initAskRows();
+  app.sheet.asksEdit.rows[0].unit = '°F';
+  // A teammate adds a line to the notes after the sheet showed them.
+  v.task(7).description = '<p>Use the probe</p><p>pocket:ask number °C</p>';
+  noConnection(app, v);
+  await app.saveAskRows();
+  assert.deepEqual(
+    [app.tasks[7].description, app.sheet.asksEdit.rows[0].unit, app.toasts.some(m => /^Asks/.test(m.msg))],
+    ['<p>pocket:ask number °F</p>', '°F', false],
+    "the sheet shows the asks at once, and doesn't say they are saved while they wait in the Outbox",
+  );
+  v.trouble = () => null;
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => !sync.all(1).length);
+  assert.equal(v.task(7).description, '<p>Use the probe</p><p>pocket:ask number °F</p>');
 });

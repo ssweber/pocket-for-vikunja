@@ -79,6 +79,17 @@ class Element extends Node {
       find = el => el.children.find(c => tags.includes(c.localName)) ?? el.children.map(find).find(Boolean) ?? null;
     return find(this);
   }
+  querySelectorAll(sel) {
+    const tags = sel.split(',').map(s => s.trim()),
+      out = [],
+      walk = el =>
+        el.children.forEach(c => {
+          if (tags.includes(c.localName)) out.push(c);
+          walk(c);
+        });
+    walk(this);
+    return out;
+  }
   getAttribute() {
     return null;
   }

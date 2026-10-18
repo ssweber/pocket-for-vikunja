@@ -216,6 +216,11 @@ const EDITED = {
     refused: title => 'Reminders' + on(title),
     dropped: (a, title) => `${it(title)} reminders stay as they are.`,
   },
+  asks: {
+    text: (a, title) => `Asks on ${task(title)}`,
+    refused: title => 'Asks' + on(title),
+    dropped: (a, title) => `${it(title)} asks stay as they are.`,
+  },
   order: {
     text: (a, title) => `Moving a step in ${task(title)}`,
     refused: title => 'Moving a step' + (title ? ` in “${named(title)}”` : ''),

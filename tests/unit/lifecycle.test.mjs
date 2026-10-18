@@ -303,7 +303,8 @@ const ACTIONS = [
   { name: 'nothing', run() {} },
   {
     name: 'Undo',
-    can: x => !!opOf(x.fields).invert,
+    // An op offers Undo when its invert gives one for the fields it was queued with.
+    can: x => !!opOf(x.fields).invert?.(x.fields),
     run(x) {
       x.later.push(
         x.app.undoOps([x.fields]).left.then(n => {

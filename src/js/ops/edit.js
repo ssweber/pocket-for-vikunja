@@ -1,10 +1,11 @@
-/* Changing a task's own fields: a title or a priority, set as it is (`set`), or notes, reminders or a template's step
-   order, which are made on the copy Vikunja has when the edit is sent (`rebase`). An outbox entry is stored in
+/* Changing a task's own fields: a title or a priority, set as it is (`set`), or notes, reminders, a template's step
+   order or a template step's asks, which are made on the copy Vikunja has when the edit is sent (`rebase`). An outbox entry is stored in
    IndexedDB, which can't hold a function, so `rebase` names one of REBASES, which holds the code for it. */
 import { ApiError } from '../api.js';
 import { plainReminders, reminderKey } from '../dates.js';
 import { htmlToText, textToHtml } from '../html.js';
 import { notesOnly, problemText, stepProblems, stepsOf, withLinesOf, withOrder } from '../checklists.js';
+import { withAskLines } from '../asks.js';
 import { OP_WORDS } from '../messages.js';
 import { backOf, changed, patch } from './stages.js';
 
@@ -117,6 +118,17 @@ const REBASES = {
         .reverse(),
     }),
   },
+  // A template step's ask lines (`lines`) in place of those in the notes Vikunja has, which keep the rest of their text.
+  asks: {
+    field: 'description',
+    apply: (t, a) => ({ ...t, description: withAskLines(t.description, a.lines) }),
+    body(t, a) {
+      const d = withAskLines(t.description, a.lines);
+      return d === t.description ? null : { description: d };
+    },
+    merge: (older, newer) => ({ ...newer }),
+    invert: () => null,
+  },
 };
 
 // The fields an edit changes, which two edits must share for the later to replace the earlier.
@@ -171,9 +183,9 @@ export const edit = {
   putBack: (app, a, e) => {
     if (e.notes !== undefined) app.notesRefused(a, e);
   },
-  sheetPlace: a => ({ notes: 'sheet:notes', order: 'sheet:subtasks' })[a.rebase] ?? 'sheet:top',
+  sheetPlace: a => ({ notes: 'sheet:notes', order: 'sheet:subtasks', asks: 'sheet:asks' })[a.rebase] ?? 'sheet:top',
   ...OP_WORDS.edit,
-  asks: ['set', 'check', 'rebase', 'text', 'base', 'add', 'drop', 'moves'],
+  asks: ['set', 'check', 'rebase', 'text', 'base', 'add', 'drop', 'moves', 'lines'],
   saw: ['label', 'was'],
   on: null,
   keepReads: null,
