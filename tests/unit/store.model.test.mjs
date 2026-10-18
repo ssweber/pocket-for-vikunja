@@ -600,7 +600,7 @@ class World {
   }
   /* Pocket reloads. Vikunja makes each write on its way, whose reply the old page loses, and each request Pocket gave
      up on. Or, with `cut`, the connection drops first, and Vikunja never gets any of them. A read the old page started
-     never finishes. The new page opens on the outbox and the claims as the database has them, with nothing in memory,
+     never finishes, and the old page keeps its changed copies on the phone as it is hidden. The new page opens on the outbox and the claims as the database has them, with nothing in memory,
      and loads the checklist's screen. */
   async reload(cut) {
     while (this.held.length || this.late.length) {
@@ -615,6 +615,7 @@ class World {
       await this.settle();
     }
     this.reads = [];
+    this.app.keepChanged(); // as the old page is hidden
     this.app.user = null;
     this.clock.setTime(Date.now() + 1000); // a reload takes a moment
     usePage(1 - page);
@@ -2020,6 +2021,34 @@ test("an op's part made before a reload doesn't overwrite a teammate's change th
       new Answer('arrives', 0),
       new Teammate(2, 'percent_done'),
       new Reload(true),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A step being added is cancelled while its requests are on their way. Its last request, to the step it made, comes
+   back unknown, and the old page reads the step again after the phone last kept its copy. The old page keeps the newer
+   copy on the phone as it is hidden, so the new page shows that copy, not the one kept before. */
+test('a reload shows the copy the old page had, not one the phone kept before', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('addStep', 1),
+      new Send(false),
+      new Drop(0),
+      new Answer('arrives', 0),
+      new Answer('arrives', 0),
+      new Answer('late', 0),
+      new Sweep([]),
+      new Answer('unknown', 0),
+      new Reload(false),
+      new Sweep([]),
+      new ClearBatch(),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
