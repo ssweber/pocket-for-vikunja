@@ -112,7 +112,6 @@ const untickStep = i => async (a, c) => {
     { body } = await backOf(a, c, s.was, s.left ?? { done: true }, { id, name: 'back' + i });
   if (Object.keys(body).length) await setTask(c, id, body);
 };
-// A link that is there again, as one whose delete Vikunja refused, is no error.
 // The task's done and title go back, only where Vikunja has them as `finish` left them.
 async function unfinish(a, c) {
   const f = a.fixed?.finishing;
@@ -120,6 +119,7 @@ async function unfinish(a, c) {
   const { body } = await backOf(a, c, f.was, f.body);
   if (Object.keys(body).length) await patch(a, c, body);
 }
+// A link that is there again, as one whose delete Vikunja refused, is no error.
 async function recopy(a, c) {
   for (const id of a.uncopied)
     await c
