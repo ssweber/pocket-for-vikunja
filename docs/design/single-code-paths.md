@@ -24,6 +24,8 @@ Built on `dev`, and described by the code and its comments:
 - ticks and progress as ops, each with an Undo that is an op (`invert`), and the pruning of unsent pairs (`fold`);
 - the sheet's title, priority, notes and reminders, and a template's step order, as `edit` ops. Notes, reminders
   and step order are made on Vikunja's copy as they are sent (`rebase`);
+- a move to another project, with the subtasks, as one `project` op, and a subtask taken out of its parent or put
+  back, as `unlink` and `link` ops;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
 - the lifecycle test and the randomized store test.
@@ -86,33 +88,34 @@ partway says in its Cancel words what Vikunja already has. They need new words, 
 
 ### 7 and 8. Ticks, progress, sheet fields, project, links, people and labels
 
-One phase, with one review. Part (a), ticks and progress, and part (b), the sheet's fields as `edit`, are built.
-Parts (c) and (d) are the table's rows in order.
+One phase, with one review. Part (a), ticks and progress, part (b), the sheet's fields as `edit`, and part (c), a move
+to another project and a subtask taken out, are built. Part (d) is the table's row.
 
 | Today | Becomes |
 |---|---|
-| `moveTask` | `project`, with the subtasks, in one op |
-| `ownTask`, `linkSubtask` callers | `link`, `unlink` |
 | `addAssignee`, `removeAssignee`, `addLabelTo`, `removeLabelFrom`, `setRunFor`, the template label in checklists.js | `assign`, `label`. Each sends the whole set with `PUT /tasks/{id}/labels/bulk` or `assignees/bulk`, built from the set Vikunja has when the stage runs, plus or minus the one change. A set built from Pocket's copy would remove a label a teammate added since. A new label is first created by a keyed `POST /labels`. `claim` keeps its single `POST`, so two people claiming at once still settle on one. |
 
-- **Undo is an op** for `project`, `link`, `unlink`, `assign` and `label` too, as for a tick and an edit (`invert`). Its
-  stage reads Vikunja's copy once (`backOf`, ops/stages.js). A field changed elsewhere is left alone, with the message
+- **Undo is an op** for `assign` and `label` too, as for a tick, an edit, a move and a link (`invert`). Its stage
+  reads Vikunja's copy once (`backOf`, ops/stages.js). A field changed elsewhere is left alone, with the message
   "Not undone: “title” has changed since then" (undoOps with `quiet` false).
-- The inline Undo closures in `moveTask` and `ownTask` go.
-- Delete `saveTask` with its last caller. It still saves a move to another project (`moveTask`, part (c)), a parent's
-  progress (`writeFigure`), a checklist's name (`saveRunName`), a template step's name and asks (`saveStepEdit`,
-  `saveAskRows`), and a step's place among a template's steps after the template editor adds it or in a checklist
-  (`INSERT_STEPS`). Phase 10 makes the last four of them ops.
+- Delete `saveTask` with its last caller. It still saves a parent's progress (`writeFigure`), a checklist's name
+  (`saveRunName`), a template step's name and asks (`saveStepEdit`, `saveAskRows`), and a step's place among a
+  template's steps after the template editor adds it or in a checklist (`INSERT_STEPS`). Phases 9 and 10 make them
+  ops.
 - The store's `edit()` writer stays while something lays fields over a row outside the outbox: `undoOps` shows an
-  Undo at once, `arrivedDone` holds a repeating task's dates until its batch clears, and `moveTask` and
-  `saveStepEdit` save directly. No screen offers an Undo for an edit yet.
+  Undo at once, `arrivedDone` holds a repeating task's dates until its batch clears, and `saveStepEdit` saves
+  directly. Phase 10 deletes it, with its bookkeeping in tasks.js (`edits`, `ended`), once `saveStepEdit` is an op.
+  How `undoOps` and `arrivedDone` show what they hold without it is still to be decided.
 - From the Veyrn comparison: an op refused with 404, because its task was deleted in Vikunja, stays failed for good,
-  except a tick, an untick, a progress, a finish, a reopen and an edit, whose `refusal` drops it ('dropped'). The new
-  ops should too. The labels and people an add sets never reach Vikunja's copy, because `CREATED` leaves them out.
+  except a tick, an untick, a progress, a finish, a reopen, an edit, a move and a link or unlink, whose `refusal`
+  drops it ('dropped'). `assign` and `label` should too. The labels and people an add sets never reach Vikunja's
+  copy, because `CREATED` leaves them out.
 - Carried forward: dropping a failed add with no waiting neighbour leaves its parent's progress unwritten.
-- `writeFigure` is a direct save still used by `ownTask`, a step inserted in a checklist (`INSERT_STEPS`) and
-  `deleteAddedStep`. The `link` and `unlink` ops write the parent's progress in their last stage, as a tick does
-  (`figure`), and phases 9 and 10 do the same for the other two.
+- `writeFigure` is a direct save still used by a step inserted in a checklist (`INSERT_STEPS`, phase 10) and
+  `deleteAddedStep` (phase 9). Each becomes an op that writes the progress in its last stage, as a tick does
+  (`figure`). `linkSubtask` is still called outside an op by `RUN_STEPS` and `INSERT_STEPS`, until phase 10.
+- A move takes the subtasks Pocket knows of when it is queued (`subtaskTree`). Offline, a subtask Pocket never read
+  moves without its own subtasks.
 - The Undo of a repeating task's tick whose answer this tab never saw, as when the relay can't say whether Vikunja made
   it, has no dates to check against. It counts any date other than the one before as changed since.
 - `setRunFor` builds its people from the checklist's row, so a claim still waiting goes out with them, and it writes
