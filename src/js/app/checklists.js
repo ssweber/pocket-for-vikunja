@@ -303,18 +303,19 @@ export default {
       saved.set('projects', this.projects);
       this.perms[p.id] = 2;
       saved.set('perms', this.perms);
-      let made = true;
-      try {
-        await this.addExample(p);
-      } catch {
-        made = false;
-      }
+      /* The example's ops go through the outbox. Only Vikunja's refusal of the template itself means it wasn't made.
+         Ops that wait are sent later, and a refused step, or an answer the relay can't vouch for, waits in the Outbox,
+         as any op does. */
+      const r = await this.addExample(p).catch(refused => ({ refused, all: [] })),
+        refused = r.refused && r.refused.code !== 'unknown',
+        waits = r.status !== 'sent' && !r.all.some(x => x.status === 'error');
       this.go('#/checklists');
       this.say(
-        made
-          ? 'Created the Checklists project, with an example template to try.'
-          : "Created the Checklists project. The example template couldn't be created. Tap New template to add one.",
-        { place: 'checklists', cls: made ? '' : 'failed' },
+        refused
+          ? "Created the Checklists project. The example template couldn't be created. Tap New template to add one."
+          : 'Created the Checklists project, with an example template to try.' +
+              (waits ? " Saved offline. It goes to Vikunja when you're back online." : ''),
+        { place: 'checklists', cls: refused ? 'failed' : '' },
       );
     } catch (e) {
       this.say(
@@ -327,7 +328,7 @@ export default {
   },
   /* The example template has four steps, each with its notes. The first is assigned to the user, and the third is due
      18 minutes after the second. The lines are read with quick add's label, assignee and priority parsing off, so the
-     user's settings can't change them. */
+     user's settings can't change them. Returns how sending went (newTemplate). */
   async addExample(p) {
     const off = { labels: true, assignees: true, priority: true },
       steps = [
@@ -355,7 +356,7 @@ export default {
         },
       ],
     });
-    if (r.status !== 'sent') throw r.refused ?? r.error ?? new NetError('offline');
+    return r;
   },
   // Whether Getting started shows on Checklists: for a project's admin (who can share it), until they hide it.
   gettingStarted(pid) {

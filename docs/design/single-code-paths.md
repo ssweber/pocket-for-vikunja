@@ -203,8 +203,6 @@ Before anyone else uses Pocket:
   or a template whose task Vikunja may or may not have made.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step that has sent a request
   and waits, as for any op, though the row's × still cancels a step.
-- Set up checklists says the example template couldn't be made when its ops don't all reach Vikunja at once, though
-  those still waiting are sent later.
 - `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
   whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 

@@ -310,3 +310,68 @@ for (const [what, path] of [
       ['Closing', false, [], false, false, []],
     );
   });
+
+/* Set up checklists makes the Checklists project, 5, directly, then the example template through the outbox. `trouble`
+   is what Vikunja does with each request for the example. */
+const setUp = async (t, trouble) => {
+  const { v, app } = editor(t, []),
+    real = globalThis.fetch;
+  globalThis.fetch = (url, o = {}) =>
+    o.method === 'POST' && new URL(url).pathname === '/api/v2/projects'
+      ? Promise.resolve(Response.json({ id: 5, title: 'Checklists' }))
+      : real(url, o);
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+  v.trouble = trouble;
+  Object.assign(app, { perms: {}, setProjects: list => (app.projects = list) });
+  // A busy Vikunja is asked again after a pause (patiently), on the test's clock.
+  let done = false;
+  app.setUpChecklists().finally(() => (done = true));
+  while (!done) {
+    t.mock.timers.tick(1000);
+    await new Promise(ok => setImmediate(ok));
+  }
+  return { v, app };
+};
+// Vikunja is asked to make the example's task named `title`.
+const making = title => r => r.method === 'POST' && r.path === '/projects/5/tasks' && r.body.title === title;
+const FIRST = 'Turn on the espresso machine';
+test('Set up checklists says the example template is there once Vikunja has made it', async t => {
+  const { v, app } = await setUp(t, () => null);
+  assert.deepEqual(
+    [lastSaid(app).msg, v.task(101).title, outbox()],
+    ['Created the Checklists project, with an example template to try.', 'TEMPLATE: Example: Opening up', []],
+  );
+});
+
+test('Set up checklists says the example template waits when Vikunja is busy, and sends it later', async t => {
+  const { v, app } = await setUp(t, r => (making(FIRST)(r) ? 503 : null));
+  assert.equal(
+    lastSaid(app).msg,
+    "Created the Checklists project, with an example template to try. Saved offline. It goes to Vikunja when you're back online.",
+  );
+  await online(t, app, v);
+  assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);
+});
+
+test('Set up checklists leaves a refused step of the example to the Outbox, as any op', async t => {
+  const { app } = await setUp(t, r => (making(FIRST)(r) ? 403 : null));
+  assert.deepEqual(
+    [
+      lastSaid(app).msg,
+      outbox()
+        .filter(e => e.failed)
+        .map(e => e.op),
+    ],
+    ['Created the Checklists project, with an example template to try.', ['templateStep']],
+  );
+});
+
+test("Set up checklists says the example couldn't be made only when Vikunja refuses the template itself", async t => {
+  const { app } = await setUp(t, r => (making('TEMPLATE: Example: Opening up')(r) ? 403 : null));
+  assert.equal(
+    lastSaid(app).msg,
+    "Created the Checklists project. The example template couldn't be created. Tap New template to add one.",
+  );
+});
