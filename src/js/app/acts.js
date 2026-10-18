@@ -25,6 +25,8 @@ export const nextN = () => ++actCount;
    `folded`. Both forget an op once its Undo has gone (forgetUndo). */
 const inverts = new Map(),
   folded = new Set();
+// The fields of an outbox entry that say whose it is, where it is in the order and how its sending went.
+const PLACE = ['id', 'kind', 'user', 'who', 'at', 'n', 'files', 'stage', 'fails', 'failed', 'label'];
 // How many ops this tab keeps an Undo for, for the tests.
 export const undosKept = () => inverts.size + folded.size;
 /* Keep local completion times for offline ticks so countdowns do not jump or chime again when Vikunja receives
@@ -447,10 +449,16 @@ export default {
       const r = c.reply;
       this.change(x => x.answered(a, c.write ?? writes(), r, c.comment));
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
-      // An Undo queued before the op was answered, as after a lost reply, is made again from Vikunja's answer.
+      /* An Undo queued before the op was answered, as after a lost reply, is made again from Vikunja's answer. Only its
+         place in the outbox is kept, since the answer can make a field of the old Undo wrong, such as the dates of a
+         repeating task that Vikunja marked done. */
       if (op.invert)
-        for (const u of sync.all(a.user).filter(u => u.undo === a.id && !u.sent))
-          await sync.save(Object.assign(u, op.invert(a)));
+        for (const u of sync.all(a.user).filter(u => u.undo === a.id && !u.sent)) {
+          const inv = op.invert(a),
+            place = Object.fromEntries(Object.entries(u).filter(([k]) => PLACE.includes(k)));
+          if (inv) await sync.save({ ...place, run: null, ...inv, undo: a.id });
+          else await sync.remove(u.id);
+        }
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
       // says so.

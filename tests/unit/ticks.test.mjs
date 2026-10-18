@@ -854,6 +854,17 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
     ['2026-10-20T09:00:00Z', 'Not undone: “Water the plants” has changed since then'],
   );
 });
+test("the Undo of a repeating task's tick whose reply was lost unticks it, when Vikunja marked it done", async t => {
+  const plants = { id: 1, title: 'Water the plants', done: false, due_date: '2026-10-07T09:00:00Z', repeat_after: DAY };
+  const { v, app } = listed(t, [plants]);
+  v.task(1).repeat_after = 0; // a teammate's, in the web app
+  lostOnce(v, 'PATCH', /^\/tasks\/1$/);
+  const f = op('done', 1, { was: movedFrom(app.tasks[1]) });
+  assert.equal((await app.act(f)).status, 'offline');
+  app.offline = false;
+  assert.equal(await app.undoOps([f]).left, 0);
+  assert.deepEqual([v.task(1).done, sync.all(1).length], [false, 0]);
+});
 test('a tick on a task deleted in Vikunja since leaves the outbox, and says why', async t => {
   const { v, app } = listed(t, [{ id: 1, title: 'Call Jo', done: false }]);
   v.tasks.delete(1);
