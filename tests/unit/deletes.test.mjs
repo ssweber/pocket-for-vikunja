@@ -129,6 +129,62 @@ test('a template deleted from its sheet goes with its steps, with no Restore', a
   assert.equal(app.toasts.at(-1).msg, 'Deleted, with 2 steps');
 });
 
+test("a step removed from a template leaves the template's copy", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = template(),
+    app = templateSheet(v);
+  await readDuring(app, v, 1, () => app.removeStep(0));
+  assert.deepEqual([forgotten(app, [2]), subtasksOf(1)], [[2], [3]]);
+  assert.equal(app.toasts.at(-1).msg, 'Step removed');
+});
+
+// Checklist 1, on its screen, with step 2 done and step 3 added during the checklist.
+const closing = () =>
+  fakeVikunja([
+    { id: 1, title: 'Closing', percent_done: 0.5, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } },
+    { id: 2, title: 'Mop', done: true, related_tasks: { parenttask: [{ id: 1 }] } },
+    { id: 3, title: 'Wipe the menus', related_tasks: { parenttask: [{ id: 1 }] } },
+  ]);
+const onRun = v => {
+  const app = sender(v);
+  app.view.shownRun = { id: 1, steps: [2, 3] };
+  app.route = { name: 'run', id: 1 };
+  return app;
+};
+test('a checklist deleted from its sheet goes with its steps, with no Restore', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = closing(),
+    app = onRun(v);
+  await readDuring(app, v, 1, () => app.deleteRun(1, { deleted: true }));
+  assert.deepEqual([...v.tasks.keys()], []);
+  assert.deepEqual(forgotten(app, [1, 2, 3]), [1, 2, 3]);
+  assert.equal(app.toasts.at(-1).msg, 'Checklist deleted');
+});
+
+test("a step added during a checklist is deleted, and the checklist's copy stops listing it", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = closing(),
+    app = onRun(v);
+  const ok = await readDuring(app, v, 1, () =>
+    app.deleteAddedStep({ id: 3, title: 'Wipe the menus', added: 'Inserted', done: false }, false, true),
+  );
+  assert.equal(ok, true);
+  assert.deepEqual([forgotten(app, [3]), subtasksOf(1)], [[3], [2]]);
+  assert.equal(v.task(1).percent_done, 1, "the delete's last stage writes the checklist's progress");
+});
+
+// A delete with no Restore takes the changes waiting on its tasks out of the outbox, since they can't be made now.
+test('a checklist deleted while a tick on its step waits takes the tick out of the outbox', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = closing(),
+    app = onRun(v);
+  app.offline = true;
+  await app.act({ op: 'undone', task: 2, run: 1 });
+  app.offline = false;
+  await app.deleteRun(1);
+  assert.deepEqual([sync.all(1), v.requests.filter(r => r.method === 'PATCH')], [[], []], 'only the deletes are sent');
+  assert.deepEqual([...v.tasks.keys()], []);
+});
 // The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
 // The test controls the timers, so timers that have not fired yet (the Undo's, for example) don't keep Node waiting.

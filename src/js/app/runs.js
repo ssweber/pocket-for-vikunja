@@ -456,31 +456,21 @@ export default {
     this.closeSheet(true);
     await this.deleteRun(run.id, { deleted: true });
   },
-  // Delete the run's steps before the run, and drop its pending actions.
-  async deleteRun(id, { quiet = false, also = [], deleted = false } = {}) {
+  /* Delete a checklist with its steps, as one delete op with no Restore. The steps are read first, as a task's
+     subtasks are (taskTree). A refusal leaves the checklist where it is, and the sender says why. */
+  async deleteRun(id, { deleted = false } = {}) {
+    let tree;
     try {
-      const t = await api('/tasks/' + id);
-      for (const sid of new Set([...(t.related_tasks?.subtask || []).map(s => s.id), ...also]))
-        await patiently(() => api('/tasks/' + sid, { method: 'DELETE' })).catch(e => {
-          if (e.status !== 404) throw e;
-        });
-      await patiently(() => api('/tasks/' + id, { method: 'DELETE' }));
-      this.change(w => w.forget(id));
-      if (this.sheet.id === id) Object.assign(this.sheet, { editingDesc: false, commentDraft: '' });
-      if (!quiet) {
-        const ids = new Set([id, ...(t.related_tasks?.subtask || []).map(s => s.id)]);
-        await sync.lock(async () => {
-          for (const e of sync.all(this.user?.id))
-            if (e.kind === 'act' && (e.run === id || ids.has(e.task))) await sync.remove(e.id);
-        });
-        this.refreshPending();
-        this.notify(deleted ? 'Checklist deleted' : 'Checklist removed');
-      }
-      if (this.route.name === 'run' && this.route.id === id) this.leaveRun();
-      else if (!quiet) this.render();
+      tree = await this.taskTree(id);
     } catch (e) {
-      if (!quiet) this.say('Not removed: ' + e.message, { place: ['sheet:top', 'run'], cls: 'failed' });
+      this.say('Not removed: ' + e.message, { place: ['sheet:top', 'run'], cls: 'failed' });
+      return;
     }
+    if ((await this.deleteNow([tree])).status === 'error') return;
+    if (this.sheet.id === id) Object.assign(this.sheet, { editingDesc: false, commentDraft: '' });
+    this.notify(deleted ? 'Checklist deleted' : 'Checklist removed');
+    if (this.route.name === 'run' && this.route.id === id) this.leaveRun();
+    else this.render();
   },
 
   /* ---------- a run ---------- */
@@ -610,10 +600,11 @@ export default {
     const me = this.user,
       note = c => noteOf(c, this.waitText(c.id));
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
-    // successor is gone. Omit cancelled steps. A step being inserted has no row, so its ops are applied here.
+    // successor is gone. Omit cancelled steps, and steps a waiting delete deletes. A step being inserted has no row, so
+    // its ops are applied here.
     const base = r.steps
       .map(id => this.tasks[id])
-      .filter(Boolean)
+      .filter(t => t && !this.beingDeleted(t.id))
       .map(plainStep);
     for (const e of this.pending)
       if (e.kind === 'step' && !e.cancelled && e.run === r.id && !base.some(s => s.id === e.taskId)) {
@@ -1237,36 +1228,20 @@ export default {
       confirm(`Delete “${s.title}”? This step was added to this checklist only. The template doesn't change.`)
     );
   },
-  /* Delete an open inserted or repeated step and its pending actions. Template steps must be skipped instead. undo
-     skips confirmation and messages for Repeat's Undo, and asked records confirmation before a swipe. Return
-     whether the step was removed. */
+  /* Delete an open inserted or repeated step, as a delete op with no Restore, which writes the checklist's progress
+     last. Template steps must be skipped instead. undo skips confirmation and messages for Repeat's Undo, and asked
+     records confirmation before a swipe. Return whether the step was removed. A refusal keeps the step, and the
+     sender says why. */
   async deleteAddedStep(s, undo = false, asked = false) {
     if (!s?.added || s.done || (!undo && !asked && !this.askDeleteStep(s))) return false;
     if (s.pending) {
       await this.dropStep(s.pending, undo);
       return true;
     }
-    const run = this.view.shownRun?.id;
-    try {
-      await patiently(() => api('/tasks/' + s.id, { method: 'DELETE' })).catch(e => {
-        if (e.status !== 404) throw e;
-      });
-      this.change(w => w.forget(s.id)); // Vikunja deleted the step
-      if (run) this.writeFigure(run).catch(() => {}); // recompute the checklist's stored progress without this step
-      await sync.lock(async () => {
-        for (const e of sync.all(this.user?.id)) if (e.kind === 'act' && e.task === s.id) await sync.remove(e.id);
-      });
-      this.refreshPending();
-      if (!undo) this.say('Step deleted', { place: ['sheet:top', 'step'] });
-      this.render();
-      return true;
-    } catch (e) {
-      this.say(e instanceof NetError ? 'Deleting a step needs a connection.' : 'Not deleted: ' + e.message, {
-        place: ['sheet:top', 'step'],
-        cls: 'failed',
-      });
-      return false;
-    }
+    if ((await this.deleteNow([[s.id]])).status === 'error') return false;
+    if (!undo) this.say('Step deleted', { place: ['sheet:top', 'step'] });
+    this.render();
+    return true;
   },
   /* Cancel a pending step and its actions. If creation may have reached Vikunja, keep cleanup queued until the
      copy can be found and deleted. quiet suppresses the Undo message. Return whether insertion had already

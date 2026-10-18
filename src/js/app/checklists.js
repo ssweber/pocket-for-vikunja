@@ -1210,44 +1210,11 @@ export default {
     }
     if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Checklists already started keep it.`))
       return;
-    this.sheet.checklistBusy = true;
-    // Deleting the step changes the template's subtasks.
-    const c = copyOf(t.id),
-      w = writes({
-        [st.id]: {},
-        [t.id]: {
-          related_tasks: {
-            ...c?.related_tasks,
-            subtask: (c?.related_tasks?.subtask || []).filter(s => s.id !== st.id),
-          },
-        },
-      });
-    try {
-      // Treat the step as removed if Vikunja no longer has it. That means a 404, or a lost reply when the step is gone.
-      await patiently(() => api('/tasks/' + st.id, { method: 'DELETE' })).catch(async e => {
-        if (
-          e.status !== 404 &&
-          (!(e instanceof NetError) ||
-            (await api('/tasks/' + st.id).then(
-              () => true,
-              x => x.status !== 404,
-            )))
-        )
-          throw e;
-      });
-      this.change(x => {
-        x.forget(st.id); // Vikunja deleted the step
-        x.made(t.id, w);
-      });
-      this.keepTemplate(t);
-      this.sheet.dirty = true;
-      this.say('Step removed', { place: 'sheet:subtasks' });
-    } catch (err) {
-      this.say('Not removed: ' + why(err), { place: 'sheet:subtasks', cls: 'failed' });
-    } finally {
-      w.end();
-      this.sheet.checklistBusy = false;
-    }
+    // A delete op with no Restore. The step leaves the template's steps at once, and a refusal brings it back.
+    if ((await this.deleteNow([[st.id]])).status === 'error') return;
+    this.keepTemplate(t);
+    this.sheet.dirty = true;
+    this.say('Step removed', { place: 'sheet:subtasks' });
   },
   /* Move a template's step by `dir` places: -1 moves it up and 1 moves it down. With `dragged`, the step moves as far
      as it was dragged. The order line is rewritten with every step. Pocket refuses a move that would create a problem

@@ -238,9 +238,9 @@ export default {
       up = run ? null : inSheet ? this.sheet.id : isSubtask(t) ? this.parentIdOf(t) : null;
     return { run, ...(typeof up === 'number' && { up }) };
   },
-  /* Save a checklist's computed percent_done after a step is inserted or deleted. It reads the checklist first and
-     saves only if the percentage changed, without a message. Templates are skipped. An op does this in its last stage
-     instead (figure, ops/stages.js). */
+  /* Save a checklist's computed percent_done after a step is inserted. It reads the checklist first and saves only if
+     the percentage changed, without a message. Templates are skipped. An op does this in its last stage instead
+     (figure, ops/stages.js). */
   writeFigure(id) {
     return this.saveTask(id, null, now => (this.role(now) === 'template' ? null : figurePatch(now)));
   },
