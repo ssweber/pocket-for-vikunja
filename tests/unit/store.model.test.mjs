@@ -1755,3 +1755,24 @@ test("a tick on a task the copy doesn't know repeats takes nothing into the copy
     await w.close();
   }
 });
+
+/* A template's date is taken off with done: true, built from a read that found no repeat. A teammate makes the task
+   repeat before the request arrives, so Vikunja moves it on to its next date instead. Only a read can say that. */
+test('a date taken off with done takes nothing into the copy when a teammate makes the task repeat first', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('due', 3),
+      new Send(false),
+      new Teammate(3, 'repeat_after'),
+      new Teammate(3, 'due_date'),
+      new Answer('lost', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});

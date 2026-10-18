@@ -497,6 +497,21 @@ test("a repeat sets a date only when Vikunja's copy has none when it is sent", a
   await app.flush();
   assert.deepEqual([patches(v, 7), v.task(7).due_date], [[WEEKLY], D(5)]);
 });
+test("a date taken off with done, and a repeat that may set a date, leave those fields to Vikunja's reply", () => {
+  const day = { repeat_after: 604800, repeat_mode: 0, due_date: D(9) };
+  assert.deepEqual(OPS.due.replyOnly({ op: 'due', task: 7, due: D(9) }), [], 'a move sets its date as it is');
+  assert.ok(OPS.due.replyOnly({ op: 'due', task: 7, due: ZERO, done: true }).includes('due_date'), 'done may move it');
+  assert.deepEqual(OPS.repeat.replyOnly({ op: 'repeat', task: 7, set: { repeat_after: 604800, repeat_mode: 0 } }), []);
+  assert.deepEqual(
+    OPS.repeat.replyOnly({ op: 'repeat', task: 7, set: day }),
+    ['due_date', 'done'],
+    "a repeat's date is sent only when Vikunja's copy has none",
+  );
+  assert.ok(
+    OPS.repeat.replyOnly({ op: 'repeat', task: 7, set: { due_date: ZERO, done: true }, check: {} }).includes('done_at'),
+    'an Undo that leaves a template done may find it repeating',
+  );
+});
 test("a date or a repeat that Vikunja refuses, or may not have, says so under the sheet's date until the sheet closes", async t => {
   const { v, app } = sheeted(t, [
     { id: 7, title: 'Water the plants', due_date: D(5), ...NEVER, done: false },

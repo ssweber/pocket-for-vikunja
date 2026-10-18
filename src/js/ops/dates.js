@@ -1,6 +1,7 @@
 // Moving a task to another date, changing how it repeats, and the Undo of each.
 import { isSet, repeats } from '../dates.js';
 import { OP_WORDS } from '../messages.js';
+import { MOVED } from '../app/tasks.js';
 import { changed, now, patch } from './stages.js';
 
 // Vikunja writes a date in its own format, so two dates are compared as times.
@@ -15,6 +16,10 @@ const gotOf = a => {
 const OFF = { repeat_after: 0, repeat_mode: 0 };
 const repeatOf = t => (t && repeats(t) ? { repeat_after: t.repeat_after, repeat_mode: t.repeat_mode } : null);
 const sameRepeat = (t, r) => t.repeat_after === r.repeat_after && t.repeat_mode === r.repeat_mode;
+/* A body with done: true is built from the repeat Vikunja had when it was read. A teammate may make the task repeat
+   before the body arrives, and Vikunja then moves the task on to its next dates instead. So only Vikunja's reply says
+   what such a change leaves in those fields. */
+const doneMoves = done => (done === true ? MOVED : []);
 /* Sent with done: true while the task repeats, Vikunja moves the task on to its next time and leaves it not done. So
    such a body is sent in up to three requests: the repeat off, the rest, then the repeat back. That is the repeat in
    `body`, or else `rep`, the one Vikunja has. Each request is a stage of its own, so a retry finishes the same way. */
@@ -107,7 +112,7 @@ export const due = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  replyOnly: a => doneMoves(a.done),
 };
 
 // The fields an Undo of a repeat compares. The repeat is two fields, compared together.
@@ -184,5 +189,6 @@ export const repeat = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  // A repeat's date and done are left out of its body when Vikunja's copy has a date (fieldsOf).
+  replyOnly: a => [...doneMoves(a.set?.done), ...(!a.check && 'due_date' in a.set ? ['due_date', 'done'] : [])],
 };
