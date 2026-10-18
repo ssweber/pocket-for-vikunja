@@ -79,7 +79,7 @@ const tab = async name => {
 const A = await tab('a'),
   B = await tab('b'),
   R = await tab('r');
-const { OPS, opOf, refusalOf } = A.ops;
+const { cancelOf, OPS, opOf, refusalOf } = A.ops;
 const { dayWord, UNSURE } = A.messages;
 const { dayName, isSet } = A.dates;
 const { PRIOS } = A.util;
@@ -278,9 +278,16 @@ const partly = at => [
   { name: `partly done, refused at stage ${at}`, reach: troubled('refused', at) },
   { name: `partly done, cut off at stage ${at}`, reach: troubled('cut', at) },
 ];
-const statesOf = (sample, stages) => [
+/* A stage after the first whose answer is unknown, though Vikunja made it or not. An op that makes tasks can still be
+   cancelled then, and its Cancel takes back what that stage may have made. */
+const unsure = at => [
+  { name: `unknown at stage ${at}`, reach: troubled('unknown', at) },
+  { name: `unknown, but made, at stage ${at}`, reach: troubled('arrived', at), not: ['Try again'] },
+];
+const statesOf = (name, sample, stages) => [
   ...STATES,
   ...(sample.cannot?.includes('partly done') ? [] : stages.slice(1).flatMap(partly)),
+  ...(cancelOf({ op: sample.op ?? name }) === 'unmade' ? stages.slice(1).flatMap(unsure) : []),
 ];
 
 // The Outbox's row for the op, which offers Cancel (`drop`) and Try again (`retry`) when the state allows them.
@@ -584,9 +591,9 @@ const KNOWN = [
   {
     sample: 'startRun',
     rule: 'Undo puts back what the op changed',
-    state: /^unknown, but made$/,
+    state: /^unknown, but made(, at stage [25])?$/,
     action: 'Undo',
-    why: "the relay can't say whether Vikunja made the checklist's copy, so its Undo can't find the copy to delete it",
+    why: "the relay can't say whether Vikunja made a copy, of the template or of a step, so the start's Undo can't find the copy to delete it",
   },
 ];
 
@@ -605,7 +612,7 @@ for (const [name, sample] of Object.entries(SAMPLES))
     const failures = [],
       known = KNOWN.filter(k => k.sample === name),
       seen = new Set();
-    for (const state of statesOf(sample, ref.stages))
+    for (const state of statesOf(name, sample, ref.stages))
       for (const action of ACTIONS) {
         if (state.not?.includes(action.name)) continue;
         const x = await world(sample);

@@ -2,7 +2,7 @@
    Vikunja a stage at a time, and keeps in its entry what it made. Every request has a key, so a request sent again
    after a lost reply makes nothing twice. Cancel, and a start's Undo, delete what it made with the same op, marked
    `cancelled`, in stages that come after the ones it sent. */
-import { OP_WORDS } from '../messages.js';
+import { OP_WORDS, UNKNOWN } from '../messages.js';
 import { ALREADY, runTitle, sync, uuid7 } from '../sync.js';
 import { ZERO } from '../util.js';
 import { repeats } from '../dates.js';
@@ -133,10 +133,13 @@ async function unlabel(a, c) {
    put it, so a change made since then stays. `ticked` records where the template went, for Undo. */
 async function tick(a, c) {
   if (!a.tick) return;
-  const body = await c.once('tick', async () => {
-    const t = await now(a, c);
-    return t && !t.done && sameTime(t.due_date, a.tick) ? { done: true, ...(!repeats(t) && { due_date: ZERO }) } : null;
-  });
+  const { body } =
+    (await c.once('ticking', async () => {
+      const t = await now(a, c);
+      return t && !t.done && sameTime(t.due_date, a.tick)
+        ? { body: { done: true, ...(!repeats(t) && { due_date: ZERO }) }, goes: tickTo(t, a.tick) }
+        : null;
+    })) || {};
   if (!body) return;
   const went = t => (a.ticked = { from: a.tick, to: t.due_date, done: !!t.done }),
     t = await patch(a, c, body),
@@ -144,6 +147,16 @@ async function tick(a, c) {
   if (!t.done && t.repeat_mode === 1 && due <= Date.now() && due === vikunjaNext({ ...t, due_date: a.tick }))
     went(await patch(a, c, { due_date: new Date(nextAfter(t, due)).toISOString() }));
 }
+// Where the tick moves template `t`, due at `from`, as the tick stage would leave it.
+function tickTo(t, from) {
+  if (!repeats(t)) return { to: ZERO, done: true };
+  const next = vikunjaNext({ ...t, due_date: from }),
+    due = t.repeat_mode === 1 && next <= Date.now() ? nextAfter(t, next) : next;
+  return { to: new Date(due).toISOString(), done: false };
+}
+/* Where the start moved its template: as Vikunja answered, or else, as when the answer was unknown, where the tick would
+   move it. Undo and Cancel check that Vikunja still has it there, so a tick never made changes nothing. */
+const tickedOf = a => a.ticked ?? (a.fixed?.ticking && { from: a.tick, ...a.fixed.ticking.goes });
 const STARTS = a => [
   copyRun,
   name,
@@ -161,7 +174,7 @@ const unstart = async (a, c) => {
 };
 // The template goes back to the date before its tick, only while Vikunja still has it where the tick left it.
 async function untick(a, c) {
-  const was = a.back ?? a.ticked;
+  const was = a.back ?? tickedOf(a);
   if (!was) return;
   const back = await c.once('back', async () => {
     const t = await now(a, c);
@@ -189,7 +202,7 @@ export const startRun = {
     steps: a.steps,
     cancelled: true,
     ids: startMade(a),
-    ...(a.ticked && { back: a.ticked }),
+    ...(tickedOf(a) && { back: tickedOf(a) }),
   }),
   refusal: a => (a.cancelled ? 'dropped' : 'kept'),
   cancel: a => (a.cancelled ? 'undo' : 'unmade'),
@@ -287,11 +300,19 @@ export const addStep = {
 
 /* Entry `e` as Cancel leaves it once it has sent a request: marked cancelled, it deletes what it made, in stages after
    the ones it sent. Cut off partway, the stage it stopped in runs again first, with its keys, so a task made there
-   whose reply was lost is found. A refused stage made nothing in doubt, and the stages after it take a new key, since
-   the relay keeps the refusal under the old one. */
+   whose reply was lost is found. A refused stage made nothing, and the stages after it take a new key, since the relay
+   keeps the refusal under the old one. A stage whose answer was unknown may have been made (`unsure`), and an op whose
+   Cancel can check Vikunja's copy takes it back too. */
 export const cancelling = ({ failed, ...e }) =>
   failed
-    ? { ...e, cancelled: true, cut: e.stage, key: uuid7(), fails: 0 }
+    ? {
+        ...e,
+        cancelled: true,
+        cut: e.stage,
+        key: uuid7(),
+        fails: 0,
+        ...(failed.message === UNKNOWN && { unsure: true }),
+      }
     : { ...e, cancelled: true, cut: e.stage + 1, fails: 0 };
 // The starts waiting to be sent among the outbox's `entries`, in project `pid`, as Checklists shows them.
 export const startsIn = (entries, pid) =>

@@ -36,8 +36,8 @@ const lost = () => new TypeError('network error');
 
    Every request is recorded in `requests`, with its `key`, and `replayed` when the relay answered it from what it
    kept. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja but
-   the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), or an HTTP status to
-   answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them.
+   the reply is lost on the way back), 'unknown' (the relay's 409 with Idempotency-Unknown), 'arrived' (it reaches
+   Vikunja, and the relay answers it and its key from then on as unknown), or an HTTP status to answer with. An answer from `trouble` comes from in front of the relay, so the relay keeps none of them.
    `refuses(request)` gives an HTTP status for Vikunja itself to refuse a request with, which the relay keeps. */
 export function fakeVikunja(tasks = []) {
   const v = {
@@ -46,6 +46,7 @@ export function fakeVikunja(tasks = []) {
       strangers: new Set(),
       requests: [],
       relayed: new Map(),
+      unknown: new Set(),
       trouble: () => null,
       refuses: () => null,
     },
@@ -77,10 +78,11 @@ export function fakeVikunja(tasks = []) {
     v.requests.push(req);
     const trouble = v.trouble(req);
     if (trouble === 'offline') throw new TypeError('Failed to fetch');
-    if (trouble === 'unknown')
-      return reply({ message: 'the first request with this Idempotency-Key never finished' }, 409, {
+    const unknown = () =>
+      reply({ message: 'the first request with this Idempotency-Key never finished' }, 409, {
         'Idempotency-Unknown': 'true',
       });
+    if (trouble === 'unknown' || v.unknown.has(key)) return unknown();
     if (typeof trouble === 'number') return reply({ message: `HTTP ${trouble} from the fake` }, trouble);
     const fp = `${method} ${req.path}\n${bytes ?? ''}`,
       kept = key && v.relayed.get(key);
@@ -271,6 +273,10 @@ export function fakeVikunja(tasks = []) {
       if (t.done !== was) t.done_at = t.done ? now : '0001-01-01T00:00:00Z';
       res = reply(pruned(t));
     } else res = reply({ message: `the fake has no ${method} ${req.path}` }, 405);
+    if (trouble === 'arrived') {
+      v.unknown.add(key);
+      return unknown();
+    }
     if (key && res.status < 500) v.relayed.set(key, { fp, status: res.status, text: await res.clone().text() });
     if (trouble === 'lost') throw lost();
     return res;

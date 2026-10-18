@@ -195,9 +195,12 @@ Before anyone else uses Pocket:
   is removed.
 - `PUT /tasks/{id}/labels/bulk` has only been sent to the fake Vikunja. `test:local` must cover it, and so must a
   file's upload through the relay, whose body Pocket builds itself (`fileBody`).
-- The Undo of a start whose first copy came back unknown can't find that copy, and leaves it (the lifecycle test's
-  KNOWN). The relay answers that key as unknown for good, so nothing Pocket learns later names the copy. A copy of the
-  template is left in its project, with the template's title and label and no steps.
+- When the relay can't say whether Vikunja made one of a start's copies, of the template or of a step, the start's
+  Cancel and Undo can't find that copy, and leave it (the lifecycle test's KNOWN). The relay answers that key as
+  unknown for good. The template's `related_tasks.copiedto` lists the copy, but telling it from a teammate's start is a
+  guess, so Pocket doesn't use it. For a done template, Checklists then lists a second template with no steps. A step's
+  copy is a done task in the template's project, outside any checklist. The same holds for a step added to a checklist
+  or a template whose task Vikunja may or may not have made.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step that has sent a request
   and waits, as for any op, though the row's × still cancels a step.
 - Set up checklists says the example template couldn't be made when its ops don't all reach Vikunja at once, though

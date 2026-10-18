@@ -175,3 +175,13 @@ test('a step whose add is cancelled after it was made is hidden until Vikunja de
   await app.sendActs(f.id);
   assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101), sync.all(1).length], [false, false, 0]);
 });
+
+test("Cancel of a start whose tick of the template came back unknown puts back the template's date", async t => {
+  const { v, app, f } = world(t, 'startRun');
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/7' ? 'arrived' : null);
+  assert.equal((await app.act(f)).status, 'error');
+  assert.notEqual(v.task(7).due_date, D9, 'Vikunja moved the template on');
+  v.trouble = () => null;
+  await app.cancelMade(f.id, true);
+  assert.deepEqual([[...v.tasks.keys()], v.task(7).due_date, v.task(7).done, sync.all(1)], [[7, 8, 9], D9, false, []]);
+});

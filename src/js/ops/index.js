@@ -127,7 +127,8 @@ export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'ru
    answered. `until` holds a delete back while Restore shows, an add's stages keep the task they made, a label op keeps
    the label it found or made (`labelId`), a checklist's start keeps its copies and where it moved its template
    (`copied`, `notes`, `ticked`), and Make template keeps what it did to each step and each link (`tickedSteps`,
-   `uncopied`). `cut` is how many of its stages a cancelled op had sent (cancelling). */
+   `uncopied`). `cut` is how many of its stages a cancelled op had sent, and `unsure` says the answer to the next was
+   unknown (cancelling). */
 export const SENT = [
   'files',
   'stage',
@@ -160,6 +161,7 @@ export const SENT = [
   'tickedSteps',
   'uncopied',
   'cut',
+  'unsure',
 ];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't

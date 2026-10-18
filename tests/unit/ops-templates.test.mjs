@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync } from '../../src/js/sync.js';
+import { UNKNOWN } from '../../src/js/messages.js';
 import checklists from '../../src/js/app/checklists.js';
 import quickadd from '../../src/js/app/quickadd.js';
 
@@ -289,3 +290,23 @@ test("a template's step whose add is cancelled after it was made is hidden until
   await online(t, app, v);
   assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101), outbox()], [false, false, []]);
 });
+
+/* The relay can't say whether Vikunja made a request of Make template, though Vikunja did. Cancel takes back that
+   request too, checking Vikunja's copy first: the task's name and done, or a step's tick. */
+for (const [what, path] of [
+  ['its last request', '/tasks/7'],
+  ["a step's tick", '/tasks/9'],
+])
+  test(`Cancel of Make template whose answer to ${what} was unknown takes back what Vikunja made`, async t => {
+    const { v, app } = editor(t, closing());
+    let n = 0;
+    v.trouble = r => (r.method === 'PATCH' && r.path === path && !n++ ? 'arrived' : null);
+    await app.act({ op: 'makeTemplate', task: 7, run: null, steps: [8, 9] });
+    assert.equal(outbox()[0].failed.message, UNKNOWN);
+    await app.dropAct(outbox()[0].id);
+    await settle(t, () => !outbox().length);
+    assert.deepEqual(
+      [v.task(7).title, v.task(7).done, ids(v.task(7).labels), v.task(8).done, v.task(9).done, outbox()],
+      ['Closing', false, [], false, false, []],
+    );
+  });

@@ -90,11 +90,11 @@ async function uncopy(a, c) {
   }
 }
 /* Last, the task is marked done, unless it has a due date, so a template with a date stays due. Its title gets the
-   "TEMPLATE: " prefix. Both come from Vikunja's copy, read once. */
+   "TEMPLATE: " prefix. Both come from Vikunja's copy, read once, with what the task had before, for Cancel. */
 async function finish(a, c) {
-  const body = await c.once('finish', async () => {
+  const { body } = await c.once('finishing', async () => {
     const t = await c.read('/tasks/' + a.task);
-    return { done: !isSet(t.due_date), title: templateTitle(t.title) };
+    return { body: { done: !isSet(t.due_date), title: templateTitle(t.title) }, was: { done: t.done, title: t.title } };
   });
   await patch(a, c, body);
 }
@@ -113,6 +113,13 @@ const untickStep = i => async (a, c) => {
   if (Object.keys(body).length) await setTask(c, id, body);
 };
 // A link that is there again, as one whose delete Vikunja refused, is no error.
+// The task's done and title go back, only where Vikunja has them as `finish` left them.
+async function unfinish(a, c) {
+  const f = a.fixed?.finishing;
+  if (!f) return;
+  const { body } = await backOf(a, c, f.was, f.body);
+  if (Object.keys(body).length) await patch(a, c, body);
+}
 async function recopy(a, c) {
   for (const id of a.uncopied)
     await c
@@ -125,12 +132,16 @@ async function recopy(a, c) {
         if (e.code !== ALREADY.link) throw e;
       });
 }
+/* A stage whose answer was unknown (`unsure`) may or may not have been made, so Cancel takes it back too. Each part
+   checks Vikunja's copy first, or changes nothing where the stage wasn't made. */
 const UNMAKES = a => {
-  const done = k => (a.cut || 0) > k;
+  const done = k => (a.cut || 0) > k || (!!a.unsure && a.cut === k),
+    n = (a.steps || []).length;
   return [
     ...(done(1) && a.fixed?.labeled ? [unlabel] : []),
     ...(a.steps || []).flatMap((_, i) => (done(2 + i) ? [untickStep(i)] : [])),
     ...(a.uncopied?.length ? [recopy] : []),
+    ...(done(3 + n) ? [unfinish] : []),
   ];
 };
 
