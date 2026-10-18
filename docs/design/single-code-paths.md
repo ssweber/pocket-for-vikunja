@@ -165,9 +165,9 @@ the minimum Vikunja version. `docs/design/upstream-idempotency-key.md` asks for 
 They join the one `no-restricted-syntax` array in `eslint.config.js`, because a second entry for the rule replaces the
 first.
 
-| Phase | Rule | Allowed in |
-|---|---|---|
-| 12 | Messages: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said`. | `src/js/messages.js` |
+| Phase | Rule                                                                                                                 | Allowed in           |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 12    | Messages: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said`. | `src/js/messages.js` |
 
 ## After the major work
 
