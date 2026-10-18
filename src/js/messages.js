@@ -177,6 +177,8 @@ const EDITED = {
     dropped: title => `${it(title)} keeps its order of steps in Vikunja.`,
   },
 };
+// A subtask's parent, by its title (`over`), or in words when Pocket doesn't know it.
+const over = (a, none) => (a.over ? `“${named(a.over)}”` : none);
 const edited = a => EDITED[a.rebase ?? Object.keys(a.set)[0]];
 export const OP_WORDS = {
   done: { ...ticked, text: (a, title, r) => `Done: ${row(title, r)}`, refused: (a, title) => 'A tick' + on(title) },
@@ -284,6 +286,44 @@ export const OP_WORDS = {
     text: (a, title) => edited(a).text(a, title),
     refused: (a, title) => edited(a).refused(title),
     dropped: keeps((a, title) => edited(a).dropped(title)),
+  },
+  // A move to another project, named by the projects' titles (`into`, `from`), with the subtasks it moves (`subs`).
+  project: {
+    saved: "it's moved",
+    text: (a, title) => {
+      const n = Object.keys(a.subs || {}).length;
+      return (
+        `Moving ${task(title)} to ${a.into || 'another project'}` +
+        (!n ? '' : n === 1 ? ', with its subtask' : `, with its ${n} subtasks`)
+      );
+    },
+    refused: (a, title) => `Moving ${task(title)} to ${a.into || 'another project'}`,
+    dropped: keeps((a, title) =>
+      a.stage > 0
+        ? `${it(title)} is in ${a.into || 'the other project'} in Vikunja.${REST}`
+        : `${it(title)} stays in ${a.from || 'its project'} in Vikunja.`,
+    ),
+  },
+  // A subtask and its parent (`over`).
+  link: {
+    saved: "it's a subtask",
+    text: (a, title) => `Making ${task(title)} a subtask of ${over(a, 'another task')}`,
+    refused: (a, title) => `Making ${task(title)} a subtask of ${over(a, 'another task')}`,
+    dropped: keeps((a, title) =>
+      a.stage > 0
+        ? `${it(title)} is a subtask of ${over(a, 'another task')} in Vikunja.${REST}`
+        : `${it(title)} is not a subtask of ${over(a, 'another task')} in Vikunja.`,
+    ),
+  },
+  unlink: {
+    saved: "it's no longer a subtask",
+    text: (a, title) => `Taking ${task(title)} out of ${over(a, 'its parent')}`,
+    refused: (a, title) => `Taking ${task(title)} out of ${over(a, 'its parent')}`,
+    dropped: keeps((a, title) =>
+      a.stage > 0
+        ? `${it(title)} is no longer a subtask of ${over(a, 'its parent')} in Vikunja.${REST}`
+        : `${it(title)} stays a subtask of ${over(a, 'its parent')} in Vikunja.`,
+    ),
   },
   // An add's line, under what it goes under (`a.over`). Only a line whose task is made (`taskId`) is cancelled in the
   // Outbox with these words. Before that, its Cancel gives the lines back (cancelOf).

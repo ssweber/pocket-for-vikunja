@@ -40,6 +40,8 @@ import { del } from './delete.js';
 import { add } from './add.js';
 import { due, repeat } from './dates.js';
 import { edit } from './edit.js';
+import { project } from './project.js';
+import { link, unlink } from './links.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
@@ -66,6 +68,9 @@ export const OPS = {
   due,
   repeat,
   edit,
+  project,
+  link,
+  unlink,
 };
 
 // What each field is when an op sets it to null.

@@ -54,7 +54,8 @@ export const line = (title, p) => ({
    Vikunja has once it is made (`made`). The fake Vikunja answers each request as Vikunja does. `fields` may list
    several ops queued together, and the last is the one tried. `queue(app, fields)` queues it where the app has its own
    way. `cannot` names the states that can't arise for the op: an op whose requests are all in one stage is never
-   partly done. `unseen` names the fields Vikunja changes that the task's row doesn't show. A sample named other than
+   partly done. `unseen` names the fields Vikunja changes that the task's row doesn't show. `parented` says the op needs a task
+   with a parent, which a test names in `up`. A sample named other than
    its op says which op it tries (`op`). Keep each sample small. The unit tests read only the HTML Pocket writes in notes (dom.mjs). */
 export const SAMPLES = {
   done: {
@@ -211,6 +212,43 @@ export const SAMPLES = {
     },
     made: v => v.task(7).reminders.length === 1 && v.task(7).reminders[0].relative_period === -3600,
     cannot: ['partly done'],
+  },
+  // The checklist moves to project 6 with both its steps. Each test passes the task it moves (`t`), whose steps are the
+  // checklist's only when it is the checklist.
+  project: {
+    tasks: checklist(),
+    fields: (ops, t = { id: 1 }) => {
+      const subs = t.id === 1 ? [2, 3] : [];
+      return {
+        op: 'project',
+        task: t.id,
+        pid: 6,
+        subs: Object.fromEntries(subs.map(id => [id, 6])),
+        was: Object.fromEntries([t.id, ...subs].map(id => [id, 5])),
+        into: 'Errands',
+        from: 'Home',
+        run: null,
+      };
+    },
+    made: v => [1, 2, 3].every(id => v.task(id).project_id === 6),
+  },
+  // Step 3 leaves the checklist, so its progress goes from half done to done. A test names the parent (`up`).
+  unlink: {
+    tasks: checklist({ 1: { percent_done: 0.5 }, 2: { done: true } }),
+    fields: { op: 'unlink', task: 3, up: 1, over: 'Closing', was: [1], run: null },
+    made: v => !v.task(1).related_tasks.subtask.some(s => s.id === 3) && v.task(1).percent_done === 1,
+    parented: true,
+  },
+  // Step 3, not in the checklist, joins it, so its progress goes from done to half done.
+  link: {
+    tasks: checklist({
+      1: { percent_done: 1, related_tasks: { subtask: [{ id: 2 }] } },
+      2: { done: true },
+      3: { related_tasks: { parenttask: [] } },
+    }),
+    fields: { op: 'link', task: 3, up: 1, over: 'Closing', was: [], run: null },
+    made: v => v.task(1).related_tasks.subtask.some(s => s.id === 3) && v.task(1).percent_done === 0.5,
+    parented: true,
   },
   // The checklist's second step moves up, in its order line.
   'edit, order': {

@@ -365,6 +365,48 @@ const WORDS = {
       '“it” keeps its title in Vikunja.',
     ],
   ],
+  project: [
+    [
+      'Moving “Unlock the door” to another project',
+      'Moving “Unlock the door” to another project',
+      '“Unlock the door” stays in its project in Vikunja.',
+      '“Unlock the door” is in the other project in Vikunja. The rest of the change is not sent.',
+    ],
+    [
+      'Moving a task to another project',
+      'Moving a task to another project',
+      '“it” stays in its project in Vikunja.',
+      '“it” is in the other project in Vikunja. The rest of the change is not sent.',
+    ],
+  ],
+  link: [
+    [
+      'Making “Unlock the door” a subtask of another task',
+      'Making “Unlock the door” a subtask of another task',
+      '“Unlock the door” is not a subtask of another task in Vikunja.',
+      '“Unlock the door” is a subtask of another task in Vikunja. The rest of the change is not sent.',
+    ],
+    [
+      'Making a task a subtask of another task',
+      'Making a task a subtask of another task',
+      '“it” is not a subtask of another task in Vikunja.',
+      '“it” is a subtask of another task in Vikunja. The rest of the change is not sent.',
+    ],
+  ],
+  unlink: [
+    [
+      'Taking “Unlock the door” out of its parent',
+      'Taking “Unlock the door” out of its parent',
+      '“Unlock the door” stays a subtask of its parent in Vikunja.',
+      '“Unlock the door” is no longer a subtask of its parent in Vikunja. The rest of the change is not sent.',
+    ],
+    [
+      'Taking a task out of its parent',
+      'Taking a task out of its parent',
+      '“it” stays a subtask of its parent in Vikunja.',
+      '“it” is no longer a subtask of its parent in Vikunja. The rest of the change is not sent.',
+    ],
+  ],
   add: [
     ['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''],
     ['New task: ', 'Adding a task', '', ''],
@@ -421,6 +463,19 @@ test('each op says what the outbox said before: its row, its refusal, and what c
     [OPS.add.text({ over: 'Pack the van' }, 'Chairs'), OPS.add.text({ taskId: 4 }, 'Chairs')],
     ['Subtask of “Pack the van”: Chairs', 'Finishing “Chairs”'],
     'a line says what it goes under, as the Outbox said before',
+  );
+  assert.deepEqual(
+    [
+      OPS.project.text({ subs: { 2: 6 }, into: 'Errands' }, 'Pack the van'),
+      OPS.project.dropped({ stage: 0, from: 'Home' }, 'Pack the van'),
+      OPS.unlink.text({ over: 'Pack the van' }, 'Chairs'),
+    ],
+    [
+      'Moving “Pack the van” to Errands, with its subtask',
+      '“Pack the van” stays in Home in Vikunja.',
+      'Taking “Chairs” out of “Pack the van”',
+    ],
+    'a move names its projects, and a link names the parent',
   );
   const day = n => {
     const d = new Date();

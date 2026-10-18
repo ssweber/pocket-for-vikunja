@@ -119,6 +119,12 @@ function touches(h) {
   const body = Object.keys(JSON.parse(h.opts.body));
   return body.includes('done') ? [...body, 'done_at'] : body;
 }
+// The other task a link, or taking one out, changes (POST /tasks/:id/relations, DELETE .../relations/subtask/:other).
+const otherOf = h => {
+  const cut = new URL(h.url).pathname.match(/\/relations\/\w+\/(\d+)$/);
+  if (cut) return [+cut[1]];
+  return /\/relations$/.test(h.url) ? [JSON.parse(h.opts.body).other_task_id] : [];
+};
 // What kind of reply a write gets that brings a task, or null.
 const replyKind = (method, url) =>
   method === 'PATCH' ? 'patch' : method === 'POST' && /\/projects\/\d+\/tasks$/.test(url) ? 'create' : null;
@@ -558,8 +564,8 @@ class World {
       reached: ++this.seq,
       done: Infinity,
     };
-    // A link changes the other task too.
-    h.ids = [h.id, ...(/\/relations$/.test(url) ? [JSON.parse(opts.body).other_task_id] : [])].filter(Boolean);
+    // A link, or taking one out, changes the other task too.
+    h.ids = [h.id, ...otherOf(h)].filter(Boolean);
     this.writes.push(h);
     const op = h.e && (this.ops.get(h.e.id) ?? this.ops.set(h.e.id, { e: h.e, spans: [] }).get(h.e.id));
     if (op && !(op.spans.at(-1)?.[1] === Infinity)) op.spans.push([h.reached, Infinity]);
@@ -632,9 +638,9 @@ class World {
     // A field Vikunja changes that the op's answer doesn't carry, such as a position, is new to Pocket until it reads.
     const unseen = h.e && Object.entries(ALL).find(([n, s]) => (s.op ?? n) === h.e.op)?.[1].unseen;
     if (h.id && unseen) this.model.doubt(h.id, unseen);
-    // A link changes the related tasks of both tasks, which only a read brings.
-    if (h.id && /\/relations$/.test(h.url))
-      for (const x of [h.id, JSON.parse(h.opts.body).other_task_id]) this.model.doubt(x, ['related_tasks']);
+    // A link, or taking one out, changes the related tasks of both tasks, which only a read brings.
+    if (h.id && /\/relations/.test(h.url))
+      for (const x of [h.id, ...otherOf(h)]) this.model.doubt(x, ['related_tasks']);
   }
   /* A refusal or an unknown answer stops op `e` before its answer. The store then reads again the tasks the op's
      requests went to, without their comments. So only a later read tells Pocket of a comment the op made, or of a
@@ -1130,6 +1136,7 @@ function canQueue(w, name, t) {
     id = w.target(t);
   if (typeof id === 'string')
     return typeof s.fields !== 'function' && !s.queue && !('ids' in s.fields) && !('up' in s.fields);
+  if (s.parented && !w.model.copies.get(id)?.related_tasks?.parenttask?.length) return false;
   return !!w.app.tasks[id] && !w.app.beingDeleted(id) && w.app.leaving[id] !== 'deleted';
 }
 class Queue extends Command {
