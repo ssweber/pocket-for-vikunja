@@ -1,8 +1,8 @@
 // ESLint looks for mistakes only (a name that isn't defined, a variable never used, an import assigned to), not style,
 // and that only api.js talks to Vikunja, only util.js asks whether less motion is wanted, only lists.js decides how
 // many days Today shows, only checklists.js decides what kind of task a task is, only tasks.js writes a task's row, only
-// src/js/ops/ compares an op's name, and only the files in WRITERS write to Vikunja directly: npm run lint, which also
-// runs scripts/check.mjs. CI runs it too.
+// src/js/ops/ compares an op's name, and only the files in DIRECT write to Vikunja without the outbox and its keys:
+// npm run lint, which also runs scripts/check.mjs. CI runs it too.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -10,6 +10,7 @@ import globals from 'globals';
 // for the rule replaces the first, and 'off' would turn off every selector in a file. restricted(file) leaves out the
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
+const KEY = "Send a write with a key (api's `key` option), so a write sent again after a lost reply is made once. An op's stage sends with c.send, which gives each request its key.";
 const STORE = 'Write the store inside this.change(w => …) with its writers (src/js/app/tasks.js). w.answer() writes what Vikunja answered, and w.leave() marks a row leaving.';
 // A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
 // The sheet's task and a checklist's are rows too (sheetTask, runTask). show() reads the leaving marks too.
@@ -22,18 +23,21 @@ const OP = name => `:matches([${name}.property.name='op'], [${name}.expression.p
 const TEXT = name => `:matches([${name}.type='Literal'], [${name}.type='TemplateLiteral'])`;
 const OP_NAME = `:matches(BinaryExpression[operator=/^[!=]==?$/]:matches(${OP('left')}${TEXT('right')}, ${OP('right')}${TEXT('left')}), SwitchStatement${OP('discriminant')}, CallExpression[callee.property.name=/^(includes|indexOf|has)$/]${OP('arguments.0')})`;
 const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/js/ops/index.js), adding a field with its default there, or call a helper in the op\'s own file.';
-// The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
-// The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
-// c.send, which no selector here matches yet.
-const WRITERS = ['src/js/api.js', 'src/js/app/actions.js', 'src/js/app/asks.js', 'src/js/app/auth.js',
-  'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/views.js',
-  'src/js/ops/**', 'src/js/app/acts.js'];
+/* The files that write to Vikunja directly, not through the outbox. What they write needs Vikunja's answer before
+   anything else can happen, and the user waits for it on screen. Every other write is an op, sent by acts.js with a
+   key through a stage's c.send, which no selector here matches. */
+const DIRECT = [
+  'src/js/api.js', // api() itself, renewing the session, and a file's upload (keyed, from the outbox's file entries)
+  'src/js/app/auth.js', // signing in
+  'src/js/app/checklists.js', // renaming, archiving and deleting a project, the Checklists project, and turning checklists on or off
+  'src/js/app/views.js', // creating a project
+];
 const RESTRICTED = [
   { selector: 'Literal[value=/prefers-reduced-motion/]', message: 'Ask motion() in src/js/util.js whether things may move.', allow: ['src/js/util.js'] },
   { selector: "CallExpression[callee.name='addDays'][arguments.1.value=8]", message: "Ask dayGroup() in src/js/lists.js which of Today's groups a date is in, or use TODAY_DAYS.", allow: ['src/js/lists.js'] },
-  { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']", message: WRITE, allow: WRITERS },
-  { selector: "CallExpression[callee.name='patchTask']", message: WRITE, allow: WRITERS },
-  { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name='saveTask']", message: WRITE, allow: WRITERS },
+  { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']", message: WRITE, allow: DIRECT },
+  // A call to api with a method other than GET and no key.
+  { selector: "CallExpression[callee.name='api'] > ObjectExpression:has(> Property[key.name='method']:not([value.value='GET'])):not(:has(> Property[key.name='key']))", message: KEY, allow: DIRECT },
   { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },

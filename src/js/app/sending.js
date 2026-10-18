@@ -1,6 +1,6 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
 import { raw, userCache } from '../util.js';
-import { api, ApiError, fileBody, items, opening, passing, seenToken, sharedToken, TRANSIENT } from '../api.js';
+import { api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, upload } from '../api.js';
 import { isSet, startOfDay } from '../dates.js';
 import { addedWhere, cancelName, doneText, notKnown, toOutbox } from '../messages.js';
 import { fileEntry, held, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7 } from '../sync.js';
@@ -276,11 +276,7 @@ export default {
           f.upload = uuid7();
           await sync.save(entry);
         }
-        const r = await api(`/tasks/${taskId}/attachments`, {
-          method: 'POST',
-          body: fileBody(file, f.name, f.upload),
-          key: f.upload,
-        });
+        const r = await upload(taskId, file, f.name, f.upload);
         // Vikunja answers OK even when it rejects a file, and puts the reasons in `errors`.
         if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`);
         else ok = true;

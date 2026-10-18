@@ -70,7 +70,7 @@ let serverOffset = null; // Vikunja's clock minus the phone's, from the Date hea
 export const serverTime = ms => ms + (serverOffset ?? 0);
 /* A file upload's body, as a browser builds one from FormData, with a boundary made from the upload's key. The relay
    answers a key sent again with another body with 422, and FormData picks a new boundary on every send. */
-export function fileBody(file, name, key) {
+function fileBody(file, name, key) {
   const b = 'pocket-' + key,
     safe = name.replace(/"/g, '%22').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
   return new Blob(
@@ -83,6 +83,9 @@ export function fileBody(file, name, key) {
     { type: 'multipart/form-data; boundary=' + b },
   );
 }
+// Upload `file` to task `taskId` as `name`, with key `key`, so an upload sent again after a lost reply is made once.
+export const upload = (taskId, file, name, key) =>
+  api(`/tasks/${taskId}/attachments`, { method: 'POST', body: fileBody(file, name, key), key });
 /* Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
    renewal, so renewing takes Vikunja's "vikunja-token-refresh" lock. If another tab renewed while this one waited for
    the lock, its new token is used instead of spending the cookie again. */
