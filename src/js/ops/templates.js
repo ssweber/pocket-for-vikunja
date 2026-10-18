@@ -12,16 +12,19 @@ import { opsId, MOVED, TASK } from '../app/tasks.js';
 import { LINE } from './add.js';
 import { cancelledStages, notFound, patch, place, unadd, unplace } from './stages.js';
 
-// Mark task `id` done or not done, and put Vikunja's answer into its copy. A task deleted in the meantime is skipped.
+/* Mark task `id` done or not done, and put Vikunja's answer into its copy. Vikunja moves a repeating task marked done on
+   to its next date instead, and Pocket's copy may not know that it repeats, so only the reply says what a tick left. A
+   task deleted in the meantime is skipped. */
 async function setDone(c, id, done) {
   const body = { done },
-    t = await c.send('/tasks/' + id, { method: 'PATCH', body, on: { [id]: body } }).catch(e => {
+    sure = done ? {} : body,
+    t = await c.send('/tasks/' + id, { method: 'PATCH', body, on: { [id]: sure } }).catch(e => {
       notFound(e);
       return false;
     });
   if (t !== false)
     c.app.change(w => {
-      w.made(id, c.from(t), body);
+      w.made(id, c.from(t), sure);
       if (t) w.answer([t], TASK, c.from(t));
     });
 }

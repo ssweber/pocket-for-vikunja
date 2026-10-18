@@ -1719,3 +1719,23 @@ test('a move of a step that sends nothing, because the step it moves past is gon
     await w.close();
   }
 });
+
+/* Make template marks the checklist's steps done as template steps. A teammate makes step 2 repeat first, so Vikunja
+   moves it on to its next date instead, which only the reply can say. */
+test('a step a teammate made repeat takes nothing into the copy when Make template marks it done', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('makeTemplate', 1),
+      new Teammate(2, 'repeat_after'),
+      new Teammate(2, 'due_date'),
+      new StartRead([1], false),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
