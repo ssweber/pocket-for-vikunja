@@ -119,11 +119,24 @@ test('a step inserted in a checklist while Pocket knows it is offline, then canc
   );
 });
 
-test('an op on a step whose add is cancelled leaves with it', async t => {
+test('an op on a step whose add is cancelled leaves with it, also when another tab cancelled the add', async t => {
   const { v, app, f } = world(t, 'addStep');
   noConnection(app, v);
   await app.act(f);
   await app.act({ op: 'done', task: 'pending-' + f.id, run: 1 });
   await app.cancelMade(f.id, true);
   assert.equal(sync.all(1).length, 0, 'the tick leaves with the step');
+
+  const g = { id: uuid7(), ...SAMPLES.addStep.fields(ops) };
+  await app.act(g);
+  const tick = (await app.act({ op: 'done', task: 'pending-' + g.id, run: 1 })).entry;
+  await sync.remove(g.id); // as another tab's Cancel removes it
+  v.trouble = () => null;
+  app.offline = false;
+  assert.equal((await app.sendActs(tick)).status, 'gone');
+  assert.deepEqual(
+    [v.requests.filter(r => r.method !== 'GET'), sync.all(1).length],
+    [[], 0],
+    'the tick on a step never made leaves the outbox, and sends nothing',
+  );
 });

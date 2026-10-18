@@ -425,15 +425,19 @@ export default {
       for (const t of none.tasks) t.arrived = x;
     };
     try {
-      // Wait for the real id of an offline step, or of the line this line goes under. Reject a step's action if the
-      // step was never created. A line whose line is gone without a task leaves with the lines under it, and their
-      // text goes back to their box, as after Cancel.
+      // Wait for the real id of a step still being added, or of the line this line goes under. An op on a step whose
+      // add left the outbox without making it leaves too. A line whose line is gone without a task leaves with the
+      // lines under it, and their text goes back to their box, as after Cancel.
       for (const k of ['task', 'under'])
         if (typeof a[k] === 'string') {
           const key = a[k].replace(/^pending-/, ''),
             id = sync.taskOf(key);
           if (!id && sync.entries.has(key)) return { ...got(), status: 'offline', reached: true };
-          if (!id && k === 'task') throw new ApiError(404, "the step it was for couldn't be added");
+          if (!id && k === 'task') {
+            await sync.remove(a.id);
+            this.unmade(a.id);
+            return { ...none, status: 'gone' };
+          }
           if (!id) {
             this.linesBack(await dropUnder(a[k], a.user), {});
             return { ...none, status: 'gone' };
