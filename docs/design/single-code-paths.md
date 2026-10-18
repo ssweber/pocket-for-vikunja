@@ -19,7 +19,7 @@ Built on `dev`, and described by the code and its comments:
 
 - every write is keyed, and the plugin's relay (`pocket/relay.go`) makes a retry safe;
 - the op registry (`src/js/ops/`) and the one sender (`src/js/app/acts.js`);
-- one store (`src/js/app/tasks.js`): a row is Vikunja's copy, then the waiting ops, then the edits still running;
+- one store (`src/js/app/tasks.js`): a row is Vikunja's copy, then the waiting ops;
 - adding tasks and dates as ops;
 - ticks and progress as ops, each with an Undo that is an op (`invert`), and the pruning of unsent pairs (`fold`);
 - the sheet's title, priority, notes and reminders, and a template's step order, as `edit` ops. Notes, reminders
@@ -32,6 +32,12 @@ Built on `dev`, and described by the code and its comments:
   everywhere else (`deleteNow`), which first takes the changes still waiting on those tasks out of the outbox;
 - starting a checklist and adding a step to one as `startRun` and `addStep` ops, which keep what they made in their
   entry. Cancel, and a start's Undo, delete it with the same op marked `cancelled`;
+- Make template, New template, the example template and the steps added under a template as `makeTemplate` and
+  `templateStep` ops, whose Cancel takes back what they made. A checklist's name and a template step's title, asks,
+  people and labels as `edit`, `assign` and `label` ops;
+- each file's upload sent with a key, its body built the same way on every try (`fileBody`, `api.js`);
+- every write through the outbox, except what stays direct (below), with lint holding it: the writes allowlist and
+  the keys rule;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
 - the lifecycle test and the randomized store test.
@@ -52,8 +58,11 @@ and empty the Outbox on each phone, before the next phone check.
 
 ## Rules that hold
 
-- **A row is Vikunja's copy, then the waiting ops, then the edits still running.** Nothing else is added without the
-  user's agreement. The edits are scaffolding: each phase turns direct saves into ops.
+- **A row is Vikunja's copy, then the waiting ops.** Nothing else is added without the user's agreement.
+- **What stays direct.** Signing in, creating a project (the Checklists project included), renaming, archiving and
+  deleting a project, and turning checklists on or off need Vikunja's answer before anything else can happen, and the
+  user waits for it on screen. They are the lint's `DIRECT` files, each with a comment saying why. Every other write is
+  an op, sent with a key.
 - **Vikunja's copies have one door,** `read`, `answer` and `made`, and every write happens inside `change`. A read
   carries the time it started. A reply or a change carries the write it answers.
 - **Vikunja's copy of a task only moves forward.** Agreed with the user on 2026-10-17. Vikunja gives no version
@@ -61,11 +70,11 @@ and empty the Outbox on each phone, before the next phone check.
   started after the request behind that field of the copy. A read that overlaps a write to the same task is thrown
   away, and the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. An op is in
   flight from its first request until it leaves the outbox, across retries, and its change counts from that request.
-  Ops on one task go out one at a time. When a direct save and an op on one task are in flight at once, Pocket takes
-  neither's reply, and neither's change to a field the other sets to another value. A task is read once its writes
-  end if they leave it unsure that way, if a read of it was thrown away, if its op's answer was replayed or never
-  reached this tab, or if the op began before the page loaded. The rule lives in `tasks.js`, where each write the
-  copy learns from is a `writes()` with its start time.
+  Ops on one task go out one at a time. When two writes on one task are in flight at once, as when an op on a step
+  writes its checklist's progress, Pocket takes neither's reply, and neither's change to a field the other sets to
+  another value. A task is read once its writes end if they leave it unsure that way, if a read of it was thrown away,
+  if its op's answer was replayed or never reached this tab, or if the op began before the page loaded. The rule
+  lives in `tasks.js`, where each write the copy learns from is a `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
@@ -77,7 +86,7 @@ and empty the Outbox on each phone, before the next phone check.
   So a stage's requests depend only on the entry and `a.fixed`, and a request a read decides on goes last in its
   stage.
 - **Every op passes the lifecycle checks.** A new op needs a sample in `tests/unit/samples.mjs`. The randomized test
-  (`tests/unit/store.model.test.mjs`) checks the store's rules on random orders of ops, reads, answers and edits, and
+  (`tests/unit/store.model.test.mjs`) checks the store's rules on random orders of ops, reads and answers, and
   checks from the fake Vikunja's log that each copy only moves forward.
 - **A first request waits while Pocket knows it is offline.** Once a request is sent the op can't be cancelled, so an
   op made offline must stay unsent until a read gets through.
@@ -89,13 +98,6 @@ and empty the Outbox on each phone, before the next phone check.
 One phase, with one review. Its four parts are built: ticks and progress, the sheet's fields, a move to another
 project with links, and people and labels. These are left:
 
-- Delete `saveTask` with its last caller. It still saves a checklist's name (`saveRunName`), a template step's name
-  and asks (`saveStepEdit`, `saveAskRows`), and a step's place among a template's steps after the template editor adds
-  it. Phase 10 makes them ops.
-- The store's `edit()` writer stays while something lays fields over a row outside the outbox: `undoOps` shows an
-  Undo at once, `arrivedDone` holds a repeating task's dates until its batch clears, and `saveStepEdit` saves
-  directly. Phase 10 deletes it, with its bookkeeping in tasks.js (`edits`, `ended`), once `saveStepEdit` is an op.
-  How `undoOps` and `arrivedDone` show what they hold without it is still to be decided.
 - From the Veyrn comparison: an op refused with 404, because its task was deleted in Vikunja, stays failed for good,
   except a tick, an untick, a progress, a finish, a reopen, an edit, a move, a link or unlink, an `assign` and a
   `label`, whose `refusal` drops it ('dropped').
@@ -104,38 +106,7 @@ project with links, and people and labels. These are left:
   moves without its own subtasks.
 - The Undo of a repeating task's tick whose answer this tab never saw, as when the relay can't say whether Vikunja made
   it, has no dates to check against. It counts any date other than the one before as changed since.
-- A template step's people and labels are still set and removed directly in its edit box (`saveStepEdit`, through
-  `createTask` and a `DELETE` each). Phase 10 makes them ops. The example template's first step is assigned directly, as seeding it stays direct.
-- No screen offers an Undo for a person or a label. Their ops have an `invert`, which Make template uses to take back
-  its label when it can't be sent.
-
-### 10. Checklists and files
-
-Part (a), starting a checklist and adding a step to one, is built. Part (b) is the rest:
-
-- Renames and step edits, as `edit` ops, and answers (asks.js).
-- Delete `hasAttachment` once a file's upload is sent with a key. The upload's body is a form whose boundary changes
-  with each send, and the relay answers a key sent again with another body with 422. So the body must be built once.
-- The two callers of `createTask` outside the outbox (the template editor, a step's new title) queue ops.
-- Make template writes directly once its label is sent (`markTemplate`): it marks the steps done, marks the template
-  done and renames it, and deletes a "copied from" link. Adding steps under a template (`addTemplateSteps`) renames
-  the steps the new steps count from, and marks the new steps done, directly too. They become ops.
-- The delete still sent directly belongs to the template editor: a step it made but couldn't link
-  (`addTemplateSteps`). It becomes a stage of that op.
-- Once these are ops, every change goes through the Outbox except what stays direct (below). Then the offline line in
-  `app.html` becomes "Offline. Changes wait in the Outbox." (the user's words, agreed on 2026-10-16), with the time of
-  the saved screen as now, and `docs/guide.md` says the same. Until then, renaming a checklist, editing a template's
-  steps and Make template save directly, and need a connection.
-- Remove the last files from the writes allowlist, except what stays direct (below). Turn on the keys rule.
-- Left by part (a): the Undo of a start whose copy of the template came back unknown can't find that copy, and leaves
-  it (the lifecycle test's KNOWN). The Outbox offers no Cancel for a start or an added step that has sent a request and
-  waits, as for any op, though its row's × still cancels it. A start or a step an older Pocket saved before they were
-  ops is dropped unsent, leaving any copy it made.
-
-**What stays direct.** These need Vikunja's answer before anything else can happen, and the user waits for it on
-screen: signing in, creating a project (the Checklists project included), renaming, archiving and deleting a
-project, turning checklists on or off for a project, and seeding the example template. Each stays in the lint
-allowlist with a comment saying why.
+- No screen offers an Undo for a person or a label, though their ops have an `invert`.
 
 ### 11. Screens hold ids
 
@@ -194,8 +165,6 @@ first.
 
 | Phase | Rule | Allowed in |
 |---|---|---|
-| each | The writes allowlist shrinks as each phase finishes its files. | what stays direct |
-| 10 | Keys: a call to `api` with a `method` other than `GET` and no `key`. | `src/js/api.js`, what stays direct |
 | 12 | Messages: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said`. | `src/js/messages.js` |
 
 ## After the major work
@@ -205,7 +174,8 @@ Before anyone else uses Pocket:
 - **Upgrading stored data.** Replace the upgrade that empties every IndexedDB store with one step per version that
   never drops the outbox, and give each entry and saved screen a format version. An entry Pocket can't read shows in
   the Outbox with Cancel instead of disappearing. Today an entry whose op Pocket doesn't know breaks the Outbox's list
-  (`op.text`) and the sender (`stagesOf`).
+  (`op.text`) and the sender (`stagesOf`). A start or a step an older Pocket saved before they were ops is dropped
+  unsent, leaving any copy it made.
 - **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete the
   oldest saved screen and try again.
 - **The upstream drafts.** In `upstream-task-updated.md`, ask how Pocket learns of deleted tasks: an endpoint for ids
@@ -217,12 +187,23 @@ Before anyone else uses Pocket:
 - **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers) after
   opening the sheet and switching screens many times.
 - **To discuss first, since the user sees them:** screen readers (`aria-live` off `#view`, group titles as headings,
-  rows as lists), and Back restoring the scroll position.
+  rows as lists), and Back restoring the scroll position. A step added under a template waits as a row at the end of
+  its sheet, not after the step the box was under, until Vikunja has made it.
 - An Undo of a cancelled refused change can land behind later changes. It is rare.
 - A person or a label op reads the set Vikunja has once, before its first request (`c.once('set')`, `stages.js`).
   When Vikunja answers that request with a 5xx, the retry sends the same set, so a label a teammate added in between
   is removed.
-- `PUT /tasks/{id}/labels/bulk` has only been sent to the fake Vikunja. `test:local` must cover it.
+- `PUT /tasks/{id}/labels/bulk` has only been sent to the fake Vikunja. `test:local` must cover it, and so must a
+  file's upload through the relay, whose body Pocket builds itself (`fileBody`).
+- The Undo of a start whose first copy came back unknown can't find that copy, and leaves it (the lifecycle test's
+  KNOWN). The relay answers that key as unknown for good, so nothing Pocket learns later names the copy. A copy of the
+  template is left in its project, with the template's title and label and no steps.
+- The Outbox offers no Cancel for a start, an added step, Make template or a template's step that has sent a request
+  and waits, as for any op, though the row's × still cancels a step.
+- Set up checklists says the example template couldn't be made when its ops don't all reach Vikunja at once, though
+  those still waiting are sent later.
+- `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
+  whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 
 ## Lessons
 
