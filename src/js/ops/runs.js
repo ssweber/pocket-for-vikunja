@@ -246,6 +246,7 @@ const [prepare, made, label, people, link] = LINE;
 const ADDS = a =>
   a.from ? [copy, link, mark, place, figure] : [prepare, made, label, people, link, mark, place, figure];
 
+// Once the step is gone, the checklist's progress is written without it.
 const refigure = (a, c) => figureOf(c, a.task, 'refigure');
 
 /* A step added to checklist `task`: inserted from the checklist's add box, with what quick add parsed (`p`), or

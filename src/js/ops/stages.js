@@ -119,19 +119,22 @@ export const backOf = (a, c, back, check) =>
     return { body, left };
   });
 
-/* ---------- shared by the ops that make tasks (runs.js) ---------- */
+/* ---------- shared by the ops that make tasks (runs.js, templates.js) ---------- */
 export const notFound = e => {
   if (e.status !== 404) throw e;
 };
 // Delete task `id`. A task deleted in the meantime is not an error.
 export const remove = (c, id) => c.send('/tasks/' + id, { method: 'DELETE', on: { [id]: {} } }).catch(notFound);
-/* The stages a cancelled op is sent in: the stages it had sent (`cut` of them), then the ones that delete what it
-   made. A fresh op that takes back another, such as a start's Undo, has only the latter. */
+/* The stages a cancelled op is sent in: the stages it had sent (`cut` of them), then the ones that take back what it
+   made (`undoing`, a list, or a function of the entry giving one). A fresh op that takes back another, such as a
+   start's Undo, has only the latter. */
 export const cancelledStages = (doing, undoing) => a =>
-  a.cancelled ? [...doing(a).slice(0, a.cut || 0), ...undoing] : doing(a);
-/* Put the step before the step it was inserted at (`before`), in the checklist's order as Vikunja has it when this
-   stage is first sent, so a step inserted in the meantime stays. If that step was deleted in the meantime, put it after
-   the step it was inserted under (`after`). */
+  a.cancelled
+    ? [...doing(a).slice(0, a.cut || 0), ...(typeof undoing === 'function' ? undoing(a) : undoing)]
+    : doing(a);
+/* Put the step before the step it was inserted at (`before`), in the order of its checklist or template (`task`) as
+   Vikunja has it when this stage is first sent, so a step inserted in the meantime stays. If that step was deleted in
+   the meantime, or there is none, put it after the step it was inserted under (`after`). */
 export async function place(a, c) {
   const body = await c.once('order', async () => {
     const t = await c.read('/tasks/' + a.task);
@@ -147,7 +150,7 @@ export async function place(a, c) {
 export const unadd = async (a, c) => {
   if (a.taskId) await remove(c, a.taskId);
 };
-// The step leaves the checklist's order line, and the checklist's progress is written without it.
+// The step leaves the order line of its checklist or template.
 export async function unplace(a, c) {
   const body = await c.once('unorder', async () => {
     const t = await now(a, c),

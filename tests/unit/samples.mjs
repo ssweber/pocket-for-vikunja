@@ -364,6 +364,61 @@ export const SAMPLES = {
     },
     unseen: ['related_tasks'],
   },
+  /* Task 7 becomes a template: it gets the "template" label Vikunja has, its two open steps are marked done, and the
+     "copied from" link it got when it was duplicated from task 6 is deleted. In the randomized test, task `t` becomes
+     the template, with steps 2 and 3 when it is the checklist. */
+  makeTemplate: {
+    labels: [TEMPLATE],
+    tasks: [
+      task(6, 'Closing (old)', { related_tasks: { copiedto: [{ id: 7 }] } }),
+      task(7, 'Closing', { related_tasks: { subtask: [{ id: 8 }, { id: 9 }], copiedfrom: [{ id: 6 }] } }),
+      task(8, 'Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
+      task(9, 'Lock up', { related_tasks: { parenttask: [{ id: 7 }] } }),
+    ],
+    fields: (ops, t = { id: 7 }) => ({
+      op: 'makeTemplate',
+      task: t.id,
+      steps: { 7: [8, 9], 1: [2, 3] }[t.id] || [],
+      label: t.title || 'Closing',
+      run: null,
+    }),
+    made: v =>
+      v.task(7).title === 'TEMPLATE: Closing' &&
+      v.task(7).done &&
+      v.task(7).labels.some(l => l.id === TEMPLATE.id) &&
+      !v.task(7).related_tasks.copiedfrom.length &&
+      v.task(8).done &&
+      v.task(9).done,
+    unseen: ['related_tasks'],
+  },
+  // A step added to template 7 after its first step, as the box under that step sends it. It is made done.
+  templateStep: {
+    labels: [TEMPLATE],
+    tasks: [
+      task(7, 'TEMPLATE: Closing', {
+        done: true,
+        labels: [TEMPLATE],
+        description: '<p>pocket:order 8 9</p>',
+        related_tasks: { subtask: [{ id: 8 }, { id: 9 }] },
+      }),
+      task(8, 'Mop the floor', { done: true, related_tasks: { parenttask: [{ id: 7 }] } }),
+      task(9, 'Lock up', { done: true, related_tasks: { parenttask: [{ id: 7 }] } }),
+    ],
+    fields: (ops, t = { id: 7, project_id: 5, title: 'Closing' }) => ({
+      op: 'templateStep',
+      task: t.id,
+      under: t.id,
+      pid: t.project_id,
+      p: line('Wipe the till').p,
+      after: { 7: 8, 1: 2 }[t.id] ?? null,
+      label: t.title,
+      run: null,
+    }),
+    made: v =>
+      v.task(101).done &&
+      v.task(7).description === '<p>pocket:order 8 101 9</p>' &&
+      v.task(7).related_tasks.subtask.some(s => s.id === 101),
+  },
   // A step inserted in the checklist after its last step, as its add box sends it.
   addStep: {
     tasks: checklist({ 1: { description: '<p>pocket:order 2 3</p>' } }),

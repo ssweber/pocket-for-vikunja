@@ -45,6 +45,7 @@ import { edit } from './edit.js';
 import { project } from './project.js';
 import { link, unlink } from './links.js';
 import { addStep, startRun } from './runs.js';
+import { makeTemplate, templateStep } from './templates.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
@@ -81,6 +82,8 @@ export const OPS = {
   label,
   startRun,
   addStep,
+  makeTemplate,
+  templateStep,
 };
 
 // What each field is when an op sets it to null.

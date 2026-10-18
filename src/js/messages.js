@@ -441,6 +441,22 @@ export const OP_WORDS = {
     dropped: keeps(() => ''),
     gone: "The checklist had already started. Delete it from its ⋯ menu if you don't need it.",
   },
+  /* A task made a template, and a step added to a template (`a.p`, as quick add parsed its line). Cancel takes back
+     what each made, so it says only "Cancelled." (dropped), or that Vikunja may or may not have a change whose answer
+     is unknown. */
+  makeTemplate: {
+    text: (a, title) => (a.cancelled ? `Cancelling ${task(title)} as a template` : `Making ${task(title)} a template`),
+    refused: (a, title) => (a.cancelled ? 'Cleaning up a cancelled template' : `Making ${task(title)} a template`),
+    dropped: keeps(() => ''),
+  },
+  templateStep: {
+    text: (a, title) =>
+      a.cancelled
+        ? `Removing “${named(a.p.title)}”, because its add was cancelled`
+        : `Adding “${named(a.p.title)}” to ${task(title)}`,
+    refused: a => `${a.cancelled ? 'Removing' : 'Adding'} “${named(a.p.title)}”`,
+    dropped: keeps(() => ''),
+  },
   addStep: {
     text: a =>
       a.cancelled

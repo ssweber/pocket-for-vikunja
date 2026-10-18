@@ -418,6 +418,14 @@ const WORDS = {
     ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
     ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
   ],
+  makeTemplate: [
+    ['Making “Unlock the door” a template', 'Making “Unlock the door” a template', '', ''],
+    ['Making a task a template', 'Making a task a template', '', ''],
+  ],
+  templateStep: [
+    ['Adding “Sweep up” to “Unlock the door”', 'Adding “Sweep up”', '', ''],
+    ['Adding “Sweep up” to a task', 'Adding “Sweep up”', '', ''],
+  ],
 };
 test('each op says what the outbox said before: its row, its refusal, and what cancelling it leaves', () => {
   assert.deepEqual(Object.keys(WORDS).sort(), Object.keys(OPS).sort());
@@ -436,6 +444,7 @@ test('each op says what the outbox said before: its row, its refusal, and what c
         add: true,
         template: { id: 7, title: 'Closing', project_id: 5 },
         title: 'Sweep up',
+        p: { title: 'Sweep up' },
         runTitle: 'Closing · Oct 3 · #1',
       });
       assert.deepEqual(

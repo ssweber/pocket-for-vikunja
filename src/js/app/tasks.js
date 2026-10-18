@@ -401,7 +401,9 @@ function keyOps() {
   const c = host,
     was = raw(c.opsOn),
     out = {},
-    ids = list => list.map(e => e.id).join(),
+    // Cancel marks an entry that has sent a request `cancelled` in place (cancelling), and its op then shows what Cancel
+    // takes back, so the mark counts as a change too.
+    ids = list => list.map(e => e.id + (e.cancelled ? ':cancelled' : '')).join(),
     listed = c.user ? sync.all(c.user.id) : [],
     all = listed.filter(e => !e.failed);
   /* An op that stops waiting, refused or gone from the outbox, has no request left on its way. A refused op keeps its

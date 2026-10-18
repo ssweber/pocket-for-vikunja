@@ -9,6 +9,8 @@ import { sync, uuid7 } from '../../src/js/sync.js';
 import { stageContext } from '../../src/js/app/acts.js';
 import { noneWaiting, stagesOf, stageView } from '../../src/js/ops/index.js';
 
+// Each kind of relation, and the kind Vikunja gives the other task.
+const BACK = { subtask: 'parenttask', parenttask: 'subtask', copiedfrom: 'copiedto', copiedto: 'copiedfrom' };
 const reply = (body, status = 200, more = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...more } });
 const lost = () => new TypeError('network error');
@@ -20,8 +22,9 @@ const lost = () => new TypeError('network error');
    again loses it.
    POST /projects/:id/tasks creates a task with the next id, never one a deleted task had, and POST /tasks/:id/duplicate
    copies a task, with a "copied from" and "copied to" relation between the two. POST /tasks/:id/relations
-   makes one task a subtask of another, or answers 4008 when it is one already, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
-   tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
+   relates two tasks, a subtask to its parent or a copy to what it was copied from, or answers 4008 when they are
+   related so already, and DELETE /tasks/:id/relations/:kind/:other removes the relation from both tasks, as Vikunja
+   does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
    to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
    one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
    that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
@@ -221,18 +224,19 @@ export function fakeVikunja(tasks = []) {
         res = reply({ duplicated_task: copy });
       }
     } else if (over && method === 'POST') {
-      const sub = v.tasks.get(req.body.other_task_id);
+      const sub = v.tasks.get(req.body.other_task_id),
+        kind = req.body.relation_kind;
       if (!sub) res = reply({ message: 'The task does not exist.' }, 404);
-      else if (over.related_tasks?.subtask?.some(s => s.id === sub.id))
+      else if (over.related_tasks?.[kind]?.some(s => s.id === sub.id))
         res = reply({ code: 4008, message: 'The task relation already exists.' }, 409);
       else {
-        ((over.related_tasks ||= {}).subtask ||= []).push({ id: sub.id });
-        ((sub.related_tasks ||= {}).parenttask ||= []).push({ id: over.id });
+        ((over.related_tasks ||= {})[kind] ||= []).push({ id: sub.id });
+        ((sub.related_tasks ||= {})[BACK[kind]] ||= []).push({ id: over.id });
         res = reply(req.body);
       }
     } else if (cut && method === 'DELETE') {
       const [, a, kind, b] = cut,
-        back = { subtask: 'parenttask', parenttask: 'subtask' }[kind];
+        back = BACK[kind];
       const drop = (x, k, id) => {
         const r = v.tasks.get(x)?.related_tasks;
         if (r?.[k]) r[k] = r[k].filter(s => s.id !== id);
