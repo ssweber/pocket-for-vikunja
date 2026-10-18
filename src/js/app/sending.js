@@ -324,7 +324,13 @@ export default {
         this.positions[t.id] = Math.min(2 * SPACING, ...g.tasks.map(x => this.positions[x.id]).filter(p => p > 0)) / 2;
       // A subtask keeps the position it was sent with.
       else if (g && this.view.listView && t.position > 0) this.positions[t.id] = t.position;
-      this.change(w => w.base(t));
+      // A repeating line that arrived done is at its next date in Vikunja's copy, so its row is made from the task as
+      // the line made it, marked done, until the batch clears (arrivedDone).
+      const rolled = !!arrived?.done && !now.done;
+      this.change(w => {
+        w.base(rolled ? { ...t, done: true } : t);
+        if (rolled) w.leave(t.id, 'done');
+      });
       const row = this.tasks[t.id];
       if (g) g.tasks.push(row);
       else
@@ -344,9 +350,10 @@ export default {
      the same as a task the user ticks there (toggleDone, actions.js). It leaves Today, or moves to Done in a
      project. Tapping its tick before then undoes the tick, as for a tick in the list (undoTicks).
 
-     A repeating task is open again at its next date in `now`, Vikunja's copy. It shows as done, with the dates it was
-     created with (`made`), until the batch clears. Then it shows as open at its next date, or leaves Today if that
-     date is 8 or more days from today. Tapping its tick before then puts its dates back. */
+     A repeating task is open again at its next date in `now`, Vikunja's copy. Its row shows it done, with the dates it
+     was created with (`made`), until the batch clears, since placeSent made the row from those and marked it done.
+     Then it shows as open at its next date, or leaves Today if that date is 8 or more days from today. Tapping its
+     tick before then puts its dates back. */
   arrivedDone(t, now, made) {
     const said = doneText(0, 0, t.title),
       // The line's tick, as a done op that Vikunja has answered, for its Undo.
@@ -361,25 +368,12 @@ export default {
       };
     if (!now.done) {
       const beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
-      const shown = this.change(w =>
-        w.edit(t.id, {
-          done: true,
-          due_date: made.due_date,
-          start_date: made.start_date,
-          end_date: made.end_date,
-          reminders: made.reminders,
-        }),
-      );
       this.markRow(t.id, {
         kind: 'done',
         out: () => (beyond() ? [t.id] : []),
-        undo: () => {
-          this.change(() => shown.undo());
-          return this.undoTicks([tick]);
-        },
+        undo: () => this.undoTicks([tick]),
         said: said + '. It repeats',
         gone: () => {
-          this.change(() => shown.undo());
           if (beyond()) this.removeRow(t.id);
           else if (this.route.name === 'today') this.regroupToday();
         },

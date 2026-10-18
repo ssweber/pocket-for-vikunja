@@ -249,11 +249,6 @@ async function request(
     throw new NetError("the reply wasn't from Vikunja");
   }
 }
-// Change some of a task's fields and return Vikunja's copy. When nothing changes Vikunja sends no body back, so the
-// task is read instead.
-export async function patchTask(id, fields) {
-  return (await api('/tasks/' + id, { method: 'PATCH', body: fields })) || (await api('/tasks/' + id));
-}
 /* Every item of a paged list. Reads page 1, then the rest at once, asking for Vikunja's max_items_per_page per page
    (from /info, or Vikunja's default of 50 when it doesn't say). If any page fails, the whole read fails. */
 export async function allPages(path) {

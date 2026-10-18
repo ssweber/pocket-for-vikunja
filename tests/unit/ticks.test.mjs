@@ -752,16 +752,22 @@ test("finishing a checklist puts the user's ✅ on it, and reopening it takes th
   await sendStages(app, { op: 'reopen', task: 1, run: 1 });
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []]);
 });
+/* Lines that quick add sent done, placed on Today as placeSent places them. Task 2 repeats, so Vikunja has moved it on
+   to its next date, and its row shows it done at the date it was made with until the batch clears. */
 test("tapping the tick of a task quick add made done unticks it, and a repeating one's puts its date back", async t => {
   const due = '2026-10-07T09:00:00Z',
     { v, app } = listed(t, [
       { id: 1, title: 'Order the cups', done: true },
       { id: 2, title: 'Water the plants', done: false, due_date: '2026-10-08T09:00:00Z', repeat_after: DAY },
     ]);
-  app.arrivedDone(app.tasks[1], v.task(1), {});
+  Object.assign(app, { route: { name: 'today' }, positions: {} });
+  app.view = { groups: [], route: location.hash, shownRun: null };
+  const placed = (id, made) =>
+    app.placeSent([{ id, title: v.task(id).title, ...made, arrived: { now: v.task(id), done: true } }]);
+  placed(1, { done: false, due_date: due });
   await app.unmark(1);
   assert.deepEqual([v.task(1).done, app.tasks[1].done], [false, false]);
-  app.arrivedDone(app.tasks[2], v.task(2), { due_date: due });
+  placed(2, { done: false, due_date: due, repeat_after: DAY });
   assert.deepEqual(
     [app.tasks[2].done, app.tasks[2].due_date],
     [true, due],

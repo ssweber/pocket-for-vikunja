@@ -40,17 +40,6 @@ const put = (list, asked, at) => {
   w.end();
   current.change(x => x.answer(list, asked, w));
 };
-// A direct save of `fields` on task `id` answered with `got`, written as saveTask writes it, and its edit `e` ended in
-// the same change.
-const answerSave = (e, id, fields, got) => {
-  const w = writes({ [id]: fields });
-  w.end();
-  current.change(x => {
-    x.made(id, w);
-    x.answer([got], TASK, w);
-    e.ok();
-  });
-};
 // Op `a` sent and answered as the sender does it: its write is in flight on its tasks, then its answer comes, with
 // Vikunja's copy of its task (`got`) when its stages kept one.
 const answering = (a, got = null) => {
@@ -102,7 +91,7 @@ test('a task read again has only its changed fields written, so an unchanged row
 });
 
 /* Every write to the store happens inside change(), which shows each task it touched once when it ends. A writer kept
-   from a change, or an edit's ok and undo called later, throws outside one. */
+   from a change throws outside one. */
 test('a writer called outside a change throws', () => {
   const app = component(tasks);
   let kept;
@@ -110,16 +99,20 @@ test('a writer called outside a change throws', () => {
     kept = w;
   });
   assert.throws(() => kept.answer([{ id: 1, title: 'Call Jo' }], TASK), /inside change/);
-  const e = app.change(w => w.edit(1, { title: 'Call Jo' }));
-  assert.throws(() => e.ok(), /inside change/);
   assert.throws(
-    () => app.change(async w => w.edit(1, {})),
+    () => app.change(async w => w.leave(1)),
     /Await the request first/,
     'a change must not wait for anything',
   );
   assert.equal(copyOf(1), undefined);
 });
 
+// A write to task 1 that started now and has ended, whose answer gives `fields`.
+const ended = fields => {
+  const w = writes({ 1: fields });
+  w.end();
+  return w;
+};
 test('several writes to one task in one change show it once, with only their end result', () => {
   const app = component(tasks);
   read([{ id: 1, title: 'Wipe the menus', due_date: '2026-10-08T09:00:00Z' }]);
@@ -132,12 +125,13 @@ test('several writes to one task in one change show it once, with only their end
       return true;
     },
   });
-  const moved = writes({ 1: { due_date: '2026-10-09T09:00:00Z' } });
-  moved.end();
+  const renamed = ended({ title: 'Wipe every menu' }),
+    moved = ended({ due_date: '2026-10-09T09:00:00Z' }),
+    again = ended({ title: 'Wipe the menus today' });
   app.change(w => {
-    w.edit(1, { title: 'Wipe every menu' });
+    w.answer([{ id: 1, title: 'Wipe every menu' }], ['title'], renamed);
     w.answer([{ id: 1, due_date: '2026-10-09T09:00:00Z' }], ['due_date'], moved);
-    w.edit(1, { title: 'Wipe the menus today' });
+    w.answer([{ id: 1, title: 'Wipe the menus today' }], ['title'], again);
     assert.equal(t.title, 'Wipe the menus', 'nothing shows before the change ends');
   });
   assert.deepEqual(
@@ -153,11 +147,13 @@ test('several writes to one task in one change show it once, with only their end
 test('a change inside a change joins it, and the task shows once the outer change ends', () => {
   const app = component(tasks);
   read([{ id: 1, title: 'Wipe the menus', done: false }]);
-  const t = app.row(copyOf(1));
+  const t = app.row(copyOf(1)),
+    renamed = ended({ title: 'Wipe every menu' }),
+    ticked = ended({ done: true });
   app.change(w => {
-    app.change(inner => inner.edit(1, { title: 'Wipe every menu' }));
+    app.change(inner => inner.answer([{ id: 1, title: 'Wipe every menu' }], ['title'], renamed));
     assert.equal(t.title, 'Wipe the menus', 'the inner change ending shows nothing');
-    w.edit(1, { done: true });
+    w.answer([{ id: 1, done: true }], ['done'], ticked);
   });
   assert.deepEqual([t.title, t.done], ['Wipe every menu', true]);
 });
@@ -165,17 +161,19 @@ test('a change inside a change joins it, and the task shows once the outer chang
 test('a change that throws still shows what it wrote, and the error goes on', () => {
   const app = component(tasks);
   read([{ id: 1, title: 'Wipe the menus' }]);
-  const t = app.row(copyOf(1));
+  const t = app.row(copyOf(1)),
+    renamed = ended({ title: 'Wipe every menu' }),
+    ticked = ended({ done: true });
   assert.throws(
     () =>
       app.change(w => {
-        w.edit(1, { title: 'Wipe every menu' });
+        w.answer([{ id: 1, title: 'Wipe every menu' }], ['title'], renamed);
         throw new Error('Vikunja refused it');
       }),
     /Vikunja refused it/,
   );
   assert.equal(t.title, 'Wipe every menu');
-  app.change(w => w.edit(1, { done: true }));
+  app.change(w => w.answer([{ id: 1, done: true }], ['done'], ticked));
   assert.equal(t.done, true, 'the next change shows its writes when it ends');
 });
 
@@ -191,31 +189,22 @@ test("forget records an answer time, so a read in flight doesn't bring the task 
   assert.deepEqual([copyOf(1), app.rowTask(1)], [undefined, null]);
 });
 
-/* show(id) stacks three layers: Vikunja's copy, the waiting ops applied through each op's `apply`, then the direct
-   saves still running (edit), oldest first. The test adds an op that renames a task to the registry. */
-test("a row shows Vikunja's copy, then its waiting ops, then the saves still running, and stays one object", () => {
+/* show(id) stacks Vikunja's copy and the waiting ops, applied in order through each op's `apply`. The test adds an op
+   that renames a task to the registry. */
+test("a row shows Vikunja's copy, then its waiting ops in order, and stays one object", () => {
   const app = component(tasks);
   OPS.rename = { apply: (x, a) => ({ ...x, title: a.title }) };
   try {
     read([{ id: 1, title: 'Wipe the menus', due_date: '2026-10-08T09:00:00Z', priority: 1 }]);
-    const t = app.row(copyOf(1));
-    app.pending = [{ kind: 'act', id: 'r1', task: 1, op: 'rename', title: 'Wipe every menu', items: [] }];
-    outboxOf(app, app.pending);
-    const due = app.change(w => w.edit(1, { due_date: '2026-10-09T09:00:00Z', title: 'Wipe the menus today' }));
-    assert.deepEqual(
-      [t.title, t.due_date, t.priority],
-      ['Wipe the menus today', '2026-10-09T09:00:00Z', 1],
-      'a save laid over the op wins',
-    );
-    app.change(() => due.undo());
-    assert.deepEqual(
-      [t.title, t.due_date],
-      ['Wipe every menu', '2026-10-08T09:00:00Z'],
-      'without the save, the op shows over the copy',
-    );
-    app.pending = [];
-    outboxOf(app, app.pending);
-    assert.equal(t.title, 'Wipe the menus', "without the op, the row is Vikunja's copy");
+    const t = app.row(copyOf(1)),
+      rename = { kind: 'act', id: 'r1', task: 1, op: 'rename', title: 'Wipe every menu' },
+      move = { kind: 'act', id: 'r2', task: 1, op: 'rename', title: 'Wipe the menus today' };
+    outboxOf(app, [rename, move]);
+    assert.deepEqual([t.title, t.priority], ['Wipe the menus today', 1], 'the later op shows over the earlier');
+    outboxOf(app, [rename]);
+    assert.equal(t.title, 'Wipe every menu', 'without the later op, the earlier shows over the copy');
+    outboxOf(app, []);
+    assert.equal(t.title, 'Wipe the menus', "without the ops, the row is Vikunja's copy");
     assert.equal(app.tasks[1], t, 'every change was written into the same object');
   } finally {
     delete OPS.rename;
@@ -245,53 +234,6 @@ test("a save's answer shows on the task's rows, and a task that is not on screen
   assert.equal(app.rowTask(2), null);
 });
 
-/* edit lays a save's fields over the row until the save answers. The answer goes into Vikunja's copy and ok takes the
-   fields off in one show, so the row never shows the old value in between. */
-test('a save shows on the row at once, its answer replaces it, and a failed save puts back only its own fields', () => {
-  const app = component(tasks);
-  read([{ id: 1, title: 'Order cups', due_date: '2026-10-08T09:00:00Z', priority: 1, updated: 'a' }]);
-  const t = app.row(copyOf(1)),
-    shown = [];
-  app.tasks[1] = new Proxy(t, {
-    set(o, k, v) {
-      shown.push([k, v]);
-      o[k] = v;
-      return true;
-    },
-  });
-  const due = app.change(w => w.edit(1, { due_date: '2026-10-09T09:00:00Z' })),
-    title = app.change(w => w.edit(1, { title: 'Order lids' }));
-  assert.deepEqual([t.due_date, t.title], ['2026-10-09T09:00:00Z', 'Order lids']);
-  answerSave(
-    due,
-    1,
-    { due_date: '2026-10-09T09:00:00Z' },
-    {
-      id: 1,
-      title: 'Order cups',
-      due_date: '2026-10-09T09:00:00Z',
-      priority: 1,
-      updated: 'b',
-    },
-  );
-  assert.deepEqual(
-    [t.due_date, t.title, t.updated, copyOf(1).due_date],
-    ['2026-10-09T09:00:00Z', 'Order lids', 'b', '2026-10-09T09:00:00Z'],
-    'the first answer brings the new date, and the title still being saved stays',
-  );
-  assert.equal(
-    shown.filter(([k]) => k === 'title').length,
-    1,
-    'the title was written once, and never back to the old one',
-  );
-  app.change(() => title.undo());
-  assert.deepEqual(
-    [t.title, t.due_date],
-    ['Order cups', '2026-10-09T09:00:00Z'],
-    'a failed save puts back its own field only',
-  );
-});
-
 /* The sheet holds its task's id and reads the task's row, the object every list shows. So a change made anywhere shows
    in the sheet at once. */
 test("the sheet reads its task's row by id, so a change made in a list shows in the sheet at once", () => {
@@ -300,61 +242,31 @@ test("the sheet reads its task's row by id, so a change made in a list shows in 
   const t = app.row(copyOf(1));
   app.sheet = { id: 1 };
   assert.equal(app.sheetTask, t, 'the sheet and the list read one object');
-  app.change(w => w.edit(1, { done: true }));
+  outboxOf(app, [act(1, 'done')]);
   assert.equal(app.sheetTask.done, true, 'a tick in the list shows in the sheet');
   read([{ id: 1, title: 'Call Jo back' }]);
   assert.equal(app.sheetTask.title, 'Call Jo back', 'and so does a read');
 });
 
-/* Two saves of one task run one after another. The first answer carries the task before the second save. Its fields
-   go into the copy, and the second save's field stays on top until its own answer. */
-test("two saves in flight on one task: the first answer does not flicker the second save's field back", async () => {
-  const v = fakeVikunja([{ id: 1, title: 'Order cups', due_date: '2026-10-08T09:00:00Z', done: false }]);
-  const app = component(tasks, actions),
-    seen = [];
-  read([v.task(1)]);
-  const t = app.row(copyOf(1));
-  app.tasks[1] = new Proxy(t, {
-    set(o, k, x) {
-      if (k === 'title') seen.push(x);
-      o[k] = x;
-      return true;
-    },
-  });
-  const save = fields => {
-    const e = app.change(w => w.edit(1, fields));
-    return app.saveTask(1, fields).then(
-      got => app.change(() => e.ok(got)),
-      x => {
-        app.change(() => e.undo());
-        throw x;
-      },
-    );
-  };
-  await Promise.all([save({ due_date: '2026-10-09T09:00:00Z' }), save({ title: 'Order lids' })]);
-  assert.deepEqual(seen, ['Order lids'], 'the title is written once');
-  assert.deepEqual([t.title, t.due_date], ['Order lids', '2026-10-09T09:00:00Z']);
-});
-
-/* A read can start before a save and arrive after its answer, carrying the task as it was. The store records when each
+/* A read can start before a write and arrive after its answer, carrying the task as it was. The store records when each
    task's last answer arrived, and a read started before that leaves the copy as it is. */
-test("a read started before a task's answer leaves its copy alone, and a read started after it is taken", async () => {
-  const v = fakeVikunja([
+test("a read started before a task's answer leaves its copy alone, and a read started after it is taken", () => {
+  const app = component(tasks);
+  read([
     { id: 1, title: 'Order cups', done: false },
     { id: 2, title: 'Order lids', done: false },
   ]);
-  const app = component(tasks, actions);
-  read([v.task(1), v.task(2)]);
   const t = app.row(copyOf(1)),
     before = started(),
-    stale = [structuredClone(v.task(1)), structuredClone(v.task(2))];
-  stale[1].title = 'Order big lids';
-  await app.saveTask(1, { done: true });
+    stale = [
+      { id: 1, title: 'Order cups', done: false },
+      { id: 2, title: 'Order big lids', done: false },
+    ];
+  put([{ id: 1, title: 'Order cups', done: true }], TASK);
   put(stale, TASK, before);
   assert.deepEqual([t.done, copyOf(1).done], [true, true], 'the late read of task 1 is ignored');
   assert.equal(copyOf(2).title, 'Order big lids', 'the same read is taken for a task answered before it started');
-  v.task(1).title = 'Order paper cups';
-  read([v.task(1)]);
+  read([{ id: 1, title: 'Order paper cups', done: true }]);
   assert.deepEqual([t.title, t.done], ['Order paper cups', true], 'a read started after the answer is taken');
 });
 
@@ -367,14 +279,17 @@ test("a task leaving done keeps every field until its batch clears, then shows V
 
   read([{ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-10T09:00:00Z', repeat_after: 86400 }]);
   const t = app.row(copyOf(1)),
-    ticked = app.change(w => w.edit(1, { done: true }));
+    tick = act(1, 'done');
+  outboxOf(app, [tick]);
   app.markRow(1, { kind: 'done' });
-  answerSave(
-    ticked,
-    1,
-    { done: true },
-    { id: 1, title: 'Water the plants', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 },
-  );
+  answering(tick, {
+    id: 1,
+    title: 'Water the plants',
+    done: false,
+    due_date: '2026-10-11T09:00:00Z',
+    repeat_after: 86400,
+  });
+  outboxOf(app, []);
   read([{ id: 1, title: 'Water them', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 }]);
   assert.deepEqual(
     [t.done, t.due_date, t.title],
@@ -456,7 +371,7 @@ test("a saved screen holds Vikunja's copy of each task, not a waiting op's effec
     copy = { id: 1, title: 'Wipe the menus', done: false, project_id: 7, updated: '2026-10-15T09:00:00Z' };
   read([copy], TASK_COUNT);
   const t = app.row(copy);
-  app.change(w => w.edit(1, { done: true })); // as tickRunStep does, until the outbox sends the tick
+  outboxOf(app, [act(1, 'done')]); // a tick waiting in the outbox
   Object.assign(app, { route: { name: 'project', id: 7 }, positions: {} });
   app.view = { groups: [{ key: 'open', tasks: [t] }], project: { id: 7, title: 'Cafe' }, listView: null };
   app.saveProject();
@@ -830,20 +745,19 @@ test('an op Vikunja refuses leaves its row at once, while the op after it is sti
 });
 
 /* An op can keep a read of its task as Vikunja's copy, as an Undo of a date does when the date changed since. A read
-   that ran while a save of the task was in flight is thrown away, as any read is, so the title saved meanwhile stays. */
-test('a read an op keeps of its task is thrown away when a save of the task ran meanwhile', async t => {
+   that ran while another write to the task was in flight is thrown away, as any read is, so the title that write
+   gives stays. */
+test('a read an op keeps of its task is thrown away when another write to the task ran meanwhile', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 3, title: 'Lock up', due_date: '2026-10-19T09:00:00Z' }]),
     app = sender();
   read([v.task(3)]);
-  const row = app.row(copyOf(3));
-  const { go, arrived } = holding((path, method) => path.endsWith('/tasks/3') && method === 'PATCH');
-  const saving = app.saveTask(3, { title: 'Lock up early' });
-  await arrived;
-  const undo = app.act({ op: 'due', task: 3, due: '2026-10-18T09:00:00Z', check: '2026-10-17T09:00:00Z', run: null });
-  await new Promise(ok => setImmediate(ok));
-  go();
-  await Promise.all([saving, undo]);
+  const row = app.row(copyOf(3)),
+    renaming = writes({ 3: { title: 'Lock up early' } });
+  v.task(3).title = 'Lock up early';
+  await app.act({ op: 'due', task: 3, due: '2026-10-18T09:00:00Z', check: '2026-10-17T09:00:00Z', run: null });
+  renaming.end();
+  app.change(w => w.made(3, renaming));
   assert.deepEqual([copyOf(3).title, row.title], ['Lock up early', 'Lock up early']);
 });
 
@@ -890,9 +804,9 @@ test('a delete released from Restore leaves its parent at once, while the outbox
   }
 });
 
-/* A subtask is read from its own row. Each edit of a subtask is on that row only, so one subtask's failed save never
+/* A subtask is read from its own row. Each op on a subtask is on that row only, so one subtask's refused tick never
    leaves another's change shown, and the parent's list of its subtasks stays as Vikunja gave it. */
-test("a failed tick of one subtask puts it back while another subtask's edit is still running", () => {
+test("a refused tick of one subtask leaves its row while another subtask's rename still waits", () => {
   const app = component(tasks),
     steps = [
       { id: 2, title: 'Mop', done: false },
@@ -900,22 +814,22 @@ test("a failed tick of one subtask puts it back while another subtask's edit is 
     ];
   read([{ id: 1, title: 'Closing up', related_tasks: { subtask: steps } }]);
   const p = app.row(copyOf(1)),
-    shown = () => p.related_tasks.subtask.map(s => [app.subRow(s).title, app.subRow(s).done]);
+    shown = () => p.related_tasks.subtask.map(s => [app.subRow(s).title, app.subRow(s).done]),
+    rename = act(3, 'edit', { set: { title: 'Sweep up' } });
   app.subRows(p);
-  const ticked = app.change(w => w.edit(2, { done: true }));
-  app.change(w => w.edit(3, { title: 'Sweep up' }));
+  outboxOf(app, [act(2, 'done'), rename]);
   assert.deepEqual(shown(), [
     ['Mop', true],
     ['Sweep up', false],
   ]);
-  app.change(() => ticked.undo());
+  outboxOf(app, [rename]);
   assert.deepEqual(
     shown(),
     [
       ['Mop', false],
       ['Sweep up', false],
     ],
-    'the failed tick is gone, and the rename still shows',
+    'the refused tick is gone, and the rename still shows',
   );
   assert.deepEqual(p.related_tasks.subtask, steps, "the parent's list of its subtasks is as Vikunja gave it");
 });
@@ -927,9 +841,8 @@ test('a late read of a template leaves a step renamed since as it is', () => {
   read([{ id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } }]);
   const tpl = app.row(copyOf(1));
   app.subRows(tpl);
-  const at = started(),
-    renamed = app.change(w => w.edit(2, { title: 'Mop the floor' }));
-  answerSave(renamed, 2, { title: 'Mop the floor' }, { id: 2, title: 'Mop the floor' });
+  const at = started();
+  answering(act(2, 'edit', { set: { title: 'Mop the floor' } }), { id: 2, title: 'Mop the floor' });
   put(
     [
       { id: 1, title: 'TEMPLATE: Closing up', related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } },
@@ -1020,9 +933,11 @@ test('a read that ran while an op on a task with no copy was sent is left out, a
   assert.deepEqual(copyOf(3)?.assignees, [{ id: 1 }]);
 });
 
-/* Rule 10 in a sheet. The sheet's subtask rows are the subtasks' own rows, so ticking one changes that row only. The
-   sheet's list of subtasks, and every other subtask's row, have nothing to redraw. The test uses Alpine's reactivity
-   (reactive.mjs), and counts each effect every time it runs again. */
+/* Rule 10 in a sheet. The sheet's subtask rows are the subtasks' own rows, so ticking one changes that row only. Every
+   other subtask's row has nothing to redraw. The sheet's list of subtasks is worked out again while the tick waits,
+   since a waiting op could be a delete that hides a row (hiddenRows), and it gives the same rows. The test uses
+   Alpine's reactivity (reactive.mjs), and counts each effect every time it runs again. Each row's effect reads its row
+   as x-for gives it. */
 test("a subtask ticked in its parent's sheet redraws its own row only", c => {
   const { Alpine, flush } = watching(c),
     app = Alpine.reactive(component(tasks, sheetPart, lines));
@@ -1041,28 +956,33 @@ test("a subtask ticked in its parent's sheet redraws its own row only", c => {
     ran.list++;
     void app.subtasks;
   });
+  const rows = new Map(app.subtasks.map(s => [s.id, s]));
   for (const id of [2, 3, 4])
     Alpine.effect(() => {
       ran[id]++;
-      const s = app.subtasks.find(x => x.id === id);
-      void [s.done, s.title];
+      void [rows.get(id).done, rows.get(id).title];
     });
-  const ticked = app.change(w => w.edit(3, { done: true }));
+  const tick = act(3, 'done');
+  outboxOf(app, [tick]);
   flush();
-  answerSave(ticked, 3, { done: true }, { id: 3, title: 'Load 3', done: true });
+  answering(tick, { id: 3, title: 'Load 3', done: true });
+  outboxOf(app, []);
   flush();
   assert.deepEqual(
     ran,
-    { list: 1, 2: 1, 3: 2, 4: 1 },
-    'the tick and its answer ran the ticked row once, and nothing else',
+    { list: 2, 2: 1, 3: 2, 4: 1 },
+    'the tick and its answer ran the ticked row once, and no other row',
+  );
+  assert.ok(
+    app.subtasks.every(s => s === rows.get(s.id)),
+    'the list gives the same rows',
   );
 });
 
 /* A read and an answer have different writers. A read always carries the time it started, so a read can never be taken
-   for an answer. A save that rebases reads the task first. When nothing is left to change, that read is all the save
-   got, and it must not count as Vikunja's newest answer. Here a subtask is deleted while the read of its parent is in
-   flight, and the read lands after the delete with the subtask still listed. */
-test("a save's read of its task is a read, so a stale one doesn't bring back a subtask deleted meanwhile", async () => {
+   for an answer, as Vikunja's newest copy. Here a subtask is deleted while the read of its parent is in flight, and the
+   read lands after the delete with the subtask still listed. */
+test("a read of a task carries when it started, so a stale one doesn't bring back a subtask deleted meanwhile", async () => {
   const v = fakeVikunja([
     { id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } },
     { id: 2, title: 'Load chairs' },
@@ -1081,11 +1001,11 @@ test("a save's read of its task is a read, so a stale one doesn't bring back a s
     if (/\/tasks\/1$/.test(url) && (o.method || 'GET') === 'GET') await landing;
     return res;
   };
-  const saving = app.saveTask(1, null, () => null); // nothing left to change, as for a template's progress
+  const reading = app.readCopy(1);
   await new Promise(ok => setImmediate(ok));
   app.change(w => w.forgetTree([2])); // Vikunja answered the subtask's delete
   land();
-  await saving;
+  await reading;
   assert.deepEqual(
     copyOf(1).related_tasks.subtask.map(s => s.id),
     [3],
@@ -1239,33 +1159,22 @@ test("the sheet's read of its subtasks' people goes into their rows, and leaves 
   );
 });
 
-/* Edits stack oldest first. When a newer save of a field is answered, Vikunja has that field, so an older edit still
-   running stops laying it, as the old dates a task that arrived done holds while it leaves. A failed save on a row
-   marked done takes its field back at once, not when the batch clears. */
-test('a newer save of a field wins over an older edit still running, and a failed save on a row marked done goes back', async c => {
+/* A line that arrived done is at its next date in Vikunja's copy by the time its row is made. The row is given the task
+   as the line made it, marked done, and shows it so until the batch clears (placeSent, arrivedDone). */
+test('a task given a row while it is marked done shows as given until its batch clears', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, leaving);
-  read([{ id: 1, title: 'Order cups', done: false, due_date: '2026-10-08T09:00:00Z' }]);
-  const t = app.row(copyOf(1));
-  app.change(w => w.edit(1, { due_date: '2026-10-08T09:00:00Z', done: true })); // held while the row leaves
-  const moved = app.change(w => w.edit(1, { due_date: '2026-10-09T09:00:00Z' }));
-  answerSave(
-    moved,
-    1,
-    { due_date: '2026-10-09T09:00:00Z' },
-    { id: 1, title: 'Order cups', done: true, due_date: '2026-10-09T09:00:00Z' },
-  );
-  assert.deepEqual(
-    [t.due_date, t.done],
-    ['2026-10-09T09:00:00Z', true],
-    "the newer date shows, and the older edit's other field stays",
-  );
+  read([{ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-09T09:00:00Z', repeat_after: 86400 }]);
+  app.change(w => {
+    w.base({ id: 1, title: 'Water the plants', done: true, due_date: '2026-10-08T09:00:00Z', repeat_after: 86400 });
+    w.leave(1, 'done');
+  });
+  const t = app.tasks[1];
   app.markRow(1, { kind: 'done' });
-  const renamed = app.change(w => w.edit(1, { title: 'Order lids' }));
-  assert.equal(t.title, 'Order lids');
-  app.change(() => renamed.undo());
-  assert.equal(t.title, 'Order cups', 'the failed save is gone while the row is still marked');
+  read([{ id: 1, title: 'Water them', done: false, due_date: '2026-10-09T09:00:00Z', repeat_after: 86400 }]);
+  assert.deepEqual([t.done, t.due_date, t.title], [true, '2026-10-08T09:00:00Z', 'Water the plants']);
   await app.clearBatch(true);
+  assert.deepEqual([t.done, t.due_date, t.title], [false, '2026-10-09T09:00:00Z', 'Water them']);
 });
 
 /* A read or a saved screen gives a task its row (base). Once Vikunja's copy is known, the row is the copy, and only
@@ -1334,13 +1243,12 @@ test('a task that two crossing writes left unsure is read once, after the last o
     app = sender();
   read([v.task(1)]);
   app.row(copyOf(1));
-  const { go, arrived } = holding((path, method) => path === '/api/v2/tasks/1' && method === 'PATCH');
-  const saving = app.saveTask(1, { title: 'Mop twice' });
-  await arrived;
+  // Another write to the task is in flight, as when an op on a step writes its checklist's progress.
+  const renaming = writes({ 1: { title: 'Mop twice' } });
+  v.task(1).title = 'Mop twice';
   await app.act({ op: 'progress', task: 1, pct: 40, run: null });
-  v.task(1).priority = 3; // a teammate's change, which the save's reply brings
-  go();
-  await saving;
+  v.task(1).priority = 3; // a teammate's change, which only a read brings
+  renaming.end();
   for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok));
   const reads = v.requests.filter(r => r.method === 'GET' && r.path === '/tasks/1');
   assert.equal(reads.length, 1);

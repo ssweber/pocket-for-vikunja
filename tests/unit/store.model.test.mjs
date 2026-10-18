@@ -1,6 +1,6 @@
 /* A randomized test of the store (src/js/app/tasks.js). fast-check generates sequences of commands on a few tasks: ops
-   queued, sent, answered in any order, refused, lost and undone, reads finishing late, direct saves in flight, rows
-   marked as leaving, and a teammate's changes in the web app. Each sequence then sends and answers everything still
+   queued, sent, answered in any order, refused, lost and undone, reads finishing late, rows marked as leaving, and a
+   teammate's changes in the web app. Each sequence then sends and answers everything still
    waiting, and reads every task. The checks after each command compare the app with a model made from the fake
    Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own functions. A failure
    prints the seed and the shortest sequence that breaks a check. */
@@ -10,15 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { component, fakeVikunja } from './fake.mjs';
-import tasks, {
-  copyOf,
-  CREATED,
-  putting,
-  started,
-  TASK,
-  TASK_REACTIONS_COMMENTS,
-  writes,
-} from '../../src/js/app/tasks.js';
+import tasks, { copyOf, CREATED, putting, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import acts from '../../src/js/app/acts.js';
 import sending from '../../src/js/app/sending.js';
 import outbox from '../../src/js/app/outbox.js';
@@ -144,9 +136,8 @@ class Model {
     this.tags = new Map();
     this.forgotten = new Set(); // tasks Pocket deleted
     this.rows = new Set(); // the ids with a row, as strings
-    this.edits = new Map(); // task id -> its edits still running, oldest first: {fields}
     this.leaving = new Map(); // task id -> its mark
-    this.frozen = new Map(); // task id -> {snap, touched}: a row marked done, as it was marked
+    this.frozen = new Map(); // task id -> a row marked done, as it was marked
     this.settled = new Set(); // ops answered, still in the outbox
     this.unsure = new Map(); // task id -> field -> when Vikunja changed it without Pocket being told
     this.relaxed = new Map(); // task id -> the fields a KNOWN bug met in this sequence may have left wrong
@@ -203,7 +194,7 @@ class Model {
   gone(id) {
     this.copies.delete(id);
     this.forgotten.add(id);
-    for (const m of [this.edits, this.bases, this.frozen]) m.delete(id);
+    for (const m of [this.bases, this.frozen]) m.delete(id);
     this.rows.delete(String(id));
   }
   // Deleted tasks leave every list of related tasks, as Vikunja's reads leave them out.
@@ -211,30 +202,9 @@ class Model {
     for (const id of ids) this.gone(id);
     for (const m of [this.copies, this.bases]) for (const [id, t] of m) m.set(id, this.unrelated(t));
   }
-  edit(id, fields) {
-    const e = { fields: { ...fields } };
-    this.edits.set(id, [...(this.edits.get(id) || []), e]);
-    for (const k in fields) this.frozen.get(id)?.touched.add(k);
-    return e;
-  }
-  // Vikunja has an edit's fields once it answers, so an older edit stops laying them.
-  ended(id, e) {
-    const list = this.edits.get(id) || [];
-    for (const x of list.slice(0, Math.max(0, list.indexOf(e)))) for (const k in e.fields) delete x.fields[k];
-    this.drop(id, e);
-  }
-  drop(id, e) {
-    const rest = (this.edits.get(id) || []).filter(x => x !== e);
-    if (rest.length) this.edits.set(id, rest);
-    else this.edits.delete(id);
-  }
   leave(id, kind) {
     const row = this.w.app.tasks[id];
-    if (kind === 'done' && this.leaving.get(id) !== 'done' && row)
-      this.frozen.set(id, {
-        snap: clone(row),
-        touched: new Set((this.edits.get(id) || []).flatMap(e => Object.keys(e.fields))),
-      });
+    if (kind === 'done' && this.leaving.get(id) !== 'done' && row) this.frozen.set(id, clone(row));
     if (kind !== 'done') this.frozen.delete(id);
     if (kind) this.leaving.set(id, kind);
     else this.leaving.delete(id);
@@ -257,12 +227,10 @@ class Model {
   waitingOn(id) {
     return this.waitingIn([...stores.get('outbox').values()], sync.held, id);
   }
-  // Task `id` as its rows should show it: Vikunja's copy, the waiting ops in order, then the edits, oldest first.
+  // Task `id` as its rows should show it: Vikunja's copy, then the waiting ops in order.
   shown(id) {
     const b = this.copies.get(id) ?? this.bases.get(id);
-    if (!b) return null;
-    const x = this.waitingOn(id).reduce((t, a) => opOf(a).apply(t, a), b);
-    return (this.edits.get(id) || []).reduce((t, e) => ({ ...t, ...e.fields }), x);
+    return b ? this.waitingOn(id).reduce((t, a) => opOf(a).apply(t, a), b) : null;
   }
   // Vikunja changed `fields` of task `id` (all of CHECKED by default) without telling Pocket.
   doubt(id, fields = CHECKED) {
@@ -299,7 +267,7 @@ const HEARD = {
       w.wrote({ via: 'answer', id: t.id, rec, before: before.get(t.id), asked, thrown: w.crossed(rec, t.id) });
     }
   },
-  /* A change Vikunja made, as Pocket asked for it: a direct write's values, or a checklist's progress an op wrote. Its
+  /* A change Vikunja made, as Pocket asked for it: a checklist's progress an op wrote, or a step an op made. Its
      request is the last write to the task whose reply Pocket got (delivered), and the change is judged with the time
      Vikunja made it. */
   made(w, fn, id, from, given) {
@@ -384,21 +352,6 @@ const HEARD = {
     if (!m.copies.has(x.id)) m.bases.set(x.id, m.unrelated(clone(x)));
     m.rows.add(String(x.id));
   },
-  edit(w, fn, id, fields) {
-    const m = w.model,
-      e = m.edit(id, fields),
-      h = fn(id, fields);
-    return {
-      ok: () => {
-        h.ok();
-        m.ended(id, e);
-      },
-      undo: () => {
-        m.drop(id, e);
-        h.undo();
-      },
-    };
-  },
   leave(w, fn, id, kind) {
     w.model.leave(id, kind);
     return fn(id, kind);
@@ -465,7 +418,6 @@ class World {
       busy: new Set(),
       errors: [],
       reads: [],
-      edits: [],
       undos: [],
       stepId: null,
       seen: new Map(),
@@ -822,28 +774,6 @@ class World {
     this.reading = null;
     for (const t of list) this.app.row(t);
   }
-  // A direct save of edit `e` is sent at once, and ends when its reply arrives, as saveTask (actions.js) sends and
-  // answers it.
-  async save(e) {
-    const write = writes({ [e.id]: e.fields });
-    let got = null;
-    try {
-      const res = await this.gate(SERVER + '/tasks/' + e.id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(e.fields),
-      });
-      got = res.ok ? await res.json() : null;
-    } catch {}
-    write.end();
-    this.edits.splice(this.edits.indexOf(e), 1);
-    this.app.change(x => {
-      if (!got) return e.h.undo();
-      x.made(e.id, write);
-      x.answer([got], TASK, write);
-      e.h.ok();
-    });
-  }
   // The store's copy of each task the test knows of. A write replaces a copy rather than changing it, so these stay
   // as they were.
   copiesNow() {
@@ -965,16 +895,9 @@ class World {
   acts() {
     return sync.all(ME.id).filter(e => e.kind === 'act');
   }
-  // Whether nothing waits to be sent or answered, and no read or edit runs.
+  // Whether nothing waits to be sent or answered, and no read runs.
   still() {
-    return (
-      !this.acts().length &&
-      !this.held.length &&
-      !this.late.length &&
-      !this.reads.length &&
-      !this.edits.length &&
-      !this.busy.size
-    );
+    return !this.acts().length && !this.held.length && !this.late.length && !this.reads.length && !this.busy.size;
   }
   // The task a command names: a task's id, or the step, which is its entry's waiting id until Vikunja has made it.
   target(t) {
@@ -1032,8 +955,8 @@ const WAITING_STEP = {
   comments: [],
 };
 
-/* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, then the edits, a row marked
-   done is as it was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
+/* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, a row marked done is as it
+   was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
    given, a task Pocket deleted is gone, and the step not yet made shows its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
    4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. 6: a fold took
    out of the outbox only ops Vikunja never made, and lost no change the user asked for (prune). A field a KNOWN bug
@@ -1058,12 +981,12 @@ function checks(w) {
     if (w.seen.has(k) && w.seen.get(k) !== row) out.push(`check 2: ${k}'s row is a new object`);
     const f = m.frozen.get(id);
     if (f) {
-      for (const field of fields(id, f.snap, row).filter(x => !f.touched.has(x)))
+      for (const field of fields(id, f, row))
         out.push(
-          `check 1: ${k} is marked done, and its ${field} changed from ${canon(f.snap[field])} to ${canon(row[field])}`,
+          `check 1: ${k} is marked done, and its ${field} changed from ${canon(f[field])} to ${canon(row[field])}`,
         );
     } else if (!m.shown(id) || fields(id, row, m.shown(id)).length)
-      out.push(`check 1: ${k}'s row is ${canon(row)}, and its copy, ops and edits give ${canon(m.shown(id))}`);
+      out.push(`check 1: ${k}'s row is ${canon(row)}, and its copy and ops give ${canon(m.shown(id))}`);
   }
   w.seen = new Map(rows.map(k => [k, app.tasks[k]]));
   const step = 'pending-' + STEP;
@@ -1273,11 +1196,7 @@ class Answer extends Command {
     await w.make(h);
     w.deliver(h);
     if (this.how === 'arrives') return h.ok(await w.stamped(h.res, h.at, h.replayed, replyKind(h.method, h.url), h));
-    // A direct write Vikunja made, whose reply is lost, fails, and Pocket doesn't hear of its fields.
-    if (this.how === 'lost') {
-      if (!h.key) for (const id of h.ids) m.doubt(id, touches(h));
-      return h.no(new TypeError('network error'));
-    }
+    if (this.how === 'lost') return h.no(new TypeError('network error'));
     w.unknownKeys.add(h.key);
     w.unheard(h.e);
     h.ok(unknownReply());
@@ -1388,44 +1307,6 @@ class FinishRead extends Command {
   }
   toString() {
     return `FinishRead(${this.i})`;
-  }
-}
-// A direct save starts on a task with a row, laying its fields over the row.
-class StartEdit extends Command {
-  constructor(t, fields) {
-    super();
-    Object.assign(this, { t, fields });
-  }
-  can(m) {
-    const id = m.w.target(this.t);
-    return typeof id === 'number' && !!m.w.app.tasks[id];
-  }
-  async act(w) {
-    const id = w.target(this.t),
-      h = w.app.change(x => x.edit(id, this.fields));
-    w.edits.push({ id, fields: this.fields, h, sent: false });
-  }
-  toString() {
-    return `StartEdit(${this.t}, ${canon(this.fields)})`;
-  }
-}
-// A direct save (the i-th not yet sent) sends its PATCH. Answer lets its reply arrive.
-class SaveEdit extends Command {
-  constructor(i) {
-    super();
-    this.i = i;
-  }
-  can(m) {
-    return m.w.edits.some(e => !e.sent);
-  }
-  async act(w) {
-    const list = w.edits.filter(e => !e.sent),
-      e = list[this.i % list.length];
-    e.sent = true;
-    w.bg(w.save(e));
-  }
-  toString() {
-    return `SaveEdit(${this.i})`;
   }
 }
 // A row is marked as leaving, as a tick or a swipe marks it.
@@ -1600,17 +1481,6 @@ class Wait extends Command {
 
 // The step is named twice as often, because ops on a step not yet made, and a read that brings it, find bug 3.
 const target = fc.constantFrom(1, 2, 3, STEP, STEP);
-// Two values for each field, so two edits of one field can disagree. No direct save ticks a task, since a tick is an op.
-const EDITS = [
-  { title: 'Mop twice' },
-  { title: 'Mop once' },
-  { priority: 2 },
-  { priority: 4 },
-  { percent_done: 0.5 },
-  { percent_done: 0.25 },
-  { due_date: '2026-10-18T09:00:00Z' },
-  { due_date: '2026-10-19T09:00:00Z' },
-];
 // fast-check picks each entry equally often, and skips a command that can't run, so the common ones are listed again.
 const queue = fc.tuple(fc.constantFrom(...Object.keys(ALL)), target, fc.nat(1)).map(([n, t, p]) => new Queue(n, t, p)),
   answer = fc
@@ -1642,8 +1512,6 @@ const COMMANDS = [
   read,
   fc.nat(5).map(i => new FinishRead(i)),
   fc.nat(5).map(i => new FinishRead(i)),
-  fc.tuple(target, fc.constantFrom(...EDITS)).map(([t, f]) => new StartEdit(t, f)),
-  fc.nat(3).map(i => new SaveEdit(i)),
   fc.tuple(target, fc.constantFrom('done', 'open', 'deleted')).map(([t, k]) => new Mark(t, k)),
   fc.constant(new ClearBatch()),
   target.map(t => new Restore(t)),
@@ -1654,7 +1522,7 @@ const COMMANDS = [
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
 ];
 
-/* Send and answer everything still waiting: send each edit, make the step, cancel what Vikunja refused, send what
+/* Send and answer everything still waiting: make the step, cancel what Vikunja refused, send what
    waits, and once Vikunja has made every write on its way, let their replies arrive in the order `picks` gives. What
    takes the outbox's lock waits until no op's reply is on its way. Then finish each read, which is older than every
    answer. Then check 4 runs, and once more after a read of every task, with nothing skipped but what a KNOWN bug
@@ -1670,8 +1538,7 @@ async function drain(w, picks) {
     const list = w.acts(),
       failed = list.findIndex(e => e.failed),
       ready = !w.held.some(h => h.key);
-    if (w.edits.some(e => !e.sent)) await run(new SaveEdit(0));
-    else if (ready && w.stepId === null) await run(new StepMade());
+    if (ready && w.stepId === null) await run(new StepMade());
     else if (ready && failed >= 0) await run(new Drop(failed));
     else if (ready && list.some(e => !e.sent && !held(e))) await run(new Send(false));
     else if (ready && list.some(e => e.sent && !held(e))) await run(new Send(true));
@@ -1694,7 +1561,7 @@ async function drain(w, picks) {
   if (read.length) throw new Error(`once every task was read again:\n  ${read.join('\n  ')}`);
 }
 
-test('the store shows each task as its copy, then the waiting ops, then the edits, whatever order things happen in', async t => {
+test('the store shows each task as its copy, then the waiting ops, whatever order things happen in', async t => {
   const seed = process.env.FC_SEED ? +process.env.FC_SEED : process.env.CI ? 6040 : undefined;
   await fc.assert(
     fc.asyncProperty(
@@ -1733,21 +1600,22 @@ test('the store shows each task as its copy, then the waiting ops, then the edit
 });
 
 /* The repeat reaches Vikunja, but its answer is unknown and it is cancelled, so the copy doesn't know task 1 repeats.
-   The tick's reply crosses a direct save, so only a read can say that Vikunja moved the task on to its next date. */
-test("a tick on a task the copy doesn't know repeats takes nothing into the copy when its reply crosses a direct save", async t => {
+   The tick's reply is lost, and the relay replays it when the tick is sent again. A replayed reply isn't taken where
+   Pocket has a copy, so only a read can say that Vikunja moved the task on to its next date. */
+test("a tick on a task the copy doesn't know repeats takes nothing into the copy when its reply is replayed", async t => {
   const w = await open(t.mock.timers);
   try {
     for (const c of [
       new Teammate(1, 'due_date'),
-      new StartEdit(1, { title: 'Mop twice' }),
-      new SaveEdit(0),
       new Queue('repeat', 1),
       new Send(false),
-      new Answer('unknown', 1),
+      new Answer('unknown', 0),
       new Queue('done', 1),
       new Drop(0),
       new Send(false),
-      new Answer('arrives', 1),
+      new Answer('lost', 0),
+      new Send(true),
+      new Answer('arrives', 0),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);

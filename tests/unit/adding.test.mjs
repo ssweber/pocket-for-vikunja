@@ -438,7 +438,7 @@ test('a parent line gets the progress calculated from subtask lines that arrive 
   const v = fakeVikunja(),
     app = adding(t);
   await send(app, entry([line('Pack the van'), line('Load chairs', { done: true }, 0), line('Tables', {}, 0)]));
-  await app.saveTask(101, null, () => null);
+  await app.readCopy(101);
   assert.deepEqual(
     [v.task(101).percent_done, v.task(102).done, v.task(103).done],
     [0.5, true, false],
@@ -449,7 +449,7 @@ test('a parent line gets the progress calculated from subtask lines that arrive 
     [102, 103],
   );
   await send(app, entry([line('Set the hall'), line('Tables', { pct: 50 }, 0), line('Lights', {}, 0)]));
-  await app.saveTask(104, null, () => null);
+  await app.readCopy(104);
   assert.equal(v.task(104).percent_done, 0.25, 'one subtask at 50% of two gives 25%');
   // With no subtask done, the parent's progress is 0, as Vikunja made it, so nothing is written.
   v.requests.length = 0;
@@ -507,7 +507,7 @@ test('a list with several parents and nested subtasks creates each line under th
       ['Tables', 104, true],
     ],
   );
-  await app.saveTask(101, null, () => null);
+  await app.readCopy(101);
   // The last line under a parent writes the parent's progress, deepest first, because its progress counts in the task
   // above it. Load chairs is 100% (its one subtask is done), so Pack the van is 100%. Tables arrives at 50% after them.
   assert.deepEqual(

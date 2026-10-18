@@ -10,7 +10,7 @@ import globals from 'globals';
 // for the rule replaces the first, and 'off' would turn off every selector in a file. restricted(file) leaves out the
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
-const STORE = 'Write the store inside this.change(w => …) with its writers (src/js/app/tasks.js). w.edit() lays a save over a row, w.put() writes what Vikunja answered, and w.leave() marks a row leaving.';
+const STORE = 'Write the store inside this.change(w => …) with its writers (src/js/app/tasks.js). w.answer() writes what Vikunja answered, and w.leave() marks a row leaving.';
 // A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
 // The sheet's task and a checklist's are rows too (sheetTask, runTask). show() reads the leaving marks too.
 const ROW = "MemberExpression[object.type='ThisExpression'][property.name=/^(tasks|sheetTask|runTask|leaving)$/]";

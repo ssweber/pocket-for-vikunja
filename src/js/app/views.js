@@ -30,7 +30,7 @@ import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 import { tickFeel } from '../progress.js';
 import { shared } from './core.js';
-import { putting, savedScreen, savesRunning, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
+import { putting, savedScreen, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
 
 export let renderSeq = 0;
 let behindTimer,
@@ -1122,8 +1122,7 @@ export default {
       this.searchQ ||
       this.movingOverdue ||
       this.starting ||
-      this.pending.length ||
-      savesRunning();
+      this.pending.length;
     if (!busy) location.reload();
   },
   async refresh() {

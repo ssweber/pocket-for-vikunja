@@ -1181,7 +1181,7 @@ test("a checklist's screen reads its steps by id, so a step ticked in a list sho
     'the saved screen is its ids and the tasks it reads',
   );
   assert.equal(app.runView.steps[2].done, false);
-  app.change(w => w.edit(53, { done: true })); // C ticked on Today's card
+  outboxOf(app, [{ kind: 'act', id: 'done53', op: 'done', task: 53, run: 50 }]); // C ticked on Today's card
   assert.equal(app.runView.steps[2].done, true);
 });
 
