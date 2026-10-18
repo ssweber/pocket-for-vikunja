@@ -58,7 +58,9 @@ const tab = async name => {
       ].map(from),
     );
   // A delete is held for Restore and sent as the app sends it (holdDelete, sendHeld).
-  const deletes = Object.fromEntries(['holdDelete', 'sendHeld', 'parentIdOf'].map(k => [k, actions.default[k]]));
+  const deletes = Object.fromEntries(
+    ['holdDelete', 'sendHeld', 'deleteOf', 'parentIdOf'].map(k => [k, actions.default[k]]),
+  );
   return {
     fake,
     tasks,

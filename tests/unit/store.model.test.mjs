@@ -493,7 +493,7 @@ class World {
       runs,
       pick(
         actions,
-        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'parentIdOf'],
+        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'deleteOf', 'parentIdOf'],
         ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'sendSet'],
       ),
       leaving,

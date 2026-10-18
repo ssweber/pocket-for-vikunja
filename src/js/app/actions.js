@@ -19,12 +19,12 @@ import {
   toOutbox,
 } from '../messages.js';
 import { htmlToText } from '../html.js';
-import { patiently, stepsOf, vikunjaNext } from '../checklists.js';
+import { stepsOf, vikunjaNext } from '../checklists.js';
 import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks } from '../order.js';
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
 import { addLines, movedFrom, personOf, tagOf, waitingPositions } from '../ops/index.js';
-import { copyOf, started, TASK, writes } from './tasks.js';
+import { copyOf, opsId, started, TASK, writes } from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -907,15 +907,25 @@ export default {
   },
 
   /* ---------- deleting ---------- */
-  // Undo for tasks just added. Deletes them and shows a message if any couldn't be deleted.
-  async deleteTasks(ids) {
-    let failed = 0;
-    for (const id of [...ids].reverse())
-      await api('/tasks/' + id, { method: 'DELETE' }).catch(e => {
-        if (e.status !== 404) failed++;
-      });
-    if (failed) this.notify(`Not all undone: ${failed} of ${ids.length} couldn't be deleted.`);
-    this.render();
+  /* A delete op's fields for `tree`, a task and its subtasks, deepest first (taskTree). Its last stage writes the
+     progress of the parent that stays (`up`). */
+  deleteOf(tree) {
+    const task = tree.at(-1),
+      up = this.parentIdOf(this.tasks[task] || { id: task });
+    return { op: 'delete', run: null, task, ids: tree, ...(typeof up === 'number' && !tree.includes(up) && { up }) };
+  },
+  /* Delete each of `trees` (deleteOf) at once, with no Restore. Nothing can bring those tasks back, so the changes
+     still waiting on them leave the outbox first, as Cancel takes them out. Returns how sending went (actAll). */
+  async deleteNow(trees) {
+    const ids = new Set(trees.flat());
+    await sync.lock(async () => {
+      for (const e of sync.all(this.user?.id))
+        if (e.kind === 'act' && ids.has(opsId(e.task)) && (!e.sent || e.failed)) {
+          await sync.remove(e.id);
+          this.unmade(e.id);
+        }
+    });
+    return this.actAll(trees.map(tree => this.deleteOf(tree)));
   },
   // The label for deleting the open task. Deleting also deletes its subtasks, or a template's or checklist's steps.
   get deleteLabel() {
@@ -948,7 +958,7 @@ export default {
       if (await this.removeTask(t, asked)) await leave();
       return;
     }
-    // A template is deleted at once after asking, with no Undo. Checklists already started from it keep their steps.
+    // A template is deleted after asking, with no Restore. Checklists already started from it keep their steps.
     let tree;
     try {
       tree = await this.taskTree(t.id);
@@ -965,18 +975,11 @@ export default {
       )
     )
       return;
-    try {
-      await this.deleteTree(tree);
-      await leave();
-      this.render();
-      this.notify(n ? `Deleted, with ${n} step${n === 1 ? '' : 's'}` : 'Deleted'); // a toast, because the sheet and row are gone
-    } catch (e) {
-      this.say(`Stopped after deleting ${e.deleted} of ${tree.length}: ${e.message}`, {
-        place: 'sheet:top',
-        cls: 'failed',
-      });
-      this.render();
-    }
+    // A refusal keeps the sheet open, and the sender says why there (sheetPlace).
+    if ((await this.deleteNow([tree])).status === 'error') return;
+    await leave();
+    this.render();
+    this.notify(n ? `Deleted, with ${n} step${n === 1 ? '' : 's'}` : 'Deleted'); // a toast, because the sheet and row are gone
   },
   // Only saved, writable tasks can be deleted by swiping. Checklists, their steps and templates have their own ways
   // to delete.
@@ -1046,20 +1049,8 @@ export default {
   async holdDelete(t, show, tree = null) {
     tree ||= await this.askDelete(t);
     if (!tree) return null;
-    const n = tree.length - 1;
-    // The deletion's last stage updates the progress of the parent that stays.
-    const up = this.parentIdOf(t);
-    const entry = Object.assign(
-      this.actEntry({
-        op: 'delete',
-        run: null,
-        task: t.id,
-        ids: tree,
-        label: t.title,
-        ...(typeof up === 'number' && !tree.includes(up) && { up }),
-      }),
-      { until: Date.now() + HELD_MS },
-    );
+    const n = tree.length - 1,
+      entry = Object.assign(this.actEntry({ ...this.deleteOf(tree), label: t.title }), { until: Date.now() + HELD_MS });
     sync.held.add(entry.id);
     const added = sync.add(entry, []);
     show?.({ id: entry.id, n, ids: tree });
@@ -1113,22 +1104,6 @@ export default {
     };
     await walk(id, null);
     return out;
-  },
-  // Delete in order and stop at the first rejection. The error's `deleted` is how many were already deleted.
-  async deleteTree(ids) {
-    let n = 0;
-    try {
-      for (const id of ids) {
-        await patiently(() => api('/tasks/' + id, { method: 'DELETE' })).catch(e => {
-          if (e.status !== 404) throw e;
-        });
-        this.change(w => w.forget(id));
-        n++;
-      }
-    } catch (e) {
-      e.deleted = n;
-      throw e;
-    }
   },
 
   /* ---------- people and labels ---------- */

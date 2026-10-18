@@ -265,7 +265,8 @@ export default {
         // A line whose answer is unknown stays in the Outbox, so only the refused lines come back.
         if (r.unsent.length) this.cap.text = r.unsent.join('\n'); // keep what wasn't added
         this.capPhotos = r.photos;
-        const undo = r.ids.length ? { label: 'Undo', fn: () => this.deleteTasks(r.ids) } : null;
+        // Undo deletes the tasks just added, each with no Restore, the last added first.
+        const undo = r.ids.length ? { label: 'Undo', fn: () => this.deleteNow(r.ids.map(id => [id]).reverse()) } : null;
         // A message has one button. After some lines were added, Undo keeps it, because the header's button still
         // opens the Outbox.
         if (r.error.code === 'unknown')

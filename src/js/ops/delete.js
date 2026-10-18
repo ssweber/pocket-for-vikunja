@@ -1,4 +1,5 @@
-// Deleting a task with its subtasks. The entry is held while Restore shows (holdDelete, app/actions.js).
+/* Deleting a task with its subtasks. A delete from a row or a task's sheet is held while Restore shows (holdDelete,
+   app/actions.js). Any other is sent at once, with no Restore (deleteNow). */
 import { OP_WORDS } from '../messages.js';
 import { figure } from './stages.js';
 
@@ -18,12 +19,14 @@ const apply = (t, a) =>
         related_tasks: { ...t.related_tasks, subtask: t.related_tasks.subtask.filter(s => !a.ids.includes(s.id)) },
       };
 
-// `figure` writes the progress of the parent that stays.
+/* `figure` writes the progress of the parent that stays. A template deleted from its sheet waits for its answer there,
+   so a refusal is said at the top of the sheet. */
 export const del = {
   apply,
   on: a => [...a.ids, ...(a.up != null ? [a.up] : [])],
   stages: [deleteAll, figure],
   deletes: a => a.ids,
+  sheetPlace: 'sheet:top',
   ...OP_WORDS.delete,
   asks: ['ids', 'up'],
   saw: ['label'],
@@ -33,7 +36,6 @@ export const del = {
   waiting: null,
   refusal: null,
   cancel: null,
-  sheetPlace: null,
   answered: null,
   holds: null,
   waitsOn: null,

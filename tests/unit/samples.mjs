@@ -129,6 +129,14 @@ export const SAMPLES = {
     },
     made: v => !v.task(3) && v.task(1).percent_done === 1,
   },
+  // A checklist deleted with its steps, sent at once with no Restore, as from its sheet (deleteRun).
+  'delete, with no Restore': {
+    op: 'delete',
+    tasks: checklist(),
+    fields: { op: 'delete', task: 1, ids: [2, 3, 1], run: null },
+    made: v => ![1, 2, 3].some(id => v.task(id)),
+    cannot: ['partly done'],
+  },
   // A list's order is kept by view in `positions`, not on the task's row (`unseen`).
   position: {
     tasks: checklist(),

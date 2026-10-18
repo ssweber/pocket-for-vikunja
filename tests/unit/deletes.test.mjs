@@ -1,36 +1,134 @@
 // Tests for deleting a task (src/js/app/actions.js), against a fake Vikunja: the confirm, the held delete and its
-// Undo, the parent's progress, and the sync state while a delete waits.
+// Undo, the deletes sent at once, the parent's progress, and the sync state while a delete waits.
 import './browser.mjs';
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import runs from '../../src/js/app/runs.js';
+import checklists from '../../src/js/app/checklists.js';
 import acts, { stageContext } from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
+import { api } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { figure } from '../../src/js/ops/stages.js';
 
-test('deleting a task and its subtasks skips one already deleted, and stops at a refusal after counting what was deleted', async () => {
-  const v = fakeVikunja([
-      { id: 1, title: 'A' },
-      { id: 3, title: 'C' },
-    ]),
-    app = component(tasks, actions);
-  for (const id of [1, 2, 3]) app.row({ id, title: String(id) });
-  app.view.groups = [{ key: 'today', tasks: [app.tasks[1], app.tasks[2], app.tasks[3]] }];
-  v.trouble = r => (r.path === '/tasks/3' ? 403 : null);
-  await assert.rejects(app.deleteTree([1, 2, 3]), e => e.deleted === 2);
-  assert.deepEqual(
-    app.view.groups[0].tasks.map(t => t.id),
-    [3],
-    'the deleted tasks have left the list',
-  );
-  assert.ok(!app.tasks[1] && !app.tasks[2] && app.tasks[3]);
+/* The app with every part a delete sent at once goes through, signed in, with Vikunja's tasks read into the store and
+   each given a row. */
+const sender = (v, ...more) => {
+  const app = component(tasks, acts, sending, outbox, runs, actions, ...more);
+  Object.assign(app, {
+    user: { id: 1 },
+    pending: [],
+    failed: [],
+    slow: [],
+    flushing: false,
+    cap: {},
+    sheet: { id: null, sub: {} },
+    view: { groups: [], shownRun: null },
+    places: {},
+    endPlace() {},
+    closeSheet() {},
+    back() {},
+  });
+  Object.defineProperty(app, 'toast', { value: {} });
+  const list = [...v.tasks.values()].map(t => structuredClone(t)),
+    at = started();
+  app.change(w => w.read(list, TASK, at));
+  for (const t of list) app.row(copyOf(t.id));
+  return app;
+};
+/* Run `deleting`, one of the ways Pocket deletes, with Vikunja holding each DELETE until a read of task `id` has
+   run. The read overlaps the delete, so it is thrown away, and Vikunja's copy of the task keeps its title though a
+   teammate changed it. Returns what `deleting` returns. */
+async function readDuring(app, v, id, deleting) {
+  const real = globalThis.fetch;
+  let go, came;
+  const gate = new Promise(ok => (go = ok)),
+    arrived = new Promise(ok => (came = ok));
+  globalThis.fetch = async (url, o = {}) => {
+    if (o.method === 'DELETE') {
+      came();
+      await gate;
+    }
+    return real(url, o);
+  };
+  const out = deleting();
+  await arrived;
+  const was = copyOf(id).title;
+  v.task(id).title = 'Renamed by a teammate';
+  const at = started(),
+    t = await api('/tasks/' + id);
+  app.change(w => w.read([t], TASK, at));
+  assert.equal(copyOf(id).title, was, 'a read of the task while the delete runs is thrown away');
+  globalThis.fetch = real;
+  go();
+  return out;
+}
+// The tasks Pocket has no copy and no row of.
+const forgotten = (app, ids) => ids.filter(id => !copyOf(id) && !app.tasks[id]);
+const subtasksOf = id => copyOf(id).related_tasks.subtask.map(s => s.id);
+
+const packing = () =>
+  fakeVikunja([
+    { id: 1, title: 'Pack the van', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } },
+    { id: 2, title: 'Pack the cups', related_tasks: { parenttask: [{ id: 1 }] } },
+    { id: 3, title: 'Pack the plates', related_tasks: { parenttask: [{ id: 1 }] } },
+  ]);
+// The add box's Undo, after Vikunja refused a later line, deletes the tasks its lines made (submitCapture).
+test("the Undo of tasks just added deletes each, and their parent's copy stops listing them", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = packing(),
+    app = sender(v);
+  await readDuring(app, v, 1, () => app.deleteNow([[3], [2]]));
+  assert.deepEqual([v.task(2), v.task(3)], [undefined, undefined]);
+  assert.deepEqual([forgotten(app, [2, 3]), subtasksOf(1)], [[2, 3], []]);
 });
+
+test("a task already deleted in Vikunja counts as deleted, and Pocket's copies stop listing it", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = packing(),
+    app = sender(v);
+  v.tasks.delete(3);
+  const r = await app.deleteNow([[3]]);
+  assert.equal(r.status, 'sent');
+  assert.deepEqual([forgotten(app, [3]), subtasksOf(1)], [[3], [2]]);
+});
+
+const template = () =>
+  fakeVikunja([
+    { id: 1, title: 'TEMPLATE: Closing', related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } },
+    { id: 2, title: 'Mop', related_tasks: { parenttask: [{ id: 1 }] } },
+    { id: 3, title: 'Lock up', related_tasks: { parenttask: [{ id: 1 }] } },
+  ]);
+// A template's sheet, open on template 1, whose steps are 2 and 3.
+const templateSheet = v => {
+  const app = sender(v, checklists);
+  Object.assign(app.sheet, { id: 1, kind: 'task', open: true });
+  for (const [k, value] of Object.entries({
+    checklistRole: 'template',
+    subtasks: [app.tasks[2], app.tasks[3]],
+    canEdit: true,
+  }))
+    Object.defineProperty(app, k, { value, configurable: true });
+  app.keepTemplate = () => {};
+  app.role = t => (t.id === 1 ? 'template' : 'tplstep');
+  globalThis.confirm = () => true;
+  return app;
+};
+test('a template deleted from its sheet goes with its steps, with no Restore', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = template(),
+    app = templateSheet(v);
+  await readDuring(app, v, 1, () => app.deleteTask());
+  assert.deepEqual([...v.tasks.keys()], []);
+  assert.deepEqual(forgotten(app, [1, 2, 3]), [1, 2, 3]);
+  assert.equal(app.toasts.at(-1).msg, 'Deleted, with 2 steps');
+});
+
 // The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
 // The test controls the timers, so timers that have not fired yet (the Undo's, for example) don't keep Node waiting.
