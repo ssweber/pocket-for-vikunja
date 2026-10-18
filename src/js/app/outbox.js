@@ -187,6 +187,7 @@ export default {
       if (how === 'made') await passUps(e);
       kept = JSON.parse(JSON.stringify(e));
       await sync.remove(id, e.taskId ?? null);
+      this.unmade(id);
     });
     this.refreshPending();
     if (gone || started) {

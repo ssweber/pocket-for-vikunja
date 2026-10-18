@@ -21,9 +21,10 @@ import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } f
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
 /* For each op queued in this tab that has an invert, the op that undoes it (`inverts`), built from the entry as queued,
-   and from Vikunja's answer once this tab sees it. An op a later op replaced (fold) moves to `folded`. Only an Undo
-   reads them, and an Undo holds the fields its op was queued with. So each is forgotten once those fields are garbage
-   collected (`unheld`): its message has closed, or its caller showed none. */
+   and from Vikunja's answer once this tab sees it. An op that left the outbox without Vikunja making it has none
+   (unmade). An op a later op replaced (fold) moves to `folded`. Only an Undo reads them, and an Undo holds the fields
+   its op was queued with. So each is forgotten once those fields are garbage collected (`unheld`): its message has
+   closed, or its caller showed none. */
 const inverts = new Map(),
   folded = new Set(),
   unheld = new FinalizationRegistry(id => {
@@ -229,16 +230,16 @@ export default {
     }
   },
   /* Undo the ops queued from `list` (their fields, with each entry's id). The rows show the Undo at once, though the
-     outbox may be busy sending. Then, in the outbox's lock, an op that has sent nothing, or that Vikunja refused at
-     its first stage, leaves the outbox, and its rows show the task without it. An op whose answer is unknown, or that
+     outbox may be busy sending. Then, in the outbox's lock, an op that has sent nothing, or that Vikunja refused at its
+     first stage, leaves the outbox, and its rows show the task without it. An op whose answer is unknown, or that
      Vikunja refused after an earlier stage was made, leaves too, and its invert is queued, checked against what it
-     sent. Any other op's invert is queued, built from Vikunja's answer when this tab saw it. An op that a later op
-     replaced (fold) counts as changed since, and stays. Returns `left`, which resolves to how many Undos were left
-     alone: changed since, or refused. With `quiet` false, Pocket says on each task's row why its Undo was left
-     alone, and the caller says nothing. */
+     sent. Any other op's invert is queued, built from Vikunja's answer when this tab saw it. An op cancelled, or
+     dropped when Vikunja refused it, has nothing to undo. An op that a later op replaced (fold) counts as changed
+     since, and stays. Returns `left`, which resolves to how many Undos were left alone: changed since, or refused. With
+     `quiet` false, Pocket says on each task's row why its Undo was left alone, and the caller says nothing. */
   undoOps(list, quiet = true) {
     const now = list.filter(f => !folded.has(f.id)),
-      invert = (f, e) => (e ? opOf(f).invert(e) : (inverts.get(f.id) ?? opOf(f).invert(f)));
+      invert = (f, e) => (e ? opOf(f).invert(e) : inverts.has(f.id) ? inverts.get(f.id) : opOf(f).invert(f));
     const shown = this.change(w =>
       now.flatMap(f => {
         const i = invert(f, sync.entries.get(f.id)),
@@ -280,6 +281,11 @@ export default {
       return left + r.all.filter(x => ids.has(x.id) && x.status === 'error').length;
     };
     return { left: undo() };
+  },
+  // The op of entry `id` left the outbox without Vikunja making it: cancelled, or dropped when Vikunja refused it. Its
+  // Undo would queue the inverse of a change Vikunja never got, which could undo a teammate's, so it does nothing.
+  unmade(id) {
+    if (inverts.has(id)) inverts.set(id, null);
   },
   // An op's outbox entry. It stores the task's title so the Outbox can name the action after a reload, and the
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
@@ -500,6 +506,7 @@ export default {
       // Reload after a permanent rejection when no retry remains queued.
       if (error.drop) {
         await sync.remove(a.id);
+        this.unmade(a.id);
         op.putBack(this, a, error);
         if (this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
         if (this.sheetTask && this.sheet.kind === 'task') this.loadSubPeople(this.sheetTask);
@@ -508,6 +515,7 @@ export default {
       // Keep a refused op in the Outbox unless it gives its text back, so a missed toast does not lose the retry.
       if (refusal === 'back') {
         await sync.remove(a.id);
+        this.unmade(a.id);
         this.giveBack(a, error);
         return { ...none, status: 'error', error };
       }

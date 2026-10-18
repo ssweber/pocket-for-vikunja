@@ -126,6 +126,27 @@ test('a person or a label on a task deleted in Vikunja since is dropped, and the
   assert.equal(lastSaid(app).msg, "Adding label floor to “Mop the floor” couldn't be saved: The task does not exist.");
 });
 
+test('the Undo of a change cancelled in the Outbox, or dropped when Vikunja refused it, sends nothing', async t => {
+  const { v, app } = listed(t, [task(2), task(3, { title: 'Lock up' })]);
+  noConnection(app, v);
+  const f = label(2, FLOOR);
+  await app.act(f);
+  await app.dropAct(f.id);
+  v.task(2).labels.push(FLOOR); // a teammate's, in the web app
+  v.trouble = () => null;
+  app.offline = false;
+  assert.equal(await app.undoOps([f], false).left, 0);
+  v.tasks.delete(3);
+  const p = assign(3, BOB);
+  assert.equal((await app.act(p)).status, 'error');
+  assert.equal(await app.undoOps([p], false).left, 0);
+  assert.deepEqual(
+    [ids(v.task(2).labels), reached(v, 'PUT', /bulk$/).length, sync.all(1)],
+    [[600], 0, []],
+    "Vikunja keeps the teammate's label, and nothing is left to send",
+  );
+});
+
 test("a checklist's people change by the one tapped, and the person claimed meanwhile stays", async t => {
   const { v, app } = listed(t, [task(1, { title: 'Closing', assignees: [{ id: 1, username: 'me' }] })]);
   const said = [];
