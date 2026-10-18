@@ -791,8 +791,9 @@ export default {
     if (this.sheet.newTpl === nt) this.closeSheet(true);
     if (this.route.name === 'checklists') this.render();
     else this.go('#/checklists');
+    // A name whose answer is unknown waits in the Outbox, and the sender has said so.
     if (r.status === 'sent') this.say(`Created ${shown}. Start it here.`, { place: 'checklists' });
-    else if (r.status === 'offline')
+    else if (r.status === 'offline' && !r.refused)
       this.say("Saved offline. It goes to Vikunja when you're back online.", { place: 'checklists' });
   },
   /* Add the box's lines under the template as steps, a templateStep op each, which the sheet shows at once and which
