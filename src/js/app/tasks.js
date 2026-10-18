@@ -588,7 +588,8 @@ export const dropCopies = () => {
 /* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
    the ids of its tasks opens from them before its load returns, and a save writes only the copies that changed
    (`unsaved`). A task with no copy keeps what its row was made from (bases), as a done parent named by its subtask
-   does (readProject). */
+   does (readProject). They are in localStorage, since a screen opened from IndexedDB showed its first row no sooner,
+   and would wait on a promise. */
 let unread = null; // the ids of the copies kept on the phone that the store hasn't read yet, once their list is read
 const unsaved = new Set();
 const keptCopy = id => copies.get(id) ?? bases.get(id);

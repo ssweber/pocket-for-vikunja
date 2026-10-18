@@ -41,9 +41,14 @@ Built on `dev`, and described by the code and its comments:
   the keys rule;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
-- screens saved on the phone as the ids of their tasks, with the store's copies kept beside them and swept to what
-  the kept screens and the outbox need (phase 11, part (a));
-- the lifecycle test and the randomized store test.
+- screens saved on the phone as the ids of their tasks, with the store's copies kept beside them, swept to what the
+  kept screens and the outbox need, and kept on the phone as Pocket is hidden too;
+- the store catching up when Pocket comes back to the screen or the connection comes back (`catchUp`, `tasks.js`). It
+  can't see what Vikunja's `updated` misses (see Lessons), nor a change to a phone's copy made before the page loaded,
+  which each screen's own load reads. It doesn't ask about the tasks of a project Pocket doesn't list, as an archived
+  one;
+- each request's time kept in its op's entry (`sentAt`), so an op sent before a reload counts from its own requests;
+- the lifecycle test and the randomized store test, which reloads between any two requests and catches up.
 
 The user's phone check covers everything up to phase 5. Phase 6 (dates) and what came after it haven't been checked
 on a phone. The last full `test:local` passed at `7f254fa`. The relay has changed since, so upload `pocket/` again,
@@ -76,8 +81,9 @@ and empty the Outbox on each phone, before the next phone check.
   Ops on one task go out one at a time. When two writes on one task are in flight at once, as when an op on a step
   writes its checklist's progress, Pocket takes neither's reply, and neither's change to a field the other sets to
   another value. A task is read once its writes end if they leave it unsure that way, if a read of it was thrown away,
-  if its op's answer was replayed or never reached this tab, or if the op began before the page loaded. The rule
-  lives in `tasks.js`, where each write the copy learns from is a `writes()` with its start time.
+  or if its op's answer was replayed or never reached this tab. An op's entry keeps when each of its requests was first
+  sent, so a page that sends it after a reload knows how old each part is. The rule lives in `tasks.js`, where each
+  write the copy learns from is a `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
@@ -110,42 +116,6 @@ project with links, and people and labels. These are left:
 - The Undo of a repeating task's tick whose answer this tab never saw, as when the relay can't say whether Vikunja made
   it, has no dates to check against. It counts any date other than the one before as changed since.
 - No screen offers an Undo for a person or a label, though their ops have an `invert`.
-
-### 11. Screens hold ids
-
-Part (a) is built: a screen is saved on the phone as the ids of its tasks, and the store keeps Vikunja's copies on the
-phone beside them (`keepScreen`, `tasks.js`). A sweep drops the copies that no kept screen, outbox entry or open screen
-needs, a task Vikunja answers with 404 is forgotten once nothing points to it, and nothing from a request that started
-before sign-out goes into the store. The copies stay in localStorage. Opening Today from the phone's copies on seed M
-took as long to the first row with them in IndexedDB (fast 186 and 181 ms, phone 1,842 and 1,786 ms) as in
-localStorage (181 and 184 ms, 1,850 and 1,762 ms), and IndexedDB would make opening a screen wait on a promise.
-
-Replicache keeps the server's state apart from the changes not yet confirmed, and shows the one replayed on the other,
-as Pocket shows Vikunja's copy with the waiting ops applied. Its server sends a version with each pull, and the last
-change it applied for each client, so a client knows which of its changes a snapshot holds and drops them in the same
-step. Vikunja gives neither, so Pocket orders what it learns by when each request started, and can't do better until
-Vikunja reports a version (`upstream-task-updated.md`). Replicache's undo is a change of its own, so a reply to the
-change it undoes lands under it. The lifecycle test now checks that for every op with an `invert` ("Undo, then the
-reply"), and every op passes, so no `invert` needed a fix.
-
-Left for part (b):
-
-- **Keeping the store current,** when Pocket comes back to the screen or the connection comes back. Changed tasks:
-  `GET /tasks?filter=updated > T&expand=reactions`, with T on Vikunja's clock a second before the last update started.
-  Removed tasks: `GET /tasks?filter=id in <ids>&per_page=1`, and if `total` is lower than the number of ids, the same
-  query in full, dropping the tasks it doesn't return unless an op points to them. Split long id lists, because some
-  proxies refuse URLs over about 8 KB. Each screen's own load still decides which tasks are on it. A task it drops goes
-  through `lost` (`tasks.js`), as a 404 does.
-- From the Veyrn comparison: check whether v2's `/tasks` returns tasks from archived projects.
-- An op sent before a reload has no time on the new page. One whose requests the relay only replays there counts from
-  before the page's reads (`EARLIER`). One that also makes a request fresh there counts from its first request on the
-  page. Its part made before the reload can then overwrite a teammate's change the page read, until the read of its
-  tasks that follows its answer. A per-request time kept in the entry would settle it.
-- `forgotten` stays. Ids made its saved screens' part unneeded, but a request that started before a delete can still
-  bring the deleted task, or list it among another task's related tasks, and only `forgotten` tells such a task from
-  one the sweep dropped.
-- The phone's copies are written when a screen is saved, as the screens were. A change answered after the last load
-  reaches the phone with the next one.
 
 ### 12. Messages
 
@@ -219,6 +189,9 @@ Before anyone else uses Pocket:
   or a template whose task Vikunja may or may not have made.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step that has sent a request
   and waits, as for any op, though the row's × still cancels a step.
+- The store's clock is the phone's time, and an op's entry keeps it across pages. If the phone's clock is set back
+  between two pages, an op from the page before counts as newer than the new page's reads, and can overwrite a
+  teammate's change they hold.
 - `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
   whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 
@@ -234,6 +207,10 @@ What Vikunja 2.7 does, checked while building:
 - `PATCH /api/v2/tasks/{id}` reads the task, applies the patch and answers with the task as that read gave it, labels
   and assignees included, but not reactions.
 - `id in` with `per_page=1` gives the right `total`, counting only tasks that still exist.
+- `/api/v2/tasks` leaves out the tasks of archived projects. With no project in the request, Vikunja lists the user's
+  projects without `getArchived` (`getRelevantProjectsFromCollection` in `pkg/models/task_collection.go`, then
+  `getAllProjectsForUser` in `pkg/models/project.go`, which adds `is_archived = false`). `GET /tasks/{id}` still reads
+  such a task, since `Project.CanRead` (`pkg/models/project_permissions.go`) doesn't check whether it is archived.
 - `PUT /tasks/bulk` and `POST /projects/{project}/tasks/bulk` are all or nothing, and the second ignores `position`
   and `labels`. Pocket uses neither.
 
