@@ -1602,3 +1602,26 @@ test("a tab hidden after another tab kept a project's copies leaves them on the 
   assert.deepEqual([saved.get('task.91')?.title, saved.get('tasks')], ['Count the float', [1, 91]]);
   localStorage.clear();
 });
+
+/* The phone's clock may be set between two catch-ups. The second reads what changed since the first started on
+   Vikunja's clock, so a teammate's change made between them is found. */
+test("a catch-up after the phone's clock was set back finds a change made since the last one", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-18T09:00:00Z') });
+  const { v, app } = caught(),
+    real = globalThis.fetch;
+  let ahead = 0; // Vikunja's clock minus the phone's, as the Date of each reply says
+  globalThis.fetch = async (url, o) => {
+    const res = await real(url, o);
+    res.headers.set('Date', new Date(Date.now() + ahead).toUTCString());
+    return res;
+  };
+  await app.catchUp();
+  t.mock.timers.setTime(Date.now() - 3600000); // the phone's clock goes back an hour
+  ahead = 3600000;
+  await api('/tasks/1');
+  Object.assign(v.task(2), { title: 'Lock up twice', updated: new Date(Date.now() + ahead + 60000).toISOString() });
+  await app.catchUp();
+  assert.equal(app.tasks[2].title, 'Lock up twice');
+  ahead = 0;
+  await api('/tasks/1'); // the tests after this one see both clocks agree
+});

@@ -582,7 +582,8 @@ export const dropCopies = () => {
     m.clear();
   dropped = clock;
   unread = null;
-  caughtAt = Date.now();
+  caughtAt = null;
+  loadedAt = Date.now();
 };
 
 /* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
@@ -653,9 +654,11 @@ function keptIds(c, phone = false) {
 // Tasks Vikunja answered with 404. Each is forgotten once no outbox entry points to it and it isn't open in the sheet.
 const missing = new Set();
 /* Vikunja changes tasks Pocket doesn't hear of, as a teammate's edit or a delete in the web app, so the store catches
-   up when Pocket comes back to the screen or the connection comes back (catchUp). `caughtAt` is when the last catch-up
-   started, on the phone's clock, or when the page loaded: a screen loaded since then read what it shows. */
-let caughtAt = Date.now(),
+   up when Pocket comes back to the screen or the connection comes back (catchUp). It reads what changed since the last
+   catch-up started (`caughtAt`), kept on Vikunja's clock, since the phone's clock may be set between catch-ups. Before
+   the first, it reads from when the page loaded (`loadedAt`, on the phone's clock). */
+let caughtAt = null,
+  loadedAt = Date.now(),
   catching = false;
 // How many ids one request names. Some proxies refuse a URL over about 8 KB, and an id takes up to about 12 bytes.
 export const ID_CHUNK = 300;
@@ -768,14 +771,14 @@ export default {
   async catchUp() {
     if (!this.user || this.offline || !outboxRead || catching) return;
     catching = true;
-    const from = Date.now();
+    const from = serverTime(Date.now());
     try {
       const at = started(),
         // Vikunja keeps times in whole seconds, so the second the last catch-up started in is read again.
         changed = await allPages(
           '/tasks?' +
             new URLSearchParams([
-              ['filter', `updated > '${new Date(serverTime(caughtAt) - 1000).toISOString()}'`],
+              ['filter', `updated > '${new Date((caughtAt ?? serverTime(loadedAt)) - 1000).toISOString()}'`],
               ['expand', 'reactions'],
               ['expand', 'comment_count'],
             ]),
