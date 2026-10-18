@@ -45,7 +45,7 @@
     <template x-for="line in placeLines('project')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
-    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. You can add tasks, change dates and use checklists. Ticking off and other changes need a connection.'"></p></template>
+    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. Changes wait in the Outbox.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
     <template x-if="!view.loading && view.error"><div>

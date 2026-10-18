@@ -431,11 +431,7 @@ try {
     await page.waitForSelector(
       `#d-comments .comment.waiting:has-text("${T('comment')}"):has-text("Waiting for a connection")`,
     );
-    if (
-      !(await page.textContent('.offline')).includes(
-        '. You can add tasks, change dates and use checklists. Ticking off and other changes need a connection.',
-      )
-    )
+    if (!(await page.textContent('.offline')).includes('. Changes wait in the Outbox.'))
       throw new Error('banner: ' + (await page.textContent('.offline')));
     await context.setOffline(false);
     await online();
