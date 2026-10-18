@@ -59,6 +59,9 @@ export const figureOf = async (c, up, name = 'figure') => {
       w.made(up, c.from(sent), body);
       w.answer([t], TASK, c.from(t));
     });
+    // When the parent is the op's own task, as for a step added to a checklist, an earlier stage kept an older copy of
+    // it as the op's answer, which would take back this progress.
+    if (c.task?.id === up) c.task = t;
   } catch (e) {
     if (e.status !== 404) throw e;
   }

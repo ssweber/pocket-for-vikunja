@@ -1674,3 +1674,28 @@ test("a copy a cancelled step made leaves its source step's links when it is del
     await w.close();
   }
 });
+
+/* A step repeated in checklist 1 keeps the checklist as Vikunja gave it when the step was put in its order, before a
+   teammate's progress. Its last stage writes the checklist's progress, whose reply is lost, and the relay replays it
+   when the step is sent again. The older copy the step kept mustn't take that progress back. */
+test("a step's add keeps the checklist's newest copy once it writes the checklist's progress", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('addStep, repeated', 1),
+      new Send(false),
+      new Teammate(1, 'percent_done'),
+      new Answer('arrives', 0),
+      new Answer('arrives', 0),
+      new Answer('arrives', 0),
+      new Answer('arrives', 0),
+      new Answer('lost', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
