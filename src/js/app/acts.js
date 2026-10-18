@@ -147,7 +147,13 @@ export function stageContext(a, app) {
          sent before this page loaded counts from before this page until it makes a request fresh (sendingOp). */
       if (w?.at === EARLIER && !replayed) w.at = w.start;
       if (replayed && w) w.replays = true;
-      const from = { at: replayed ? (w?.at ?? at) : at, replayed, crossed: w?.crossed ?? new Map(), fields: w?.fields };
+      const from = {
+        at: replayed ? (w?.at ?? at) : at,
+        start: at,
+        replayed,
+        crossed: w?.crossed ?? new Map(),
+        fields: w?.fields,
+      };
       if (got && typeof got === 'object') heard.set(got, from);
       return got;
     },

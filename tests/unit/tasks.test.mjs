@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import tasks, {
   copyOf,
+  dropCopies,
   putting,
   SAVED,
   sendingOp,
@@ -378,6 +379,23 @@ test("a saved screen holds Vikunja's copy of each task, not a waiting op's effec
   app.saveProject();
   assert.equal(saved.get('project.7.open').groups[0].tasks[0].done, false);
   localStorage.removeItem('pocket.saved.project.7.open');
+});
+
+/* A read and a write still on their way when the user signs out carry the last user's tasks. The store drops its
+   copies then (dropCopies), and nothing from a request that started before goes into it. */
+test('a read or a write that started before sign-out puts nothing in the store', () => {
+  const app = component(tasks),
+    at = started(),
+    w = writes({ 1: { title: 'Order cups' } });
+  dropCopies();
+  app.change(x => {
+    x.read([{ id: 1, title: 'Order cups' }], TASK, at);
+    x.answer([{ id: 2, title: 'Order lids' }], TASK, w);
+  });
+  w.end();
+  assert.deepEqual([copyOf(1), copyOf(2), app.tasks], [undefined, undefined, {}]);
+  read([{ id: 1, title: 'Order straws' }]);
+  assert.equal(copyOf(1).title, 'Order straws', "the next user's read goes in");
 });
 
 test('opening Pocket puts a saved copy into the store only where it is newer than the copy there, or there is none', () => {

@@ -81,6 +81,14 @@ export const EARLIER = 1;
 let clock = EARLIER;
 // When a request starts, for read and writes.
 export const started = () => ++clock;
+/* When the copies were last dropped, as a user signed out (dropCopies). A request that started before then may bring
+   the last user's tasks, so nothing it brings goes into the store. A write sent before this page loaded (EARLIER)
+   counts from its first request on the page (`start`), and a saved copy (0) is the new user's. */
+let dropped = 0;
+const before = w => {
+  const at = typeof w === 'number' ? w : (w.start ?? w.at);
+  return at > EARLIER && at <= dropped;
+};
 const since = new Map(); // task id -> field -> when the request behind that field of its copy started
 const flying = new Map(); // task id -> the writes to it in flight (writes)
 const landed = new Map(); // task id -> when the last write to it ended
@@ -256,6 +264,7 @@ const unrelated = r =>
 function read(list, asked, at) {
   inChange();
   if (typeof at !== 'number') throw new Error('A read needs the time it started (started()).');
+  if (before(at)) return;
   for (const t of list) {
     const id = t?.id;
     if (!id || forgotten.has(id)) continue;
@@ -277,6 +286,7 @@ function read(list, asked, at) {
 function answer(list, asked, w) {
   inChange();
   if (typeof w?.at !== 'number') throw new Error('An answer needs the write it answers (writes()).');
+  if (before(w)) return;
   for (const t of list) {
     const id = t?.id;
     if (!id || forgotten.has(id)) continue;
@@ -293,7 +303,7 @@ function answer(list, asked, w) {
 function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   inChange();
   if (typeof w?.at !== 'number') throw new Error('A change Vikunja made needs its write (writes()).');
-  if (forgotten.has(id)) return;
+  if (forgotten.has(id) || before(w)) return;
   if (!copies.has(id)) {
     if (bases.has(id)) {
       const s = since.get(id) || new Map(),
@@ -405,6 +415,7 @@ function offTasks(a) {
    show the old value until the answer was written. A deleted task is forgotten. */
 function answered(a, w, reply = null, posted = null) {
   inChange();
+  if (before(w)) return;
   const op = opOf(a),
     ids = shownOn(a);
   // A copy read once the comment had reached Vikunja, as after a reload, has it already, and the waiting one goes.
@@ -495,6 +506,7 @@ export const copyOf = id => copies.get(id);
 export const dropCopies = () => {
   for (const m of [copies, bases, since, flying, landed, opWrites, doubts, rereading, settled, forgotten, given])
     m.clear();
+  dropped = clock;
 };
 /* A screen is saved with Vikunja's copy of each task, never its row, so a saved screen holds no waiting op's effect
    and none of Pocket's own fields. A row with no copy is saved as it is. Only a done parent named by its subtask
