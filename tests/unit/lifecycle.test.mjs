@@ -320,6 +320,37 @@ const ACTIONS = [
       );
     },
   },
+  /* The user taps Undo while the op's request is on its way, and the Undo can't be sent yet. Vikunja's reply to the op
+     then reaches a copy the Undo is applied over, as Replicache rebases a pending change on the server's state. */
+  {
+    name: 'Undo, then the reply',
+    can: x => x.state === 'sending' && !!opOf(x.fields).invert?.(x.fields),
+    async run(x) {
+      // The fields each row shows changed while the op waits, which its apply guesses.
+      const ids = Object.keys(x.before).map(Number),
+        shown = new Map(
+          ids.map(id => {
+            const r = x.app.tasks[id] && shape(x.app.tasks[id]);
+            return [id, r ? Object.keys(r).filter(k => !same(r[k], x.before[id]?.[k])) : []];
+          }),
+        );
+      x.one = key => !key.startsWith(x.fields.id + ':') && 'cut';
+      const left = x.app.undoOps([x.fields]).left;
+      x.released.resolve('answered');
+      await x.sending;
+      x.undone = await left;
+      if (!outbox().some(e => e.undo === x.fields.id)) return;
+      x.midway = ids
+        .flatMap(id => {
+          const r = x.app.tasks[id] && shape(x.app.tasks[id]);
+          return shown
+            .get(id)
+            .filter(k => r && !x.sample.unseen?.includes(k) && !same(r[k], x.before[id]?.[k]))
+            .map(k => `${id}'s row has ${k} ${JSON.stringify(r[k])}, not ${JSON.stringify(x.before[id]?.[k])}`);
+        })
+        .join('; ');
+    },
+  },
   { name: 'Cancel', can: x => !!row(x)?.drop, run: cancel },
   {
     name: 'Cancel, then its Undo',
@@ -492,6 +523,7 @@ const RULES = [
       return wrong.join('; ');
     },
   ],
+  ['a reply that arrives after its Undo shows the task as before the op while the Undo waits', x => x.midway],
   [
     'Undo puts back what the op changed',
     x =>
@@ -616,7 +648,7 @@ for (const [name, sample] of Object.entries(SAMPLES))
       for (const action of ACTIONS) {
         if (state.not?.includes(action.name)) continue;
         const x = await world(sample);
-        Object.assign(x, { ref, before: ref.before });
+        Object.assign(x, { ref, before: ref.before, state: state.name });
         await state.reach(x);
         x.givenBack = state.name === 'refused' && refusalOf(x.fields) !== 'kept';
         if ((action.can && !action.can(x)) || (await action.run(x)) === false) {
