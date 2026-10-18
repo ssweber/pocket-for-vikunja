@@ -271,13 +271,20 @@ class Model {
    model doesn't hear of fails the test, so a new one is added here. A write of Vikunja's data goes through `wrote`,
    which takes it into the model and judges it (check 5). */
 const HEARD = {
+  // A read that passed straight through ends as the store takes it.
   read(w, fn, list, asked, at) {
     const before = w.copiesNow(),
       r = w.reading,
-      thrown = new Map(list.map(t => [t.id, r ? w.overlaps(t.id, r.start, r.end) : !!w.replyOf(t).overlapped]));
+      end = r?.end ?? ++w.seq,
+      span = t => [r?.start ?? w.replyOf(t).start, end],
+      thrown = new Map(list.map(t => [t.id, w.overlaps(t.id, ...span(t))]));
     fn(list.map(strip), asked, at);
-    for (const t of list)
-      w.wrote({ via: 'read', id: t.id, rec: w.replyOf(t), before: before.get(t.id), asked, thrown: thrown.get(t.id) });
+    for (const t of list) {
+      const rec = w.replyOf(t),
+        excused = !thrown.get(t.id) && w.opsOn(t.id, ...span(t));
+      w.wrote({ via: 'read', id: t.id, rec, before: before.get(t.id), asked, thrown: thrown.get(t.id), excused });
+      if (!thrown.get(t.id)) w.taken(t.id, rec, ...span(t));
+    }
   },
   answer(w, fn, list, asked, from) {
     const before = w.copiesNow();
@@ -310,7 +317,8 @@ const HEARD = {
   /* An op's answer: its apply goes into each copy, then Vikunja's reply about its own task, and a deleted task leaves
      every list. Each field the store took from the apply is judged with the time Vikunja made the op's last request
      that changed that field of that task (madeField). The reply is judged with its own time, against Pocket's news of
-     the task before the answer, since the apply's news isn't about the fields the reply brings. */
+     the task before the answer, since the apply's news isn't about the fields the reply brings. An op that sent no
+     request changed nothing in Vikunja, so its apply is no news. */
   answered(w, fn, a, from, reply, posted) {
     const m = w.model,
       op = opOf(a),
@@ -338,7 +346,8 @@ const HEARD = {
         if (m.bases.has(id) && op.on(a).includes(id)) m.bases.set(id, m.applied(m.bases.get(id), a, posted));
         const x = m.applied({ id }, a, posted),
           asked = Object.fromEntries(differ({ id }, x).map(k => [k, x[k]]));
-        if (uncopied) w.judge({ via: 'apply', id, at, a, before: b, after: undefined, uncopied, fieldAt, asked });
+        if (uncopied && w.lastMade.has(a.id))
+          w.judge({ via: 'apply', id, at, a, before: b, after: undefined, uncopied, fieldAt, asked });
         if (own === id) w.wrote({ via: 'got', id, rec, before: b, tag: tags.get(id), thrown: w.crossed(rec, id) });
         continue;
       }
@@ -358,7 +367,7 @@ const HEARD = {
         src = m.adopt(id, b, after, sources),
         mid = { ...b };
       for (const [k, x] of src) if (!x.rec) mid[k] = after[k];
-      const asked = Object.fromEntries(differ(b, applied).map(k => [k, applied[k]]));
+      const asked = w.lastMade.has(a.id) ? Object.fromEntries(differ(b, applied).map(k => [k, applied[k]])) : {};
       w.judge({ via: 'apply', id, at, a, before: b, after: mid, fieldAt, asked, vikunja });
       if (own === id) w.judge({ via: 'got', id, at: rec.at, rec, before: mid, after, tag: tags.get(id), thrown });
     }
@@ -464,6 +473,7 @@ class World {
       seq: 0,
       writes: [], // each write request of Pocket's, as it reached the fake Vikunja (gate)
       late: [], // the writes Pocket gave up on before Vikunja made them (Answer late)
+      ops: new Map(), // op entry id -> {e, spans}: from its first request in a try until it stopped waiting (abandon)
       reading: null, // the read finishing
       saving: Promise.resolve(), // the direct saves, one after another (save)
       broken: [], // what check 5 found during the command
@@ -524,7 +534,7 @@ class World {
     const key = opts.headers?.['Idempotency-Key']?.replaceAll('"', '') || null,
       method = opts.method || 'GET';
     if (key && this.unknownKeys.has(key)) return unknownReply();
-    // A read that passes straight through starts and ends as it reaches the fake Vikunja.
+    // A read that passes straight through starts as it reaches the fake Vikunja.
     if (method === 'GET') {
       const u = new URL(url),
         id = +(u.pathname.match(/\/tasks\/(\d+)$/) || [])[1],
@@ -534,6 +544,7 @@ class World {
       return this.stamped(await this.inner(url, opts), ++this.t, false, 'read', {
         asked,
         overlapped: !!id && this.overlaps(id, at, at),
+        start: at,
       });
     }
     const h = {
@@ -550,6 +561,8 @@ class World {
     // A link changes the other task too.
     h.ids = [h.id, ...(/\/relations$/.test(url) ? [JSON.parse(opts.body).other_task_id] : [])].filter(Boolean);
     this.writes.push(h);
+    const op = h.e && (this.ops.get(h.e.id) ?? this.ops.set(h.e.id, { e: h.e, spans: [] }).get(h.e.id));
+    if (op && !(op.spans.at(-1)?.[1] === Infinity)) op.spans.push([h.reached, Infinity]);
     return new Promise((ok, no) => this.held.push(Object.assign(h, { ok, no })));
   }
   /* Whether write request `x` was in flight between `start` and `end`: it had reached the fake Vikunja, and Vikunja
@@ -601,10 +614,13 @@ class World {
     h.res = await this.inner(h.url, h.opts);
     h.replayed = h.res.headers.get('Idempotent-Replayed') === 'true';
     h.at = h.replayed ? this.madeAt.get(h.key) : ++this.t;
-    if (h.done === Infinity) h.done = ++this.seq;
+    if (h.late && h.done === Infinity) h.done = ++this.seq;
     this.answered(h.key);
     if (h.replayed) return;
-    if (h.abandoned) for (const id of h.ids) this.model.doubt(id, touches(h));
+    if (h.abandoned) {
+      for (const id of h.ids) this.model.doubt(id, touches(h));
+      for (const r of related || []) this.model.doubt(r.id, ['related_tasks']);
+    }
     if (h.key) this.madeAt.set(h.key, h.at);
     if (h.e) this.lastMade.set(h.e.id, h.at);
     // Vikunja's task right after it made the request, which a change Pocket takes from it must agree with.
@@ -639,6 +655,44 @@ class World {
     );
     for (const x of this.late)
       if (x.done === Infinity && !waiting.has(x.e?.id)) Object.assign(x, { done: ++this.seq, abandoned: true });
+    for (const [id, op] of this.ops)
+      if (!waiting.has(id) && op.spans.at(-1)[1] === Infinity) op.spans.at(-1)[1] = ++this.seq;
+  }
+  /* Whether an op that changes task `id` was waiting to be answered at any time between `start` and `end`: from its
+     first request in a try until it was answered, refused or gone. Its requests may be on their way all that time, so
+     the store throws away a read that ran then. The op changes the tasks its `on` names, its own, and those its
+     requests went to. */
+  opsOn(id, start, end) {
+    return [...this.ops.values()].some(
+      ({ e, spans }) =>
+        spans.some(([a, b]) => a <= end && b >= start) &&
+        [
+          ...opOf(e).on(e),
+          typeof e.task === 'string' ? sync.taskOf(e.task.replace(/^pending-/, '')) : e.task,
+          ...this.writes.filter(x => x.e?.id === e.id).flatMap(x => x.ids),
+        ].includes(id),
+    );
+  }
+  /* The other half of check 5. A read that ran while none of Pocket's writes to task `id` was in flight, and no op
+     that changes it was waiting, is taken for each field Pocket has no newer news of. A write the store never ended
+     shows here, as a read thrown away. */
+  taken(id, rec, start, end) {
+    const m = this.model,
+      c = copyOf(id),
+      tags = m.tags.get(id) || new Map();
+    if (m.forgotten.has(id) || !c || this.opsOn(id, start, end)) return;
+    const missed = trusted(rec).filter(
+      k =>
+        CHECKED.includes(k) &&
+        k in rec.data &&
+        !m.relaxes(id, k) &&
+        !(tags.get(k)?.at > rec.at) &&
+        !same(like(k, c[k]), like(k, m.unrelated({ [k]: rec.data[k] })[k])),
+    );
+    if (missed.length)
+      this.broken.push(
+        `check 5: ${id}'s copy left the ${missed} of a read that ran while no write to it was in flight`,
+      );
   }
   // Vikunja refuses held request `h`, and changes nothing. The relay keeps the refusal. The fake reads `refuses` before
   // its first await, so only this request is refused.
@@ -670,7 +724,7 @@ class World {
         replayed,
         data: clone(body),
         h: h?.reached ? h : null,
-        ...pick(h || {}, 'asked', 'overlapped'),
+        ...pick(h || {}, 'asked', 'overlapped', 'start'),
       });
       body[MADE] = this.replies.length - 1;
     }
@@ -811,7 +865,8 @@ class World {
     /* Pocket's news of each field: a field of a reply that the copy now agrees with, and a field Pocket asked Vikunja
        to change that the copy now has (`asked`). An op answered on a task Pocket has no copy of is news of the fields
        it changes. */
-    if (m.forgotten.has(ev.id) || ev.thrown) return;
+    // A read the store may throw away while an op waits (opsOn) is news only if the copy took something from it.
+    if (m.forgotten.has(ev.id) || ev.thrown || (ev.excused && same(ev.before, ev.after))) return;
     const agrees = k => !!ev.after && same(ev.after[k], m.unrelated({ [k]: ev.rec ? ev.rec.data[k] : ev.asked[k] })[k]);
     const fields = ev.rec
       ? trusted(ev.rec).filter(k => k in ev.rec.data && agrees(k))
