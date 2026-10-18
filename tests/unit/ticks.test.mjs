@@ -795,6 +795,14 @@ test('a tick and an untick made offline cancel out, and a second progress takes 
   await app.undoOps([second]).left;
   assert.equal(v.task(1).percent_done, 0, "the second's Undo goes back to the progress before the first");
 });
+test('a tick whose reply was lost and an untick after it are both sent, since Vikunja may have the tick', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false }]);
+  lostOnce(v, 'PATCH', /^\/tasks\/1$/);
+  assert.equal((await app.act(op('done', 1))).status, 'offline');
+  await app.act(op('undone', 1));
+  await app.flush();
+  assert.deepEqual([v.task(1).done, sync.all(1).length], [false, 0]);
+});
 test('an Undo leaves a progress a teammate changed since, and says so on the row', async t => {
   const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
   const f = op('progress', 1, { pct: 50, was: 0 });

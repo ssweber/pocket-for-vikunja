@@ -482,6 +482,7 @@ class World {
       reading: null, // the read finishing
       broken: [], // what check 5 found during the command
       wrote5: false, // whether the command wrote any of Vikunja's data
+      pruned: [], // the ops a fold took out of the outbox (prune)
     });
     globalThis.fetch = (url, opts = {}) => this.gate(url, opts);
     const app = component(
@@ -532,6 +533,44 @@ class World {
       w.activity++;
       return change.call(this, writers => fn(spying(w, writers)));
     };
+    const fold = app.fold;
+    app.fold = async function (entries) {
+      const before = w.acts().map(clone),
+        given = entries.map(clone);
+      await fold.call(this, entries);
+      w.prune(before, given);
+    };
+  }
+  /* Check 6, as a fold takes ops out of the outbox. A fold takes out an op not yet sent (x) for a new op on its task
+     (e). If e stays, it must leave the task as x and e would one after the other. If e goes too, the two together must
+     leave the task as it was before x, unless x alone changed nothing, which Pocket never queues. Each op taken out is
+     kept, to check that Vikunja never makes a request of it (checks). */
+  prune(before, given) {
+    const m = this.model,
+      now = new Set(this.acts().map(e => e.id)),
+      gone = before.filter(x => !now.has(x.id)),
+      task = x => (typeof x.task === 'string' ? (sync.taskOf(x.task.replace(/^pending-/, '')) ?? x.task) : x.task),
+      apply = (t, a) => opOf(a).apply(clone(t), a),
+      // An untick and a tick of a task a teammate ticked cancel out without the user's ✅, which is no loss.
+      changes = (a, b) => CHECKED.filter(k => k !== 'reactions' && !same(like(k, a?.[k]), like(k, b?.[k])));
+    this.pruned.push(...gone);
+    for (const x of gone.filter(x => !given.some(e => e.id === x.id))) {
+      const id = task(x),
+        e = given.find(e => task(e) === id),
+        copy = typeof id === 'string' ? clone(WAITING_STEP) : (m.copies.get(id) ?? m.bases.get(id));
+      if (!e || !copy) continue;
+      const t = m
+          .waitingIn(before, sync.held, id)
+          .filter(y => older(y, x) < 0)
+          .reduce(apply, copy),
+        both = apply(apply(t, x), e);
+      ran('check 6', true);
+      if (now.has(e.id)) {
+        const k = changes(apply(t, sync.entries.get(e.id)), both);
+        if (k.length) this.broken.push(`check 6: ${x.op} on ${id} folded into ${e.op} changes its ${k}`);
+      } else if (changes(t, both).length && changes(t, apply(t, x)).length)
+        this.broken.push(`check 6: ${x.op} and ${e.op} on ${id} cancelled out, but change its ${changes(t, both)}`);
+    }
   }
   async gate(url, opts) {
     this.activity++;
@@ -987,7 +1026,8 @@ const WAITING_STEP = {
 /* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, then the edits, a row marked
    done is as it was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
    given, a task Pocket deleted is gone, and the step not yet made shows its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
-   4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. A field a KNOWN bug
+   4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. 6: a fold took
+   out of the outbox only ops Vikunja never made, and lost no change the user asked for (prune). A field a KNOWN bug
    met in the sequence may have left wrong is skipped. */
 function checks(w) {
   w.known({ via: 'sweep' });
@@ -1034,6 +1074,9 @@ function checks(w) {
   const made = new Map();
   for (const r of w.v.requests) if (r.key && !r.replayed) made.set(r.key, (made.get(r.key) || 0) + 1);
   for (const [key, n] of made) if (n > 1) out.push(`check 3: Vikunja made ${key} ${n} times`);
+  for (const x of w.pruned)
+    if (w.writes.some(h => h.e?.id === x.id && w.made(h)))
+      out.push(`check 6: a fold took ${x.op} on ${x.task} out of the outbox, and Vikunja made its request`);
   if (w.still()) out.push(...matches(w, false));
   return out;
 }
@@ -1112,8 +1155,9 @@ class Command {
   }
 }
 /* The fields of `sample`'s op on task `id`. A delete deletes the task and its subtasks as Vikunja has them, deepest
-   first, leaving out a subtask that has another parent, as the app reads them before it asks (taskTree). */
-function fieldsOn(sample, id, w) {
+   first, leaving out a subtask that has another parent, as the app reads them before it asks (taskTree). An op on a
+   parent names the `p`-th parent the task has. */
+function fieldsOn(sample, id, w, p = 0) {
   const copy = id => w.model.copies.get(id),
     live = list => (list || []).map(s => s.id).filter(x => w.v.tasks.has(x)),
     rel = (id, kind) => live(w.v.tasks.get(id)?.related_tasks?.[kind]);
@@ -1125,7 +1169,8 @@ function fieldsOn(sample, id, w) {
     return [sample.fields(ops, { id, project_id: 5, title: copy(id)?.title || '' })].flat();
   const f = { ...sample.fields, task: id };
   if ('ids' in f) f.ids = tree(id);
-  if ('up' in f) f.up = copy(id)?.related_tasks?.parenttask?.[0]?.id ?? null;
+  const ups = copy(id)?.related_tasks?.parenttask || [];
+  if ('up' in f) f.up = ups[p % Math.max(1, ups.length)]?.id ?? null;
   if (f.up === null) delete f.up;
   return [f];
 }
@@ -1139,22 +1184,22 @@ function canQueue(w, name, t) {
   return !!w.app.tasks[id] && !w.app.beingDeleted(id) && w.app.leaving[id] !== 'deleted';
 }
 class Queue extends Command {
-  constructor(name, t) {
+  constructor(name, t, p = 0) {
     super();
-    Object.assign(this, { sample: name, t });
+    Object.assign(this, { sample: name, t, p });
   }
   can(m) {
     return canQueue(m.w, this.sample, this.t);
   }
   async act(w) {
     const s = ALL[this.sample],
-      list = fieldsOn(s, w.target(this.t), w).map(f => ({ id: uuid7(), ...f })),
+      list = fieldsOn(s, w.target(this.t), w, this.p).map(f => ({ id: uuid7(), ...f })),
       f = list.at(-1);
     if (opOf(f).invert) w.undos.push(f);
     w.sending(s.queue ? s.queue(w.app, f) : w.app.actAll(list));
   }
   toString() {
-    return `Queue(${this.sample} on ${this.t})`;
+    return `Queue(${this.sample} on ${this.t}${this.p ? `, parent ${this.p}` : ''})`;
   }
 }
 // Send what waits, until a write is held. `retry` sends a change whose reply was lost, and the relay answers it from
@@ -1558,7 +1603,7 @@ const EDITS = [
   { due_date: '2026-10-19T09:00:00Z' },
 ];
 // fast-check picks each entry equally often, and skips a command that can't run, so the common ones are listed again.
-const queue = fc.tuple(fc.constantFrom(...Object.keys(ALL)), target).map(([n, t]) => new Queue(n, t)),
+const queue = fc.tuple(fc.constantFrom(...Object.keys(ALL)), target, fc.nat(1)).map(([n, t, p]) => new Queue(n, t, p)),
   answer = fc
     .tuple(fc.constantFrom('arrives', 'arrives', 'lost', 'late', 'unknown', 'refused'), fc.nat(3))
     .map(([how, i]) => new Answer(how, i));

@@ -233,12 +233,23 @@ test('the Undo of a subtask taken out leaves it alone once a teammate gave it an
     [[11], 'Not undone: “Kid 12” has changed since then'],
   );
 });
-test('taking a subtask out and putting it back, both made offline, cancel out', async c => {
+test('taking a subtask out and putting it back, both made offline, cancel out, and a link to another parent stays', async c => {
   const { v, app } = family(c);
   noConnection(app, v);
   const out = { op: 'unlink', task: 12, up: 10, over: 'Pack the van', was: [10], run: null };
   await app.actAll([out, { ...out, op: 'link', was: [] }]);
   assert.deepEqual([sync.all(1), app.tasks[12].related_tasks.parenttask.map(p => p.id)], [[], [10]]);
+  await app.actAll([out, { ...out, op: 'link', up: 11, over: 'Kid 11', was: [] }]);
+  assert.deepEqual(
+    [sync.all(1).map(e => [e.op, e.up]), app.tasks[12].related_tasks.parenttask.map(p => p.id)],
+    [
+      [
+        ['unlink', 10],
+        ['link', 11],
+      ],
+      [11],
+    ],
+  );
 });
 
 /* Moving a task to another project (moveTask, from "Move to another project" in the ⋯ menu or the Project row under
