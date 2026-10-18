@@ -672,7 +672,13 @@ class World {
     if (this.closed) throw new TypeError('Failed to fetch');
     const key = opts.headers?.['Idempotency-Key']?.replaceAll('"', '') || null,
       method = opts.method || 'GET';
-    if (key && this.unknownKeys.has(key)) return unknownReply();
+    // The relay answers a key it can't say anything of at once, but the op waits for that answer from when it sends.
+    if (key && this.unknownKeys.has(key)) {
+      const e = this.entryOf(key),
+        op = e && (this.ops.get(e.id) ?? this.ops.set(e.id, { e, spans: [] }).get(e.id));
+      if (op && !(op.spans.at(-1)?.[1] === Infinity)) op.spans.push([++this.seq, Infinity]);
+      return unknownReply();
+    }
     // A read that passes straight through starts as it reaches the fake Vikunja.
     if (method === 'GET') {
       const u = new URL(url),
@@ -2049,6 +2055,29 @@ test('a reload shows the copy the old page had, not one the phone kept before', 
       new Reload(false),
       new Sweep([]),
       new ClearBatch(),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A step being added by repeating step 2 is cancelled while its first request is on its way, whose reply is lost.
+   Sent again, the relay can't say whether Vikunja made it, and Cancel sends it once more. A read of step 2 that ran
+   while that request waited for the relay's answer is thrown away, and the read that follows decides. */
+test("a read that runs while the relay answers an op's request as unknown is left to the next read", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('addStep, repeated', 1),
+      new Send(false),
+      new Drop(0),
+      new Drop(0),
+      new Answer('lost', 0),
+      new Answer('unknown', 0),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
