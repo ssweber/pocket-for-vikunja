@@ -437,7 +437,7 @@ export const OP_WORDS = {
      is unknown. `gone` is what Cancel says once the op was sent in full. */
   startRun: {
     text: a => `${a.cancelled ? 'Cancelling the start of' : 'Starting'} “${a.template.title}”`,
-    refused: a => (a.cancelled ? 'Cleaning up a cancelled start' : 'Starting ' + a.template.title),
+    refused: a => (a.cancelled ? `Cancelling the start of “${a.template.title}”` : 'Starting ' + a.template.title),
     dropped: keeps(() => ''),
     gone: "The checklist had already started. Delete it from its ⋯ menu if you don't need it.",
   },
@@ -445,14 +445,16 @@ export const OP_WORDS = {
      what each made, so it says only "Cancelled." (dropped), or that Vikunja may or may not have a change whose answer
      is unknown. */
   makeTemplate: {
-    text: (a, title) => (a.cancelled ? `Cancelling ${task(title)} as a template` : `Making ${task(title)} a template`),
-    refused: (a, title) => (a.cancelled ? 'Cleaning up a cancelled template' : `Making ${task(title)} a template`),
+    text: (a, title) =>
+      a.cancelled ? `Cancelling Make template on ${task(title)}` : `Making ${task(title)} a template`,
+    refused: (a, title) =>
+      a.cancelled ? `Cancelling Make template on ${task(title)}` : `Making ${task(title)} a template`,
     dropped: keeps(() => ''),
   },
   templateStep: {
     text: (a, title) =>
       a.cancelled
-        ? `Removing “${named(a.p.title)}”, because its add was cancelled`
+        ? `Removing “${named(a.p.title)}”, because adding it was cancelled`
         : `Adding “${named(a.p.title)}” to ${task(title)}`,
     refused: a => `${a.cancelled ? 'Removing' : 'Adding'} “${named(a.p.title)}”`,
     dropped: keeps(() => ''),
@@ -460,7 +462,7 @@ export const OP_WORDS = {
   addStep: {
     text: a =>
       a.cancelled
-        ? `Removing “${named(a.title)}”, because its insert was cancelled`
+        ? `Removing “${named(a.title)}”, because adding it was cancelled`
         : `${a.from || a.tpl != null ? 'Repeated' : 'Inserted'} in ${a.runTitle}: “${named(a.title)}”`,
     refused: a =>
       a.cancelled

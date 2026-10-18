@@ -294,6 +294,28 @@ test('dropping a finish or a reopen says what Vikunja has, also when only its fi
   );
 });
 
+test('a cancelled start, Make template or added step names what is being cancelled, in its row and its refusal', () => {
+  const start = { op: 'startRun', cancelled: true, template: { title: 'Closing' } },
+    make = { op: 'makeTemplate', cancelled: true },
+    step = { op: 'templateStep', cancelled: true, p: { title: 'Wipe the till' } },
+    insert = { op: 'addStep', cancelled: true, title: 'Sweep up' };
+  assert.deepEqual(
+    [OP_WORDS.startRun.text(start), OP_WORDS.startRun.refused(start)],
+    ['Cancelling the start of “Closing”', 'Cancelling the start of “Closing”'],
+  );
+  assert.deepEqual(
+    [OP_WORDS.makeTemplate.text(make, 'Closing'), OP_WORDS.makeTemplate.refused(make, 'Closing')],
+    ['Cancelling Make template on “Closing”', 'Cancelling Make template on “Closing”'],
+  );
+  assert.deepEqual(
+    [OP_WORDS.templateStep.text(step, 'Closing'), OP_WORDS.addStep.text(insert)],
+    [
+      'Removing “Wipe the till”, because adding it was cancelled',
+      'Removing “Sweep up”, because adding it was cancelled',
+    ],
+  );
+});
+
 /* Pocket's copy of each task holds Vikunja's values. Task 7 is a subtask of 1. Without a copy, the words name the
    value before the change. */
 test("Cancel's words name each value as Pocket's copy of the task has it, and a partly sent op first says what Vikunja has", () => {
