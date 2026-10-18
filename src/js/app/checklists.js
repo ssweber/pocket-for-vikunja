@@ -32,6 +32,7 @@ import { jobsFor } from './sending.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
+import { movedSteps } from '../ops/index.js';
 import {
   copyOf,
   putting,
@@ -1242,7 +1243,7 @@ export default {
   /* Move a template's step by `dir` places: -1 moves it up and 1 moves it down. With `dragged`, the step moves as far
      as it was dragged. The order line is rewritten with every step. Pocket refuses a move that would create a problem
      the template didn't have, such as a step counting from a later step. A move that fixes an existing problem is
-     allowed. The move is applied to the order Vikunja has when the change is sent, and only the order line changes.
+     allowed. The move is an edit, made on the order Vikunja has when it is sent, and only the order line changes.
      So notes and moves saved elsewhere since the sheet opened are kept. */
   async moveStep(i, dir, dragged = false) {
     if (this.sheet.kind === 'newtpl') return this.placeDraftRow('new', i, i + dir); // on the phone only, so just reorder the rows
@@ -1251,69 +1252,28 @@ export default {
       to = i + dir,
       rest = this.subtasks.filter((_, k) => k !== i);
     if (!t || !st || this.sheet.checklistBusy || to < 0 || to >= this.subtasks.length || !dir) return;
-    const after = to > 0 ? rest[to - 1].id : null;
-    // The steps in their new order, or null if nothing moves. Throws for a problem the move creates.
-    const moved = steps => {
-      const k = steps.findIndex(s => s.id === st.id),
-        others = steps.filter(s => s.id !== st.id);
-      if (k < 0) return null;
-      const at = after === null ? 0 : others.findIndex(s => s.id === after) + 1;
-      const place = !dragged ? k + dir : at > 0 || after === null ? at : Math.min(to, others.length);
-      if (place === k || place < 0 || place > others.length) return null;
-      const out = [...others.slice(0, place), steps[k], ...others.slice(place)];
-      const before = stepProblems(steps.map(s => s.title));
-      const fresh = stepProblems(out.map(s => s.title)).filter(
-        p => !before.some(b => b.text === p.text && b.title === p.title),
-      );
-      if (fresh.length) throw new Error(problemText(fresh.map(p => ({ ...p, i: steps.indexOf(out[p.i]) })))); // by its number on screen
-      return out;
+    // The move, as an edit's order (movedSteps, ops/edit.js), with where the step was for its Undo.
+    const m = {
+      step: st.id,
+      dir,
+      after: to > 0 ? rest[to - 1].id : null,
+      to,
+      dragged,
+      from: this.subtasks[i - 1]?.id ?? null,
+      at: i,
     };
-    let steps;
     try {
-      steps = moved(this.subtasks);
+      if (!movedSteps(this.subtasks, m)) return;
     } catch (e) {
       this.say('Not moved: ' + e.message, { place: 'sheet:subtasks', cls: 'failed' });
       return;
     }
-    if (!steps) return;
     const box = document.getElementById('step-edit-' + st.id);
-    const shown = this.change(w =>
-      w.edit(t.id, {
-        description: withOrder(
-          t.description,
-          steps.map(s => s.id),
-        ),
-      }),
-    ); // shown in the new order straight away
+    const sending = this.act({ op: 'edit', task: t.id, run: null, rebase: 'order', moves: [m] }); // shown at once
+    this.sheet.dirty = true;
     // Moving the row takes the focus off its box. Give the focus back before the row's focusout handler runs, so the
     // step stays open and can move again.
     if (box && box === document.activeElement) setTimeout(() => box.isConnected && box.focus({ preventScroll: true }));
-    this.sheet.checklistBusy = true;
-    try {
-      const got = await patiently(() =>
-        this.saveTask(t.id, null, now => {
-          const s = moved(stepsOf(now));
-          return (
-            s && {
-              description: withOrder(
-                now.description,
-                s.map(x => x.id),
-              ),
-            }
-          );
-        }),
-      );
-      this.change(() => shown.ok());
-      if (this.sheet.id === t.id) {
-        this.showTask(got);
-        this.unsay('sheet:subtasks');
-      } // clear the message from an earlier failed move
-      this.sheet.dirty = true;
-    } catch (e) {
-      this.change(() => shown.undo());
-      this.say('Not moved: ' + why(e), { place: 'sheet:subtasks', cls: 'failed' });
-    } finally {
-      this.sheet.checklistBusy = false;
-    }
+    if ((await sending).status === 'sent' && this.sheet.id === t.id) this.unsay('sheet:subtasks'); // an earlier refusal
   },
 };

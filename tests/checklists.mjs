@@ -181,7 +181,6 @@ const stepBox = async n => {
 // Swipes the step all the way left to delete it. The confirmation dialog is accepted by the handler above.
 const removeStep = n => swipeRow(page, `#d-subtasks .row:nth-of-type(${n})`, 'delete');
 // Waits until the sheet has finished saving or rejecting a step move.
-const stepsSettled = () => page.waitForFunction(() => !Alpine.$data(document.body).sheet.checklistBusy);
 // Holds step n's row, drags it past the first few pixels (so it counts as a drag), on to the middle of step `to`'s row,
 // and releases it there.
 async function dragStep(n, to) {
@@ -563,57 +562,54 @@ try {
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")', {
       timeout: 15000,
     });
-    // If the connection drops during a move, the step goes back where it was and a message says "Not moved".
-    await page.route(`**/api/v2/tasks/${template.id}`, r =>
+    // A move made while the connection is down shows at once, waits in the Outbox, and is sent once Pocket is back
+    // online.
+    await page.route(`**/v2/tasks/${template.id}`, r =>
       r.request().method() === 'PATCH' ? r.abort('internetdisconnected') : r.continue(),
     );
     await tapStep(2, 'Move down');
-    await said('sheet:subtasks', 'Not moved');
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
+    if ((await subtasks(template.id)).map(s => s.title)[1] !== STEPS[2])
+      throw new Error('the step moved in Vikunja while the connection was down');
     await page.unrouteAll();
     await online();
-    await toastGone();
-    if ((await subtasks(template.id)).map(s => s.title)[1] !== STEPS[2])
-      throw new Error('the step moved in Vikunja anyway');
-    // Moving a step above the step it counts from is rejected before any request is sent.
-    await stepsSettled();
-    await tapStep(2, 'Move up');
-    await said(
-      'sheet:subtasks',
-      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
-    );
-    if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('the step moved anyway');
-    await stepsSettled();
-    await tapStep(2, 'Move down');
     await until(
-      'the step never moved back',
+      'the waiting move never reached Vikunja',
       async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS),
     );
-    await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
-    // The reply to a move is lost. Vikunja has still saved the move, so Pocket must not show "Not moved".
+    await synced(page);
+    // The reply to a move is lost. The move is sent again with its key, and Vikunja makes it once.
     const loseReply = async r => {
       if (r.request().method() !== 'PATCH') return r.fallback();
       await r.fetch();
       return r.abort('connectionreset');
     };
-    await page.route(`**/api/v2/tasks/${template.id}`, loseReply);
+    await page.route(`**/v2/tasks/${template.id}`, loseReply);
     await toastGone().catch(() => {});
     await tapStep(2, 'Move down');
     await until(
       'the move never reached Vikunja',
       async () => (await subtasks(template.id)).map(s => s.title)[1] === STEPS[2],
     );
-    await stepsSettled(); // saving has finished
-    await page.unroute(`**/api/v2/tasks/${template.id}`, loseReply);
+    await page.unroute(`**/v2/tasks/${template.id}`, loseReply);
+    await online();
+    await synced(page);
     if (await page.$('.place-line:has-text("Not moved")')) throw new Error('the sheet shows "Not moved"');
     await page.waitForSelector('#d-subtasks .row:nth-of-type(2) .title:text-is("First article check")');
+    // Moving a step above the step it counts from is rejected before any request is sent.
+    await tapStep(2, 'Move up');
+    await said(
+      'sheet:subtasks',
+      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
+    );
+    if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('the step moved anyway');
     await tapStep(3, 'Move up');
     await until(
-      'the step never moved back again',
+      'the step never moved back',
       async () => JSON.stringify((await subtasks(template.id)).map(s => s.title)) === JSON.stringify(STEPS),
     );
     await page.waitForSelector('#d-subtasks .row:nth-of-type(3) .title:text-is("First article check")');
-    await stepsSettled();
+    await synced(page);
     // Saving a move changes only the order, and saving notes changes only the notes, using what Vikunja has when the
     // request is sent. So a change made elsewhere (the web app, another phone) since the sheet opened is kept.
     const ids = (await subtasks(template.id)).map(s => s.id),

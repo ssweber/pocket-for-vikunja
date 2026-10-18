@@ -10,6 +10,7 @@ import { started, TASK } from '../../src/js/app/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { taskDrafts } from '../../src/js/util.js';
 import sheet from '../../src/js/app/sheet.js';
+import checklists from '../../src/js/app/checklists.js';
 
 // A sender whose tasks have rows and copies.
 const listed = (t, list) => {
@@ -254,5 +255,32 @@ test('notes changed elsewhere while the user wrote come back to the sheet with b
   assert.deepEqual(
     [lastSaid(app).row.id, lastSaid(app).action.label, taskDrafts.get('desc:7')],
     [7, 'Open', { text: 'Yellow cloth', base: 'Green cloth' }],
+  );
+});
+test("a template's step moves at once in its sheet, and a move that gives the template a problem is refused before it is sent", async t => {
+  const steps = [
+    { id: 2, title: 'Check the guards {#check-the-guards}' },
+    { id: 3, title: 'Warm up the press T#30m' },
+    { id: 4, title: 'First article check T#2h:check-the-guards' },
+  ];
+  const tpl = { id: 7, title: 'TEMPLATE: Press', done: true, description: '', related_tasks: { subtask: steps } };
+  const { v, app } = inSheet(t, [tpl, ...steps.map(s => ({ ...s, description: '' }))]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
+  app.role = x => (x?.id === 7 ? 'template' : 'tplstep');
+  document.getElementById = () => null;
+  t.after(() => delete document.getElementById);
+  const order = () => app.subtasks.map(s => s.id);
+  const moving = app.moveStep(2, -1);
+  assert.deepEqual(order(), [2, 4, 3], 'the step moves before Vikunja answers');
+  await moving;
+  assert.deepEqual(sent(v), [{ description: '<p>pocket:order 2 4 3</p>' }]);
+  await app.moveStep(1, -1);
+  assert.deepEqual(
+    [order(), sent(v).length, lastSaid(app).msg],
+    [
+      [2, 4, 3],
+      1,
+      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
+    ],
   );
 });
