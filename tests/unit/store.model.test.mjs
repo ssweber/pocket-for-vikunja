@@ -1960,6 +1960,34 @@ test('a Cancel that sends nothing leaves a read of the task it would change to b
   }
 });
 
+/* A line with a person and a progress makes its task in Vikunja, and its progress's request is on its way as Pocket
+   reloads. The new page sends it again, and the relay can't say whether Vikunja made it. The new page knows the task
+   the line made from its entry, so it reads that task again, and doesn't keep the old copy the phone had of it. */
+test('a task a line made before a reload is read again when its next answer is unknown', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('add, with a label and a person', 1),
+      new Send(false),
+      new Answer('arrives', 0),
+      new Answer('refused', 0),
+      new Answer('arrives', 0),
+      new Sweep([]),
+      new Answer('arrives', 0),
+      new Reload(false),
+      new Sheet(1, 'assign'),
+      new Answer('unknown', 0),
+      new Sweep([]),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
 /* A step's progress reaches Vikunja, and a teammate changes it. The connection drops before the checklist's progress
    is sent, and Pocket reloads. The new page reads the teammate's change, then sends the checklist's progress fresh.
    The step's progress counts from when the page before sent it, so it doesn't overwrite the teammate's change. */

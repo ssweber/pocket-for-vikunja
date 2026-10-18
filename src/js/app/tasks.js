@@ -175,6 +175,8 @@ export const sendingOp = a => {
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
       for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
     }
+  // The task the op made, as an earlier try or page kept it, is one its later requests change.
+  if (typeof a.taskId === 'number') on[a.taskId] ||= {};
   const w = writes(on, !!was);
   Object.assign(w, { at: firstSent(a) ?? w.at, start: was?.start ?? w.at });
   opWrites.set(a.id, w);
