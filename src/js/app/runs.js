@@ -260,6 +260,8 @@ export default {
       edit.people = [this.user];
     }
   },
+  /* Rename the checklist as an `edit` op, which its screen and rows show at once. Offline it waits in the Outbox. A
+     refusal waits there too, the sender says so, and the box shows the name the checklist has again. */
   async saveRunName() {
     const e = this.sheet.runEdit,
       run = this.runTask,
@@ -270,17 +272,16 @@ export default {
     }
     const title = !e.prefix ? name : (e.old ? [e.prefix, name, e.day] : [e.prefix, e.day, name]).join(' · ');
     if (title === run.title) return;
-    try {
-      await this.saveTask(run.id, { title });
-      e.was = name;
-      this.saveRun();
-      this.say('Renamed', { place: 'sheet:top' });
-    } catch (err) {
-      this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {
-        place: 'sheet:top',
-        cls: 'failed',
-      });
+    e.was = name;
+    const r = await this.act({ op: 'edit', task: run.id, set: { title }, was: { title: run.title } });
+    if (r.status === 'error') {
+      const now = this.runTask || run,
+        p = runParts(now.title, now.created, true);
+      e.name = e.was = p ? p.name : now.title;
+      return;
     }
+    this.saveRun();
+    this.say('Renamed', { place: 'sheet:top' });
   },
   /* Keep at least one assignee when changing who the run is for. The person is assigned or unassigned as an `assign`
      op, which changes the people Vikunja has by that one, so a step claimed meanwhile keeps its claim. Offline it

@@ -296,3 +296,30 @@ test("a step's asks are written over the ask lines Vikunja has when they are sen
   await settle(t, () => !sync.all(1).length);
   assert.equal(v.task(7).description, '<p>Use the probe</p><p>pocket:ask number °F</p>');
 });
+
+test("a checklist's new name shows at once, waits in the Outbox offline, and goes back when Vikunja refuses it", async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Closing · Oct 3 · #1', description: '' }]);
+  Object.assign(app, { saveRun() {}, refreshRunTask() {} });
+  app.view.shownRun = { id: 1, steps: [] };
+  const named = name => {
+    app.sheet.runEdit = { prefix: 'Closing', day: 'Oct 3', old: false, name, was: '#1' };
+    return app.saveRunName();
+  };
+  noConnection(app, v);
+  await named('Night shift');
+  assert.deepEqual(
+    [app.tasks[1].title, app.sheet.runEdit.was, sync.all(1).length, lastSaid(app).msg],
+    ['Closing · Oct 3 · Night shift', 'Night shift', 1, 'Renamed'],
+  );
+  v.trouble = r => (r.method === 'PATCH' ? 403 : null);
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => sync.all(1).every(e => e.failed));
+  for (const e of sync.all(1)) await app.dropAct(e.id);
+  await named('Day shift');
+  assert.deepEqual(
+    [app.tasks[1].title, app.sheet.runEdit.name, v.task(1).title],
+    ['Closing · Oct 3 · #1', '#1', 'Closing · Oct 3 · #1'],
+    'the box shows the name the checklist has again',
+  );
+});
