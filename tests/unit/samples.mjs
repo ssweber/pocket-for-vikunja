@@ -130,11 +130,18 @@ export const SAMPLES = {
     },
     made: v => !v.task(3) && v.task(1).percent_done === 1,
   },
-  // A checklist deleted with its steps, sent at once with no Restore, as from its sheet (deleteRun).
+  /* A checklist deleted with its steps, sent at once with no Restore, as from its sheet (deleteRun). Its entry takes
+     the sample's id, which deleteNow would otherwise make. Two deletes may wait for the outbox at once, so each
+     wrapper of deleteOf names only its own tree. */
   'delete, with no Restore': {
     op: 'delete',
     tasks: checklist(),
     fields: { op: 'delete', task: 1, ids: [2, 3, 1], run: null },
+    queue(app, f) {
+      const of = app.deleteOf;
+      app.deleteOf = tree => ({ ...of.call(app, tree), ...(tree === f.ids && { id: f.id }) });
+      return app.deleteNow([f.ids]);
+    },
     made: v => ![1, 2, 3].some(id => v.task(id)),
     cannot: ['partly done'],
   },

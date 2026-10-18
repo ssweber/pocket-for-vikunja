@@ -236,19 +236,7 @@ export default {
     let was = null;
     await sync.lock(async () => {
       const e = (was = await sync.fresh(id));
-      if (!e) return;
-      // A second tap, from a list read before the first, finds the op cancelled already, and its stages stay as they are.
-      if (e.sent) {
-        if (!e.cancelled) await sync.save(cancelling(e));
-      } else {
-        await sync.remove(id);
-        this.unmade(id);
-      }
-      for (const x of sync.all(e.user))
-        if (x.kind === 'act' && x.task === 'pending-' + id) {
-          await sync.remove(x.id);
-          this.unmade(x.id);
-        }
+      if (e) await this.unmake(e);
     });
     if (was?.sent) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
@@ -262,5 +250,21 @@ export default {
     this.render();
     this.flush(); // sends the ops that waited behind it
     return !was;
+  },
+  /* Cancel op `e`, whose cancel is 'unmade', inside the outbox's lock. Not sent yet, it leaves the outbox. Sent, it is
+     marked to delete what it made (cancelling). The ops waiting on a step it was adding leave with it. */
+  async unmake(e) {
+    // A second tap, from a list read before the first, finds the op cancelled already, and its stages stay as they are.
+    if (e.sent) {
+      if (!e.cancelled) await sync.save(cancelling(e));
+    } else {
+      await sync.remove(e.id);
+      this.unmade(e.id);
+    }
+    for (const x of sync.all(e.user))
+      if (x.kind === 'act' && x.task === 'pending-' + e.id) {
+        await sync.remove(x.id);
+        this.unmade(x.id);
+      }
   },
 };

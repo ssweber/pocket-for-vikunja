@@ -15,6 +15,7 @@ import { api } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { figure } from '../../src/js/ops/stages.js';
+import { SAMPLES } from './samples.mjs';
 
 /* The app with every part a delete sent at once goes through, signed in, with Vikunja's tasks read into the store and
    each given a row. */
@@ -184,6 +185,40 @@ test('a checklist deleted while a tick on its step waits takes the tick out of t
   await app.deleteRun(1);
   assert.deepEqual([sync.all(1), v.requests.filter(r => r.method === 'PATCH')], [[], []], 'only the deletes are sent');
   assert.deepEqual([...v.tasks.keys()], []);
+});
+
+test('a change waiting on a task the delete leaves alone stays, and is sent', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = closing(),
+    app = onRun(v);
+  app.offline = true;
+  await app.act({ op: 'undone', task: 2, run: 1 });
+  app.offline = false;
+  await app.deleteNow([[3]]);
+  assert.deepEqual(
+    [sync.all(1), v.task(2).done, v.tasks.has(3)],
+    [[], false, false],
+    'the untick of step 2 reaches Vikunja, and step 3 is deleted',
+  );
+});
+
+/* A start of template 7 that Vikunja refused partway has made the checklist and its steps. Deleting the template then
+   cancels the start, whose Cancel stages delete what it made, since the template's tree doesn't hold those tasks. */
+test('a template deleted while a refused start of it waits deletes the checklist the start made', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja(structuredClone(SAMPLES.startRun.tasks));
+  v.labels.push(...SAMPLES.startRun.labels);
+  const app = sender(v);
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  // Vikunja refuses the checklist's people, after the copies are made.
+  v.trouble = r => (r.method === 'PUT' && /assignees/.test(r.path) ? 403 : null);
+  assert.equal((await app.act({ id: uuid7(), ...SAMPLES.startRun.fields(OPS) })).status, 'error');
+  assert.deepEqual([...v.tasks.keys()], [7, 8, 9, 101, 102, 103]);
+  v.trouble = () => null;
+  await app.deleteNow([[8, 9, 7]]);
+  assert.deepEqual([[...v.tasks.keys()], sync.all(1)], [[], []]);
 });
 // The parts needed to send a deletion are what is waiting and the outbox's acts (runs.js), on the fake component.
 const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));

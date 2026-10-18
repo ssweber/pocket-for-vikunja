@@ -439,7 +439,7 @@ class World {
       runs,
       pick(
         actions,
-        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'deleteOf', 'parentIdOf'],
+        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'deleteNow', 'deleteOf', 'parentIdOf'],
         ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'sendSet'],
       ),
       leaving,
@@ -1642,8 +1642,9 @@ test('a date taken off with done takes nothing into the copy when a teammate mak
 });
 
 /* A step repeated in checklist 1 is a copy of step 2, which then lists the copy as copied to it. Vikunja's answer to a
-   later request of the repeat is unknown, and so is its answer to the checklist's delete. Cancel of the repeat deletes
-   the copy, and step 2's copy stops listing it, which is no news of the repeat's own change. */
+   later request of the repeat is unknown. Deleting the checklist then cancels the repeat, which deletes the copy, and
+   step 2's copy stops listing it, which is no news of the repeat's own change. Vikunja's answer to the checklist's
+   delete is unknown too. */
 test("a copy a cancelled step made leaves its source step's links when it is deleted", async t => {
   const w = await open(t.mock.timers);
   try {
@@ -1654,6 +1655,7 @@ test("a copy a cancelled step made leaves its source step's links when it is del
       new Answer('arrives', 0),
       new Queue('delete, with no Restore', 1),
       new Answer('unknown', 0),
+      new Answer('arrives', 0),
       new Send(false),
       new Answer('unknown', 0),
       new Queue('done', 1),

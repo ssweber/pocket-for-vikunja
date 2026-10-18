@@ -57,9 +57,9 @@ const tab = async name => {
         ].map(p => `../../src/js/${p}.js`),
       ].map(from),
     );
-  // A delete is held for Restore and sent as the app sends it (holdDelete, sendHeld).
+  // A delete is held for Restore and sent as the app sends it (holdDelete, sendHeld), or sent at once (deleteNow).
   const deletes = Object.fromEntries(
-    ['holdDelete', 'sendHeld', 'deleteOf', 'parentIdOf'].map(k => [k, actions.default[k]]),
+    ['holdDelete', 'sendHeld', 'deleteNow', 'deleteOf', 'parentIdOf'].map(k => [k, actions.default[k]]),
   );
   return {
     fake,

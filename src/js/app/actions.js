@@ -22,7 +22,7 @@ import { stepsOf, vikunjaNext } from '../checklists.js';
 import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks } from '../order.js';
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
-import { addLines, movedFrom, personOf, tagOf, waitingPositions } from '../ops/index.js';
+import { addLines, cancelling, cancelOf, movedFrom, opOf, personOf, tagOf, waitingPositions } from '../ops/index.js';
 import { copyOf, opsId } from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
@@ -848,14 +848,19 @@ export default {
     return { op: 'delete', run: null, task, ids: tree, ...(typeof up === 'number' && !tree.includes(up) && { up }) };
   },
   /* Delete each of `trees` (deleteOf) at once, with no Restore. Nothing can bring those tasks back, so the changes
-     still waiting on them leave the outbox first, as Cancel takes them out. Returns how sending went (actAll). */
+     not sent or refused on them leave the outbox first, as Cancel takes them out. One that made tasks, such as a
+     refused start of a template, deletes them with its Cancel stages, sent before the delete, since the tasks it made
+     may not be among `trees`. Returns how sending went (actAll). */
   async deleteNow(trees) {
     const ids = new Set(trees.flat());
     await sync.lock(async () => {
       for (const e of sync.all(this.user?.id))
         if (e.kind === 'act' && ids.has(opsId(e.task)) && (!e.sent || e.failed)) {
-          await sync.remove(e.id);
-          this.unmade(e.id);
+          if (cancelOf(e) === 'unmade' && (!e.sent || opOf(e).deletes(cancelling(e)).length)) await this.unmake(e);
+          else {
+            await sync.remove(e.id);
+            this.unmade(e.id);
+          }
         }
     });
     return this.actAll(trees.map(tree => this.deleteOf(tree)));
