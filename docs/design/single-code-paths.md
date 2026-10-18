@@ -30,6 +30,8 @@ Built on `dev`, and described by the code and its comments:
   sending the set Vikunja has with one change;
 - every delete of a task as a `delete` op: held for Restore from a row or a task's sheet, and sent at once from
   everywhere else (`deleteNow`), which first takes the changes still waiting on those tasks out of the outbox;
+- starting a checklist and adding a step to one as `startRun` and `addStep` ops, which keep what they made in their
+  entry. Cancel, and a start's Undo, delete it with the same op marked `cancelled`;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
 - the lifecycle test and the randomized store test.
@@ -87,9 +89,9 @@ and empty the Outbox on each phone, before the next phone check.
 One phase, with one review. Its four parts are built: ticks and progress, the sheet's fields, a move to another
 project with links, and people and labels. These are left:
 
-- Delete `saveTask` with its last caller. It still saves a parent's progress (`writeFigure`), a checklist's name
-  (`saveRunName`), a template step's name and asks (`saveStepEdit`, `saveAskRows`), and a step's place among a
-  template's steps after the template editor adds it or in a checklist (`INSERT_STEPS`). Phase 10 makes them ops.
+- Delete `saveTask` with its last caller. It still saves a checklist's name (`saveRunName`), a template step's name
+  and asks (`saveStepEdit`, `saveAskRows`), and a step's place among a template's steps after the template editor adds
+  it. Phase 10 makes them ops.
 - The store's `edit()` writer stays while something lays fields over a row outside the outbox: `undoOps` shows an
   Undo at once, `arrivedDone` holds a repeating task's dates until its batch clears, and `saveStepEdit` saves
   directly. Phase 10 deletes it, with its bookkeeping in tasks.js (`edits`, `ended`), once `saveStepEdit` is an op.
@@ -98,42 +100,37 @@ project with links, and people and labels. These are left:
   except a tick, an untick, a progress, a finish, a reopen, an edit, a move, a link or unlink, an `assign` and a
   `label`, whose `refusal` drops it ('dropped').
 - Carried forward: dropping a failed add with no waiting neighbour leaves its parent's progress unwritten.
-- `writeFigure` is a direct save still used by a step inserted in a checklist (`INSERT_STEPS`, phase 10). It becomes
-  an op that writes the progress in its last stage, as a tick does (`figure`). `linkSubtask` is still called outside
-  an op by `RUN_STEPS` and `INSERT_STEPS`, until phase 10.
 - A move takes the subtasks Pocket knows of when it is queued (`subtaskTree`). Offline, a subtask Pocket never read
   moves without its own subtasks.
 - The Undo of a repeating task's tick whose answer this tab never saw, as when the relay can't say whether Vikunja made
   it, has no dates to check against. It counts any date other than the one before as changed since.
 - A template step's people and labels are still set and removed directly in its edit box (`saveStepEdit`, through
-  `createTask` and a `DELETE` each), and a checklist's first people are set directly as it starts (`sync.js`). Phase
-  10 makes them ops. The example template's first step is assigned directly, as seeding it stays direct.
+  `createTask` and a `DELETE` each). Phase 10 makes them ops. The example template's first step is assigned directly, as seeding it stays direct.
 - No screen offers an Undo for a person or a label. Their ops have an `invert`, which Make template uses to take back
   its label when it can't be sent.
 
 ### 10. Checklists and files
 
-- `startRun` and `addStep` become keyed ops (named after the methods that queue them today). `RUN_STEPS` and
-  `INSERT_STEPS` become their stages. Then renames and step edits, as `edit` ops, and answers (asks.js).
-- Delete `findCopy`, `duplicate`'s bookkeeping and `hasAttachment`. `claims` becomes a plain record of which task each
-  entry made.
-- The three callers of `createTask` outside the outbox (the template editor, a step's new title, a step inserted in a
-  checklist) queue ops.
+Part (a), starting a checklist and adding a step to one, is built. Part (b) is the rest:
+
+- Renames and step edits, as `edit` ops, and answers (asks.js).
+- Delete `hasAttachment` once a file's upload is sent with a key. The upload's body is a form whose boundary changes
+  with each send, and the relay answers a key sent again with another body with 422. So the body must be built once.
+- The two callers of `createTask` outside the outbox (the template editor, a step's new title) queue ops.
 - Make template writes directly once its label is sent (`markTemplate`): it marks the steps done, marks the template
   done and renames it, and deletes a "copied from" link. Adding steps under a template (`addTemplateSteps`) renames
   the steps the new steps count from, and marks the new steps done, directly too. They become ops.
-- `untick` (runs.js), the start's Undo for the template it ticked, becomes the `invert` of the start's `tick` stage.
-- The deletes still sent directly belong to a start or an add: a cancelled start's copies (`unstart`), a step
-  insert's partial copy (`sendStep`, `unsendStep`), a step the template editor made but couldn't link
-  (`addTemplateSteps`), and the template label taken off a new checklist (`RUN_STEPS`). Each becomes a stage of that
-  op.
+- The delete still sent directly belongs to the template editor: a step it made but couldn't link
+  (`addTemplateSteps`). It becomes a stage of that op.
 - Once these are ops, every change goes through the Outbox except what stays direct (below). Then the offline line in
   `app.html` becomes "Offline. Changes wait in the Outbox." (the user's words, agreed on 2026-10-16), with the time of
   the saved screen as now, and `docs/guide.md` says the same. Until then, renaming a checklist, editing a template's
   steps and Make template save directly, and need a connection.
 - Remove the last files from the writes allowlist, except what stays direct (below). Turn on the keys rule.
-- From the Veyrn comparison: an op on a checklist step that was never added stays failed. It should leave with the
-  step's add.
+- Left by part (a): the Undo of a start whose copy of the template came back unknown can't find that copy, and leaves
+  it (the lifecycle test's KNOWN). The Outbox offers no Cancel for a start or an added step that has sent a request and
+  waits, as for any op, though its row's × still cancels it. A start or a step an older Pocket saved before they were
+  ops is dropped unsent, leaving any copy it made.
 
 **What stays direct.** These need Vikunja's answer before anything else can happen, and the user waits for it on
 screen: signing in, creating a project (the Checklists project included), renaming, archiving and deleting a
