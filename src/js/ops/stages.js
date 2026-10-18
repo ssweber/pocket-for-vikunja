@@ -2,8 +2,9 @@
 // write with its own key, `c.read` a plain read, and `c.once` a body built once and kept in the entry.
 import { ApiError } from '../api.js';
 import { changedSince } from '../messages.js';
+import { sync } from '../sync.js';
 import { TASK } from '../app/tasks.js';
-import { DONE_MARK, SKIP_MARK } from '../checklists.js';
+import { DONE_MARK, placeBefore, SKIP_MARK, stepOrder, stepsOf, withOrder } from '../checklists.js';
 import { figurePatch } from '../progress.js';
 import { plainReminders, reminderKey } from '../dates.js';
 
@@ -117,3 +118,48 @@ export const backOf = (a, c, back, check) =>
     if (left && t) c.task = t;
     return { body, left };
   });
+
+/* ---------- shared by the ops that make tasks (runs.js) ---------- */
+export const notFound = e => {
+  if (e.status !== 404) throw e;
+};
+// Delete task `id`. A task deleted in the meantime is not an error.
+export const remove = (c, id) => c.send('/tasks/' + id, { method: 'DELETE', on: { [id]: {} } }).catch(notFound);
+/* The stages a cancelled op is sent in: the stages it had sent (`cut` of them), then the ones that delete what it
+   made. A fresh op that takes back another, such as a start's Undo, has only the latter. */
+export const cancelledStages = (doing, undoing) => a =>
+  a.cancelled ? [...doing(a).slice(0, a.cut || 0), ...undoing] : doing(a);
+/* Put the step before the step it was inserted at (`before`), in the checklist's order as Vikunja has it when this
+   stage is first sent, so a step inserted in the meantime stays. If that step was deleted in the meantime, put it after
+   the step it was inserted under (`after`). */
+export async function place(a, c) {
+  const body = await c.once('order', async () => {
+    const t = await c.read('/tasks/' + a.task);
+    if (stepOrder(t.description)?.includes(a.taskId)) return null;
+    const after = typeof a.after === 'string' ? sync.taskOf(a.after.replace(/^pending-/, '')) : (a.after ?? null),
+      ids = stepsOf(t)
+        .map(s => s.id)
+        .filter(id => id !== a.taskId);
+    return { description: withOrder(t.description, placeBefore(ids, a.taskId, a.before, after)) };
+  });
+  if (body) await patch(a, c, body);
+}
+export const unadd = async (a, c) => {
+  if (a.taskId) await remove(c, a.taskId);
+};
+// The step leaves the checklist's order line, and the checklist's progress is written without it.
+export async function unplace(a, c) {
+  const body = await c.once('unorder', async () => {
+    const t = await now(a, c),
+      ids = stepOrder(t?.description);
+    return ids?.includes(a.taskId)
+      ? {
+          description: withOrder(
+            t.description,
+            ids.filter(id => id !== a.taskId),
+          ),
+        }
+      : null;
+  });
+  if (body) await patch(a, c, body);
+}

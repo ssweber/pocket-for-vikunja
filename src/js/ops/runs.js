@@ -11,9 +11,6 @@ import {
   isTemplateLabel,
   nextAfter,
   notesOnly,
-  placeBefore,
-  stepOrder,
-  stepsOf,
   vikunjaNext,
   withAdded,
   withOrder,
@@ -22,20 +19,11 @@ import {
 } from '../checklists.js';
 import { TASK } from '../app/tasks.js';
 import { LINE } from './add.js';
-import { figureOf, now, patch } from './stages.js';
+import { cancelledStages, figureOf, notFound, now, patch, place, remove, unadd, unplace } from './stages.js';
 
 const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
-const notFound = e => {
-  if (e.status !== 404) throw e;
-};
 // Copy task `from` with Vikunja's duplicate, which copies its notes, labels, people and files.
 const duplicate = async (c, from) => (await c.send(`/tasks/${from}/duplicate`, { method: 'POST' })).duplicated_task;
-// Delete task `id`. A task deleted in the meantime is not an error.
-const remove = (c, id) => c.send('/tasks/' + id, { method: 'DELETE', on: { [id]: {} } }).catch(notFound);
-/* The stages a cancelled op is sent in: the stages it had sent (`cut` of them), then the ones that delete what it
-   made. A fresh op that takes back another, such as a start's Undo, has only the latter. */
-const cancelledStages = (doing, undoing) => a =>
-  a.cancelled ? [...doing(a).slice(0, a.cut || 0), ...undoing] : doing(a);
 
 /* ---------- starting a checklist ---------- */
 
@@ -252,46 +240,12 @@ async function mark(a, c) {
     if (t) w.answer([t], TASK, c.from(t));
   });
 }
-/* Put the step before the step it was inserted at (`before`), in the checklist's order as Vikunja has it when this
-   stage is first sent, so a step inserted in the meantime stays. If that step was deleted in the meantime, put it after
-   the step it was inserted under (`after`). */
-async function place(a, c) {
-  const body = await c.once('order', async () => {
-    const t = await c.read('/tasks/' + a.task);
-    if (stepOrder(t.description)?.includes(a.taskId)) return null;
-    const after = typeof a.after === 'string' ? sync.taskOf(a.after.replace(/^pending-/, '')) : (a.after ?? null),
-      ids = stepsOf(t)
-        .map(s => s.id)
-        .filter(id => id !== a.taskId);
-    return { description: withOrder(t.description, placeBefore(ids, a.taskId, a.before, after)) };
-  });
-  if (body) await patch(a, c, body);
-}
 // A new step at 0% lowers the checklist's progress, which is written once the step is in it.
 const figure = (a, c) => figureOf(c, a.task);
 const [prepare, made, label, people, link] = LINE;
 const ADDS = a =>
   a.from ? [copy, link, mark, place, figure] : [prepare, made, label, people, link, mark, place, figure];
 
-const unadd = async (a, c) => {
-  if (a.taskId) await remove(c, a.taskId);
-};
-// The step leaves the checklist's order line, and the checklist's progress is written without it.
-async function unplace(a, c) {
-  const body = await c.once('unorder', async () => {
-    const t = await now(a, c),
-      ids = stepOrder(t?.description);
-    return ids?.includes(a.taskId)
-      ? {
-          description: withOrder(
-            t.description,
-            ids.filter(id => id !== a.taskId),
-          ),
-        }
-      : null;
-  });
-  if (body) await patch(a, c, body);
-}
 const refigure = (a, c) => figureOf(c, a.task, 'refigure');
 
 /* A step added to checklist `task`: inserted from the checklist's add box, with what quick add parsed (`p`), or
