@@ -168,7 +168,7 @@
           <span class="bars" :class="'p' + (sheetTask.priority || 0)" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
           <span x-text="PRIOS[sheetTask.priority || 0].label"></span>
           <svg class="i prio-chev" aria-hidden="true"><use href="#i-chev"/></svg>
-          <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="save({priority: +$event.target.value})">
+          <select id="d-prio" aria-label="Priority" :disabled="!canEdit" @change="setPriority(+$event.target.value)">
             <template x-for="p in PRIOS" :key="p.n"><option :value="p.n" :selected="(sheetTask.priority || 0) === p.n" x-text="p.label"></option></template>
           </select>
         </span></div></template>

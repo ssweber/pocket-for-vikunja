@@ -11,6 +11,9 @@ import sending from '../../src/js/app/sending.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
 import checklists from '../../src/js/app/checklists.js';
+import acts from '../../src/js/app/acts.js';
+import outbox from '../../src/js/app/outbox.js';
+import { sync } from '../../src/js/sync.js';
 
 test('saves to a task go one after another, in the order they were made', async () => {
   const v = fakeVikunja([{ id: 1, title: 'A', done: false }]),
@@ -40,8 +43,14 @@ test('a title being edited is saved once when its sheet closes, however it close
     { id: 2, title: 'TEMPLATE: Opening', project_id: 1, done: true, labels: [{ id: 9, title: 'template' }] },
     { id: 3, title: 'Order cups', project_id: 2, labels: [{ id: 9, title: 'template' }] },
   ]);
-  const app = component(tasks, actions, views, sheet, checklists);
+  const app = component(tasks, actions, views, sheet, checklists, acts, sending, outbox);
   app.checklistIds = new Set([1]);
+  // The title goes through the outbox, as an edit op.
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], places: {}, endPlace() {}, render() {} });
+  Object.defineProperty(app, 'toast', { value: {} });
+  c.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
   globalThis.history = {
     state: null,
     pushState(s) {

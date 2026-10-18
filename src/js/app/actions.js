@@ -451,10 +451,23 @@ export default {
           await walk(sub.id, seen);
         }
     };
-    await this.save({ project_id: pid });
-    if (copyOf(t.id)?.project_id !== pid) return; // the move failed
+    // The task shows in its new project at once, and goes back if Vikunja refuses the move.
+    const put = async project_id => {
+      const shown = this.change(w => w.edit(t.id, { project_id }));
+      try {
+        await this.saveTask(t.id, { project_id });
+        this.change(() => shown.ok());
+        return true;
+      } catch (e) {
+        this.change(() => shown.undo());
+        const again = { label: 'Try again', fn: () => put(project_id) };
+        this.say(notSaved(e), { place: 'sheet:top', cls: 'failed', ms: null, action: again });
+        return false;
+      }
+    };
+    if (!(await put(pid))) return;
     const undo = async () => {
-      if (this.sheet.id !== t.id || (await this.save({ project_id: from })) === false) return; // save says why it failed
+      if (this.sheet.id !== t.id || !(await put(from))) return;
       const left = (await Promise.allSettled(moved.map(k => this.saveTask(k.id, { project_id: k.was })))).filter(
         r => r.status === 'rejected',
       ).length;

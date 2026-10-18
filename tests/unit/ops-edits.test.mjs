@@ -2,12 +2,14 @@
 // set as it is, notes, reminders and a template's step order made on Vikunja's copy, a later edit that replaces one
 // not sent, its Undo, and its words.
 import './browser.mjs';
-import { sender, reached, noConnection, lastSaid } from './ops-helpers.mjs';
+import { sender, reached, noConnection, lastSaid, settle } from './ops-helpers.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
 import { started, TASK } from '../../src/js/app/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
+import { taskDrafts } from '../../src/js/util.js';
+import sheet from '../../src/js/app/sheet.js';
 
 // A sender whose tasks have rows and copies.
 const listed = (t, list) => {
@@ -200,5 +202,57 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
         '“it” keeps its order of steps in Vikunja.',
       ],
     ],
+  );
+});
+
+/* The sheet (src/js/app/sheet.js) sends its title, priority, reminders and notes as edits. `inSheet` opens task 7 in
+   the sheet. */
+const inSheet = (t, list) => {
+  const s = listed(t, list);
+  Object.defineProperties(s.app, Object.getOwnPropertyDescriptors(sheet));
+  Object.assign(s.app, { render() {}, unsay() {}, openTask() {}, loadSubPeople() {} });
+  s.app.sheet = { id: 7, open: true, show: true, kind: 'task', sub: {}, savedMsg: '' };
+  return s;
+};
+test('the sheet shows its edits at once, says Saved once Vikunja has them, and offline leaves them in the Outbox', async t => {
+  const { v, app } = inSheet(t, [
+    { id: 7, title: 'Wipe the till', priority: 0, due_date: '2026-10-20T09:00:00Z', reminders: [AT] },
+  ]);
+  const sending = app.setPriority(3);
+  assert.deepEqual([app.tasks[7].priority, app.sheet.savedMsg], [3, 'Saving…']);
+  await sending;
+  assert.equal(app.sheet.savedMsg, 'Saved');
+  await app.changeReminders(HOUR, null);
+  await app.removeReminder(0);
+  assert.deepEqual(sent(v), [{ priority: 3 }, { reminders: [AT, HOUR] }, { reminders: [HOUR] }]);
+  noConnection(app, v);
+  await app.setPriority(1);
+  assert.deepEqual(
+    [app.tasks[7].priority, app.sheet.savedMsg, sync.all(1).length],
+    [1, '', 1],
+    'offline, the row keeps the change, and it waits to be sent',
+  );
+});
+test('notes changed elsewhere while the user wrote come back to the sheet with both versions, or to the row', async t => {
+  const { v, app } = inSheet(t, [{ id: 7, title: 'Wipe the till', description: '<p>Blue cloth</p>' }]);
+  Object.assign(app.sheet, { editingDesc: true, descDraft: 'Green cloth', descBase: 'Blue cloth', descConflict: null });
+  v.task(7).description = '<p>Red cloth</p>';
+  await app.saveDesc();
+  assert.deepEqual(
+    [app.sheet.editingDesc, app.sheet.descDraft, app.sheet.descConflict, lastSaid(app).place],
+    [true, 'Green cloth', 'Red cloth', 'sheet:notes'],
+    'the editor opens again with the user’s notes over Vikunja’s',
+  );
+  await app.saveDesc();
+  assert.equal(v.task(7).description, '<p>Green cloth</p>', 'saved again, they replace the notes the user has seen');
+  // Leaving the sheet sends the notes being written. With the sheet closed, the row says what happened.
+  Object.assign(app.sheet, { editingDesc: true, descDraft: 'Yellow cloth', descBase: 'Green cloth' });
+  v.task(7).description = '<p>White cloth</p>';
+  app.leaveTask();
+  app.sheet = { id: null, open: false };
+  await settle(t, () => lastSaid(app)?.row);
+  assert.deepEqual(
+    [lastSaid(app).row.id, lastSaid(app).action.label, taskDrafts.get('desc:7')],
+    [7, 'Open', { text: 'Yellow cloth', base: 'Green cloth' }],
   );
 });

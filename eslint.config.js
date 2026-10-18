@@ -26,7 +26,7 @@ const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/j
 // The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
 // c.send, which no selector here matches yet.
 const WRITERS = ['src/js/api.js', 'src/js/sync.js', 'src/js/app/actions.js', 'src/js/app/asks.js', 'src/js/app/auth.js',
-  'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/sheet.js', 'src/js/app/views.js',
+  'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/views.js',
   'src/js/ops/**', 'src/js/app/acts.js'];
 const RESTRICTED = [
   { selector: 'Literal[value=/prefers-reduced-motion/]', message: 'Ask motion() in src/js/util.js whether things may move.', allow: ['src/js/util.js'] },

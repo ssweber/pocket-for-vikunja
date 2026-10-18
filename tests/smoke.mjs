@@ -4526,55 +4526,53 @@ try {
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }
   });
-  await step('a-sheet-save-not-made-says-so-in-the-sheet', async () => {
-    // A message at the top of the sheet has a Try again button. Once the save succeeds, the message disappears.
-    const r = await make(`Pocket smoke sheet not saved ${stamp}`, { due_date: todayAt(23) });
-    const refuse = x => (x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback());
+  await step('a-sheet-edit-vikunja-refuses-goes-back-and-waits-in-the-outbox', async () => {
+    // A message at the top of the sheet says why, with a button to the Outbox. Try again there saves the change.
+    const r = await make(`Pocket smoke sheet not saved ${stamp}`, { due_date: todayAt(23) }),
+      at = `**/v2/tasks/${r.id}`;
     try {
       await refreshToday();
       await page.click(`${rowOf(r.title)} > .body`, { timeout: 15000 });
       await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
-      await page.route(`**/api/v2/tasks/${r.id}`, refuse);
+      await page.route(at, refusing);
       await page.selectOption('#d-prio', '3');
       const line = placeLine(page, 'sheet:top');
-      await expect(line).toContainText('Not saved: no connection', { timeout: 20000 });
+      await expect(line).toContainText(`Priority on “${r.title}” couldn't be saved: Forbidden.`, { timeout: 20000 });
       await expect(line).toHaveClass(/failed/);
+      await expect(page.locator('#d-prio')).toHaveValue('0');
       await noToast(page);
-      await page.unroute(`**/api/v2/tasks/${r.id}`, refuse);
-      await line.getByRole('button', { name: 'Try again' }).click();
-      await expect(line).toHaveCount(0);
-      await synced(page);
-      if ((await get(r.id)).priority !== 3) throw new Error('Try again did not save the change');
+      await page.unroute(at, refusing);
+      await line.getByRole('button', { name: 'Outbox' }).click();
+      await page
+        .locator('#outbox-rows .ob-row:has-text("Priority: High on")')
+        .getByRole('button', { name: 'Try again' })
+        .click();
+      await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
+      await synced(page);
+      if ((await get(r.id)).priority !== 3) throw new Error('Try again did not save the change');
     } finally {
-      await page.unroute(`**/api/v2/tasks/${r.id}`, refuse);
+      await page.unroute(at, refusing);
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }
   });
-  /* An edit in a task's sheet shows on the task's row behind the sheet at once, before Vikunja answers. A save that
-     fails puts back only its own field, in the sheet and on the row. An edit still being saved stays. */
-  await step('a-sheet-edit-shows-on-its-row-at-once-and-a-failed-one-puts-back-only-its-own-field', async () => {
+  /* An edit in a task's sheet shows on the task's row behind the sheet at once, before Vikunja answers. An edit Vikunja
+     refuses puts back only its own field, in the sheet and on the row. A later edit of the task waits behind it in the
+     Outbox, and is sent once the refused one is cancelled there. */
+  await step('a-sheet-edit-shows-on-its-row-at-once-and-a-refused-one-puts-back-only-its-own-field', async () => {
     const r = await make(`Pocket smoke sheet row ${stamp}`, { due_date: todayAt(23) }),
       at = `**/v2/tasks/${r.id}`,
       renamed = r.title + ' renamed';
-    const gates = {},
-      gate = k =>
-        new Promise(ok => {
-          gates[k] = ok;
-        }),
-      open = k => gates[k]?.();
-    const title = gate('title'),
-      prio = gate('prio');
-    // Vikunja's answer to the title waits, then the connection drops. The priority, saved after it, waits too.
+    let release = () => {};
+    const title = new Promise(ok => {
+      release = ok;
+    });
+    // Vikunja's answer to the title waits, then Vikunja refuses it.
     const hold = async x => {
-      if (x.request().method() !== 'PATCH') return x.fallback();
-      if ('title' in x.request().postDataJSON()) {
-        await title;
-        return x.abort('connectionreset');
-      }
-      await prio;
-      return x.fallback();
+      if (x.request().method() !== 'PATCH' || !('title' in x.request().postDataJSON())) return x.fallback();
+      await title;
+      return refusing(x);
     };
     const R = `#view .row[data-id="${r.id}"]`,
       rowTitle = page.locator(`${R} > .body .title > span:not(.sr)`).first(),
@@ -4595,22 +4593,25 @@ try {
       const kept = await get(r.id);
       if (kept.priority || kept.title !== r.title)
         throw new Error('Vikunja had the changes before the rows were checked');
-      open('title');
-      await expect(placeLine(page, 'sheet:top')).toContainText('Not saved: no connection', { timeout: 20000 });
+      release();
+      const line = placeLine(page, 'sheet:top');
+      await expect(line).toContainText(`Renaming “${r.title}” couldn't be saved: Forbidden.`, { timeout: 20000 });
       await expect(rowTitle).toHaveText(r.title);
       await expect(ownTitle()).toHaveText(r.title);
       await expect(page.locator('#d-prio')).toHaveValue('3');
       await expect(bars).toHaveClass(/\bp3\b/);
-      open('prio');
+      await page.unroute(at, hold);
+      await line.getByRole('button', { name: 'Outbox' }).click();
+      await page.locator('#outbox-rows .ob-row:has-text("Renaming")').getByRole('button', { name: 'Cancel' }).click();
+      await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
       await synced(page);
       const now = await get(r.id);
       if (now.priority !== 3 || now.title !== r.title)
         throw new Error(`Vikunja has priority ${now.priority}, title "${now.title}"`);
-      await page.click('#btn-sheet-close');
-      await page.waitForSelector('#sheet', { state: 'hidden' });
     } finally {
-      open('title');
-      open('prio');
+      release();
       await page.unroute(at, hold);
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }

@@ -1,23 +1,22 @@
 // A task's sheet: its details, labels and people, comments and attachments. What's done to the task is in actions.js.
 import { fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO } from '../util.js';
 import { allPages, api, errText, items, NetError } from '../api.js';
-import { addDays, dueInfo, fmtTime, isSet, plainReminders, reminderKey, startOfDay } from '../dates.js';
-import { htmlToText, sanitize, textToHtml } from '../html.js';
-import { notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf } from '../checklists.js';
+import { addDays, dueInfo, fmtTime, isSet, plainReminders, startOfDay } from '../dates.js';
+import { sanitize, textToHtml } from '../html.js';
+import { notesOnly, stepInfos, stepsOf, templateName, templateTitle } from '../checklists.js';
 import { listViewOf, positionOrder } from '../order.js';
 import { atTime } from '../quickadd.js';
-import { notSaved } from '../messages.js';
 import { inTextField, slideStarts, typedIn } from '../progress.js';
 import { fileEntry, NO_ROOM, NOT_KEPT, randomId, sync } from '../sync.js';
 import { blankSheet, shared } from './core.js';
 import { sliding } from './progress.js';
 import { seats, seatUnder } from './seat.js';
 import { copyOf } from './tasks.js';
-import { waitingComments } from '../ops/index.js';
+import { notesText, sheetPlaceOf, waitingComments } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 
-// The sheet's latest save. Saves run one after another, so its answer comes last, and only it says Saved.
-let lastSave = null;
+// The sheet's latest edit. The outbox sends a task's edits in order, so only the latest says Saved.
+let lastEdit = null;
 // Notes written but not saved yet, kept on the phone as {text, base}. `base` is what the notes said when editing began.
 // An older Pocket kept only the text.
 const notesDraft = id => {
@@ -107,25 +106,12 @@ export default {
         base = sh.descConflict ?? sh.descBase;
       sh.editingDesc = false;
       sh.dirty = true;
-      taskDrafts.set('desc:' + t.id, { text: v, base }); // kept until the notes are saved
-      // The message appears on the task's row once the sheet has closed. If the notes aren't saved, it has Open.
-      const row = { id: t.id, stays: true },
-        open = { label: 'Open', fn: () => this.openTask(t.id) };
-      this.saveTask(t.id, null, now => this.notesPatch(now, v, base)).then(
-        () => {
-          taskDrafts.delete('desc:' + t.id);
-          this.say('Notes saved', { row });
-        },
-        e =>
-          this.say(
-            e.notes !== undefined
-              ? 'Notes not saved. Someone changed them while you were writing. Your version is kept. Open the task to see both.'
-              : e instanceof NetError
-                ? 'Notes not saved. No connection. They stay on this phone. Open the task to save them later.'
-                : 'Notes not saved: ' + e.message + '. They stay on this phone to save later.',
-            { row: { ...row, cls: 'failed' }, action: open },
-          ),
-      );
+      // The message appears on the task's row once the sheet has closed. Notes changed elsewhere meanwhile come back to
+      // the phone (notesRefused).
+      taskDrafts.delete('desc:' + t.id);
+      this.act({ op: 'edit', task: t.id, run: null, rebase: 'notes', text: v, base }).then(r => {
+        if (r.status === 'sent') this.say('Notes saved', { row: { id: t.id, stays: true } });
+      });
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [
       ['comment', sh.commentDraft],
@@ -394,44 +380,28 @@ export default {
     return d ? sanitize(d) : '<span class="ph">Add notes</span>';
   },
 
-  /* Save a change to the open task. The sheet and the task's rows update right away (edit), and Vikunja's answer
-     shows as it arrives. Only the sheet's last save says Saved. If the save fails, its fields go back, the top of the
-     sheet shows a message with Try again, and the promise resolves to false. */
-  save(patch, rebase) {
+  /* Change the open task's own fields as an `edit` op (ops/edit.js), which the sheet and the task's rows show at once.
+     Once Vikunja has it, the sheet says Saved, for the latest edit only. Offline it waits in the Outbox. A change
+     Vikunja refuses goes back and waits there too, and the sender says so beside the field. */
+  async sendEdit(fields) {
     const id = this.sheet.id;
     if (!id) return;
-    const shown = this.change(w => w.edit(id, patch)),
-      mine = (lastSave = {});
-    this.sheet.savedMsg = 'Saving…';
-    return this.saveTask(id, patch, rebase).then(
-      saved => {
-        this.change(() => shown.ok());
-        if (mine !== lastSave || this.sheet.id !== id) return;
-        const repeated = patch.done === true && !saved.done;
-        this.showTask(saved);
-        this.sheet.dirty = true;
-        this.unsay('sheet:top'); // clear the message from an earlier failed save
-        this.sheet.savedMsg = repeated ? 'Repeats — moved to next date' : 'Saved';
-        setTimeout(() => {
-          if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = '';
-        }, 1500);
-      },
-      e => {
-        this.change(() => shown.undo());
-        if (this.sheet.id === id) {
-          // Only this save's fields go back (undo), so another edit made in the sheet stays.
-          this.sheet.savedMsg = '';
-          if (this.sheetTask) this.showTask(this.sheetTask);
-          this.say(notSaved(e), {
-            place: 'sheet:top',
-            cls: 'failed',
-            ms: null,
-            action: { label: 'Try again', fn: () => this.save(patch, rebase) },
-          });
-        } else this.notify(notSaved(e)); // the sheet no longer shows this task
-        return false;
-      },
-    );
+    const mine = (lastEdit = {});
+    Object.assign(this.sheet, { savedMsg: 'Saving…', dirty: true });
+    const r = await this.act({ op: 'edit', task: id, run: null, ...fields });
+    if (mine !== lastEdit || this.sheet.id !== id) return r;
+    this.sheet.savedMsg = r.status === 'sent' ? 'Saved' : '';
+    if (r.status === 'sent') {
+      this.unsay(sheetPlaceOf({ op: 'edit', ...fields })); // the message from an earlier refused edit
+      setTimeout(() => {
+        if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = '';
+      }, 1500);
+    }
+    return r;
+  },
+  setPriority(n) {
+    const t = this.sheetTask;
+    return t && this.sendEdit({ set: { priority: n }, was: { priority: t.priority || 0 } });
   },
   // Tapping the title on the sheet's first row replaces it with a box to edit it (task-row.html, g.own). The title is
   // saved when the box loses focus (saveTitle). A read-only task can't be edited.
@@ -447,18 +417,14 @@ export default {
     const t = this.sheetTask,
       v = (this.sheet.title || '').trim();
     if (!t) return;
-    if (v && v !== this.rowTitle(t)) this.save({ title: this.role(t) === 'template' ? templateTitle(v) : v });
+    if (v && v !== this.rowTitle(t))
+      this.sendEdit({ set: { title: this.role(t) === 'template' ? templateTitle(v) : v }, was: { title: t.title } });
     else this.sheet.title = this.rowTitle(t);
   },
-  // The notes as text (notesText), and as HTML to save (notesHtml). The description also holds Pocket's own lines, such
-  // as a template's order line. They are left out of the text while the notes are edited, and kept when the notes are
-  // saved. They come from Vikunja's copy at the moment of saving (`t`), so a step moved elsewhere in the meantime stays
-  // moved.
+  // The notes as text. The description also holds Pocket's own lines, such as a template's order line. They are left
+  // out while the notes are edited, and kept when the notes are saved (ops/edit.js).
   notesText(t) {
-    return htmlToText(notesOnly(t.description));
-  },
-  notesHtml(t, text) {
-    return withLinesOf(text.trim() ? textToHtml(text) : '', t.description);
+    return notesText(t);
   },
   // Remember what the notes say when editing starts (descBase), so a save can tell if they changed elsewhere since.
   editDesc() {
@@ -473,16 +439,6 @@ export default {
     Object.assign(this.sheet, { editingDesc: false, descUnsaved: false, descConflict: null });
     taskDrafts.delete('desc:' + this.sheet.id);
   },
-  /* Build the notes to save on Vikunja's copy of the task as it is when they are sent (`now`). If Vikunja's notes
-     changed since editing began (`base`, where null means unknown, from an older Pocket), they are not overwritten
-     without the user seeing them. Instead this throws an error that carries Vikunja's notes (`notes`) and its copy of
-     the task (`now`). */
-  notesPatch(now, text, base) {
-    const has = this.notesText(now).trim();
-    if (base !== null && base !== undefined && has !== base.trim() && has !== text.trim())
-      throw Object.assign(new Error('someone changed the notes while you were writing'), { notes: has, now });
-    return { description: this.notesHtml(now, text) };
-  },
   // When notes kept on the phone are opened again, show both versions if Vikunja's notes changed since editing began.
   checkNotes(t) {
     const sh = this.sheet,
@@ -496,46 +452,39 @@ export default {
     )
       sh.descConflict = has;
   },
-  /* Save the notes. If they can't be saved (for example, offline), they stay in the editor and on the phone to save
-     later. If the notes were changed elsewhere meanwhile, Vikunja's version is shown under the user's. Saving again
-     replaces Vikunja's version, because the user has now seen it. */
-  async saveDesc() {
+  /* Save the notes, as an edit. Notes changed elsewhere since editing began aren't overwritten (notesRefused). Saving
+     again replaces Vikunja's version, because the user has now seen it. */
+  saveDesc() {
     const sh = this.sheet,
-      v = sh.descDraft,
-      t = this.sheetTask,
-      base = sh.descConflict ?? sh.descBase,
-      here = () => this.sheet.id === t.id;
-    Object.assign(sh, { editingDesc: false, savedMsg: 'Saving…' });
-    try {
-      const got = await this.saveTask(t.id, null, now => this.notesPatch(now, v, base));
-      taskDrafts.delete('desc:' + t.id);
-      if (!here()) return;
-      this.showTask(got);
-      Object.assign(this.sheet, { descUnsaved: false, descConflict: null, dirty: true, savedMsg: 'Saved' });
-      setTimeout(() => {
-        if (this.sheet.savedMsg === 'Saved') this.sheet.savedMsg = '';
-      }, 1500);
-    } catch (e) {
-      const seen = e.notes ?? null;
-      taskDrafts.set('desc:' + t.id, { text: v, base });
-      if (here()) {
-        if (e.now) this.showTask(e.now); // saveTask has read it into the copy
-        Object.assign(this.sheet, {
-          editingDesc: true,
-          descDraft: v,
-          descUnsaved: true,
-          savedMsg: '',
-          ...(seen !== null && { descConflict: seen }),
-        });
-      }
-      // The message appears under the notes, which stay in the box.
+      base = sh.descConflict ?? sh.descBase;
+    Object.assign(sh, { editingDesc: false, descUnsaved: false, descConflict: null });
+    taskDrafts.delete('desc:' + sh.id);
+    return this.sendEdit({ rebase: 'notes', text: sh.descDraft, base });
+  },
+  /* Notes Vikunja changed while the user wrote theirs come back to the phone, as a draft from Vikunja's notes, and the
+     sheet shows both versions. With the sheet closed, a message on the task's row opens it. */
+  notesRefused(a, e) {
+    taskDrafts.set('desc:' + a.task, { text: a.text, base: a.base });
+    if (this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === a.task) {
+      Object.assign(this.sheet, {
+        editingDesc: true,
+        descDraft: a.text,
+        descBase: a.base,
+        descUnsaved: true,
+        descConflict: e.notes,
+      });
       this.say(
-        seen !== null
-          ? 'Not saved. Someone changed the notes while you were writing. Both versions are shown. Save again to replace theirs with yours.'
-          : notSaved(e),
+        'Not saved. Someone changed the notes while you were writing. Both versions are shown. Save again to replace theirs with yours.',
         { place: 'sheet:notes', cls: 'failed', ms: null },
       );
-    }
+    } else
+      this.say(
+        'Notes not saved. Someone changed them while you were writing. Your version is kept. Open the task to see both.',
+        {
+          row: { id: a.task, stays: true, cls: 'failed' },
+          action: { label: 'Open', fn: () => this.openTask(a.task) },
+        },
+      );
   },
 
   /* ---------- reminders ---------- */
@@ -629,14 +578,12 @@ export default {
   },
   removeReminder(k) {
     const r = plainReminders(this.sheetTask)[k];
-    if (r) this.changeReminders(null, r);
+    return r && this.changeReminders(null, r);
   },
-  // Add or remove a reminder in the list Vikunja has when the save is sent, so a reminder added or removed elsewhere
+  // Add or remove a reminder in the list Vikunja has when the edit is sent, so a reminder added or removed elsewhere
   // since the sheet opened stays as it is.
   changeReminders(add, drop) {
-    const skip = new Set([add, drop].filter(Boolean).map(reminderKey));
-    const edit = t => [...plainReminders(t).filter(r => !skip.has(reminderKey(r))), ...(add ? [add] : [])];
-    return this.save({ reminders: edit(this.sheetTask) }, now => ({ reminders: edit(now) }));
+    return this.sendEdit({ rebase: 'reminders', add: add ? [add] : [], drop: drop ? [drop] : [] });
   },
 
   /* ---------- labels ---------- */
