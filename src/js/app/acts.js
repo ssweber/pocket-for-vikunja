@@ -428,8 +428,9 @@ export default {
         a.stage++;
         await sync.save(a, [], filesOut(a));
       }
+      // An op whose stages sent nothing changed nothing in Vikunja, so it has no write in flight.
       const r = c.reply;
-      this.change(x => x.answered(a, c.write ?? sendingOp(a), r, c.comment));
+      this.change(x => x.answered(a, c.write ?? writes(), r, c.comment));
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
