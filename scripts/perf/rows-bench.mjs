@@ -674,6 +674,7 @@ async function counts() {
   );
   // The event listeners on one plain row, counting the row itself and everything inside it.
   const ids = await plainRows(page);
+  if (ids.length < 3) throw new Error('counts: only ' + ids.length + ' plain rows in sight on Big');
   const { result } = await cdp.send('Runtime.evaluate', { expression: `document.querySelector('${rowSel(ids[1])}')` });
   const tree = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId, depth: -1 });
   res.listeners = {
@@ -725,7 +726,10 @@ async function counts() {
   await fx(page);
   const touch = (type, x, y) =>
     cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-  b = await boxOf(page, rowSel(ids[4]) + ' > .body');
+  // The ticked and swiped rows have left, so the row to nudge is picked from the plain rows in view now.
+  const nudged = (await plainRows(page)).find(id => id !== ids[1]);
+  if (!nudged) throw new Error('no plain row in sight to nudge');
+  b = await boxOf(page, rowSel(nudged) + ' > .body');
   await touch('touchStart', b.x + b.w / 2, b.y + b.h / 2);
   for (let i = 1; i <= 8; i++) {
     await sleep(40);
@@ -736,7 +740,7 @@ async function counts() {
   await sleep(500);
   res['a nudge'] = flat(await fx(page));
   undo.push(async () => {
-    for (const s of (await vikunja('GET', '/tasks/' + ids[4])).related_tasks?.subtask || [])
+    for (const s of (await vikunja('GET', '/tasks/' + nudged)).related_tasks?.subtask || [])
       await vikunja('DELETE', '/tasks/' + s.id);
   });
   for (const k of ['an add (makes a card)', 'an add under a lit card']) {
