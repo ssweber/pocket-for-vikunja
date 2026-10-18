@@ -551,8 +551,15 @@ class World {
       gone = before.filter(x => !now.has(x.id)),
       task = x => (typeof x.task === 'string' ? (sync.taskOf(x.task.replace(/^pending-/, '')) ?? x.task) : x.task),
       apply = (t, a) => opOf(a).apply(clone(t), a),
+      // Lists compare as sets, since an op that puts an item back adds it at the end.
+      sorted = (k, v) => {
+        const x = like(k, v),
+          sort = l => [...l].sort();
+        if (Array.isArray(x)) return sort(x);
+        return k === 'related_tasks' ? Object.fromEntries(Object.entries(x).map(([r, l]) => [r, sort(l)])) : x;
+      },
       // An untick and a tick of a task a teammate ticked cancel out without the user's ✅, which is no loss.
-      changes = (a, b) => CHECKED.filter(k => k !== 'reactions' && !same(like(k, a?.[k]), like(k, b?.[k])));
+      changes = (a, b) => CHECKED.filter(k => k !== 'reactions' && !same(sorted(k, a?.[k]), sorted(k, b?.[k])));
     this.pruned.push(...gone);
     for (const x of gone.filter(x => !given.some(e => e.id === x.id))) {
       const id = task(x),
