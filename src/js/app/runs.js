@@ -49,7 +49,7 @@ import { INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runPr
 import { resendTask } from './sending.js';
 import { saved } from '../lists.js';
 import { completeAsk, sentLater, startedText } from '../messages.js';
-import { newBox, shared } from './core.js';
+import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks, nextN } from './acts.js';
 import { lastTick } from '../ops/index.js';
@@ -444,14 +444,9 @@ export default {
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
     const who = e.people.filter(x => e.forIds.includes(x.id));
     try {
-      // Wait for an earlier save so changing assignees does not overwrite a new name.
-      const saving = shared.saveChain.then(() =>
-        writing({ [run.id]: { assignees: who } }, () =>
-          api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
-        ),
+      const [, w] = await writing({ [run.id]: { assignees: who } }, () =>
+        api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
       );
-      shared.saveChain = saving.catch(() => {});
-      const [, w] = await saving;
       this.change(x => x.made(run.id, w));
       this.saveRun();
       this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });

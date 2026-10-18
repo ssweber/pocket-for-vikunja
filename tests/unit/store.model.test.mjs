@@ -475,7 +475,6 @@ class World {
       late: [], // the writes Pocket gave up on before Vikunja made them (Answer late)
       ops: new Map(), // op entry id -> {e, spans}: from its first request in a try until it stopped waiting (abandon)
       reading: null, // the read finishing
-      saving: Promise.resolve(), // the direct saves, one after another (save)
       broken: [], // what check 5 found during the command
       wrote5: false, // whether the command wrote any of Vikunja's data
     });
@@ -771,14 +770,9 @@ class World {
     this.reading = null;
     for (const t of list) this.app.row(t);
   }
-  // A direct save of edit `e` is sent once the saves before it have ended, and ends when its reply arrives, as saveTask
-  // (actions.js) sends and answers it.
-  save(e) {
-    const run = this.saving.then(() => this.send(e));
-    this.saving = run.catch(() => {});
-    return run;
-  }
-  async send(e) {
+  // A direct save of edit `e` is sent at once, and ends when its reply arrives, as saveTask (actions.js) sends and
+  // answers it.
+  async save(e) {
     const write = writes({ [e.id]: e.fields });
     let got = null;
     try {

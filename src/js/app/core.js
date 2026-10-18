@@ -6,8 +6,8 @@ import { saved } from '../lists.js';
 import { noneWaiting } from '../ops/index.js';
 
 /* Share mutable state across app modules because a module cannot assign to another module's variable.
-   onClosedSheet and closedAt identify a closed sheet's history entry. saveChain saves task changes in order. */
-export const shared = { onClosedSheet: false, closedAt: '', saveChain: Promise.resolve() };
+   onClosedSheet and closedAt identify a closed sheet's history entry. */
+export const shared = { onClosedSheet: false, closedAt: '' };
 // Every add box tracks its text, focus, cursor, disabled chips, list nesting, reminder and sending state. `adding`
 // counts subtask batches still being sent.
 export const newBox = () => ({

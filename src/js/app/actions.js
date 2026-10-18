@@ -24,7 +24,6 @@ import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlock
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
 import { addLines, movedFrom, waitingPositions } from '../ops/index.js';
-import { shared } from './core.js';
 import { copyOf, started, TASK, writes, writing } from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
@@ -45,53 +44,52 @@ function landed(now, body) {
 
 export default {
   /* ---------- saving a change ---------- */
-  // Save task changes one after another, and put Vikunja's answer into its copy, which shows it on the rows. Resolves
-  // to Vikunja's copy, or rejects if the save fails. The caller writes nothing more, since the copy has it.
-  saveTask(id, patch, rebase) {
+  /* Save a task's changes straight to Vikunja, and put Vikunja's answer into its copy, which shows it on the rows.
+     Resolves to Vikunja's copy, or rejects if the save fails. The caller writes nothing more, since the copy has it.
+     The sheet's own fields go through the outbox as edits. What still saves here is a move to another project
+     (moveTask), a parent's progress (writeFigure), a checklist's name (saveRunName), a template step's name and asks,
+     and a step's place in a template or a checklist. */
+  async saveTask(id, patch, rebase) {
     this.writing++; // counts until the reply arrives
-    const run = shared.saveChain
-      .then(async () => {
-        // Only the changed fields are sent, so edits made elsewhere survive. A change to a whole field, such as a list
-        // or a template's order notes, uses `rebase` instead. It applies the change to a fresh copy of the task and
-        // returns null when nothing is left to change. That copy is a read, not an answer.
-        let saved = null;
-        if (rebase) {
-          const at = started();
-          saved = await api('/tasks/' + id);
-          this.change(w => w.read([saved], TASK, at));
+    try {
+      // Only the changed fields are sent, so edits made elsewhere survive. A change to a whole field, such as a list
+      // or a template's order notes, uses `rebase` instead. It applies the change to a fresh copy of the task and
+      // returns null when nothing is left to change. That copy is a read, not an answer.
+      let saved = null;
+      if (rebase) {
+        const at = started();
+        saved = await api('/tasks/' + id);
+        this.change(w => w.read([saved], TASK, at));
+      }
+      const body = rebase ? rebase(saved) : patch;
+      if (body) {
+        const w = writes({ [id]: body });
+        let lost = null;
+        try {
+          saved = await patchTask(id, body);
+        } catch (e) {
+          lost = e;
+        } finally {
+          w.end();
         }
-        const body = rebase ? rebase(saved) : patch;
-        if (body) {
-          const w = writes({ [id]: body });
-          let lost = null;
-          try {
-            saved = await patchTask(id, body);
-          } catch (e) {
-            lost = e;
-          } finally {
-            w.end();
-          }
-          if (!lost)
-            this.change(x => {
-              x.made(id, w);
-              x.answer([saved], TASK, w);
-            });
-          else {
-            // After a lost reply, read the task to see whether the save arrived.
-            const at = started(),
-              now = lost instanceof NetError && (await api('/tasks/' + id).catch(() => null));
-            if (!now || !landed(now, body)) throw lost;
-            saved = now;
-            this.change(x => x.read([now], TASK, at));
-          }
+        if (!lost)
+          this.change(x => {
+            x.made(id, w);
+            x.answer([saved], TASK, w);
+          });
+        else {
+          // After a lost reply, read the task to see whether the save arrived.
+          const at = started(),
+            now = lost instanceof NetError && (await api('/tasks/' + id).catch(() => null));
+          if (!now || !landed(now, body)) throw lost;
+          saved = now;
+          this.change(x => x.read([now], TASK, at));
         }
-        return saved;
-      })
-      .finally(() => {
-        this.writing--;
-      });
-    shared.saveChain = run.catch(() => {});
-    return run;
+      }
+      return saved;
+    } finally {
+      this.writing--;
+    }
   },
   /* On Today, a task ticked there joins Done today when the batch clears, so Copy includes it at once. A checklist's
      step doesn't, since its checklist stands for it. */
@@ -994,7 +992,6 @@ export default {
       )
     )
       return;
-    await shared.saveChain;
     try {
       await this.deleteTree(tree);
       await leave();

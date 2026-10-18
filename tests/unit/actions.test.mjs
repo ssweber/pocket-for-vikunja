@@ -1,12 +1,12 @@
-// Tests for what happens to a task from its sheet (src/js/app/actions.js), against a fake Vikunja: its title, the
-// order its saves go in, its menu, detaching it from its parent, and moving it to another project.
+// Tests for what happens to a task from its sheet (src/js/app/actions.js), against a fake Vikunja: its title, its menu,
+// detaching it from its parent, and moving it to another project.
 import './browser.mjs';
 import { patches, opened } from './actions-helpers.mjs';
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks, { copyOf } from '../../src/js/app/tasks.js';
+import tasks from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
@@ -15,23 +15,6 @@ import acts from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
 import { sync } from '../../src/js/sync.js';
 
-test('saves to a task go one after another, in the order they were made', async () => {
-  const v = fakeVikunja([{ id: 1, title: 'A', done: false }]),
-    app = component(tasks, actions);
-  const order = [],
-    fetch = globalThis.fetch;
-  globalThis.fetch = async (url, o) => {
-    order.push('sent ' + o.body);
-    await new Promise(r => setTimeout(r, 20));
-    const res = await fetch(url, o);
-    order.push('back ' + o.body);
-    return res;
-  };
-  await Promise.all([app.saveTask(1, { title: 'B' }), app.saveTask(1, { title: 'C' })]);
-  assert.deepEqual(order, ['sent {"title":"B"}', 'back {"title":"B"}', 'sent {"title":"C"}', 'back {"title":"C"}']);
-  assert.equal(v.task(1).title, 'C');
-  assert.equal(copyOf(1).title, 'C', "Vikunja's copy is its latest");
-});
 /* A title being edited, in the box in the sheet's own row or in a template's box over its card, is saved when the box
    loses focus. A sheet that is slid down or closed with the phone's Back doesn't take focus from the box, and on an
    iPhone there is no button to move the focus to. So leaving the sheet saves the title too, once, whichever happens
