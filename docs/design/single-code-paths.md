@@ -140,7 +140,8 @@ Every user-facing string comes from a function in `messages.js`: messages, Undo 
 what is announced to screen readers (`this.said`). One wording per situation: a lost connection, "changed since then",
 a refusal with Vikunja's reason. Text from Vikunja stays escaped (`errText`). Tests in `messages.test.mjs` for each
 new function, singular and plural. Turn on the messages rule. From the Veyrn comparison: the sign-out confirm calls
-every waiting op that isn't a line "a change to a checklist".
+every waiting op that isn't a line "a change to a checklist". Make template's Cancel after an unknown answer says
+"Vikunja may or may not have this change", though it now takes the change back.
 
 ### 13. Clean up
 
