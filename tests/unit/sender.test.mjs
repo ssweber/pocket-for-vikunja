@@ -255,6 +255,33 @@ test('flush while offline sends a read first, and sends the waiting tick only on
     [['GET /user', 'PATCH /tasks/7'], true, 0, false],
   );
 });
+test('a flush asked for while one runs runs once more when that one ends', async t => {
+  const { v, app } = await offlineTick(t, app => {
+    app.offline = true;
+  });
+  // The first flush's read fails once the connection is back, and the second flush is asked for meanwhile.
+  const send = globalThis.fetch;
+  let release;
+  const gate = new Promise(ok => {
+    release = ok;
+  });
+  globalThis.fetch = async (url, opts) => {
+    globalThis.fetch = send;
+    await gate;
+    throw new TypeError('Failed to fetch');
+  };
+  t.after(() => {
+    globalThis.fetch = send;
+  });
+  const first = app.flush();
+  await app.flush();
+  release();
+  await first;
+  assert.deepEqual(
+    [v.requests.map(q => q.method + ' ' + q.path).slice(0, 2), v.task(7).done, sync.all(1).length],
+    [['GET /user', 'PATCH /tasks/7'], true, 0],
+  );
+});
 test('a tick whose reply was lost is sent again with its key once flush finds the connection', async t => {
   const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
   lostOnce(v, 'PATCH', /^\/tasks\/7$/);

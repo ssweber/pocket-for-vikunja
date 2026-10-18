@@ -38,6 +38,9 @@ import { heldTasks, hold, stageContext, waits } from './acts.js';
 import { opsId, savedScreen } from './tasks.js';
 
 let waitTimer;
+// A flush asked for while one runs, which runs once more when that one ends. The first may have passed by an entry
+// queued meanwhile, or stopped for a connection that is back.
+let again = false;
 // Each waiting row's object, by its entry, kept while the row is unchanged (pendingTasks).
 const waitingRows = new Map();
 const lastGroups = new Map(); // each group as listGroups last returned it, by key
@@ -503,34 +506,38 @@ export default {
       this.sessionChanged();
       return;
     }
-    if (this.flushing || !this.signedIn || !this.user || !sync.all(this.user.id).length) return;
+    if (this.flushing) {
+      again = true;
+      return;
+    }
+    if (!this.signedIn || !this.user || !sync.all(this.user.id).length) return;
     this.flushing = true;
+    again = false;
     const results = [];
     try {
       // While Pocket knows it is offline, an act's first request isn't tried (sendAct). A plain read finds out whether
       // Vikunja can be reached, and any answer clears `offline`.
-      if (this.offline) {
-        await api('/user').catch(() => {});
-        if (this.offline || !this.signedIn) return;
-      }
-      await sync.lock(async () => {
-        let actsWait = false; // after an act is kept offline, later acts wait behind it
-        const all = sync.all(this.user?.id),
-          stopped = heldTasks(all); // acts on a task whose earlier act failed wait too
-        for (const e of all) {
-          if (e.failed || held(e) || (e.kind === 'act' && (actsWait || waits(e, stopped)))) continue;
-          const r = await this.sendEntry(e.id);
-          results.push(r);
-          if (e.kind === 'act' && r.status === 'offline') actsWait = true;
-          if (r.kept) hold(e, stopped);
-          if (r.status === 'offline' && !r.reached) break; // no connection, so the rest wait too
-        }
-      });
+      if (this.offline) await api('/user').catch(() => {});
+      if (!this.offline && this.signedIn)
+        await sync.lock(async () => {
+          let actsWait = false; // after an act is kept offline, later acts wait behind it
+          const all = sync.all(this.user?.id),
+            stopped = heldTasks(all); // acts on a task whose earlier act failed wait too
+          for (const e of all) {
+            if (e.failed || held(e) || (e.kind === 'act' && (actsWait || waits(e, stopped)))) continue;
+            const r = await this.sendEntry(e.id);
+            results.push(r);
+            if (e.kind === 'act' && r.status === 'offline') actsWait = true;
+            if (r.kept) hold(e, stopped);
+            if (r.status === 'offline' && !r.reached) break; // no connection, so the rest wait too
+          }
+        });
     } finally {
       this.flushing = false;
       this.refreshPending();
     }
     this.reportSent(results);
+    if (again) await this.flush();
   },
   /* What sending did (`rs`, sendEntry's results). The tasks it made go on screen. The text of lines Vikunja refused goes
      back into the box it came from: quick add, or the subtask box if the task's sheet is open. Subtasks of a task whose
@@ -587,7 +594,8 @@ export default {
         e.said ||
           (e.code === 'unknown'
             ? notKnown(what)
-            : `${what} couldn't be sent: ${e.message}.` + (other[0].kept ? KEPT : this.wordsBack(e))),
+            : `${what} couldn't be sent: ${e.message.replace(/\.$/, '')}.` +
+              (other[0].kept ? KEPT : this.wordsBack(e))),
         other[0].kept ? toOutbox(this) : null,
       );
     } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
