@@ -39,6 +39,7 @@ const RESTRICTED = [
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },
   { selector: "MemberExpression[object.type='ThisExpression'][property.name='opsOn']", message: "Read a task's waiting ops with this.opsOf(id) (tasks.js).", allow: ['src/js/app/tasks.js'] },
   { selector: OP_NAME, message: BY_OP, allow: ['src/js/ops/**'] },
+  { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name='unchanged']", message: "Undo with undoOps. An op's invert checks Vikunja's copy itself, field by field.", allow: [] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],
