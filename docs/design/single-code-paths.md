@@ -127,6 +127,9 @@ the saved screen as now, and `docs/guide.md` says the same.
   entry made.
 - The three callers of `createTask` outside the outbox (the template editor, a step's new title, a step inserted in a
   checklist) queue ops.
+- Make template writes directly once its label is sent (`markTemplate`): it marks the steps done, marks the template
+  done and renames it, and deletes a "copied from" link. Adding steps under a template (`addTemplateSteps`) renames
+  the steps the new steps count from, and marks the new steps done, directly too. They become ops.
 - `untick` (runs.js), the start's Undo for the template it ticked, becomes the `invert` of the start's `tick` stage.
 - Remove the last files from the writes allowlist, except what stays direct (below). Turn on the keys rule.
 - From the Veyrn comparison: an op on a checklist step that was never added stays failed. It should leave with the
@@ -219,6 +222,10 @@ Before anyone else uses Pocket:
 - **To discuss first, since the user sees them:** screen readers (`aria-live` off `#view`, group titles as headings,
   rows as lists), and Back restoring the scroll position.
 - An Undo of a cancelled refused change can land behind later changes. It is rare.
+- A person or a label op reads the set Vikunja has once, before its first request (`c.once('set')`, `stages.js`).
+  When Vikunja answers that request with a 5xx, the retry sends the same set, so a label a teammate added in between
+  is removed.
+- `PUT /tasks/{id}/labels/bulk` has only been sent to the fake Vikunja. `test:local` must cover it.
 
 ## Lessons
 
