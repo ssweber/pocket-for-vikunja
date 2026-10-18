@@ -1460,3 +1460,18 @@ test('a task that two crossing writes left unsure is read once, after the last o
   assert.equal(reads.length, 1);
   assert.deepEqual([copyOf(1).title, copyOf(1).percent_done, copyOf(1).priority], ['Mop twice', 0.4, 3]);
 });
+
+/* The row shows the ops still waiting, such as a claim not yet sent. A person added in the sheet changes Vikunja's list
+   as Vikunja has it, so the copy gets that list with the person, and the claim stays the claim's until it is sent. */
+test("a person added in the sheet goes into Vikunja's copy without a claim still waiting", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 2, title: 'Mop the floor', assignees: [] }]),
+    app = sender();
+  read([v.task(2)]);
+  const row = app.row(copyOf(2));
+  app.offline = true;
+  await app.act({ op: 'claim', task: 2, user: 1, run: null });
+  app.offline = false;
+  await app.addAssignee(row, { id: 7, username: 'bob' });
+  assert.deepEqual([copyOf(2).assignees.map(u => u.id), row.assignees.map(u => u.id).sort()], [[7], [1, 7]]);
+});

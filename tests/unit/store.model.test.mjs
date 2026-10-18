@@ -26,6 +26,7 @@ import runs from '../../src/js/app/runs.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
 import { held, older, sync, uuid7 } from '../../src/js/sync.js';
+import { ApiError, NetError } from '../../src/js/api.js';
 import * as ops from '../../src/js/ops/index.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
@@ -438,6 +439,7 @@ class World {
     clock.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: START });
     this.clock = clock;
     this.v = fakeVikunja(checklist());
+    this.v.labels.push(LABEL);
     this.inner = globalThis.fetch;
     Object.assign(this, {
       t: 0,
@@ -474,7 +476,11 @@ class World {
       sending,
       outbox,
       runs,
-      pick(actions, 'removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'parentIdOf'),
+      pick(
+        actions,
+        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'parentIdOf'],
+        ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'changeList'],
+      ),
       leaving,
     );
     Object.assign(app, {
@@ -1380,6 +1386,36 @@ class StepMade extends Command {
     return 'StepMade';
   }
 }
+/* The user adds or removes a person or a label in a task's sheet (actions.js). Vikunja refuses a person already on the
+   task, or a label or person not on it, and the sheet says so (sheet.js). */
+const LABEL = { id: 600, title: 'floor' };
+const SHEET = {
+  assign: (app, t) => app.addAssignee(t, { id: 7, username: 'bob' }),
+  unassign: (app, t) => app.removeAssignee(t, 7),
+  label: (app, t) => app.addLabelTo(t, LABEL),
+  unlabel: (app, t) => app.removeLabelFrom(t, LABEL.id),
+};
+class Sheet extends Command {
+  constructor(t, change) {
+    super();
+    Object.assign(this, { t, change });
+  }
+  can(m) {
+    const id = m.w.target(this.t);
+    return typeof id === 'number' && !!m.w.app.tasks[id] && m.w.v.tasks.has(id);
+  }
+  async act(w) {
+    const id = w.target(this.t);
+    w.bg(
+      SHEET[this.change](w.app, w.app.tasks[id]).catch(e => {
+        if (!(e instanceof ApiError || e instanceof NetError)) throw e;
+      }),
+    );
+  }
+  toString() {
+    return `Sheet(${this.t}, ${this.change})`;
+  }
+}
 // A teammate changes a task in Vikunja's web app: a field an op changes, or one none does.
 const CHANGES = {
   done: t => !t.done,
@@ -1503,6 +1539,7 @@ const COMMANDS = [
   target.map(t => new Restore(t)),
   fc.constant(new StepMade()),
   fc.tuple(target, fc.constantFrom(...Object.keys(CHANGES))).map(([t, f]) => new Teammate(t, f)),
+  fc.tuple(target, fc.constantFrom(...Object.keys(SHEET))).map(([t, f]) => new Sheet(t, f)),
   fc.constantFrom(3, STEP).map(t => new SecondParent(t)),
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
 ];
