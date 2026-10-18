@@ -421,11 +421,17 @@ function answered(a, w, reply = null, posted = null) {
                 : [posted || { ...c, waiting: false }],
           ),
         };
+  // A field the op only guesses (replyOnly) is unsure until a reply or a read says it, also when the op sent nothing
+  // because Vikunja seemed to have its change already.
+  const guessed = new Set(op.replyOnly(a));
   for (const id of ids) {
     const had = copies.get(id) ?? bases.get(id);
     if (!had) continue;
-    const now = real(op.apply(had, a));
-    made(id, w, Object.fromEntries(Object.entries(now).filter(([k, v]) => !same(had[k], v))));
+    const now = real(op.apply(had, a)),
+      changed = Object.keys(now).filter(k => !same(had[k], now[k])),
+      unsure = changed.filter(k => guessed.has(k));
+    made(id, w, Object.fromEntries(changed.filter(k => !guessed.has(k)).map(k => [k, now[k]])));
+    doubt(id, unsure);
   }
   if (reply && reply.task.id === opsId(a.task)) answer([reply.task], TASK, reply);
   offTasks(a);

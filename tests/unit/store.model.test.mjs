@@ -1699,3 +1699,23 @@ test("a step's add keeps the checklist's newest copy once it writes the checklis
     await w.close();
   }
 });
+
+/* A delete of step 2 reaches Vikunja, but its answer is unknown, and it is cancelled. A move of step 3 then finds no
+   step 2 in the order Vikunja has, so it sends nothing. Its order line is only a guess, which a read decides. */
+test('a move of a step that sends nothing, because the step it moves past is gone, leaves the order to a read', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('delete, with no Restore', 2),
+      new Send(false),
+      new Queue('edit, order', 1),
+      new Answer('unknown', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
