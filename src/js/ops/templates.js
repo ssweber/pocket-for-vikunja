@@ -160,9 +160,11 @@ const ADDS = a => [prepare, made, labels, people, link, tick, ...(a.after != nul
 
    A refused step waits in the Outbox for Try again or Cancel, and Cancel deletes the part that reached Vikunja, as for
    a step added to a checklist (addStep). It waits as a row in the template's sheet until it is made. The template shows
-   it while it waits, since its order line and its subtasks change, which only Vikunja's reply can say. */
+   it while it waits, since its order line and its subtasks change, which only Vikunja's reply can say. A cancelled one
+   shows on the step too, which hides the step until it is deleted. */
 export const templateStep = {
   apply: t => ({ ...t }),
+  on: a => [opsId(a.task), ...templateStep.deletes(a)],
   stages: cancelledStages(ADDS, [unadd, unplace]),
   refusal: a => (a.cancelled ? 'dropped' : 'kept'),
   cancel: a => (a.cancelled ? 'undo' : 'unmade'),
@@ -197,7 +199,6 @@ export const templateStep = {
   ...OP_WORDS.templateStep,
   asks: ['p', 'pid', 'under', 'after', 'cancelled'],
   saw: ['label'],
-  on: null,
   keepReads: null,
   invert: null,
   merge: null,

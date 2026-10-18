@@ -221,3 +221,21 @@ test("a step's people and labels tapped off in its edit box are taken off as ops
     [[], [], [], []],
   );
 });
+
+test("a template's step whose add is cancelled after it was made is hidden until Vikunja deletes it", async t => {
+  const { v, app } = editor(
+    t,
+    closing({
+      7: { title: 'TEMPLATE: Closing', done: true, labels: [TEMPLATE], description: '<p>pocket:order 8 9</p>' },
+    }),
+  );
+  // Vikunja refuses the step's place in the template's order, after it made the step.
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/7' ? 403 : null);
+  const p = { title: 'Wipe the till', labels: [], assignees: [] };
+  await app.act({ op: 'templateStep', task: 7, under: 7, pid: 5, p, after: 8, run: null });
+  v.trouble = () => 'offline';
+  await app.cancelMade(outbox()[0].id, true);
+  assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101)], [true, true], 'the step is hidden while Cancel waits');
+  await online(t, app, v);
+  assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101), outbox()], [false, false, []]);
+});

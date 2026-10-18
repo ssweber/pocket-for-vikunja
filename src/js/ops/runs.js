@@ -257,10 +257,11 @@ const refigure = (a, c) => figureOf(c, a.task, 'refigure');
    The ops on the new step name it by its waiting id until Vikunja has made it, and wait for it. A refused add holds
    them back, and waits in the Outbox for Try again or Cancel. Cancel deletes the part that reached Vikunja, with the
    same op marked `cancelled`, and the ops on the step leave with it. The checklist shows it while it waits, since its
-   order line and its subtasks change, which only Vikunja's reply can say. */
+   order line and its subtasks change, which only Vikunja's reply can say. A cancelled one shows on the step too, which
+   hides the step until it is deleted. */
 export const addStep = {
   apply: t => ({ ...t }),
-  on: a => [a.task, ...(a.from ? [a.from] : [])],
+  on: a => [a.task, ...(a.from ? [a.from] : []), ...addStep.deletes(a)],
   stages: cancelledStages(ADDS, [unadd, unplace, refigure]),
   refusal: a => (a.cancelled ? 'dropped' : 'kept'),
   cancel: a => (a.cancelled ? 'undo' : 'unmade'),

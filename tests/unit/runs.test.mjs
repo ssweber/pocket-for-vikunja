@@ -161,3 +161,17 @@ test('an op on a step whose add is cancelled leaves with it, also when another t
     'the tick on a step never made leaves the outbox, and sends nothing',
   );
 });
+
+test('a step whose add is cancelled after it was made is hidden until Vikunja deletes it', async t => {
+  const { v, app, f } = world(t, 'addStep');
+  // Vikunja refuses the step's place in the checklist's order, after it made the step.
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/1' ? 403 : null);
+  assert.equal((await app.act(f)).status, 'error');
+  v.trouble = () => 'offline';
+  await app.cancelMade(f.id, true);
+  assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101)], [true, true], 'the step is hidden while Cancel waits');
+  v.trouble = () => null;
+  app.offline = false;
+  await app.sendActs(f.id);
+  assert.deepEqual([v.tasks.has(101), app.hiddenRows.has(101), sync.all(1).length], [false, false, 0]);
+});
