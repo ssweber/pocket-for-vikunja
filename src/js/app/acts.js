@@ -127,6 +127,7 @@ export function stageContext(a, app) {
     async send(path, { on, ...opts } = {}) {
       // The op's write starts before the entry says it was sent, so it can tell an op sent before this page loaded.
       c.write ||= c.begin?.() ?? null;
+      c.write?.fly();
       if (!a.sent) {
         a.sent = true;
         await save();
@@ -467,8 +468,8 @@ export default {
         return { ...none, status: 'offline', reached: false };
       }
       // A busy Vikunja is retried a few times. With keys, sending a stage again is safe. The op's write starts with its
-      // first request (sendingOp), so an op that stops before sending one crosses no other write. An op that has sent
-      // one is in flight from the start of the try.
+      // first request (sendingOp), so an op that stops before sending one crosses no other write. An op whose last try
+      // was cut off is in flight from the start of this one, since a request of that try may still reach Vikunja.
       c.begin = () => sendingOp(a);
       if (a.sent) c.write = c.begin();
       while (a.stage < stages.length) {

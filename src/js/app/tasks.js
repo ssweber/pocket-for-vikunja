@@ -100,8 +100,19 @@ const landed = new Map(); // task id -> when the last write to it ended
    `crossed` the other writes in flight on each of its tasks at the same time, `add(id, fields)` adds a task or fields,
    such as a task the write made, and `end()` ends it once it is answered, fails or comes back unknown. Two writes in
    flight at once can reach Vikunja in either order. So neither's reply is taken for a task both change, and neither's
-   own change of a field the other sets to something else. */
-export function writes(on = {}) {
+   own change of a field the other sets to something else. An `idle` write is in flight only from `fly()`, its first
+   request. */
+export function writes(on = {}, idle = false) {
+  // Put the write in flight on task `id`, crossing the other writes in flight there.
+  const join = id => {
+    const list = flying.get(id) || new Set();
+    for (const x of list)
+      if (x !== w) {
+        w.crossed.set(id, (w.crossed.get(id) || new Set()).add(x));
+        x.crossed.set(id, (x.crossed.get(id) || new Set()).add(w));
+      }
+    flying.set(id, list.add(w));
+  };
   const w = {
     at: started(),
     crossed: new Map(),
@@ -116,17 +127,17 @@ export function writes(on = {}) {
       if ('done' in set && !('done_at' in set)) set.done_at = UNKNOWN;
       if (set.done === true && t && repeats(t)) for (const k of MOVED) set[k] = UNKNOWN;
       w.fields.set(id, { ...w.fields.get(id), ...set });
-      const list = flying.get(id) || new Set();
-      for (const x of list)
-        if (x !== w) {
-          w.crossed.set(id, (w.crossed.get(id) || new Set()).add(x));
-          x.crossed.set(id, (x.crossed.get(id) || new Set()).add(w));
-        }
-      flying.set(id, list.add(w));
+      if (!idle) join(id);
+    },
+    fly() {
+      if (!idle || w.ended) return;
+      idle = false;
+      for (const id of w.fields.keys()) join(id);
     },
     end() {
       if (w.ended) return;
       w.ended = true;
+      if (idle) return;
       for (const id of w.fields.keys()) {
         flying.get(id)?.delete(w);
         if (!flying.get(id)?.size) flying.delete(id);
@@ -146,9 +157,10 @@ const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
    there. A field the apply sets to the value the copy has is one it sets too, so it is found by applying the op to
    a task with nothing in it as well. A field only Vikunja's reply can say (replyOnly) is unknown until it comes. The
    write starts with the op's first request and stays in flight across tries, because a request whose reply was lost
-   may still reach Vikunja. It ends once the op stops waiting in the outbox: answered, refused or gone (keyOps). The
-   op's change counts from its first request in this session (`at`), also when Try again sends it after it was
-   refused. An op sent before this page loaded was made at a time the page doesn't know, so it counts from before all
+   may still reach Vikunja. It ends once the op stops waiting in the outbox: answered, refused or gone (keyOps). A try
+   after a refusal or an unknown answer, as Try again or Cancel makes, is in flight only from its first request, since
+   no earlier request of the op is on its way then. The op's change counts from its first request in this session
+   (`at`), also when Try again sends it after it was refused. An op sent before this page loaded was made at a time the page doesn't know, so it counts from before all
    of the page's reads (EARLIER) until it makes a request fresh (`start`, stageContext). From then on its part made
    earlier can overwrite a teammate's change the page read, so its tasks are read again once it is answered
    (`replays`). */
@@ -166,7 +178,7 @@ export const sendingOp = a => {
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
       for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
     }
-  const w = writes(on);
+  const w = writes(on, !!was);
   Object.assign(
     w,
     was ? { at: was.at, start: was.start } : { at: a.sent ? EARLIER : w.at, start: w.at, replays: !!a.sent },

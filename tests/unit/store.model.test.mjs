@@ -1830,3 +1830,27 @@ test('an Undo that finds its change made by a teammate keeps the copy from going
     await w.close();
   }
 });
+
+/* A template step under checklist 1 is refused once its first request is made, and a note on the checklist comes back
+   unknown. A read of the checklist with its comments starts, and then Cancel resumes the template step, which has made
+   nothing, so it sends nothing. A try that sends nothing has nothing on its way, so the read is taken. */
+test('a Cancel that sends nothing leaves a read of the task it would change to be taken', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('templateStep', 1),
+      new Send(false),
+      new Queue('note', 1),
+      new Answer('refused', 0),
+      new Send(false),
+      new Answer('unknown', 0),
+      new StartRead([1], true),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
