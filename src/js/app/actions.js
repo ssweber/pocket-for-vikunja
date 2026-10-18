@@ -133,6 +133,8 @@ export default {
       ...(pct !== undefined && { pct }),
       // What the tick of a repeating task moves on, and the progress it sets, which its Undo puts back.
       ...(rolls && { was: { ...movedFrom(t), ...(pct !== undefined && { percent_done: t.percent_done }) } }),
+      // The progress an untick at a progress replaces, which its Undo puts back.
+      ...(was && pct !== undefined && { was: pctOf(t) }),
     };
     const ops = [
       f,

@@ -507,6 +507,21 @@ test('swiping a done task down opens it again at that progress in one request', 
     "the sheet's progress bar behaves the same way",
   );
 });
+test('the Undo of an untick made at a progress ticks the task again at the progress it had', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]);
+  const queued = [],
+    actAll = app.actAll;
+  app.actAll = function (list, quiet) {
+    queued.push(...list);
+    return actAll.call(this, list, quiet);
+  };
+  await app.setProgress(app.tasks[1], 75, ROW);
+  assert.equal(await app.undoOps(queued).left, 0);
+  assert.deepEqual(
+    [patches(v).at(-1), v.task(1).done, app.tasks[1].percent_done],
+    [[1, { done: true, percent_done: 0.4 }], true, 0.4],
+  );
+});
 test('ticking a subtask or setting its progress shows only on its row, with no message, and the row stays in place', async t => {
   const kid = {
     id: 2,

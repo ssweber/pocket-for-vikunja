@@ -147,16 +147,17 @@ export const skip = {
   deletes: null,
   replyOnly: ticked,
 };
-// Undo ticks the task again. An Undo of a repeating task's tick has no Undo.
+/* Undo ticks the task again, and an untick made at a progress (`pct`) puts back the progress before (`was`). An Undo
+   of a repeating task's tick has no Undo. */
 export const undone = {
   apply: notDone,
   stages: [untickOpen, unmark, figure],
-  invert: a => (a.back ? null : { op: 'done', ...where(a) }),
+  invert: a => (a.back ? null : { op: 'done', ...where(a), ...(a.was !== undefined && { pct: a.was }) }),
   merge: cancels('done'),
   refusal: gone,
   ...OP_WORDS.undone,
   asks: ['up', 'pct', 'back', 'check'],
-  saw: ['label'],
+  saw: ['label', 'was'],
   on: null,
   keepReads: null,
   waiting: null,
