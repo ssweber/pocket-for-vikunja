@@ -52,7 +52,8 @@ and empty the Outbox on each phone, before the next phone check.
   flight from its first request until it leaves the outbox, across retries, and its change counts from that request.
   Ops on one task go out one at a time. When a direct save and an op on one task are in flight at once, Pocket takes
   neither's reply, and neither's change to a field the other sets to another value. A task whose writes leave it
-  unsure that way, or whose op's answer was replayed, is read once its writes end. The rule lives in `tasks.js`,
+  unsure that way, whose read was thrown away, or whose op's answer was replayed or begun before the page loaded, is
+  read once its writes end. The rule lives in `tasks.js`,
   where each write the copy learns from is a `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
@@ -159,8 +160,8 @@ allowlist with a comment saying why.
   user's tasks. Check whether v2's `/tasks` returns tasks from archived projects.
 - An op sent before a reload has no time on the new page. One whose requests the relay only replays there counts from
   before the page's reads (`EARLIER`). One that also makes a request fresh there counts from its first request on the
-  page, so its replayed part can overwrite a teammate's change the page read since. A per-request time kept in the
-  entry would settle it.
+  page. Its part made before the reload can then overwrite a teammate's change the page read, until the read of its
+  tasks that follows its answer. A per-request time kept in the entry would settle it.
 
 ### 12. Messages
 

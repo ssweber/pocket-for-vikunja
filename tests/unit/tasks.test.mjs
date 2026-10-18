@@ -1578,3 +1578,22 @@ test('a saved screen shown after a write to its task does not read the task agai
   await settled();
   assert.deepEqual(v.requests, []);
 });
+
+/* A tick whose PATCH the page before this one made is sent again from its next stage, the ✅, which this page makes
+   fresh. A teammate unticked the task after the PATCH, and this page read that. The op's change counts from the ✅'s
+   request, newer than the read, so its tasks are read once it is answered, and the copy shows the untick. */
+test("an op sent before the page loaded, and finished fresh now, leaves a teammate's change read since", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', done: false, reactions: {} }]),
+    app = sender(),
+    id = uuid7();
+  await api('/tasks/1', { method: 'PATCH', body: { done: true }, key: id + ':0:0' });
+  v.task(1).done = false; // a teammate unticks it
+  read([v.task(1)], TASK_REACTIONS_COMMENTS);
+  app.row(copyOf(1));
+  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, stage: 1, fails: 0 };
+  await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  await app.sendActs(id);
+  await settled();
+  assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅'].map(u => u.id)], [false, [1]]);
+});
