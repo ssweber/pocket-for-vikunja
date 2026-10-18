@@ -636,13 +636,13 @@ class World {
     if (h.id && /\/relations$/.test(h.url))
       for (const x of [h.id, JSON.parse(h.opts.body).other_task_id]) this.model.doubt(x, ['related_tasks']);
   }
-  /* A refusal or an unknown answer stops op `e` before its answer, so Pocket's copy never hears what the op's earlier
-     requests changed. Only a later read tells Pocket of those fields. */
+  /* A refusal or an unknown answer stops op `e` before its answer. The store then reads the op's tasks again, but not
+     their comments, so only a later read with comments tells Pocket of a comment the op's earlier requests made. */
   unheard(e) {
     if (!e) return;
     for (const k of this.madeField.keys()) {
       const [entry, id, field] = k.split(' ');
-      if (entry === e.id) this.model.doubt(+id, [field]);
+      if (entry === e.id && field === 'comments') this.model.doubt(+id, [field]);
     }
   }
   /* A request Pocket gave up on may still reach Vikunja after its op stopped waiting in the outbox, refused or gone.

@@ -1618,3 +1618,27 @@ test("an op sent before the page loaded, and finished fresh now, leaves a teamma
   await settled();
   assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅'].map(u => u.id)], [false, [1]]);
 });
+
+/* The relay can't tell whether Vikunja made a request whose first try never finished, and here Vikunja did. The op
+   stops waiting without an answer this tab saw, so its task is read again, and the copy shows what Vikunja made. */
+test('a task is read again once its op stops waiting without an answer this tab saw', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', percent_done: 0 }]),
+    app = sender();
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  v.trouble = r => {
+    if (r.method !== 'PATCH') return null;
+    v.task(1).percent_done = 0.4;
+    return 'unknown';
+  };
+  const sent = await app.act({ op: 'progress', task: 1, pct: 40, run: null });
+  assert.equal(sent.status, 'error');
+  await settled();
+  assert.equal(copyOf(1).percent_done, 0.4);
+  // The outbox changes again, and a screen reads the task.
+  app.keyOutbox();
+  read([structuredClone(v.task(1))]);
+  await settled();
+  assert.equal(v.requests.filter(r => r.method === 'GET').length, 1, 'read again once');
+});

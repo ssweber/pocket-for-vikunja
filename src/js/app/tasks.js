@@ -401,14 +401,16 @@ function keyOps() {
     ids = list => list.map(e => e.id).join(),
     listed = c.user ? sync.all(c.user.id) : [],
     all = listed.filter(e => !e.failed);
-  for (const id of settled) if (!listed.some(e => e.id === id)) settled.delete(id);
-  // An op that stops waiting, refused or gone from the outbox, has no request left on its way. A refused op keeps its
-  // write's time for Try again.
+  /* An op that stops waiting, refused or gone from the outbox, has no request left on its way. A refused op keeps its
+     write's time for Try again. If this tab didn't see the op answered (settled), its tasks are read again: another
+     tab may have sent it, a stage may have been made before a refusal, or the answer was unknown. */
   const waits = new Set(all.map(e => e.id));
   for (const [id, w] of opWrites) {
+    if (!waits.has(id) && !w.ended && !settled.has(id)) for (const t of w.fields.keys()) doubt(t, REREAD);
     if (!waits.has(id)) w.end();
     if (!listed.some(e => e.id === id)) opWrites.delete(id);
   }
+  for (const id of settled) if (!listed.some(e => e.id === id)) settled.delete(id);
   for (const e of all)
     if (e.kind === 'act' && OPS[e.op] && !settled.has(e.id))
       for (const id of shownOn(e)) if (!sync.held.has(e.id) || e.ids.includes(id)) (out[id] ||= []).push(e);

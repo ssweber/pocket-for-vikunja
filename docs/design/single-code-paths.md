@@ -51,10 +51,10 @@ and empty the Outbox on each phone, before the next phone check.
   away, and the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. An op is in
   flight from its first request until it leaves the outbox, across retries, and its change counts from that request.
   Ops on one task go out one at a time. When a direct save and an op on one task are in flight at once, Pocket takes
-  neither's reply, and neither's change to a field the other sets to another value. A task whose writes leave it
-  unsure that way, whose read was thrown away, or whose op's answer was replayed or begun before the page loaded, is
-  read once its writes end. The rule lives in `tasks.js`,
-  where each write the copy learns from is a `writes()` with its start time.
+  neither's reply, and neither's change to a field the other sets to another value. A task is read once its writes
+  end if they leave it unsure that way, if a read of it was thrown away, if its op's answer was replayed or never
+  reached this tab, or if the op began before the page loaded. The rule lives in `tasks.js`, where each write the
+  copy learns from is a `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
