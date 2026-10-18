@@ -18,7 +18,8 @@ const lost = () => new TypeError('network error');
    move it). A task that is read, or a PATCH's reply, lists no deleted task among its related tasks (related_tasks),
    and a read lists each subtask as the subtask is now. A task marked done gets the time in done_at, and a task opened
    again loses it.
-   POST /projects/:id/tasks creates a task with the next id, never one a deleted task had. POST /tasks/:id/relations
+   POST /projects/:id/tasks creates a task with the next id, never one a deleted task had, and POST /tasks/:id/duplicate
+   copies a task, with a "copied from" and "copied to" relation between the two. POST /tasks/:id/relations
    makes one task a subtask of another, or answers 4008 when it is one already, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
    tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
    to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
@@ -104,7 +105,8 @@ export function fakeVikunja(tasks = []) {
       // A label on a task counts as one Vikunja has, as Vikunja lets anyone who can see the task use it.
       label = id =>
         v.labels.find(l => l.id === id) ?? [...v.tasks.values()].flatMap(t => t.labels || []).find(l => l.id === id);
-    const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]);
+    const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]),
+      source = req.path.match(/^\/tasks\/(\d+)\/duplicate$/);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
       noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
     let res;
@@ -201,6 +203,20 @@ export function fakeVikunja(tasks = []) {
       };
       v.tasks.set(made.id, made);
       res = reply(made);
+    } else if (source && method === 'POST') {
+      const from = v.tasks.get(+source[1]);
+      if (!from) res = reply({ message: 'The task does not exist.' }, 404);
+      else {
+        const copy = {
+          ...structuredClone(from),
+          id: Math.max(100, ...v.tasks.keys(), ...gone) + 1,
+          created: new Date().toISOString(),
+          related_tasks: { copiedfrom: [{ id: from.id }] },
+        };
+        v.tasks.set(copy.id, copy);
+        ((from.related_tasks ||= {}).copiedto ||= []).push({ id: copy.id });
+        res = reply({ duplicated_task: copy });
+      }
     } else if (over && method === 'POST') {
       const sub = v.tasks.get(req.body.other_task_id);
       if (!sub) res = reply({ message: 'The task does not exist.' }, 404);
