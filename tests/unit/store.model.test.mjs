@@ -1481,6 +1481,7 @@ const CHANGES = {
   labels: t => [...(t.labels || []).filter(l => l.id !== MOP.id), MOP],
   title: t => t.title + ' (renamed)',
   priority: () => 3,
+  repeat_after: t => (t.repeat_after ? 0 : 86400),
 };
 class Teammate extends Command {
   constructor(t, field) {
@@ -1675,4 +1676,30 @@ test('the store shows each task as its copy, then the waiting ops, then the edit
       KNOWN.filter(k => !STATS.met.has(k.bug)).map(k => `no sequence met bug ${k.bug} any more. Remove it from KNOWN.`),
       [],
     );
+});
+
+/* The repeat reaches Vikunja, but its answer is unknown and it is cancelled, so the copy doesn't know task 1 repeats.
+   The tick's reply crosses a direct save, so only a read can say that Vikunja moved the task on to its next date. */
+test("a tick on a task the copy doesn't know repeats takes nothing into the copy when its reply crosses a direct save", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Teammate(1, 'due_date'),
+      new StartEdit(1, { title: 'Mop twice' }),
+      new SaveEdit(0),
+      new Queue('repeat', 1),
+      new Send(false),
+      new Answer('unknown', 1),
+      new Queue('done', 1),
+      new Drop(0),
+      new Send(false),
+      new Answer('arrives', 1),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
 });

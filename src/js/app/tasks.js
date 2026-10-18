@@ -128,8 +128,9 @@ export function writes(on = {}) {
   for (const [id, fields] of Object.entries(on)) w.add(idOf(id), fields);
   return w;
 }
-const UNKNOWN = Symbol('unknown'),
-  MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
+const UNKNOWN = Symbol('unknown');
+// The fields a write marking a repeating task done may leave, since Vikunja moves such a task on to its next dates.
+export const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 /* Make `request`, a write as writes() takes it, and return its reply with the write, for answer and made. */
 export async function writing(on, request) {
   const w = writes(on);

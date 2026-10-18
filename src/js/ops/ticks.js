@@ -8,6 +8,7 @@ import { CANCEL } from '../sync.js';
 import { ZERO } from '../util.js';
 import { DONE_MARK, SKIP_MARK } from '../checklists.js';
 import { FINISHED_MEANWHILE, OP_WORDS } from '../messages.js';
+import { MOVED } from '../app/tasks.js';
 import { backOf, changed, comment, figure, mark, patch, tick, unmark, untick } from './stages.js';
 import { marked, said } from './shown.js';
 
@@ -21,6 +22,9 @@ const doneBy = (mark, note) => (t, a) => {
     m = repeats(t) ? d : marked(d, a, mark);
   return note ? said(m, a) : m;
 };
+/* Pocket's copy may not know that a task repeats, and Vikunja moves a repeating task on to its next dates instead of
+   marking it done. So only Vikunja's reply says what a tick leaves in these fields. */
+const ticked = () => MOVED;
 const notDone = (t, a) => marked({ ...t, done: false, done_at: ZERO, ...withPct(a), ...a.back }, a, null);
 
 /* An untick that waited offline may arrive after someone finished the checklist. The checklist stays finished, and the
@@ -94,7 +98,7 @@ export const done = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  replyOnly: ticked,
 };
 // Cancel gives a done note's text, or a skip's reason, back to the step's box.
 export const doneNote = {
@@ -118,7 +122,7 @@ export const doneNote = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  replyOnly: ticked,
 };
 export const skip = {
   apply: doneBy(SKIP_MARK, true),
@@ -141,7 +145,7 @@ export const skip = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  replyOnly: ticked,
 };
 // Undo ticks the task again. An Undo of a repeating task's tick has no Undo.
 export const undone = {
@@ -189,7 +193,7 @@ export const finish = {
   files: null,
   putBack: null,
   deletes: null,
-  replyOnly: null,
+  replyOnly: ticked,
 };
 export const reopen = {
   apply: notDone,

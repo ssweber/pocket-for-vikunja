@@ -29,7 +29,8 @@
    - files(a): the files it still has to upload once its task is made. They move to an entry of their own.
    - deletes(a): the ids of the tasks it deletes, hidden while it waits and forgotten once it is answered.
    - replyOnly(a): the fields of its task that only Vikunja's reply can say, because a stage builds them from Vikunja's
-     copy as it is sent. Its apply's value for them is only a guess, which Vikunja's copy never takes (sendingOp).
+     copy as it is sent, or Vikunja may make the change otherwise. Its apply's value for them is only a guess, which
+     Vikunja's copy never takes (sendingOp).
    - text, refused, dropped and saved: its words, from messages.js. */
 import { opsId } from '../app/tasks.js';
 import { done, doneNote, finish, progress, reopen, skip, undone } from './ticks.js';
