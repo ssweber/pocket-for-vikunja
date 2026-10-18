@@ -176,7 +176,7 @@ with a test in the file for its area:
 - `tests/unit/*.test.mjs`: the helpers and the component's methods, in Node, with no server, one file per area.
   `fake.mjs` is a pretend Vikunja behind `fetch()` and a pretend component. `browser.mjs` is what the modules expect
   of a browser. `reactive.mjs` runs the reactive part of Pocket's Alpine, to test what is recomputed as data
-  changes. There is no DOM, so tests that read a task's notes stay in `parse.mjs`.
+  changes. `dom.mjs` reads only the HTML Pocket writes, so tests that read notes from Vikunja stay in `parse.mjs`.
 - `tests/parse.mjs`: how quick add reads about 770 phrases and pasted lists, most adapted from Vikunja's own tests.
 - `tests/smoke.mjs`: Pocket end to end in a headless browser against a Vikunja with the plugin: tasks, lists, the
   sheet, gestures, Today, quick add, sharing.
