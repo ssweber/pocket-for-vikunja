@@ -109,6 +109,10 @@ One phase, with one review.
   pass. The labels and people an add sets never reach Vikunja's copy, because `CREATED` leaves them out.
 - Carried forward: dropping a failed add with no waiting neighbour leaves its parent's progress unwritten. The
   repeating tick's Undo still uses `unchanged()` and `saveFor`.
+- `setRunFor` builds its people from the checklist's row, so a claim still waiting goes out with them, and it writes
+  that list (`who`) into Vikunja's copy. The `assign` op replaces it.
+- `changeList` writes into Vikunja's copy the list it expects Vikunja to have: the copy's list, or the row's when there
+  is no copy, plus or minus one. The `assign` and `label` ops replace it.
 
 ### 9. Deletes and comments
 
