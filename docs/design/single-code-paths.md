@@ -21,6 +21,7 @@ Built on `dev`, and described by the code and its comments:
 - the op registry (`src/js/ops/`) and the one sender (`src/js/app/acts.js`);
 - one store (`src/js/app/tasks.js`): a row is Vikunja's copy, then the waiting ops, then the edits still running;
 - adding tasks and dates as ops;
+- ticks and progress as ops, each with an Undo that is an op (`invert`), and the pruning of unsent pairs (`fold`);
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
 - the lifecycle test and the randomized store test.
@@ -83,32 +84,31 @@ partway says in its Cancel words what Vikunja already has. They need new words, 
 
 ### 7 and 8. Ticks, progress, sheet fields, project, links, people and labels
 
-One phase, with one review.
+One phase, with one review. Part (a), ticks and progress, is built. Parts (b) to (d) are the table's rows in order.
 
 | Today | Becomes |
 |---|---|
-| `toggleDone`, `tickRunStep`, `tickRunTask`, `arrivedDone`, `setProgress`, `sheetDone`, `sheetProgress`, `closeSubtasks`, `reopen`, `writeFigure` | The `done`, `undone` and `progress` ops. A plain task gets the ✅ as a step does, wherever it was ticked, including `x` lines in quick add. Delete `signTick` and `arrivedDone`'s own save. |
 | `save` and its callers (title, priority, notes, reminders) | `edit`. Notes, reminders and step order need the copy Vikunja has now, so the op names a rebase kind (`notes`, `reminders`, `order`) that its stage applies when it is sent. A function can't be stored in IndexedDB. |
 | `moveTask` | `project`, with the subtasks, in one op |
 | `ownTask`, `linkSubtask` callers | `link`, `unlink` |
 | `addAssignee`, `removeAssignee`, `addLabelTo`, `removeLabelFrom`, `setRunFor`, the template label in checklists.js | `assign`, `label`. Each sends the whole set with `PUT /tasks/{id}/labels/bulk` or `assignees/bulk`, built from the set Vikunja has when the stage runs, plus or minus the one change. A set built from Pocket's copy would remove a label a teammate added since. A new label is first created by a keyed `POST /labels`. `claim` keeps its single `POST`, so two people claiming at once still settle on one. |
 
-- **Pruning** in `sync.add`, on entries that haven't sent a request and aren't held. A new `done` or `undone` cancels
-  an unsent opposite one on its task, and both entries go. A new `progress` or `edit` replaces an unsent op of the same
-  kind on the same task and fields, keeping the oldest `was`. Ticking and unticking ten times offline leaves zero or
-  one entry.
-- **Undo is an op**, made by `invert` from what the first op recorded: `was`, each field's value before, and `got`,
-  the value Vikunja stored, from its answer. Its stage reads Vikunja's copy once. A field that still has `got` goes
-  back to `was`. A field changed elsewhere is left alone, with one message: "Not undone: “title” has changed since
-  then", on the row, or in the Outbox if the row is gone. An Undo of an op not yet sent removes the op. A repeating
-  task's Undo puts back `due_date`, `start_date`, `end_date` and absolute reminders.
-- The inline Undo closures in `toggleDone`, `arrivedDone`, `reopenedHead`, `moveTask` and `ownTask` go.
+- **Pruning** of `edit`: a new `edit` replaces an unsent `edit` on the same task and fields, keeping the oldest `was`,
+  as `progress` does (`merge`, run by `fold` in app/acts.js).
+- **Undo is an op** for `edit`, `project`, `link`, `unlink`, `assign` and `label` too, as for a tick (`invert`). Its
+  stage reads Vikunja's copy once (`backOf`, ops/stages.js). A field changed elsewhere is left alone, with the message
+  "Not undone: “title” has changed since then" (undoOps with `quiet` false).
+- The inline Undo closures in `moveTask` and `ownTask` go.
 - Delete `save`, the direct calls in sheet.js, `saveTask` and `shared.saveChain`.
-- From the Veyrn comparison: an op refused with 404, because its task was deleted in Vikunja, stays failed for good.
-  Its `refusal` should drop it. A `flush` asked for while one runs is lost until the 30-second timer, so run one more
-  pass. The labels and people an add sets never reach Vikunja's copy, because `CREATED` leaves them out.
-- Carried forward: dropping a failed add with no waiting neighbour leaves its parent's progress unwritten. The
-  repeating tick's Undo still uses `unchanged()` and `saveFor`.
+- From the Veyrn comparison: an op refused with 404, because its task was deleted in Vikunja, stays failed for good,
+  except a tick, an untick, a progress, a finish and a reopen, whose `refusal` drops it ('dropped'). The new ops
+  should too. The labels and people an add sets never reach Vikunja's copy, because `CREATED` leaves them out.
+- Carried forward: dropping a failed add with no waiting neighbour leaves its parent's progress unwritten.
+- `writeFigure` is a direct save still used by `ownTask`, a step inserted in a checklist (`INSERT_STEPS`) and
+  `deleteAddedStep`. The `link` and `unlink` ops write the parent's progress in their last stage, as a tick does
+  (`figure`), and phases 9 and 10 do the same for the other two.
+- The Undo of a repeating task's tick whose answer this tab never saw, as when the relay can't say whether Vikunja made
+  it, has no dates to check against. It counts any date other than the one before as changed since.
 - `setRunFor` builds its people from the checklist's row, so a claim still waiting goes out with them, and it writes
   that list (`who`) into Vikunja's copy. The `assign` op replaces it.
 - `changeList` writes into Vikunja's copy the list it expects Vikunja to have: the copy's list, or the row's when there
@@ -132,8 +132,7 @@ the saved screen as now, and `docs/guide.md` says the same.
 - The three callers of `createTask` outside the outbox (the template editor, a step's new title, a step inserted in a
   checklist) queue ops.
 - `untick` (runs.js), the start's Undo for the template it ticked, becomes the `invert` of the start's `tick` stage.
-- Remove the last files from the writes allowlist, except what stays direct (below). Turn on the keys rule. Delete
-  `unchanged()` and turn on the Undo rule.
+- Remove the last files from the writes allowlist, except what stays direct (below). Turn on the keys rule.
 - From the Veyrn comparison: an op on a checklist step that was never added stays failed. It should leave with the
   step's add.
 
@@ -201,7 +200,6 @@ first.
 |---|---|---|
 | each | The writes allowlist shrinks as each phase finishes its files. | what stays direct |
 | 10 | Keys: a call to `api` with a `method` other than `GET` and no `key`. | `src/js/api.js`, what stays direct |
-| 10 | Undo: a call to `this.unchanged`. | nothing |
 | 12 | Messages: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said`. | `src/js/messages.js` |
 
 ## After the major work
