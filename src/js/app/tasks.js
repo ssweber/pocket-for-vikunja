@@ -605,13 +605,14 @@ function restore(c, ids = null) {
   if (list.length) c.change(w => w.read(list, SAVED, 0));
   for (const t of list) unsaved.delete(t.id); // the phone has them as they are
 }
-// Keep on the phone the copies of tasks `ids`, and no others. Another tab may have kept more since this one read them.
+/* Keep on the phone the copies of tasks `ids`, and no others. A copy the phone has that this tab doesn't stays, since
+   another tab may have kept it after this tab read the phone's list. */
 function keepCopies(c, ids) {
   restore(c);
   const was = new Set(saved.get('tasks') || []),
-    kept = [...ids].filter(id => keptCopy(id));
-  for (const id of was) if (!ids.has(id) || !keptCopy(id)) store.del('saved.task.' + id);
-  for (const id of kept) if (unsaved.has(id) || !was.has(id)) saved.set('task.' + id, keptCopy(id));
+    kept = [...ids].filter(id => keptCopy(id) || (was.has(id) && !forgotten.has(id)));
+  for (const id of was) if (!ids.has(id)) store.del('saved.task.' + id);
+  for (const id of kept) if (keptCopy(id) && (unsaved.has(id) || !was.has(id))) saved.set('task.' + id, keptCopy(id));
   unsaved.clear();
   saved.set('tasks', kept);
 }

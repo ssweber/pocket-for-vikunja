@@ -1584,3 +1584,21 @@ test('a copy changed since its screen was saved reaches the phone as Pocket is h
   assert.deepEqual([saved.get('task.2').title, saved.get('tasks')], ['Lock up twice', [1, 2, 3]]);
   localStorage.clear();
 });
+
+/* Another tab may keep a project's copies after this tab read the phone's list of them. This tab, hidden later, leaves
+   them, so the project opens offline with its rows. */
+test("a tab hidden after another tab kept a project's copies leaves them on the phone", async () => {
+  await sync.ready;
+  const app = component(tasks, views);
+  app.user = { id: 1 };
+  read([{ id: 1, title: 'Wipe the menus', project_id: 5 }]);
+  app.keepScreen('today', { groups: [{ key: 'today', tasks: [app.row(copyOf(1))] }] });
+  // The other tab opens project 9 and keeps its screen and copies.
+  opened('project', 9);
+  saved.set('project.9.open', { groups: [{ key: 'open', tasks: [91] }], project: { id: 9 } });
+  saved.set('task.91', { id: 91, title: 'Count the float', project_id: 9 });
+  saved.set('tasks', [...saved.get('tasks'), 91]);
+  app.keepChanged();
+  assert.deepEqual([saved.get('task.91')?.title, saved.get('tasks')], ['Count the float', [1, 91]]);
+  localStorage.clear();
+});
