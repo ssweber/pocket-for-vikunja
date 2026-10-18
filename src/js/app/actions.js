@@ -46,9 +46,9 @@ export default {
   /* ---------- saving a change ---------- */
   /* Save a task's changes straight to Vikunja, and put Vikunja's answer into its copy, which shows it on the rows.
      Resolves to Vikunja's copy, or rejects if the save fails. The caller writes nothing more, since the copy has it.
-     The sheet's own fields go through the outbox as edits. What still saves here is a move to another project
-     (moveTask), a parent's progress (writeFigure), a checklist's name (saveRunName), a template step's name and asks,
-     and a step's place in a template or a checklist. */
+     The sheet's own fields go through the outbox as edits. What still saves here is a parent's progress
+     (writeFigure), a checklist's name (saveRunName), a template step's name and asks, and a step's place in a template
+     or a checklist. */
   async saveTask(id, patch, rebase) {
     this.writing++; // counts until the reply arrives
     try {
@@ -236,9 +236,9 @@ export default {
       up = run ? null : inSheet ? this.sheet.id : isSubtask(t) ? this.parentIdOf(t) : null;
     return { run, ...(typeof up === 'number' && { up }) };
   },
-  /* Save a parent's computed percent_done after one of its subtasks changes, in the same save chain. It reads the
-     parent first and saves only if the percentage changed, without a message. Templates are skipped. A tick or a
-     progress does this in its op's last stage instead (figure, ops/stages.js). */
+  /* Save a checklist's computed percent_done after a step is inserted or deleted. It reads the checklist first and
+     saves only if the percentage changed, without a message. Templates are skipped. An op does this in its last stage
+     instead (figure, ops/stages.js). */
   writeFigure(id) {
     return this.saveTask(id, null, now => (this.role(now) === 'template' ? null : figurePatch(now)));
   },
@@ -432,138 +432,114 @@ export default {
   get canMove() {
     return this.sheet.kind === 'task' && this.canEdit && [null, 'candidate'].includes(this.checklistRole);
   },
-  /* Move the open task to project `pid`, with its subtasks at every level. The message at `at` has an Undo, which
-     puts the task and each subtask that moved back in the project it came from. */
+  /* Move the open task to project `pid`, with its subtasks at every level, as one `project` op. The task and its
+     subtasks show in the new project at once, and the op waits in the outbox while Pocket is offline. The message at
+     `at` has an Undo, which puts each back in the project it came from, unless it has moved since. */
   async moveTask(pid, at = 'sheet:props') {
     const t = this.sheetTask,
-      from = t?.project_id,
-      kids = [],
-      moved = [];
+      from = t?.project_id;
     if (!t || pid === from || !this.canMove) return;
-    const walk = async (id, seen = new Set([t.id])) => {
-      const x = id === t.id ? t : copyOf(id) || (await api('/tasks/' + id));
-      for (const sub of x.related_tasks?.subtask || [])
-        if (!seen.has(sub.id)) {
-          seen.add(sub.id);
-          kids.push({ id: sub.id, was: sub.project_id ?? from });
-          await walk(sub.id, seen);
-        }
+    const subs = (await this.subtaskTree(t.id)).filter(s => s.project_id !== pid),
+      title = id => this.projById.get(id)?.title;
+    const f = {
+      id: uuid7(),
+      op: 'project',
+      task: t.id,
+      pid,
+      subs: Object.fromEntries(subs.map(s => [s.id, pid])),
+      was: Object.fromEntries([t, ...subs].map(s => [s.id, s.project_id])),
+      into: title(pid),
+      from: title(from),
+      run: null,
     };
-    // The task shows in its new project at once, and goes back if Vikunja refuses the move.
-    const put = async project_id => {
-      const shown = this.change(w => w.edit(t.id, { project_id }));
-      try {
-        await this.saveTask(t.id, { project_id });
-        this.change(() => shown.ok());
-        return true;
-      } catch (e) {
-        this.change(() => shown.undo());
-        const again = { label: 'Try again', fn: () => put(project_id) };
-        this.say(notSaved(e), { place: 'sheet:top', cls: 'failed', ms: null, action: again });
-        return false;
-      }
-    };
-    if (!(await put(pid))) return;
+    const r = await this.act(f);
+    this.sheet.dirty = true;
+    if (r.status === 'error') return;
     const undo = async () => {
-      if (this.sheet.id !== t.id || !(await put(from))) return;
-      const left = (await Promise.allSettled(moved.map(k => this.saveTask(k.id, { project_id: k.was })))).filter(
-        r => r.status === 'rejected',
-      ).length;
-      if (left)
-        this.say(`Moved back, but not ${left === 1 ? '1 subtask' : left + ' subtasks'}`, { place: at, cls: 'failed' });
-      else this.said = 'Moved back to ' + (this.projById.get(from)?.title || 'its project');
+      if (!(await this.undoOps([f], false).left)) this.said = 'Moved back to ' + (title(from) || 'its project');
       this.sheet.dirty = true;
     };
-    const to = this.projById.get(pid)?.title,
-      action = { label: 'Undo', fn: undo };
-    try {
-      await walk(t.id);
-      for (const k of kids)
-        if (k.was !== pid) {
-          await this.saveTask(k.id, { project_id: pid });
-          moved.push(k);
-        }
-      this.say(movedToProject(to, moved.length), { place: at, action });
-    } catch (e) {
-      this.say(`Moved, but not all its subtasks: ${e.message}`, { place: at, cls: 'failed', action });
-    }
-    this.sheet.dirty = true;
+    this.say(movedToProject(title(pid), subs.length), {
+      place: at,
+      action: { label: 'Undo', fn: undo },
+      gone: () => this.forgetUndo([f]),
+    });
   },
-  /* Detach the open subtask from all its parents and keep it in its project. If its parent's List view position is
-     known, the task is placed just after the parent. Undo restores the parents and the position. Each old parent's
-     progress is recalculated, and keeps its last value if no subtasks remain. A checklist step or a template step
-     cannot be detached, because the order notes still name it. */
+  /* Task `id`'s subtasks at every level, each once, as their rows show them. A subtask Pocket has no copy of is read
+     first, so its own subtasks are found too. Offline, such a subtask is found without its subtasks. */
+  async subtaskTree(id) {
+    const out = [],
+      seen = new Set([id]);
+    const walk = async tid => {
+      for (const s of this.shownAs(tid)?.related_tasks?.subtask || []) {
+        if (seen.has(s.id)) continue;
+        seen.add(s.id);
+        if (!copyOf(s.id)) await this.readCopy(s.id).catch(() => null);
+        out.push(this.shownAs(s.id) || s);
+        await walk(s.id);
+      }
+    };
+    await walk(id);
+    return out;
+  },
+  /* Detach the open subtask from all its parents and keep it in its project, with an `unlink` op for each parent, which
+     writes that parent's progress last. If the first parent's List view position is known, the task is placed just
+     after the parent. Undo undoes the ops and puts the position back. A checklist step or a template step cannot be
+     detached, because the order notes still name it. */
   get canOwn() {
     return this.sheet.kind === 'task' && this.canEdit && !!this.parentTask && !this.checklistRole;
   },
   async ownTask() {
     const t = this.sheetTask;
     if (!this.canOwn) return;
-    const parents = t.related_tasks.parenttask.map(p => ({ id: p.id, title: p.title, project_id: p.project_id })),
+    const parents = t.related_tasks.parenttask,
       first = parents[0],
-      out = [];
+      ids = parents.map(p => p.id);
     const view = listViewOf(this.projById.get(t.project_id))?.id,
       at = this.positions[first.id],
       was = this.positions[t.id];
-    // Refresh the sheet and rows from Vikunja's copies. Recalculating each parent's progress reads that parent again.
-    const fresh = async () => {
-      const now = (await this.readCopy(t.id).catch(() => null)) || (await this.readCopy(t.id).catch(() => null));
-      if (now && this.sheet.id === t.id) this.showTask(now);
-      await Promise.all(parents.map(p => this.writeFigure(p.id).catch(() => {})));
-      if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]); // keeps the add box on the task at its new level
-      this.sheet.dirty = true;
-    };
-    // A refused move puts the task back itself (positionRefused).
-    const place = async pos => {
-      const had = this.positions[t.id];
-      this.positions[t.id] = pos;
-      await this.act({ op: 'position', task: t.id, view, pos, was: had, run: null });
-    };
-    try {
-      // A 404 means the task is already not a subtask of this parent, for example because it was detached elsewhere.
-      // That counts as success.
-      for (const p of parents) {
-        await patiently(() => api(`/tasks/${p.id}/relations/subtask/${t.id}`, { method: 'DELETE' })).catch(e => {
-          if (e.status !== 404) throw e;
-        });
-        out.push(p);
-      }
-    } catch (e) {
-      this.say(notSaved(e), {
-        place: 'sheet:top',
-        cls: 'failed',
-        action: { label: 'Try again', fn: () => this.ownTask() },
-      });
-      if (out.length) await fresh();
-      return;
-    }
-    let moved = false;
-    if (view && at && first.project_id === t.project_id) {
+    // Each op records the parents the task has before it, for its Undo.
+    const ops = parents.map((p, i) => ({
+      id: uuid7(),
+      op: 'unlink',
+      task: t.id,
+      up: p.id,
+      over: p.title,
+      was: ids.slice(i),
+      run: null,
+    }));
+    // The task goes right after its first parent, before the task that follows the parent on the list on screen.
+    let pos = null;
+    if (view && at && (copyOf(first.id)?.project_id ?? first.project_id) === t.project_id) {
       const g =
         this.route.name === 'project' &&
         this.view.project?.id === t.project_id &&
         this.listGroups.find(x => x.key === 'open');
       const tops = g ? g.tasks.filter(x => !g.depth[x.id] && !x.pending) : [],
         i = tops.findIndex(x => x.id === first.id);
-      await place(between(at, i < 0 ? at : this.positions[tops[i + 1]?.id] || null));
-      moved = true;
+      pos = between(at, i < 0 ? at : this.positions[tops[i + 1]?.id] || null);
     }
-    await fresh();
-    const undo = async () => {
-      try {
-        for (const p of out) await patiently(() => this.linkSubtask(p.id, t.id));
-        if (moved && was) await place(was);
-      } catch (e) {
-        this.say('Not undone: ' + (e instanceof NetError ? 'no connection' : e.message), {
-          place: 'sheet:top',
-          cls: 'failed',
-        });
-      }
-      await fresh();
+    // A refused move puts the task back itself (positionRefused).
+    const place = p => {
+      const had = this.positions[t.id];
+      this.positions[t.id] = p;
+      return this.act({ op: 'position', task: t.id, view, pos: p, was: had, run: null });
     };
-    this.say(`No longer a subtask of ${out.length === 1 ? `“${first.title}”` : out.length + ' tasks'}`, {
+    const r = await this.actAll(ops);
+    this.sheet.dirty = true;
+    if (r.all.some(x => x.status === 'error')) return;
+    if (pos !== null) await place(pos);
+    if (this.cursor?.id === t.id) this.aim(this.tasks[t.id]); // keeps the add box on the task at its new level
+    // The last parent's op is undone first, so each Undo finds the parents its op left.
+    const undo = async () => {
+      await this.undoOps([...ops].reverse(), false).left;
+      if (pos !== null && was) await place(was);
+      this.sheet.dirty = true;
+    };
+    this.say(`No longer a subtask of ${ops.length === 1 ? `“${first.title}”` : ops.length + ' tasks'}`, {
       place: 'sheet:top',
       action: { label: 'Undo', fn: undo },
+      gone: () => this.forgetUndo(ops),
     });
   },
   // Whether Move all to today has anything to move. Repeating tasks and repeating checklists don't count.

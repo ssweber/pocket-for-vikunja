@@ -6,7 +6,7 @@ import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
@@ -14,6 +14,7 @@ import checklists from '../../src/js/app/checklists.js';
 import acts from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
 import { sync } from '../../src/js/sync.js';
+import { lastSaid, noConnection, sender } from './ops-helpers.mjs';
 
 /* A title being edited, in the box in the sheet's own row or in a template's box over its card, is saved when the box
    loses focus. A sheet that is slid down or closed with the phone's Back doesn't take focus from the box, and on an
@@ -121,11 +122,11 @@ test("Escape closes the task's menu before its sheet and moves the focus back to
     delete document.getElementById;
   }
 });
-/* "Turn into its own task" (ownTask, in the ⋯ menu on a subtask's sheet) removes the subtask from under its parent and
-   puts it right after the parent in the project's List view. The old parent's calculated progress is then written
-   without the subtask. A message with an Undo appears at the top of the sheet, and Undo puts the subtask back under
-   its parent where it was. It is not available for a checklist's step or a template's. */
-test('turning a subtask into its own task moves it right after its parent, and Undo puts it back', async () => {
+/* "Turn into its own task" (ownTask, in the ⋯ menu on a subtask's sheet) takes the subtask out from under its parent,
+   as an `unlink` op, and puts it right after the parent in the project's List view. The op writes the old parent's
+   progress last, without the subtask. A message with an Undo appears at the top of the sheet, and Undo puts the
+   subtask back under its parent where it was. It is not available for a checklist's step or a template's. */
+const family = c => {
   const parent = {
     id: 10,
     title: 'Pack the van',
@@ -143,9 +144,7 @@ test('turning a subtask into its own task moves it right after its parent, and U
     related_tasks: { parenttask: [{ id: 10, title: 'Pack the van', project_id: 5 }] },
     ...f,
   });
-  const v = fakeVikunja([parent, kid(11, { done: true }), kid(12)]),
-    app = component(tasks, actions),
-    moves = [];
+  const { v, app } = sender(c, [parent, kid(11, { done: true }), kid(12)], actions);
   Object.defineProperties(
     app,
     Object.getOwnPropertyDescriptors({
@@ -154,32 +153,31 @@ test('turning a subtask into its own task moves it right after its parent, and U
       cursor: null,
       canEdit: true,
       checklistRole: null,
+      loadSubPeople() {},
       get parentTask() {
         return this.sheetTask?.related_tasks?.parenttask?.[0] || null;
-      },
-      showTask() {},
-      linkSubtask: sending.linkSubtask,
-      act: async a => {
-        moves.push([a.op, a.task, a.view, a.pos]);
-        return { status: 'sent' };
       },
     }),
   );
   app.row(v.task(10));
-  opened(app, v.task(12), { kind: 'task' });
+  opened(app, v.task(12), { kind: 'task', open: true });
+  return { v, app, parents: () => v.task(12).related_tasks.parenttask.map(p => p.id) };
+};
+test('turning a subtask into its own task moves it right after its parent, and Undo puts it back', async c => {
+  const { v, app, parents } = family(c);
   app.checklistRole = 'step';
   assert.equal(app.canOwn, false, "a checklist's step cannot become its own task");
   app.checklistRole = null;
   assert.equal(app.canOwn, true);
   await app.ownTask();
   assert.deepEqual(
-    [v.task(12).related_tasks.parenttask, v.task(10).related_tasks.subtask.map(s => s.id)],
+    [parents(), v.task(10).related_tasks.subtask.map(s => s.id)],
     [[], [11]],
-    'the subtask is removed from the parent, and the parent no longer lists it',
+    'the subtask is taken out of the parent, and the parent no longer lists it',
   );
-  assert.deepEqual(
-    moves,
-    [['position', 12, 7, 1000.01]],
+  assert.equal(
+    v.task(12).position,
+    1000.01,
     'the task goes right after its old parent, a little after it, because the list is not on screen to give the next position',
   );
   assert.deepEqual(
@@ -187,42 +185,66 @@ test('turning a subtask into its own task moves it right after its parent, and U
     [true, [], false],
     'the sheet reads the row, which shows it without a parent',
   );
+  assert.deepEqual(patches(v).at(-1), [10, { percent_done: 1 }], "the old parent's progress is written without it");
   assert.deepEqual(
-    patches(v).at(-1),
-    [10, { percent_done: 1 }],
-    "the old parent's progress is calculated without the task",
-  );
-  assert.deepEqual(
-    [app.toast.msg, app.toast.place, app.toast.action.label],
+    [lastSaid(app).msg, lastSaid(app).place, lastSaid(app).action.label],
     ['No longer a subtask of “Pack the van”', 'sheet:top', 'Undo'],
   );
-  await app.toast.action.fn();
+  await lastSaid(app).action.fn();
   assert.deepEqual(
-    [v.task(12).related_tasks.parenttask.map(p => p.id), v.task(10).related_tasks.subtask.map(s => s.id)],
-    [[10], [11, 12]],
-    'Undo puts the subtask under its parent again',
+    [parents(), v.task(10).related_tasks.subtask.map(s => s.id), v.task(12).position, patches(v).at(-1)],
+    [[10], [11, 12], 200, [10, { percent_done: 0.5 }]],
+    'Undo puts the subtask under its parent again, in its place, and counts it in the progress again',
   );
-  assert.deepEqual(
-    [moves.at(-1), patches(v).at(-1)],
-    [
-      ['position', 12, 7, 200],
-      [10, { percent_done: 0.5 }],
-    ],
-    "Undo restores the subtask's position among the subtasks and counts it in the progress again",
-  );
-  // If Vikunja refuses, a message with Try again appears and nothing changes.
+  assert.deepEqual([app.tasks[12].related_tasks.parenttask.map(p => p.id), sync.all(1)], [[10], []]);
+});
+test('a subtask Vikunja refuses to take out stays under its parent, and waits in the Outbox', async c => {
+  const { v, app, parents } = family(c);
   v.trouble = r => (r.method === 'DELETE' ? 403 : null);
   await app.ownTask();
   assert.deepEqual(
-    [app.toast.action.label, app.toast.cls, v.task(12).related_tasks.parenttask.map(p => p.id), moves.length],
-    ['Try again', 'failed', [10], 2],
+    [lastSaid(app).msg, lastSaid(app).action.label, lastSaid(app).place],
+    [
+      "Taking “Kid 12” out of “Pack the van” couldn't be saved: HTTP 403 from the fake. It's kept to try again.",
+      'Outbox',
+      'step',
+    ],
+  );
+  assert.deepEqual(
+    [
+      parents(),
+      app.tasks[12].related_tasks.parenttask.map(p => p.id),
+      app.failed.length,
+      v.requests.filter(r => r.method === 'PUT').length,
+    ],
+    [[10], [10], 1, 0],
+    'nothing changes, and the task is not moved in the list',
   );
 });
+test('the Undo of a subtask taken out leaves it alone once a teammate gave it another parent', async c => {
+  const { v, app, parents } = family(c);
+  await app.ownTask();
+  const undo = lastSaid(app).action.fn;
+  v.task(11).related_tasks.subtask = [{ id: 12 }];
+  v.task(12).related_tasks.parenttask = [{ id: 11 }];
+  await undo();
+  assert.deepEqual(
+    [parents(), app.toasts.find(m => /^Not undone/.test(m.msg))?.msg],
+    [[11], 'Not undone: “Kid 12” has changed since then'],
+  );
+});
+test('taking a subtask out and putting it back, both made offline, cancel out', async c => {
+  const { v, app } = family(c);
+  noConnection(app, v);
+  const out = { op: 'unlink', task: 12, up: 10, over: 'Pack the van', was: [10], run: null };
+  await app.actAll([out, { ...out, op: 'link', was: [] }]);
+  assert.deepEqual([sync.all(1), app.tasks[12].related_tasks.parenttask.map(p => p.id)], [[], [10]]);
+});
+
 /* Moving a task to another project (moveTask, from "Move to another project" in the ⋯ menu or the Project row under
-   Details) takes its subtasks at every level, where Vikunja's web app moves only the task. The message has an Undo,
-   which puts the task and each subtask that moved back in the project it came from. */
+   Details) takes its subtasks at every level, where Vikunja's web app moves only the task, as one `project` op. The
+   message has an Undo, which puts the task and each subtask that moved back in the project it came from. */
 const twoProjects = c => {
-  c.mock.timers.enable({ apis: ['setTimeout'] });
   const t = (id, project_id, subs = []) => ({
     id,
     title: 'Task ' + id,
@@ -231,7 +253,9 @@ const twoProjects = c => {
     related_tasks: { subtask: subs.map(([id, project_id]) => ({ id, project_id })) },
   });
   // Task 10 has the subtasks 11 and 12, and 11 has the subtask 13. Subtask 12 is already in the other project.
-  const v = fakeVikunja([
+  const { v, app } = sender(
+    c,
+    [
       t(10, 5, [
         [11, 5],
         [12, 6],
@@ -239,22 +263,23 @@ const twoProjects = c => {
       t(11, 5, [[13, 5]]),
       t(12, 6),
       t(13, 5),
-    ]),
-    app = component(tasks, actions);
+    ],
+    actions,
+  );
   Object.defineProperties(
     app,
     Object.getOwnPropertyDescriptors({
       projById: new Map([
         [5, { id: 5, title: 'Inbox' }],
         [6, { id: 6, title: 'Errands' }],
+        [7, { id: 7, title: 'Garden' }],
       ]),
       canEdit: true,
       checklistRole: null,
-      save: sheet.save,
-      showTask() {},
+      loadSubPeople() {},
     }),
   );
-  opened(app, v.task(10), { kind: 'task' });
+  opened(app, v.task(10), { kind: 'task', open: true });
   return { v, app, where: () => [10, 11, 12, 13].map(id => v.task(id).project_id) };
 };
 test('moving a task to another project takes its subtasks at every level, and Undo puts each back', async c => {
@@ -267,15 +292,15 @@ test('moving a task to another project takes its subtasks at every level, and Un
       [11, { project_id: 6 }],
       [13, { project_id: 6 }],
     ],
-    'the subtask already there is not sent',
+    'the subtask already there is not sent, and a subtask Pocket never read is read for its own subtasks',
   );
   assert.deepEqual([app.sheetTask.project_id, where()], [6, [6, 6, 6, 6]]);
   assert.deepEqual(
-    [app.toast.msg, app.toast.place, app.toast.action.label],
+    [lastSaid(app).msg, lastSaid(app).place, lastSaid(app).action.label],
     ['Moved to Errands, with its 2 subtasks', 'sheet:top', 'Undo'],
   );
   v.requests.length = 0;
-  await app.toast.action.fn();
+  await lastSaid(app).action.fn();
   assert.deepEqual(patches(v), [
     [10, { project_id: 5 }],
     [11, { project_id: 5 }],
@@ -287,36 +312,79 @@ test('moving a task to another project takes its subtasks at every level, and Un
     'the subtask that was in the other project all along stays there',
   );
 });
-test('a move that stops at a subtask says so, and Undo moves back only what moved', async c => {
+test('a move made offline shows at once on the task and its subtasks, and waits in the Outbox', async c => {
+  const { v, app, where } = twoProjects(c);
+  app.change(w => w.read([v.task(11), v.task(13)], TASK, started()));
+  noConnection(app, v);
+  v.trouble = () => 'offline';
+  await app.moveTask(6);
+  assert.deepEqual(
+    [[10, 11, 13].map(id => app.tasks[id]?.project_id ?? app.shownAs(id).project_id), where()],
+    [
+      [6, 6, 6],
+      [5, 5, 6, 5],
+    ],
+  );
+  assert.deepEqual(
+    [lastSaid(app).msg, app.outboxRows.map(r => r.text)],
+    ['Moved to Errands, with its 2 subtasks', ['Moving “Task 10” to Errands, with its 2 subtasks']],
+  );
+});
+test('a second move of a task not sent yet takes the place of the first, and Undo goes back to where it began', async c => {
+  const { v, app, where } = twoProjects(c);
+  app.change(w => w.read([v.task(11), v.task(13)], TASK, started()));
+  noConnection(app, v);
+  v.trouble = () => 'offline';
+  await app.moveTask(6);
+  await app.moveTask(7);
+  assert.deepEqual(
+    sync.all(1).map(e => [e.pid, e.subs, e.was]),
+    [[7, { 11: 7, 12: 7, 13: 7 }, { 10: 5, 11: 5, 12: 6, 13: 5 }]],
+  );
+  await lastSaid(app).action.fn();
+  assert.deepEqual(
+    [sync.all(1), [10, 11, 13].map(id => app.shownAs(id).project_id), where()],
+    [[], [5, 5, 5], [5, 5, 6, 5]],
+  );
+});
+test('a move that stops at a subtask says so, waits in the Outbox, and Try again moves the rest', async c => {
   const { v, app, where } = twoProjects(c);
   v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/13' ? 403 : null);
   await app.moveTask(6);
   assert.deepEqual(where(), [6, 6, 6, 5]);
-  assert.match(app.toast.msg, /^Moved, but not all its subtasks: /);
   assert.deepEqual(
-    [app.toast.place, app.toast.cls, app.toast.action.label],
-    ['sheet:props', 'failed', 'Undo'],
-    'from the Project row, the message is under that row',
-  );
-  v.requests.length = 0;
-  await app.toast.action.fn();
-  assert.deepEqual(
-    [patches(v), where()],
+    [lastSaid(app).msg, lastSaid(app).place, lastSaid(app).action.label],
     [
-      [
-        [10, { project_id: 5 }],
-        [11, { project_id: 5 }],
-      ],
-      [5, 5, 6, 5],
+      "Moving “Task 10” to Errands couldn't be saved in full (it's moved): HTTP 403 from the fake. It's kept to try again.",
+      'sheet:props',
+      'Outbox',
     ],
+    "the message is under the sheet's Project row",
   );
+  v.trouble = () => null;
+  await app.retryAct(app.failed[0].id);
+  assert.deepEqual([where(), sync.all(1)], [[6, 6, 6, 6], []]);
 });
-test('a move Vikunja refuses leaves the subtasks where they are', async c => {
+test('a move Vikunja refuses leaves the task and its subtasks where they are, and waits in the Outbox', async c => {
   const { v, app, where } = twoProjects(c);
   v.trouble = r => (r.method === 'PATCH' ? 403 : null);
   await app.moveTask(6);
   assert.deepEqual([patches(v).map(([id]) => id), where()], [[10], [5, 5, 6, 5]], 'only the task itself was tried');
-  assert.deepEqual([app.toast.place, app.toast.cls, app.toast.action.label], ['sheet:top', 'failed', 'Try again']);
+  assert.deepEqual(
+    [app.sheetTask.project_id, lastSaid(app).place, lastSaid(app).cls, lastSaid(app).action.label],
+    [5, 'sheet:props', 'failed', 'Outbox'],
+  );
+});
+test('the Undo of a move leaves a task a teammate moved since, and says so', async c => {
+  const { v, app, where } = twoProjects(c);
+  await app.moveTask(6);
+  const undo = lastSaid(app).action.fn;
+  v.task(11).project_id = 7;
+  await undo();
+  assert.deepEqual(
+    [where(), app.toasts.find(m => /^Not undone/.test(m.msg))?.msg],
+    [[5, 7, 6, 5], 'Not undone: “Task 10” has changed since then'],
+  );
 });
 test('a template, a checklist and their steps cannot move to another project, and a read-only task cannot either', async c => {
   const { v, app } = twoProjects(c);
