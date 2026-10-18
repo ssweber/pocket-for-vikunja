@@ -576,6 +576,8 @@ class World {
       notesRefused() {},
       // The commands send. Nothing sends on its own.
       flush: async () => {},
+      // The projects Pocket lists, which a catch-up asks about (findRemoved).
+      projById: new Map([[5, { id: 5, title: 'Closing' }]]),
       // Vikunja refuses the search for who can see the project, so a line's person is assigned and Vikunja decides.
       canSee: async () => null,
       findUser: async name => ({ id: 7, username: name }),
@@ -676,7 +678,7 @@ class World {
         id = +(u.pathname.match(/\/tasks\/(\d+)$/) || [])[1],
         at = ++this.seq,
         expand = u.searchParams.getAll('expand'),
-        asked = [...TASK, ...['reactions', 'comments'].filter(k => expand.includes(k))];
+        asked = [...TASK, ...['reactions', 'comments', 'comment_count'].filter(k => expand.includes(k))];
       return this.stamped(await this.inner(url, opts), ++this.t, false, 'read', {
         asked,
         overlapped: !!id && this.overlaps(id, at, at),
@@ -856,17 +858,22 @@ class World {
     } catch {
       return new Response(text, { status: res.status, headers: res.headers });
     }
-    if (kind && body && typeof body === 'object' && 'id' in body && 'title' in body) {
+    const stamp = (t, more = {}) => {
       this.replies.push({
         at,
         kind,
         replayed,
-        data: clone(body),
+        data: clone(t),
         h: h?.reached ? h : null,
         ...pick(h || {}, 'asked', 'overlapped', 'start'),
+        ...more,
       });
-      body[MADE] = this.replies.length - 1;
-    }
+      t[MADE] = this.replies.length - 1;
+    };
+    if (kind && body && typeof body === 'object' && 'id' in body && 'title' in body) stamp(body);
+    // Each task of a list a read brings, as /tasks gives it.
+    else if (kind === 'read' && Array.isArray(body?.items))
+      for (const t of body.items) stamp(t, { overlapped: this.overlaps(t.id, h.start, h.start) });
     return new Response(JSON.stringify(body), { status: res.status, headers: res.headers });
   }
   replyOf(t) {
@@ -1616,6 +1623,18 @@ class Sweep extends Command {
     return `Sweep(${this.ts})`;
   }
 }
+// Pocket comes back to the screen and catches up: it reads the tasks changed since, and forgets those deleted.
+class CatchUp extends Command {
+  can() {
+    return true;
+  }
+  async act(w) {
+    w.bg(w.app.catchUp());
+  }
+  toString() {
+    return 'CatchUp';
+  }
+}
 // Pocket reloads, between any two requests of an op, with the connection cut first or not (World.reload).
 class Reload extends Command {
   constructor(cut) {
@@ -1692,6 +1711,7 @@ const COMMANDS = [
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
   fc.uniqueArray(target, { maxLength: 3 }).map(ts => new Sweep(ts)),
   fc.boolean().map(cut => new Reload(cut)),
+  fc.constant(new CatchUp()),
 ];
 
 /* Send and answer everything still waiting: make the step, cancel what Vikunja refused, send what
