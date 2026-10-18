@@ -118,6 +118,7 @@ export function writes(on = {}) {
         flying.get(id)?.delete(w);
         if (!flying.get(id)?.size) flying.delete(id);
         landed.set(id, ++clock);
+        reread(id);
       }
     },
   };
@@ -158,6 +159,31 @@ export const sendingOp = a => {
   opWrites.set(a.id, w);
   return w;
 };
+/* When Pocket's writes leave fields of a copy unsure, the task is read again once no write to it is in flight
+   (reread), once however many writes left it unsure. Two writes crossed, or Vikunja changed what only its reply can
+   say, and that reply wasn't taken. A read taken, or a reply that brings the field, ends the doubt. */
+const doubts = new Map(); // task id -> the fields of its copy that may be old
+const rereading = new Set(); // the tasks being read again
+// What a read again asks for: every field of a task, and its reactions (expand=reactions).
+const REREAD = [...TASK, 'reactions'];
+const doubt = (id, fields) => {
+  const d = doubts.get(id) || new Set();
+  for (const k of fields) if (REREAD.includes(k)) d.add(k);
+  if (d.size) doubts.set(id, d);
+};
+function reread(id) {
+  if (!doubts.get(id)?.size || flying.get(id)?.size || rereading.has(id) || forgotten.has(id) || !app) return;
+  rereading.add(id);
+  const at = started();
+  api(`/tasks/${id}?expand=reactions`).then(
+    t => {
+      rereading.delete(id);
+      app.change(w => w.read([t], REREAD, at));
+      reread(id); // a write ended while it ran, so the read was thrown away
+    },
+    () => rereading.delete(id),
+  );
+}
 // Whether a read that started at `at` ran while a write to task `id` was in flight, other than `except`, the write of
 // the op the read is part of.
 export const overlaps = (id, at, except = null) =>
@@ -223,6 +249,7 @@ function write(id, t, asked, at) {
   for (const k of fresh) {
     c[k] = k === 'related_tasks' ? unrelated(t[k]) : t[k];
     if (when(k)) s.set(k, when(k));
+    doubts.get(id)?.delete(k);
   }
   copies.set(id, c);
   since.set(id, s);
@@ -242,25 +269,31 @@ function read(list, asked, at) {
   if (typeof at !== 'number') throw new Error('A read needs the time it started (started()).');
   for (const t of list) {
     const id = t?.id;
-    if (id && !forgotten.has(id) && !overlaps(id, at)) write(id, t, asked, at);
+    if (!id || forgotten.has(id) || overlaps(id, at)) continue;
+    write(id, t, asked, at);
+    for (const k of asked) doubts.get(id)?.delete(k);
   }
 }
 /* Vikunja's reply to write `w` (writes), or to one of its requests ({at, crossed, replayed}, stageContext). It is left
-   out for a task another write was in flight on at the same time. A reply the relay replayed is as old as the
-   request's first send, so it goes only where Pocket has no copy. */
+   out for a task another write was in flight on at the same time, and the task is read again. A reply the relay
+   replayed is as old as the request's first send, so it goes only where Pocket has no copy. */
 function answer(list, asked, w) {
   inChange();
   if (typeof w?.at !== 'number') throw new Error('An answer needs the write it answers (writes()).');
   for (const t of list) {
     const id = t?.id;
-    if (id && !forgotten.has(id) && !w.crossed.has(id) && !(w.replayed && copies.has(id))) write(id, t, asked, w.at);
+    if (!id || forgotten.has(id)) continue;
+    if (w.crossed.has(id)) doubt(id, asked);
+    else if (!(w.replayed && copies.has(id))) write(id, t, asked, w.at);
   }
 }
 /* Vikunja made write `w` (writes) on task `id`, setting the values the write names there. An op's answer passes what
    its apply sets now instead (`fields`), and so does a write that only learns its values from its outcome. `w.at` may
    give each field its own time. The fields go into the copy, unless another write in flight at the same time sets the
-   same field to something else, or only Vikunja's reply can say what the write left in a field. A task shown from
-   what its parent says of it (bases) takes them there, with their times, so a copy made later keeps them. */
+   same field to something else, or only Vikunja's reply can say what the write left in a field. Those fields are
+   unsure until a read, and so is a field the copy has newer that disagrees, since the write's time may be earlier
+   than its request's (sendingOp). A task shown from what its parent says of it (bases) takes them there, with their
+   times, so a copy made later keeps them. */
 function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   inChange();
   if (!['number', 'function'].includes(typeof w?.at))
@@ -283,6 +316,11 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
       k => mine[k] !== UNKNOWN && others.every(o => !(k in o) || (o[k] !== UNKNOWN && same(o[k], fields[k]))),
     );
   write(id, fields, kept, w.at);
+  const c = copies.get(id);
+  doubt(id, [
+    ...Object.keys(mine).filter(k => mine[k] === UNKNOWN),
+    ...Object.keys(fields).filter(k => !kept.includes(k) || !same(c[k], fields[k])),
+  ]);
 }
 // Remove a deleted task's copy, its row, and the row from the lists on screen.
 function gone(id) {
@@ -485,7 +523,22 @@ export const putting =
   };
 export const copyOf = id => copies.get(id);
 export const dropCopies = () => {
-  for (const m of [copies, edits, bases, since, flying, landed, opWrites, ended, settled, forgotten, given]) m.clear();
+  for (const m of [
+    copies,
+    edits,
+    bases,
+    since,
+    flying,
+    landed,
+    opWrites,
+    doubts,
+    rereading,
+    ended,
+    settled,
+    forgotten,
+    given,
+  ])
+    m.clear();
 };
 // Whether a direct save of task `id` is still running, or of any task without `id`.
 export const savesRunning = id =>
@@ -523,6 +576,7 @@ export default {
         host = null;
         touched.clear();
         for (const id of ids) show(c, id);
+        for (const id of ids) reread(id);
       }
     }
     if (typeof out?.then === 'function')

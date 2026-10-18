@@ -129,10 +129,12 @@ export default {
     if (u) userCache.set(key, u);
     return u;
   },
+  // A link changes the related tasks of both tasks, so an op's write names both (`on`, stageContext).
   linkSubtask(parentId, childId, send = api) {
     return send(`/tasks/${parentId}/relations`, {
       method: 'POST',
       body: { other_task_id: childId, relation_kind: 'subtask' },
+      on: { [parentId]: {}, [childId]: {} },
     });
   },
   /* Create one task per line, in order. With `parent`, each becomes a subtask of it, in the parent's project unless

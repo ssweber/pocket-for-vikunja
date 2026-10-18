@@ -1439,3 +1439,24 @@ test('an op whose request was lost stays in flight until it is sent again, so a 
   await app.sendActs(first.entry);
   assert.deepEqual([copyOf(1).percent_done, row.percent_done], [0.4, 0.4]);
 });
+
+/* Two writes in flight on one task at once can reach Vikunja in either order, so the store takes neither's reply. The
+   task is read once the last of them ends, so its copy doesn't stay old until a screen loads it again. */
+test('a task that two crossing writes left unsure is read once, after the last of them ends', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', percent_done: 0 }]),
+    app = sender();
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  const { go, arrived } = holding((path, method) => path === '/api/v2/tasks/1' && method === 'PATCH');
+  const saving = app.saveTask(1, { title: 'Mop twice' });
+  await arrived;
+  await app.act({ op: 'progress', task: 1, pct: 40, run: null });
+  v.task(1).priority = 3; // a teammate's change, which the save's reply brings
+  go();
+  await saving;
+  for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok));
+  const reads = v.requests.filter(r => r.method === 'GET' && r.path === '/tasks/1');
+  assert.equal(reads.length, 1);
+  assert.deepEqual([copyOf(1).title, copyOf(1).percent_done, copyOf(1).priority], ['Mop twice', 0.4, 3]);
+});
