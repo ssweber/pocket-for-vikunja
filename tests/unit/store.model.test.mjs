@@ -309,7 +309,9 @@ const HEARD = {
     if (op.deletes(a).length) m.forgetTree(op.deletes(a));
     for (const id of new Set([...op.on(a), ...(own ? [own] : [])])) {
       if (m.forgotten.has(id)) continue;
-      const b = before.get(id),
+      // A task the op deleted leaves every list of related tasks (forgetTree), which is no news of the op's apply.
+      const was = before.get(id),
+        b = was && m.unrelated(was),
         fieldAt = k => w.madeField.get(`${a.id} ${id} ${k}`)?.at ?? at,
         vikunja = Object.fromEntries(
           [...w.madeField].filter(([k]) => k.startsWith(`${a.id} ${id} `)).map(([k, x]) => [k.split(' ')[2], x.value]),
@@ -1637,6 +1639,32 @@ test('a date taken off with done takes nothing into the copy when a teammate mak
       new Teammate(3, 'repeat_after'),
       new Teammate(3, 'due_date'),
       new Answer('lost', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A step repeated in checklist 1 is a copy of step 2, which then lists the copy as copied to it. Vikunja's answer to a
+   later request of the repeat is unknown, and so is its answer to the checklist's delete. Cancel of the repeat deletes
+   the copy, and step 2's copy stops listing it, which is no news of the repeat's own change. */
+test("a copy a cancelled step made leaves its source step's links when it is deleted", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('addStep, repeated', 1),
+      new Send(false),
+      new Answer('arrives', 0),
+      new Answer('arrives', 0),
+      new Queue('delete, with no Restore', 1),
+      new Answer('unknown', 0),
+      new Send(false),
+      new Answer('unknown', 0),
+      new Queue('done', 1),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
