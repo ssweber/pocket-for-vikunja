@@ -63,6 +63,27 @@ test('Cancel of a start cut off as it copied the template finds the copy by its 
   );
 });
 
+test('Cancel tapped again before the Outbox shows the first leaves the cancelled start as it is', async t => {
+  const { v, app, f } = world(t, 'startRun');
+  // Vikunja refuses the copy's name, the start's second stage.
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/101' ? 403 : null);
+  await app.actAll([f], true);
+  // The copy's delete reaches Vikunja, and its reply is lost.
+  v.trouble = r => (r.method === 'DELETE' ? 'lost' : null);
+  await app.cancelMade(f.id, true);
+  v.trouble = () => null;
+  app.offline = false;
+  await app.cancelMade(f.id, true);
+  const asked = new Map();
+  for (const r of v.requests.filter(r => r.key))
+    asked.set(r.key, new Set([...(asked.get(r.key) || []), r.method + ' ' + r.path]));
+  assert.deepEqual(
+    [[...asked.values()].filter(s => s.size > 1).map(s => [...s]), [...v.tasks.keys()], sync.all(1).length],
+    [[], [7, 8, 9], 0],
+    'the second Cancel sends the delete again with its key, and no key goes with another request',
+  );
+});
+
 test("a start's Undo deletes the checklist and its steps, and puts back the template's date unless it moved since", async t => {
   const { v, app, f } = world(t, 'startRun');
   await app.actAll([f], true);

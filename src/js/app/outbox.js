@@ -237,8 +237,10 @@ export default {
     await sync.lock(async () => {
       const e = (was = await sync.fresh(id));
       if (!e) return;
-      if (e.sent) await sync.save(cancelling(e));
-      else {
+      // A second tap, from a list read before the first, finds the op cancelled already, and its stages stay as they are.
+      if (e.sent) {
+        if (!e.cancelled) await sync.save(cancelling(e));
+      } else {
         await sync.remove(id);
         this.unmade(id);
       }
