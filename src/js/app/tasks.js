@@ -76,7 +76,10 @@ const settled = new Set();
    order. A field of a reply is taken only if its request started after the request behind that field of the copy
    (`since`). A read is also thrown away for a task a write was in flight on at any time while it ran (`flying`,
    `landed`), because it may carry the task from before or after that write, and the next read decides. */
-let clock = 0;
+// The time of a request sent before this page loaded. The page doesn't know it, so it counts as before every request
+// the page sent.
+export const EARLIER = 1;
+let clock = EARLIER;
 // When a request starts, for read and writes.
 export const started = () => ++clock;
 const since = new Map(); // task id -> field -> when the request behind that field of its copy started
@@ -140,8 +143,10 @@ const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
 /* The write of op entry `a` as the sender sends it (writes): the tasks it changes, each with what its apply sets
    there. A field the apply sets to the value the copy has is one it sets too, so it is found by applying the op to
    a task with nothing in it as well. The write starts with the op's first request and stays in flight across tries,
-   because a request whose reply was lost may still reach Vikunja. It ends once the op is answered (answered), or stops
-   waiting in the outbox (keyOps). */
+   because a request whose reply was lost may still reach Vikunja. It ends once the op stops waiting in the outbox:
+   answered, refused or gone (keyOps). The op's change counts from its first request in this session (`at`), also when
+   Try again sends it after it was refused. An op sent before this page loaded (`before`) whose requests the relay
+   only replays here was made at a time the page doesn't know, before all of its reads (stageContext). */
 export const sendingOp = a => {
   const was = opWrites.get(a.id);
   if (was && !was.ended) return was;
@@ -156,6 +161,7 @@ export const sendingOp = a => {
       on[id] = Object.fromEntries([...sets].map(k => [k, x[k]]));
     }
   const w = writes(on);
+  Object.assign(w, was ? { at: was.at, start: was.start, before: was.before } : { start: w.at, before: !!a.sent });
   opWrites.set(a.id, w);
   return w;
 };
@@ -223,16 +229,15 @@ const drop = (id, e, failed = false) => {
 
 /* The writers. change() hands them to its fn, and each throws outside a change. */
 
-/* Write each of task `t`'s trusted fields (`asked`) into its copy, from a request that started at `at`, or for each
-   field at `at(field)`, unless the copy's field came from a newer request. A write's reply comes after its own change
-   and has the same time, so it wins. A saved screen (`at` 0) is judged by its caller instead. A field outside `asked`,
-   or missing from the reply, keeps what the copy had, so a list read without expand=reactions keeps the copy's ✅. A
-   trusted null is taken: a full read gives `labels: null` for a task with no labels. The copy is a new object each
-   time, because Undo holds the one it compared against. Nested lists and objects are shared with the reply. */
+/* Write each of task `t`'s trusted fields (`asked`) into its copy, from a request that started at `at`, unless the
+   copy's field came from a newer request. A write's reply comes after its own change and has the same time, so it
+   wins. A saved screen (`at` 0) is judged by its caller instead. A field outside `asked`, or missing from the reply,
+   keeps what the copy had, so a list read without expand=reactions keeps the copy's ✅. A trusted null is taken: a
+   full read gives `labels: null` for a task with no labels. The copy is a new object each time, because Undo holds the
+   one it compared against. Nested lists and objects are shared with the reply. */
 function write(id, t, asked, at) {
   const s = since.get(id) || new Map(),
-    when = typeof at === 'function' ? at : () => at,
-    fresh = asked.filter(k => k in t && (!when(k) || when(k) >= (s.get(k) ?? -1)));
+    fresh = asked.filter(k => k in t && (!at || at >= (s.get(k) ?? -1)));
   touched.add(id);
   if (!copies.has(id) && !fresh.length) return;
   const c = { ...copies.get(id) };
@@ -248,7 +253,7 @@ function write(id, t, asked, at) {
   }
   for (const k of fresh) {
     c[k] = k === 'related_tasks' ? unrelated(t[k]) : t[k];
-    if (when(k)) s.set(k, when(k));
+    if (at) s.set(k, at);
     doubts.get(id)?.delete(k);
   }
   copies.set(id, c);
@@ -288,22 +293,20 @@ function answer(list, asked, w) {
   }
 }
 /* Vikunja made write `w` (writes) on task `id`, setting the values the write names there. An op's answer passes what
-   its apply sets now instead (`fields`), and so does a write that only learns its values from its outcome. `w.at` may
-   give each field its own time. The fields go into the copy, unless another write in flight at the same time sets the
-   same field to something else, or only Vikunja's reply can say what the write left in a field. Those fields are
-   unsure until a read, and so is a field the copy has newer that disagrees, since the write's time may be earlier
-   than its request's (sendingOp). A task shown from what its parent says of it (bases) takes them there, with their
-   times, so a copy made later keeps them. */
+   its apply sets now instead (`fields`), and so does a write that only learns its values from its outcome. The fields
+   go into the copy, unless another write in flight at the same time sets the same field to something else, or only
+   Vikunja's reply can say what the write left in a field. Those fields are unsure until a read, and so is a field the
+   copy has newer that disagrees, since an op's time may be earlier than its request's (sendingOp). A task shown from
+   what its parent says of it (bases) takes them there, with their times, so a copy made later keeps them. */
 function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   inChange();
-  if (!['number', 'function'].includes(typeof w?.at))
-    throw new Error('A change Vikunja made needs its write (writes()).');
+  if (typeof w?.at !== 'number') throw new Error('A change Vikunja made needs its write (writes()).');
   if (forgotten.has(id)) return;
   if (!copies.has(id)) {
     if (bases.has(id)) {
       const s = since.get(id) || new Map(),
         known = Object.entries(fields).filter(([, v]) => v !== UNKNOWN);
-      for (const [k] of known) s.set(k, typeof w.at === 'function' ? w.at(k) : w.at);
+      for (const [k] of known) s.set(k, w.at);
       bases.set(id, { ...bases.get(id), ...Object.fromEntries(known) });
       since.set(id, s);
     }
@@ -382,13 +385,13 @@ function keyOps() {
     listed = c.user ? sync.all(c.user.id) : [],
     all = listed.filter(e => !e.failed);
   for (const id of settled) if (!listed.some(e => e.id === id)) settled.delete(id);
-  // An op that stops waiting, refused or gone from the outbox, has no request left on its way.
+  // An op that stops waiting, refused or gone from the outbox, has no request left on its way. A refused op keeps its
+  // write's time for Try again.
   const waits = new Set(all.map(e => e.id));
-  for (const [id, w] of opWrites)
-    if (!waits.has(id)) {
-      w.end();
-      opWrites.delete(id);
-    }
+  for (const [id, w] of opWrites) {
+    if (!waits.has(id)) w.end();
+    if (!listed.some(e => e.id === id)) opWrites.delete(id);
+  }
   for (const e of all)
     if (e.kind === 'act' && OPS[e.op] && !settled.has(e.id))
       for (const id of shownOn(e)) if (!sync.held.has(e.id) || e.ids.includes(id)) (out[id] ||= []).push(e);
@@ -420,11 +423,10 @@ function offTasks(a) {
   return ids;
 }
 /* An op's answer. Vikunja did what the op asked, so each task the op changes takes the op's apply into Vikunja's copy
-   (made), also when the reply is not a task, as for a claim, a comment or a ✅. `w` is the op's write (sendingOp), with
-   when each field reached Vikunja (sendAct), and it ends here. Then its own task takes the `reply` its stages kept
-   (answer), and the op stops waiting, all in one change. The comment Vikunja made (`posted`) takes the place of the
-   op's waiting one. If the op stopped waiting first, a row would show the old value until the answer was written. A
-   deleted task is forgotten. */
+   (made), also when the reply is not a task, as for a claim, a comment or a ✅. `w` is the op's write (sendingOp).
+   Then its own task takes the `reply` its stages kept (answer), and the op stops waiting, all in one change. The
+   comment Vikunja made (`posted`) takes the place of the op's waiting one. If the op stopped waiting first, a row would
+   show the old value until the answer was written. A deleted task is forgotten. */
 function answered(a, w, reply = null, posted = null) {
   inChange();
   const op = opOf(a),
@@ -450,7 +452,6 @@ function answered(a, w, reply = null, posted = null) {
     made(id, w, Object.fromEntries(Object.entries(now).filter(([k, v]) => !same(had[k], v))));
   }
   if (reply && reply.task.id === opsId(a.task)) answer([reply.task], TASK, reply);
-  opWrites.get(a.id)?.end();
   offTasks(a);
   const deleted = op.deletes(a);
   if (deleted.length) forgetTree(deleted);

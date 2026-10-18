@@ -7,7 +7,7 @@ import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sy
 import { saved } from '../lists.js';
 import { notKnown, toOutbox, UNKNOWN } from '../messages.js';
 import { checkFields, dropUnder, opOf, refuseLines, refusalOf, stageView, stagesOf } from '../ops/index.js';
-import { CREATED, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
+import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -53,27 +53,6 @@ export const waits = (e, stopped) => {
   return w;
 };
 
-/* When each request of an entry was first sent in this session, by the entry's id and the request's key. A reply the
-   relay replayed counts from then. When another tab or an earlier session sent it, Pocket can't know when it reached
-   Vikunja, and it counts from its send now, so the op's change still goes into the copy. A change an earlier try made
-   counts from the entry's first request. The store orders what it learns by these times (tasks.js). */
-const sends = new Map();
-/* The fields of a task that a write to `path` changes, as Vikunja's API has them, so each field of an op's change
-   counts from the request that made it. A PATCH changes the fields it sends, and deleting a task changes the related
-   tasks of the tasks it was related to. */
-const PATHS = [
-  [/\/reactions(\/delete)?$/, 'reactions'],
-  [/\/comments$/, 'comments'],
-  [/\/assignees(\/\w+)?$/, 'assignees'],
-  [/\/labels(\/\w+)?$/, 'labels'],
-  [/\/position$/, 'position'],
-  [/\/relations/, 'related_tasks'],
-  [/^\/tasks\/\d+$/, 'related_tasks'],
-];
-const changes = (path, { method, body } = {}) =>
-  method === 'PATCH'
-    ? [...Object.keys(body || {}), ...('done' in (body || {}) ? ['done_at'] : [])]
-    : PATHS.filter(([re]) => re.test(path)).map(([, k]) => k);
 // Each reply a stage got, with when its request started, whether the relay replayed it, and the tasks another write
 // crossed it on (writes, tasks.js), for answer.
 const heard = new WeakMap();
@@ -98,11 +77,9 @@ export function stageContext(a, app, save = () => sync.save(a)) {
     app,
     save,
     // The op's write (sendingOp, tasks.js), which `begin` starts with its first request or takes up from an earlier
-    // try, and for each field the earliest start of a request of it that Vikunja made and that changed the field.
+    // try.
     write: null,
     begin: null,
-    earlier: false,
-    fieldsAt: new Map(),
     // Where reply `t` came from. A reply Pocket doesn't know counts as replayed, as old as anything.
     from: t => (t && heard.get(t)) || none,
     get task() {
@@ -130,19 +107,17 @@ export function stageContext(a, app, save = () => sync.save(a)) {
       part++;
     },
     async send(path, { on, ...opts } = {}) {
+      // The op's write starts before the entry says it was sent, so it can tell an op sent before this page loaded.
+      c.write ||= c.begin?.() ?? null;
       if (!a.sent) {
         a.sent = true;
         await save();
       } // from now on Cancel can't stop it
-      c.write ||= c.begin?.() ?? null;
       const key = `${a.key || a.id}:${a.stage}:${part++}`,
-        keys = sends.get(id) ?? sends.set(id, new Map()).get(id),
-        first = keys.get(key),
         own = on && !c.write ? writes(on) : null,
         w = own ?? c.write;
       if (on && c.write) for (const [t, fields] of Object.entries(on)) c.write.add(+t, fields);
       const at = started();
-      if (first === undefined) keys.set(key, at);
       let replayed = false,
         got;
       try {
@@ -150,20 +125,21 @@ export function stageContext(a, app, save = () => sync.save(a)) {
       } finally {
         own?.end();
       }
-      const from = { at: replayed ? (first ?? at) : at, replayed, crossed: w?.crossed ?? new Map(), fields: w?.fields };
-      for (const k of changes(path, opts)) c.fieldsAt.set(k, Math.min(c.fieldsAt.get(k) ?? Infinity, from.at));
+      /* A replayed reply is as old as its request's first send, which was no earlier than the op's first request. An op
+         sent before this page loaded counts from before this page while the relay only replays it (sendingOp). */
+      if (w?.before) Object.assign(w, { before: replayed, at: replayed ? EARLIER : w.start });
+      const from = { at: replayed ? (w?.at ?? at) : at, replayed, crossed: w?.crossed ?? new Map(), fields: w?.fields };
       if (got && typeof got === 'object') heard.set(got, from);
       return got;
     },
-    /* A read kept as the op's task is thrown away, as any read is, if it ran while another write to the task was in
-       flight (overlaps). The op's own write counts too once an earlier try sent a request (`earlier`), since that
-       request may still be on its way. */
+    // A read kept as the op's task is thrown away, as any read is, if it ran while another write to the task was in
+    // flight (overlaps).
     async read(path) {
       const at = started(),
         got = await api(path),
         id = +(path.match(/^\/tasks\/(\d+)/) || [])[1],
         mine = c.write?.crossed ?? new Map(),
-        crossed = id && overlaps(id, at, c.earlier ? null : c.write) ? new Map([...mine, [id, new Set()]]) : mine;
+        crossed = id && overlaps(id, at, c.write) ? new Map([...mine, [id, new Set()]]) : mine;
       if (got && typeof got === 'object') heard.set(got, { at, replayed: false, crossed });
       return got;
     },
@@ -446,18 +422,13 @@ export default {
       // one is in flight from the start of the try.
       c.begin = () => sendingOp(a);
       if (a.sent) c.write = c.begin();
-      c.earlier = !!a.sent;
       while (a.stage < stages.length) {
         await patiently(() => stages[a.stage](seen, c.start()));
         a.stage++;
         await sync.save(a, [], filesOut(a));
       }
-      /* Each field of the op's change counts from the earliest request of this try that Vikunja made and that changed
-         it. A field an earlier try changed counts from the op's first request in this session, or from now. */
-      const r = c.reply,
-        w = (c.write ||= sendingOp(a)),
-        at = k => c.fieldsAt.get(k) ?? Math.min(...(sends.get(a.id)?.values() ?? []), w.at);
-      this.change(x => x.answered(a, { ...w, at }, r, c.comment));
+      const r = c.reply;
+      this.change(x => x.answered(a, c.write ?? sendingOp(a), r, c.comment));
       if (inverts.has(a.id)) inverts.set(a.id, op.invert(a));
       await sync.remove(a.id, a.taskId ?? null);
       // A line's photos upload now, from their own entry (filesOut). If Vikunja is busy they wait there, and the add box
@@ -515,10 +486,7 @@ export default {
       await c.save();
       return { ...got(), status: 'error', error, kept: true };
     } finally {
-      if (!sync.entries.has(a.id)) {
-        sends.delete(a.id);
-        told.delete(a.id);
-      }
+      if (!sync.entries.has(a.id)) told.delete(a.id);
     }
   },
   /* Restore text from an unsent action and set error.back. If its task was deleted, put the text in error.words so

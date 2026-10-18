@@ -29,8 +29,8 @@ import lines from '../../src/js/app/lines.js';
 import checklists from '../../src/js/app/checklists.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { saved } from '../../src/js/lists.js';
-import { ApiError } from '../../src/js/api.js';
-import { sync } from '../../src/js/sync.js';
+import { api, ApiError } from '../../src/js/api.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
 
 // A read as a screen's load makes it: started, answered, then put into Vikunja's copies, inside a change.
 const read = (list, asked = TASK) => current.change(w => w.read(list, asked, started()));
@@ -1474,4 +1474,56 @@ test("a person added in the sheet goes into Vikunja's copy without a claim still
   app.offline = false;
   await app.addAssignee(row, { id: 7, username: 'bob' });
   assert.deepEqual([copyOf(2).assignees.map(u => u.id), row.assignees.map(u => u.id).sort()], [[7], [1, 7]]);
+});
+
+const settled = async () => {
+  for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok));
+};
+
+/* An op's change counts from its first request, also when Try again sends the rest of it after Vikunja refused a
+   stage. A read taken in between may hold a teammate's change made after that request, and the change mustn't
+   overwrite it. The part of the change the read lacks comes with the read that follows. */
+test("an op sent again with Try again counts from its first request, so a teammate's change read since stays", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', done: false, reactions: {} }]),
+    app = sender();
+  read([v.task(1)], TASK_REACTIONS_COMMENTS);
+  app.row(copyOf(1));
+  v.refuses = r => (r.path === '/tasks/1/reactions' ? 403 : null);
+  const tick = await app.act({ op: 'done', task: 1, run: null });
+  assert.equal(tick.status, 'error');
+  v.refuses = () => null;
+  v.task(1).done = false; // a teammate unticks it
+  read([structuredClone(v.task(1))], TASK_REACTIONS_COMMENTS);
+  // Try again, as retryAct does it
+  const e = sync.entries.get(tick.entry);
+  Object.assign(e, { failed: undefined, fails: 0, key: uuid7() });
+  await sync.save(e);
+  await app.sendActs(tick.entry);
+  await settled();
+  assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅'].map(u => u.id)], [false, [1]]);
+});
+
+/* An op that the page before this one sent, and Vikunja made, is sent again, and the relay replays every request.
+   Vikunja made it before this page read the tasks, so a teammate's change read since stays, on the step and on the
+   checklist's progress the op wrote. */
+test("an op sent before the page loaded, and only replayed now, leaves a teammate's change read since", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([
+      { id: 1, title: 'Closing', percent_done: 0, related_tasks: { subtask: [{ id: 2 }] } },
+      { id: 2, title: 'Mop the floor', percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } },
+    ]),
+    app = sender(),
+    id = uuid7();
+  await api('/tasks/2', { method: 'PATCH', body: { percent_done: 0.4 }, key: id + ':0:0' });
+  await api('/tasks/1', { method: 'PATCH', body: { percent_done: 0.4 }, key: id + ':1:0' });
+  Object.assign(v.task(1), { percent_done: 0.9 }); // a teammate's changes
+  Object.assign(v.task(2), { percent_done: 0.75 });
+  read([v.task(1), v.task(2)]);
+  for (const k of [1, 2]) app.row(copyOf(k));
+  const e = { id, kind: 'act', op: 'progress', task: 2, pct: 40, run: 1, sent: true, stage: 0, fails: 0 };
+  await sync.add({ ...e, fixed: { figure: { percent_done: 0.4 } }, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  await app.sendActs(id);
+  await settled();
+  assert.deepEqual([copyOf(1).percent_done, copyOf(2).percent_done], [0.9, 0.75]);
 });
