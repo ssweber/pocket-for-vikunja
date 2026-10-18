@@ -89,13 +89,14 @@ const clear = async () => {
 const sent = v => v.requests.filter(r => r.method !== 'GET').map(r => [r.method, r.path, r.body]);
 const group = (app, key) => app.view.groups.find(g => g.key === key).tasks;
 
-test('a line marked as done is created like any task and then marked done, as a tick does', async t => {
+test("a line marked as done is created like any task and then marked done, with the user's ✅, as a tick does", async t => {
   const v = fakeVikunja(),
     app = adding(t);
   const r = await send(app, entry([line('Call Sam', { done: true }), line('Call Jo')]));
   assert.deepEqual(sent(v), [
     ['POST', '/projects/5/tasks', { title: 'Call Sam' }],
     ['PATCH', '/tasks/101', { done: true }],
+    ['POST', '/tasks/101/reactions', { value: '✅' }],
     ['POST', '/projects/5/tasks', { title: 'Call Jo' }],
   ]);
   assert.deepEqual([r.status, v.task(101).done, v.task(102).done], ['sent', true, false]);
@@ -509,6 +510,7 @@ test("a line's progress is written once the task is created, as a swipe sets it,
     ['PATCH', '/tasks/101', { percent_done: 0.5 }],
     ['POST', '/projects/5/tasks', { title: 'Chairs' }],
     ['PATCH', '/tasks/102', { done: true }],
+    ['POST', '/tasks/102/reactions', { value: '✅' }],
   ]);
   app.placeSent(r.tasks);
   assert.deepEqual(
@@ -1298,7 +1300,7 @@ const underBox = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([
     { id: 9, title: 'Pack the van', project_id: 5, related_tasks: { subtask: [{ id: 8 }] } },
-    { id: 8, title: 'Chairs', project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } },
+    { id: 8, title: 'Chairs', done: false, project_id: 5, related_tasks: { parenttask: [{ id: 9 }] } },
   ]);
   const app = component(tasks, actions, leaving, quickadd, parts, { flush: sending.flush });
   const van = app.row(v.task(9)),
@@ -1508,30 +1510,31 @@ test('cancelling or refusing a waiting subtask moves the highlight to its task',
 });
 
 /* A ticked row is held as done where it is from the tap, before Vikunja answers (holdRow, leaving.js). The box under
-   it stays under it meanwhile, so nothing moves. A row waiting for the batch can still be the cursor (canAim). If the
-   save fails, the row is released and open again, with the box still under it. Once the batch has cleared and the row
+   it stays under it meanwhile, so nothing moves. A row waiting for the batch can still be the cursor (canAim). If
+   Vikunja refuses the tick, the row is released and open again, with the box still under it. Once the batch has cleared and the row
    has left the list, keepAim gives the box to its task. */
 test('ticking the highlighted subtask keeps the box under it while it waits for the batch, and moves the box to its task once it leaves', async t => {
   const { v, app, chairs, aimed } = underBox(t);
   app.aim(chairs);
   assert.deepEqual(aimed(), [['8'], 'Chairs']);
-  v.trouble = r => (r.method === 'PATCH' ? 'offline' : null);
+  v.trouble = r => (r.method === 'PATCH' ? 403 : null);
   let ticking = app.toggleDone(chairs, {});
   assert.deepEqual(
     [chairs.done, app.leaving, app.capW],
     [true, { 8: 'done' }, 'under'],
-    'the row is held done before the save is answered, and the box is still under it',
+    'the row is held done before the tick is answered, and the box is still under it',
   );
   app.keepAim();
   assert.deepEqual(aimed(), [['8'], 'Chairs']);
   await ticking;
   assert.deepEqual(
     [!!chairs.done, app.leaving, app.toast.msg],
-    [false, {}, 'Not saved: no connection'],
+    [false, {}, "A tick couldn't be saved: HTTP 403 from the fake. It's kept to try again."],
     'the row is released and open again, and shows why',
   );
   app.keepAim();
   assert.deepEqual(aimed(), [['8'], 'Chairs'], 'the box stays where it was');
+  await clear();
   v.trouble = () => null;
   ticking = app.toggleDone(chairs, {});
   await ticking;

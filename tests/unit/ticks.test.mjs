@@ -1,8 +1,10 @@
-// Tests for ticks and progress (src/js/app/actions.js), against a fake Vikunja: a task, a parent and its subtasks, a
-// swipe, the ✅ and Done today. In a list, a row's tick waits for the batch to clear (leaving.js).
+// Tests for ticks and progress (src/js/app/actions.js, src/js/ops/ticks.js), against a fake Vikunja behind the
+// plugin's relay: a task, a parent and its subtasks, a swipe, the ✅, Done today, and the Undo of each. In a list, a
+// row's tick waits for the batch to clear (leaving.js).
 import './browser.mjs';
+import './outbox-db.mjs';
 import { DAY, patches, opened } from './actions-helpers.mjs';
-import { fakeVikunja, component, sendStages } from './fake.mjs';
+import { component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
@@ -10,17 +12,16 @@ import tasks, { started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import { stageContext } from '../../src/js/app/acts.js';
 import leaving from '../../src/js/app/leaving.js';
-import lines from '../../src/js/app/lines.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
-import checklists from '../../src/js/app/checklists.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { movedFrom, OPS } from '../../src/js/ops/index.js';
-import { lastSaid, lostOnce, noConnection, reached, sender } from './ops-helpers.mjs';
 import { figure } from '../../src/js/ops/stages.js';
+import { vikunjaNext } from '../../src/js/checklists.js';
+import { lastSaid, lostOnce, noConnection, reached, sender } from './ops-helpers.mjs';
 
 const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
 // A parent with four subtasks: two open (one half done), one already done, and one that repeats. Completing a parent
@@ -33,22 +34,35 @@ const family = () => {
     sub(14, { percent_done: 0.5 }),
   ];
   const parent = { id: 10, title: 'Pack the van', done: false, percent_done: 0.25, related_tasks: { subtask: subs } };
-  return { parent, subs };
+  return [parent, ...subs];
 };
-// The patches that are not a parent's calculated progress, which Pocket writes after its subtasks change (writeFigure).
+// The patches that are not a parent's calculated progress, which an op's last stage writes (figure).
 const ticks = v => patches(v).filter(([, b]) => !('percent_done' in b && Object.keys(b).length === 1));
 // A row in a list, for ticking from there. The test controls the batch's timer, so the batch doesn't clear by itself.
 const ROW = {};
-const listed = t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  return component(tasks, actions, leaving);
+/* The sender (ops-helpers.mjs) with the actions and the batch, and `more` parts of the app. Its tasks have rows and
+   copies, as a screen's read gives them. */
+const listed = (t, list, ...more) => {
+  const s = sender(t, list, actions, leaving, ...more);
+  s.app.change(w =>
+    w.read(
+      list.map(x => structuredClone(x)),
+      TASK,
+      started(),
+    ),
+  );
+  for (const x of list) s.app.row(structuredClone(x));
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  return s;
 };
-test('ticking a parent leaves its subtasks as they are', async c => {
-  const { parent, subs } = family(),
-    v = fakeVikunja([parent, ...subs]),
-    app = listed(c);
-  const t = app.row(parent);
-  await app.toggleDone(t, ROW);
+const settled = async () => {
+  for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok));
+};
+test('ticking a parent leaves its subtasks as they are', async t => {
+  const { v, app } = listed(t, family());
+  await app.toggleDone(app.tasks[10], ROW);
   assert.deepEqual(ticks(v), [[10, { done: true }]]);
   assert.deepEqual(
     [11, 14].map(id => v.task(id).done),
@@ -57,13 +71,10 @@ test('ticking a parent leaves its subtasks as they are', async c => {
   );
   assert.deepEqual([app.leaving, app.said], [{ 10: 'done' }, 'Done: Pack the van']);
 });
-test('completing a parent with close closes its open subtasks, and undo opens exactly those again', async c => {
-  const { parent, subs } = family(),
-    v = fakeVikunja([parent, ...subs]),
-    app = listed(c);
-  const t = app.row(parent);
-  await app.toggleDone(t, ROW, { close: true });
-  await app.saveTask(10, null, () => null); // the parent's progress write, after the subtasks
+test('completing a parent with close closes its open subtasks, and undo opens exactly those again', async t => {
+  const { v, app } = listed(t, family()),
+    p = app.tasks[10];
+  await app.toggleDone(p, ROW, { close: true });
   assert.deepEqual(
     patches(v),
     [
@@ -72,9 +83,9 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
       [14, { done: true }],
       [10, { percent_done: 0.75 }],
     ],
-    "the parent's progress is 75%, three of four subtasks done",
+    "the parent's progress is 75%, three of four subtasks done, written once they are all closed",
   );
-  assert.equal(t.done, true);
+  assert.equal(p.done, true);
   assert.equal(app.said, 'Closed Pack the van + 2 subtasks', 'a screen reader announces the close');
   assert.deepEqual(app.toasts, [], 'no toast appears, because the row shows the change');
   assert.deepEqual(
@@ -84,14 +95,13 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
   );
   assert.equal(v.task(13).done, false, 'a repeating subtask is left alone');
   assert.deepEqual(
-    t.related_tasks.subtask.map(s => app.subRow(s).done),
+    p.related_tasks.subtask.map(s => app.subRow(s).done),
     [true, true, false, true],
     'the ring counts them as done, from their own rows',
   );
 
   v.requests.length = 0;
   await app.unmark(10);
-  await app.saveTask(10, null, () => null);
   assert.deepEqual(app.leaving, {}, 'no row is marked any more');
   assert.deepEqual(ticks(v), [
     [10, { done: false }],
@@ -99,100 +109,79 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
     [14, { done: false }],
   ]);
   assert.equal(v.task(12).done, true, 'the subtask that was done before stays done');
-  assert.equal(t.done, false);
+  assert.equal(p.done, false);
   assert.deepEqual(
     [v.task(10).percent_done, v.task(14).percent_done],
     [0.38, 0.5],
     "the parent's progress is calculated again, and the subtask's progress is unchanged",
   );
   assert.deepEqual(
-    t.related_tasks.subtask.map(s => app.subRow(s).done),
+    p.related_tasks.subtask.map(s => app.subRow(s).done),
     [false, true, false, false],
   );
 });
-test('when the batch clears, a parent completed on Today leaves with the subtasks closed with it', async c => {
-  const { parent, subs } = family(),
-    v = fakeVikunja([parent, ...subs]),
-    app = listed(c);
+test('when the batch clears, a parent completed on Today leaves with the subtasks closed with it', async t => {
+  const { v, app } = listed(t, family());
   app.view.groups = [{ key: 'today', tasks: [10, 11, 13, 14].map(id => app.row(v.task(id))) }];
   await app.toggleDone(app.tasks[10], ROW, { close: true });
   assert.equal(app.view.groups[0].tasks.length, 4, 'the rows are still in place');
-  c.mock.timers.tick(2999);
+  t.mock.timers.tick(2999);
   assert.equal(app.view.groups[0].tasks.length, 4, 'the batch does not clear before 3 seconds');
   await app.clearBatch(true);
   assert.deepEqual(
-    app.view.groups[0].tasks.map(t => t.id),
+    app.view.groups[0].tasks.map(x => x.id),
     [13],
     'the rows leave together, and the repeating subtask stays',
   );
   assert.deepEqual(app.leaving, {});
 });
-test('a subtask that fails to close stops the rest, and the row shows a message', async c => {
-  const two = [sub(11), sub(14)],
-    parent = { id: 10, title: 'Pack the van', done: false, related_tasks: { subtask: two } };
-  const v = fakeVikunja([parent, ...two]),
-    app = listed(c);
+test('a subtask Vikunja refuses to close stays in the Outbox, and the others close', async t => {
+  const { v, app } = listed(t, family());
   v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/11' ? 403 : null);
-  await app.toggleDone(app.row(parent), ROW, { close: true });
-  assert.equal(v.task(10).done, true);
-  assert.equal(v.task(14).done, false, 'closing stopped at the first subtask that failed');
+  await app.toggleDone(app.tasks[10], ROW, { close: true });
   assert.deepEqual(
-    [app.toast.msg, app.toast.row.id, app.toast.cls],
-    ["Done: Pack the van — its 2 subtasks couldn't be closed", 10, 'failed'],
+    [10, 11, 14].map(id => v.task(id).done),
+    [true, false, true],
+  );
+  assert.deepEqual(
+    [app.tasks[11].done, sync.all(1).map(e => [e.task, !!e.failed])],
+    [false, [[11, true]]],
+    "the refused subtask's row goes back, and its tick waits in the Outbox",
+  );
+  assert.deepEqual(
+    [lastSaid(app).msg, lastSaid(app).action.label],
+    ["A tick on “Subtask 11” couldn't be saved: HTTP 403 from the fake. It's kept to try again.", 'Outbox'],
   );
 });
-/* A tick that is not saved shows a message with Try again. In a list the message replaces the row for a few seconds,
-   then the row returns to be ticked again. A task's own sheet has no row to give back, so the message appears at the
-   top of the sheet and stays, with no timer, until the user tries again or the tick is saved. The test uses the real
-   lines.js. */
-test('a tick that fails in its own sheet shows a message with Try again at the top, until the tick is saved', async c => {
-  c.mock.timers.enable({ apis: ['setTimeout'] });
-  const v = fakeVikunja([{ id: 1, title: 'Wipe the menus', done: false }]),
-    app = component(tasks, actions, lines);
-  document.querySelectorAll = () => [];
-  c.after(() => {
-    delete document.querySelectorAll;
-  });
-  app.lines = {};
-  opened(app, v.task(1), { open: true, show: true, kind: 'task', lines: {} });
-  v.trouble = () => 'offline';
+test('a tick made offline in its own sheet shows at once, and is sent once Pocket reaches Vikunja', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Wipe the menus', done: false }]);
+  opened(app, v.task(1));
+  noConnection(app, v);
   await app.toggleDone(app.sheetTask, null, { sheet: true });
-  assert.deepEqual(
-    [app.sheetTask.done, app.sheet.lines.top.text, app.sheet.lines.top.action.label],
-    [false, 'Not saved: no connection', 'Try again'],
-  );
-  c.mock.timers.tick(60000);
-  assert.ok(
-    app.sheet.lines.top,
-    'the message is still there a minute later, because the sheet has no row to give back',
-  );
+  assert.deepEqual([app.sheetTask.done, v.task(1).done, sync.all(1).length], [true, false, 1]);
+  assert.deepEqual(app.toasts, [], 'the tick shows the change, and nothing is said');
   v.trouble = () => null;
-  await app.toggleDone(app.sheetTask, null, { sheet: true });
-  assert.deepEqual(
-    [v.task(1).done, app.sheet.lines.top],
-    [true, undefined],
-    'ticking again and saving removes the message',
-  );
+  await app.flush();
+  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].length, sync.all(1).length], [true, 1, 0]);
 });
-test('completing a parent from its sheet closes its subtasks, shows a message under them, and Undo opens them again', async () => {
-  const { parent, subs } = family(),
-    v = fakeVikunja([parent, ...subs]),
-    app = component(tasks, actions);
-  opened(app, parent);
+test('completing a parent from its sheet closes its subtasks, shows a message under them, and Undo opens them again', async t => {
+  const list = family(),
+    { v, app } = listed(t, list);
+  opened(app, list[0]);
   await app.toggleDone(app.sheetTask, null, { sheet: true, close: true });
   assert.deepEqual(ticks(v), [
     [10, { done: true }],
     [11, { done: true }],
     [14, { done: true }],
   ]);
-  assert.deepEqual([app.toast.msg, app.toast.place], ['Closed Pack the van + 2 subtasks', 'sheet:subtasks']);
+  assert.deepEqual([lastSaid(app).msg, lastSaid(app).place], ['Closed Pack the van + 2 subtasks', 'sheet:subtasks']);
   assert.deepEqual(
     app.sheetTask.related_tasks.subtask.map(s => app.subRow(s).done),
     [true, true, false, true],
     'the sheet shows the subtasks as done',
   );
   assert.equal(app.sheet.dirty, true, 'the list is read again once the sheet closes');
-  await app.toast.action.fn();
+  await lastSaid(app).action.fn();
   assert.deepEqual(
     [10, 11, 12, 14].map(id => v.task(id).done),
     [false, false, true, false],
@@ -208,14 +197,13 @@ test('completing a parent from its sheet closes its subtasks, shows a message un
   assert.equal(v.task(12).done, false);
   assert.equal(app.toasts.length, n);
 });
-test("ticking a done parent that is above open subtasks on a project's list opens it again in place", async c => {
-  const v = fakeVikunja([
-      { id: 10, title: 'Pack the van', done: true, related_tasks: { subtask: [sub(11)] } },
-      sub(11),
-    ]),
-    app = listed(c);
-  const head = app.row(v.task(10)),
-    kid = app.row(v.task(11));
+test("ticking a done parent that is above open subtasks on a project's list opens it again in place", async t => {
+  const { v, app } = listed(t, [
+    { id: 10, title: 'Pack the van', done: true, related_tasks: { subtask: [sub(11)] } },
+    sub(11),
+  ]);
+  const head = app.tasks[10],
+    kid = app.tasks[11];
   app.route = { name: 'project', id: 1 };
   app.view.groups = [
     { key: 'open', tasks: [kid, head], heads: [10] },
@@ -225,7 +213,7 @@ test("ticking a done parent that is above open subtasks on a project's list open
   await app.toggleDone(head, ROW);
   assert.equal(v.task(10).done, false);
   assert.deepEqual(
-    app.view.groups[0].tasks.map(t => t.id),
+    app.view.groups[0].tasks.map(x => x.id),
     [11, 10],
     'the parent is still on the open list',
   );
@@ -237,23 +225,22 @@ test("ticking a done parent that is above open subtasks on a project's list open
   assert.equal(v.task(11).done, false, 'the subtask is still open');
   await app.clearBatch(true);
   assert.deepEqual(
-    app.view.groups[0].tasks.map(t => t.id),
+    app.view.groups[0].tasks.map(x => x.id),
     [11, 10],
     'the parent stays when the batch clears',
   );
 });
-test("a parent completed on a project's list stays above its open repeating subtask, marked done", async c => {
-  const { parent, subs } = family(),
-    v = fakeVikunja([parent, ...subs]),
-    app = listed(c);
+test("a parent completed on a project's list stays above its open repeating subtask, marked done", async t => {
+  const list = family();
+  for (const s of list.slice(1)) s.related_tasks = { parenttask: [{ id: 10 }] };
+  const { v, app } = listed(t, list);
   Object.assign(app, { route: { name: 'project', id: 1 }, bothWays: true });
-  const t = app.row(parent),
-    kids = [11, 13, 14].map(id => app.row({ ...v.task(id), related_tasks: { parenttask: [{ id: 10 }] } }));
+  const p = app.tasks[10];
   app.view.groups = [
-    { key: 'open', tasks: [t, ...kids] },
+    { key: 'open', tasks: [p, ...[11, 13, 14].map(id => app.tasks[id])] },
     { key: 'done', loaded: false, count: 1, tasks: [] },
   ];
-  await app.toggleDone(t, ROW, { close: true });
+  await app.toggleDone(p, ROW, { close: true });
   assert.deepEqual(app.view.groups[0].heads, [10], 'the parent is a head above the repeating subtask');
   assert.equal(app.view.groups[1].count, 2, 'the Done count includes the closed tasks');
   assert.deepEqual(app.leaving, { 10: 'done', 11: 'done', 14: 'done' });
@@ -265,85 +252,75 @@ test("a parent completed on a project's list stays above its open repeating subt
   );
   assert.equal(app.view.groups[1].count, 1);
   // Complete it again and let the batch clear. The parent stays, over the repeating subtask, and the closed tasks move to Done.
-  await app.toggleDone(t, ROW, { close: true });
+  await app.toggleDone(p, ROW, { close: true });
   await app.clearBatch(true);
   assert.deepEqual(
-    app.view.groups[0].tasks.map(t => t.id),
+    app.view.groups[0].tasks.map(x => x.id),
     [10, 13],
   );
   assert.equal(app.view.groups[1].count, 4, 'the Done count includes the parent and the two subtasks closed with it');
 });
-test('a tick that is not saved goes back, and the row shows why with Try again', async c => {
-  const v = fakeVikunja([{ id: 1, title: 'Call Jo', done: false }]),
-    app = listed(c);
-  v.trouble = () => 'offline';
-  const t = app.row(v.task(1));
-  await app.toggleDone(t, ROW);
+test('a tick Vikunja refuses goes back, and waits in the Outbox to be tried again', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Call Jo', done: false }]);
+  v.trouble = () => 403;
+  const x = app.tasks[1];
+  await app.toggleDone(x, ROW);
   assert.deepEqual(app.leaving, {}, 'the row is not marked and stays as it was');
-  assert.equal(t.done, false);
-  assert.equal(app.toast.msg, 'Not saved: no connection');
+  assert.equal(x.done, false);
   assert.deepEqual(
-    [app.toast.row.id, app.toast.row.stays, app.toast.cls],
-    [1, true, 'failed'],
-    "the message is on the task's row, which stays",
+    [lastSaid(app).msg, lastSaid(app).action.label],
+    ["A tick on “Call Jo” couldn't be saved: HTTP 403 from the fake. It's kept to try again.", 'Outbox'],
   );
-  assert.equal(app.toast.action.label, 'Try again');
   v.trouble = () => null;
-  await app.toast.action.fn();
-  assert.equal(v.task(1).done, true, 'Try again ticks it');
+  await app.retryAct(sync.all(1)[0].id);
+  assert.equal(v.task(1).done, true, 'Try again in the Outbox ticks it');
 });
-test('a repeating task whose tick lost its reply is ticked once, not twice', async c => {
+test('a repeating task whose tick lost its reply is ticked once, and tapping its tick puts its date back', async t => {
   const due = new Date(Date.now() + 36e5).toISOString();
-  const v = fakeVikunja([{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]),
-    app = listed(c);
-  app.change(w => w.read([structuredClone(v.task(1))], TASK, started()));
-  v.trouble = r => (r.method === 'PATCH' ? 'lost' : null);
-  const t = app.row(v.task(1));
-  await app.toggleDone(t, ROW);
-  assert.equal(
-    patches(v).length,
-    1,
-    "the tick is not sent again, because Vikunja's copy, read afterwards, shows the task moved on",
-  );
-  assert.equal(Date.parse(v.task(1).due_date) - Date.parse(due), DAY * 1000);
+  const { v, app } = listed(t, [{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]);
+  lostOnce(v, 'PATCH', /^\/tasks\/1$/);
+  const x = app.tasks[1];
+  await app.toggleDone(x, ROW);
   assert.deepEqual(
-    [t.done, t.due_date, app.leaving[1]],
+    [x.done, x.due_date, app.leaving[1]],
     [true, due, 'done'],
     'the row shows the task done, with its old date, until the batch clears',
   );
   assert.match(app.said, /^Done: Water the plants\. It repeats, next /);
-  // Tapping its tick before the batch clears restores its date.
-  v.trouble = () => null;
+  // Tapping its tick before the batch clears sends the tick again, which the relay answers from what it kept, and
+  // then puts the date back.
+  app.offline = false;
   await app.unmark(1);
-  assert.deepEqual([v.task(1).due_date, t.due_date, t.done], [due, due, false]);
+  assert.deepEqual(
+    [reached(v, 'PATCH', /^\/tasks\/1$/).map(r => r.body), v.task(1).due_date, x.due_date, x.done],
+    [[{ done: true }, { due_date: due }], due, due, false],
+  );
 });
-test('a repeating task ticked in a list returns open with its next date once the batch clears', async c => {
+test('a repeating task ticked in a list returns open with its next date once the batch clears', async t => {
   const due = new Date(Date.now() + 36e5).toISOString();
-  const v = fakeVikunja([{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]),
-    app = listed(c);
-  app.view.groups = [{ key: 'today', tasks: [app.row(v.task(1))] }];
+  const { v, app } = listed(t, [{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]);
+  app.view.groups = [{ key: 'today', tasks: [app.tasks[1]] }];
   await app.toggleDone(app.tasks[1], ROW);
+  await settled();
   await app.clearBatch(true);
-  const t = app.view.groups[0].tasks[0];
-  assert.deepEqual([t?.done, t?.due_date], [false, v.task(1).due_date], 'the task is still on the list');
-  assert.equal(Date.parse(t.due_date) - Date.parse(due), DAY * 1000);
+  const x = app.view.groups[0].tasks[0];
+  assert.deepEqual([x?.done, x?.due_date], [false, v.task(1).due_date], 'the task is still on the list');
+  assert.equal(Date.parse(x.due_date) - Date.parse(due), DAY * 1000);
   // A task whose next date is past what Today shows leaves Today.
   v.task(1).repeat_after = 30 * DAY;
-  app.tasks[1].repeat_after = 30 * DAY;
+  app.change(w => w.read([structuredClone(v.task(1))], TASK, started()));
   await app.toggleDone(app.tasks[1], ROW);
   await app.clearBatch(true);
   assert.deepEqual(app.view.groups[0].tasks, []);
 });
-test('setting progress to 100% marks the task done, and tapping its tick restores the earlier progress', async c => {
-  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]),
-    app = listed(c);
-  const t = app.row(v.task(1));
-  await app.setProgress(t, 100, ROW);
+test('setting progress to 100% marks the task done, and tapping its tick opens it at the progress it had', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]);
+  await app.setProgress(app.tasks[1], 100, ROW);
   assert.deepEqual(patches(v), [[1, { done: true }]], 'the progress value is left as it was');
   assert.equal(v.task(1).done, true);
   await app.unmark(1);
-  assert.deepEqual(patches(v).at(-1), [1, { done: false, percent_done: 0.4 }]);
-  // The sheet (its row or its Progress line) behaves the same. The tick shows it, and ticking again restores the progress.
+  assert.deepEqual([patches(v).at(-1), v.task(1).percent_done], [[1, { done: false }], 0.4]);
+  // The sheet (its row or its Progress line) behaves the same. The tick shows it, and ticking again opens it.
   const n = app.toasts.length;
   opened(app, v.task(1));
   await app.sheetProgress(app.sheetTask, 100);
@@ -351,23 +328,37 @@ test('setting progress to 100% marks the task done, and tapping its tick restore
   await app.sheetDone();
   assert.deepEqual([v.task(1).done, v.task(1).percent_done], [false, 0.4]);
 });
+test('a repeating task swiped to 100% starts its next date at 0%, and its Undo puts back its date and progress', async t => {
+  const due = new Date(Date.now() + 36e5).toISOString();
+  const { v, app } = listed(t, [
+    { id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY, percent_done: 0.5 },
+  ]);
+  await app.setProgress(app.tasks[1], 100, ROW);
+  assert.deepEqual(
+    [patches(v), v.task(1).due_date],
+    [[[1, { done: true, percent_done: 0 }]], new Date(vikunjaNext({ due_date: due, repeat_after: DAY })).toISOString()],
+  );
+  await app.unmark(1);
+  assert.deepEqual([v.task(1).due_date, v.task(1).percent_done], [due, 0.5]);
+});
 /* A full swipe right marks the task done and looks the same as a tick. The row finishes its swipe off the screen, then
    shows as done in its place, never as a gap, with the same mark as a tick. Tapping its tick undoes it. The row
    leaves the list when the batch clears. In a sheet, a subtask's row stays in place as done, with nothing marked. */
-test('a full swipe marks the task done like a tick, in place and never as a gap, and tapping its tick undoes it', async c => {
-  const v = fakeVikunja([
-      { id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 },
-      { id: 2, title: 'Sand it', done: false },
-    ]),
-    app = listed(c);
-  app.view.groups = [{ key: 'today', tasks: [app.row(v.task(1)), app.row(v.task(2))] }];
+test('a full swipe marks the task done like a tick, in place and never as a gap, and tapping its tick undoes it', async t => {
+  const { v, app } = listed(t, [
+    { id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 },
+    { id: 2, title: 'Sand it', done: false },
+    { id: 3, title: 'Prime it', done: false },
+    { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } },
+  ]);
+  app.view.groups = [{ key: 'today', tasks: [app.tasks[1], app.tasks[2]] }];
   await app.setProgress(app.tasks[1], 100, ROW);
   assert.deepEqual([app.leaving, app.isGap(app.tasks[1], { depth: {} }), v.task(1).done], [{ 1: 'done' }, false, true]);
   await app.unmark(1);
   assert.deepEqual(app.leaving, {});
   assert.deepEqual(
-    patches(v).at(-1),
-    [1, { done: false, percent_done: 0.5 }],
+    [patches(v).at(-1), v.task(1).percent_done],
+    [[1, { done: false }], 0.5],
     'tapping the tick opens the task again at the progress it had',
   );
   await app.setProgress(app.tasks[1], 100, ROW);
@@ -376,8 +367,6 @@ test('a full swipe marks the task done like a tick, in place and never as a gap,
   await app.clearBatch(true);
   assert.deepEqual([app.view.groups[0].tasks, app.leaving], [[], {}], 'both rows leave with the batch');
   // A subtask in its parent's sheet is done where it is, with nothing marked. The sheet's subtask rows are their own.
-  v.tasks.set(3, { id: 3, title: 'Prime it', done: false });
-  v.tasks.set(4, { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } });
   opened(app, {
     id: 4,
     title: 'Paint the shed',
@@ -386,26 +375,20 @@ test('a full swipe marks the task done like a tick, in place and never as a gap,
   app.subRows(app.sheetTask);
   await app.setProgress(app.subRow(app.sheetTask.related_tasks.subtask[0]), 100, null, { sub: true });
   assert.deepEqual(
-    [
-      app.leaving,
-      app.subRow(app.sheetTask.related_tasks.subtask[0]).done,
-      app.sheetTask.related_tasks.subtask[0].done,
-      v.task(3).done,
-    ],
-    [{}, true, false, true],
-    "the subtask's row is done, and the parent's list of its subtasks is left as Vikunja gave it",
+    [app.leaving, app.subRow(app.sheetTask.related_tasks.subtask[0]).done, v.task(3).done],
+    [{}, true, true],
+    "the subtask's row is done",
   );
 });
 /* A row shows as done in place from the moment the user ticks it or releases the swipe, not from when Vikunja answers
-   (toggleDone's holdRow). The mark replaces that once the save is made. Tapping its tick in the meantime waits for
-   the answer and then undoes it. If the save fails, the row is released and shows a message with Try again. A
-   deletion's gap is held the same way (gapNow) until the deletion is queued to send. */
-test('a swiped row is held done before Vikunja answers, and a tick tapped meanwhile undoes it after the answer', async c => {
-  const v = fakeVikunja([
+   (toggleDone's holdRow). The mark replaces that once the op is sent. Tapping its tick in the meantime waits for the
+   answer and then undoes it. If Vikunja refuses the tick, the row is released. A deletion's gap is held the same way
+   (gapNow) until the deletion is queued to send. */
+test('a swiped row is held done before Vikunja answers, and a tick tapped meanwhile undoes it after the answer', async t => {
+  const { v, app } = listed(t, [
       { id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 },
       { id: 2, title: 'Sand it', done: false },
     ]),
-    app = listed(c),
     send = globalThis.fetch;
   // Vikunja's answers are held back until `answer()` is called.
   let held = [];
@@ -421,7 +404,7 @@ test('a swiped row is held done before Vikunja answers, and a tick tapped meanwh
   };
   document.querySelectorAll = () => []; // no rows to slide back in
   try {
-    app.view.groups = [{ key: 'today', tasks: [app.row(v.task(1)), app.row(v.task(2))] }];
+    app.view.groups = [{ key: 'today', tasks: [app.tasks[1], app.tasks[2]] }];
     let setting = app.setProgress(app.tasks[1], 100, ROW);
     assert.deepEqual(
       [app.leaving, app.tasks[1].done, v.task(1).done],
@@ -444,25 +427,17 @@ test('a swiped row is held done before Vikunja answers, and a tick tapped meanwh
       [false, 0.5, 2],
       'the task is open again at the progress it had',
     );
-    // If the save fails, the row is released and shows a message.
-    v.trouble = () => 500;
+    // If Vikunja refuses the tick, the row is released.
+    v.trouble = () => 403;
     setting = app.setProgress(app.tasks[1], 100, ROW);
     assert.deepEqual(app.leaving, { 1: 'done' });
     await setting;
     await turn();
     assert.deepEqual([app.leaving, app.tasks[1].done], [{}, false], 'the row is released and the task is not done');
-    assert.match(app.toast.msg, /^Not saved: /);
-    assert.deepEqual([app.toast.row.id, app.toast.action.label], [1, 'Try again']);
+    for (const x of sync.all(1)) await sync.remove(x.id);
+    app.refreshPending();
     v.trouble = () => null;
-    app.rowEl = () => ROW; // the row is on screen
-    await app.toast.action.fn();
-    assert.deepEqual(
-      [app.leaving, v.task(1).done],
-      [{ 1: 'done' }, true],
-      'Try again marks the task done, in its place',
-    );
     // A tapped tick is held the same way. Tapping it again before the answer undoes it once the answer arrives.
-    await app.unmark(1);
     held = [];
     const ticking = app.toggleDone(app.tasks[1], ROW),
       again = app.unmark(1);
@@ -491,34 +466,34 @@ test('a swiped row is held done before Vikunja answers, and a tick tapped meanwh
     delete document.querySelectorAll;
   }
 });
-test('progress below 100% is saved as it is, and a failed save goes back and shows a message on the row', async () => {
-  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]),
-    app = component(tasks, actions);
-  const t = app.row(v.task(1));
-  await app.setProgress(t, 70, null);
+test('progress below 100% is sent as it is, and a refused progress goes back and waits in the Outbox', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]);
+  const x = app.tasks[1];
+  await app.setProgress(x, 70, null);
   assert.equal(v.task(1).percent_done, 0.7);
   assert.deepEqual(app.toasts, [], 'no message appears, because sliding the progress back is the undo');
   assert.equal(app.said, 'Progress of Paint the fence set to 70%', 'a screen reader announces the progress');
 
-  v.trouble = () => 500;
-  await app.setProgress(t, 90, null);
-  assert.equal(t.percent_done, 0.7);
-  assert.match(app.toast.msg, /^Not saved: /);
-  assert.equal(app.toast.row.id, 1);
+  v.trouble = () => 403;
+  await app.setProgress(x, 90, null);
+  assert.equal(x.percent_done, 0.7);
+  assert.deepEqual(
+    [lastSaid(app).msg, lastSaid(app).action.label],
+    ["Progress on “Paint the fence” couldn't be saved: HTTP 403 from the fake. It's kept to try again.", 'Outbox'],
+  );
   v.trouble = () => null;
-  await app.toast.action.fn();
-  assert.equal(v.task(1).percent_done, 0.9, 'Try again sets it');
+  await app.retryAct(sync.all(1)[0].id);
+  assert.equal(v.task(1).percent_done, 0.9, 'Try again in the Outbox sets it');
 });
 /* Swiping a done row left opens it again at the progress where the user releases the swipe, the same as its tick
-   would, in one save. Ticking it again makes it done. The sheet's row and Progress line behave the same. */
-test('swiping a done task down opens it again at that progress in one save', async c => {
-  const v = fakeVikunja([{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]),
-    app = listed(c);
-  const t = app.row(v.task(1));
-  await app.setProgress(t, 75, ROW);
+   would, in one request. Ticking it again makes it done. The sheet's row and Progress line behave the same. */
+test('swiping a done task down opens it again at that progress in one request', async t => {
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: true, percent_done: 0.4 }]);
+  const x = app.tasks[1];
+  await app.setProgress(x, 75, ROW);
   assert.deepEqual(patches(v), [[1, { done: false, percent_done: 0.75 }]]);
-  assert.deepEqual([t.done, v.task(1).done, v.task(1).percent_done], [false, false, 0.75]);
-  await app.toggleDone(t, null);
+  assert.deepEqual([x.done, v.task(1).done, v.task(1).percent_done], [false, false, 0.75]);
+  await app.toggleDone(x, null);
   assert.deepEqual(
     [v.task(1).done, v.task(1).percent_done],
     [true, 0.75],
@@ -532,7 +507,7 @@ test('swiping a done task down opens it again at that progress in one save', asy
     "the sheet's progress bar behaves the same way",
   );
 });
-test('ticking a subtask or setting its progress shows only on its row, with no message, and the row stays in place', async () => {
+test('ticking a subtask or setting its progress shows only on its row, with no message, and the row stays in place', async t => {
   const kid = {
     id: 2,
     title: 'Pack the cups',
@@ -540,25 +515,22 @@ test('ticking a subtask or setting its progress shows only on its row, with no m
     percent_done: 0,
     related_tasks: { parenttask: [{ id: 1 }] },
   };
-  const v = fakeVikunja([kid]),
-    app = component(tasks, actions),
-    t = app.row(kid);
-  await app.setProgress(t, 50, null);
+  const { v, app } = listed(t, [kid, { id: 3, title: 'Wash them', done: false }]),
+    x = app.tasks[2];
+  await app.setProgress(x, 50, null);
   assert.equal(v.task(2).percent_done, 0.5);
-  await app.toggleDone(t, null);
+  await app.toggleDone(x, null);
   assert.equal(v.task(2).done, true);
-  await app.toggleDone(t, null);
+  await app.toggleDone(x, null);
   assert.equal(v.task(2).done, false);
   assert.deepEqual(app.toasts, [], 'no messages');
   // In its parent's sheet, the subtask's copy has no parent set, so `sub: true` tells the action it is a subtask.
-  const inSheet = { id: 3, title: 'Wash them', done: false };
-  v.tasks.set(3, structuredClone(inSheet));
-  await app.toggleDone(inSheet, null, { sub: true });
+  await app.toggleDone(app.tasks[3], null, { sub: true });
   assert.deepEqual(app.toasts, []);
 });
-/* A parent's calculated progress is written right after one of its subtasks changes, by the same action, and only
-   when the progress changes. */
-test("ticking a subtask or setting its progress writes its parent's calculated progress right after, if it changed", async () => {
+/* A parent's calculated progress is written right after one of its subtasks changes, by the same op, and only when the
+   progress changes. */
+test("ticking a subtask or setting its progress writes its parent's calculated progress right after, if it changed", async t => {
   const kid = id => ({
     id,
     title: 'Step ' + id,
@@ -566,7 +538,7 @@ test("ticking a subtask or setting its progress writes its parent's calculated p
     percent_done: 0,
     related_tasks: { parenttask: [{ id: 1 }] },
   });
-  const v = fakeVikunja([
+  const { v, app } = listed(t, [
     {
       id: 1,
       title: 'Open up',
@@ -578,21 +550,17 @@ test("ticking a subtask or setting its progress writes its parent's calculated p
     kid(4),
     kid(5),
   ]);
-  const app = component(tasks, actions),
-    t = app.row(v.task(2));
-  await app.setProgress(t, 50, null);
-  await app.saveTask(1, null, () => null);
+  await app.setProgress(app.tasks[2], 50, null);
   assert.deepEqual(
     patches(v),
     [
       [2, { percent_done: 0.5 }],
       [1, { percent_done: 0.13 }],
     ],
-    "one subtask at 50% of four gives 13%, written after the subtask's own save",
+    "one subtask at 50% of four gives 13%, written after the subtask's own request",
   );
   v.requests.length = 0;
-  await app.toggleDone(t, null);
-  await app.saveTask(1, null, () => null);
+  await app.toggleDone(app.tasks[2], null);
   assert.deepEqual(
     patches(v),
     [
@@ -602,14 +570,12 @@ test("ticking a subtask or setting its progress writes its parent's calculated p
     'a done subtask counts as 100%',
   );
   v.requests.length = 0;
-  await app.setProgress(app.row(v.task(3)), 0, null);
-  await app.saveTask(1, null, () => null);
+  await app.setProgress(app.tasks[3], 0, null);
   assert.deepEqual(patches(v), [[3, { percent_done: 0 }]], 'an unchanged parent progress is not written');
   // In its parent's sheet, the subtask's copy names no parent, so the sheet's task is its parent.
   v.requests.length = 0;
   opened(app, { id: 1, related_tasks: { subtask: [{ id: 4, title: 'Step 4', done: false }] } });
-  await app.toggleDone(app.sheetTask.related_tasks.subtask[0], null, { sub: true });
-  await app.saveTask(1, null, () => null);
+  await app.toggleDone({ id: 4, title: 'Step 4', done: false }, null, { sub: true });
   assert.deepEqual(patches(v), [
     [4, { done: true }],
     [1, { percent_done: 0.5 }],
@@ -617,7 +583,7 @@ test("ticking a subtask or setting its progress writes its parent's calculated p
 });
 // In a subtask's own sheet, setting progress by swiping its row or tapping a quarter in Details also writes the
 // parent's progress.
-test("setting a subtask's progress in its own sheet writes its parent's progress right after", async () => {
+test("setting a subtask's progress in its own sheet writes its parent's progress right after", async t => {
   const kid = id => ({
     id,
     title: 'Step ' + id,
@@ -625,38 +591,36 @@ test("setting a subtask's progress in its own sheet writes its parent's progress
     percent_done: 0,
     related_tasks: { parenttask: [{ id: 1 }] },
   });
-  const v = fakeVikunja([
-    { id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } },
-    kid(2),
-    kid(3),
-  ]);
-  const app = component(tasks, actions, sheet);
-  Object.assign(app, { keepTemplate() {}, rowTitle: t => t.title, unsay() {} });
+  const { v, app } = listed(
+    t,
+    [{ id: 1, title: 'Open up', percent_done: 0, related_tasks: { subtask: [{ id: 2 }, { id: 3 }] } }, kid(2), kid(3)],
+    sheet,
+  );
+  Object.assign(app, { keepTemplate() {}, rowTitle: x => x.title, unsay() {} });
   opened(app, v.task(2));
   await app.sheetProgress(app.sheetTask, 50);
-  await app.saveTask(1, null, () => null);
   assert.deepEqual(patches(v), [
     [2, { percent_done: 0.5 }],
     [1, { percent_done: 0.25 }],
   ]);
 });
-test("a change to a checklist step goes through the outbox, and the same entry writes the checklist's progress last", async () => {
-  const v = fakeVikunja([
-    {
-      id: 1,
-      title: 'Opening',
-      percent_done: 0,
-      related_tasks: {
-        subtask: [
-          { id: 2, done: true },
-          { id: 3, percent_done: 0.5 },
-        ],
+test("a change to a checklist step goes through the outbox, and the same entry writes the checklist's progress last", async t => {
+  const { v } = listed(t, [
+      {
+        id: 1,
+        title: 'Opening',
+        percent_done: 0,
+        related_tasks: {
+          subtask: [
+            { id: 2, done: true },
+            { id: 3, percent_done: 0.5 },
+          ],
+        },
       },
-    },
-    { id: 2, done: true },
-    { id: 3, percent_done: 0.5 },
-  ]);
-  const app = component(tasks, actions),
+      { id: 2, done: true },
+      { id: 3, percent_done: 0.5 },
+    ]),
+    app = component(tasks, actions),
     send = a => figure(a, stageContext(a, app).start()),
     entry = () => ({ id: uuid7(), op: 'done', task: 2, run: 1, stage: 3 });
   for (const op of ['progress', 'done', 'skip', 'undone', 'doneNote'])
@@ -675,62 +639,57 @@ test("a change to a checklist step goes through the outbox, and the same entry w
   await send(entry());
   assert.equal(patches(v).length, 1, 'a new entry finds the progress already right, so nothing is written');
 });
-const settled = () => new Promise(r => setImmediate(r));
-test("a tick puts the user's ✅ on the task and an untick takes it off, except in a project only they can see and on a repeating task", async c => {
-  const v = fakeVikunja([
-      { id: 1, title: 'Order the cups', done: false, project_id: 7 },
-      { id: 2, title: 'Book the dentist', done: false, project_id: 8 },
-      {
-        id: 3,
-        title: 'Water the plants',
-        done: false,
-        project_id: 7,
-        due_date: '2026-10-07T09:00:00Z',
-        repeat_after: DAY,
-      },
-    ]),
-    app = listed(c);
+test("a tick puts the user's ✅ on a task wherever it is, and an untick takes it off, except on a repeating task", async t => {
+  const { v, app } = listed(t, [
+    { id: 1, title: 'Order the cups', done: false, project_id: 7 },
+    { id: 2, title: 'Book the dentist', done: false, project_id: 8 },
+    {
+      id: 3,
+      title: 'Water the plants',
+      done: false,
+      project_id: 7,
+      due_date: '2026-10-07T09:00:00Z',
+      repeat_after: DAY,
+    },
+  ]);
   app.seenBy = { 7: 2, 8: 0 };
-  for (const id of [1, 2, 3]) await app.toggleDone(app.row(v.task(id)), null, { quiet: true });
-  await settled();
+  for (const id of [1, 2, 3]) await app.toggleDone(app.tasks[id], null);
   assert.deepEqual(
     [1, 2, 3].map(id => v.task(id).reactions?.['✅']?.map(u => u.id) || null),
-    [[1], null, null],
+    [[1], [1], null],
+    'a project only the user can see gets it too, and a task moved on to its next date gets none',
   );
-  await app.toggleDone(app.tasks[1], null, { quiet: true });
-  await settled();
-  assert.deepEqual(v.task(1).reactions['✅'], [], 'unticking takes the ✅ off');
+  await app.toggleDone(app.tasks[1], null);
+  await app.toggleDone(app.tasks[1], null);
+  await app.toggleDone(app.tasks[1], null);
+  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []], 'unticking takes the ✅ off');
 });
-test("a task ticked on Today joins Done today when the batch clears, newest first, and a checklist's step does not", async c => {
-  const v = fakeVikunja([
-      { id: 1, title: 'Order the cups', done: false },
-      { id: 2, title: 'Fix the till', done: true },
-      { id: 3, title: 'Take the croissants out', done: false },
-    ]),
-    app = listed(c);
+test("a task ticked on Today joins Done today when the batch clears, newest first, and a checklist's step does not", async t => {
+  const { app } = listed(t, [
+    { id: 1, title: 'Order the cups', done: false },
+    { id: 2, title: 'Fix the till', done: true },
+    { id: 3, title: 'Take the croissants out', done: true },
+  ]);
   app.route = { name: 'today' };
-  app.stepRun = t => (t.id === 3 ? 9 : null);
-  app.tickRunStep = async t => {
-    t.done = true;
-  };
   app.view.groups = [
-    { key: 'today', tasks: [app.row(v.task(1))] },
-    { key: 'donetoday', tasks: [app.row(v.task(2))] },
+    { key: 'today', tasks: [app.tasks[1]] },
+    { key: 'donetoday', tasks: [app.tasks[2]] },
   ];
   await app.toggleDone(app.tasks[1], ROW);
   assert.deepEqual(
-    app.view.groups[1].tasks.map(t => t.id),
+    app.view.groups[1].tasks.map(x => x.id),
     [2],
     'Done today waits for the batch',
   );
   await app.clearBatch(true);
   assert.deepEqual(
-    app.view.groups.map(g => g.tasks.map(t => t.id)),
+    app.view.groups.map(g => g.tasks.map(x => x.id)),
     [[], [1, 2]],
   );
+  app.stepRun = x => (x.id === 3 ? 9 : null);
   app.intoDoneToday([3]);
   assert.deepEqual(
-    app.view.groups[1].tasks.map(t => t.id),
+    app.view.groups[1].tasks.map(x => x.id),
     [1, 2],
   );
 });
@@ -769,34 +728,8 @@ test('Done today keeps only what was done today, also in a copy of Today saved o
     'a task just ticked, with no time yet, stays',
   );
 });
-test("a template gets no ✅ when it is saved done, even if Vikunja's reply leaves its labels out", async c => {
-  const label = [{ id: 4, title: 'template' }],
-    due = '2026-10-20T09:00:00Z';
-  const v = fakeVikunja([
-    { id: 1, title: 'TEMPLATE: Opening up', done: false, due_date: due, project_id: 7, labels: label },
-    { id: 2, title: 'Order cups', done: false, project_id: 8, labels: label },
-  ]);
-  const app = listed(c);
-  Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
-  Object.assign(app, { seenBy: { 7: 2, 8: 2 }, checklistIds: new Set([7]) });
-  const t = app.row(v.task(1));
-  app.change(w => w.read([{ ...v.task(1) }], TASK, started()));
-  delete v.task(1).labels; // the reply to the save has no labels
-  await app.saveTask(1, { done: true });
-  await settled();
-  assert.equal(t.done, true);
-  assert.equal(v.task(1).reactions, undefined);
-  app.row(v.task(2));
-  await app.saveTask(2, { done: true });
-  await settled();
-  assert.deepEqual(
-    v.task(2).reactions?.['✅']?.map(u => u.id),
-    [1],
-    'a task labelled "template" outside a Checklists project gets the ✅',
-  );
-});
-test("finishing a checklist puts the user's ✅ on it, and reopening it takes the ✅ off", async () => {
-  const v = fakeVikunja([{ id: 1, title: 'Closing up · Oct 14', done: false }]);
+test("finishing a checklist puts the user's ✅ on it, and reopening it takes the ✅ off", async t => {
+  const { v } = listed(t, [{ id: 1, title: 'Closing up · Oct 14', done: false }]);
   // A countdown keeps the time a step was ticked (keepTick). This checklist has none.
   const app = component(tasks, actions, { keepTick() {} });
   await sendStages(app, { op: 'finish', task: 1, run: 1 });
@@ -804,60 +737,29 @@ test("finishing a checklist puts the user's ✅ on it, and reopening it takes th
   await sendStages(app, { op: 'reopen', task: 1, run: 1 });
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []]);
 });
-test("a task that quick add made already done gets the user's ✅, as a tick would", async c => {
-  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: true, project_id: 7 }]),
-    app = component(tasks, actions, leaving, sending);
-  c.mock.timers.enable({ apis: ['setTimeout'] });
-  app.seenBy = { 7: 2 };
-  app.arrivedDone(app.row(v.task(1)), v.task(1));
-  await settled();
+test("tapping the tick of a task quick add made done unticks it, and a repeating one's puts its date back", async t => {
+  const due = '2026-10-07T09:00:00Z',
+    { v, app } = listed(t, [
+      { id: 1, title: 'Order the cups', done: true },
+      { id: 2, title: 'Water the plants', done: false, due_date: '2026-10-08T09:00:00Z', repeat_after: DAY },
+    ]);
+  app.arrivedDone(app.tasks[1], v.task(1), {});
+  await app.unmark(1);
+  assert.deepEqual([v.task(1).done, app.tasks[1].done], [false, false]);
+  app.arrivedDone(app.tasks[2], v.task(2), { due_date: due });
   assert.deepEqual(
-    v.task(1).reactions['✅'].map(u => u.id),
-    [1],
+    [app.tasks[2].done, app.tasks[2].due_date],
+    [true, due],
+    'the row shows the task done at the date it was made with',
   );
-});
-test("the ✅ requests go out in the order the ticks saved, so a slow untick doesn't take off the next tick's ✅", async c => {
-  const v = fakeVikunja([{ id: 1, title: 'Order the cups', done: false, project_id: 7 }]),
-    app = listed(c),
-    request = globalThis.fetch;
-  app.seenBy = { 7: 2 };
-  app.row(v.task(1));
-  let release;
-  globalThis.fetch = (url, args) =>
-    url.endsWith('/reactions/delete') && !release
-      ? new Promise(r => {
-          release = () => request(url, args).then(r);
-        })
-      : request(url, args);
-  for (const done of [true, false, true]) {
-    await app.saveTask(1, { done });
-    await settled();
-  }
-  release();
-  for (let i = 0; i < 5; i++) await settled();
-  assert.deepEqual([v.task(1).done, v.task(1).reactions['✅'].map(u => u.id)], [true, [1]]);
+  await app.unmark(2);
+  assert.deepEqual([v.task(2).due_date, app.tasks[2].due_date, app.tasks[2].done], [due, due, false]);
 });
 
-/* Ticks and progress are ops (ops/ticks.js), sent through the outbox, each with an Undo that is an op too. `ticking`
-   gives a sender whose tasks have rows and copies. */
-const ticking = (t, list) => {
-  const s = sender(t, list);
-  s.app.change(w =>
-    w.read(
-      list.map(x => structuredClone(x)),
-      TASK,
-      started(),
-    ),
-  );
-  for (const x of list) s.app.row(structuredClone(x));
-  t.after(async () => {
-    for (const x of sync.all(1)) await sync.remove(x.id);
-  });
-  return s;
-};
-const op = (op, task, more = {}) => ({ id: uuid7(), op, task, run: null, ...more });
+/* Ticks and progress are ops (ops/ticks.js), sent through the outbox, each with an Undo that is an op too. */
+const op = (name, task, more = {}) => ({ id: uuid7(), op: name, task, run: null, ...more });
 test('a tick and an untick made offline cancel out, and a second progress takes the place of the first', async t => {
-  const { v, app } = ticking(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
   noConnection(app, v);
   for (const name of ['done', 'undone', 'done', 'undone']) await app.act(op(name, 1));
   assert.deepEqual([sync.all(1).length, app.tasks[1].done], [0, false], 'ticking and unticking leaves nothing to send');
@@ -879,7 +781,7 @@ test('a tick and an untick made offline cancel out, and a second progress takes 
   assert.equal(v.task(1).percent_done, 0, "the second's Undo goes back to the progress before the first");
 });
 test('an Undo leaves a progress a teammate changed since, and says so on the row', async t => {
-  const { v, app } = ticking(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
+  const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0 }]);
   const f = op('progress', 1, { pct: 50, was: 0 });
   await app.act(f);
   v.task(1).percent_done = 0.6;
@@ -906,7 +808,7 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
       repeat_after: DAY,
       reminders: [{ reminder: '2026-10-07T08:30:00Z' }],
     };
-  const { v, app } = ticking(t, [plants]);
+  const { v, app } = listed(t, [plants]);
   const tick = () => op('done', 1, { was: movedFrom(app.tasks[1]) });
   let f = tick();
   assert.deepEqual(f.was, {
@@ -924,6 +826,7 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
   lostOnce(v, 'PATCH', /^\/tasks\/1$/);
   f = tick();
   assert.equal((await app.act(f)).status, 'offline');
+  app.offline = false;
   assert.equal(await app.undoOps([f]).left, 0);
   assert.deepEqual([v.task(1).due_date, sync.all(1).length], [due, 0]);
   // A date changed in Vikunja since stays, and Undo says so.
@@ -937,7 +840,7 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
   );
 });
 test('a tick on a task deleted in Vikunja since leaves the outbox, and says why', async t => {
-  const { v, app } = ticking(t, [{ id: 1, title: 'Call Jo', done: false }]);
+  const { v, app } = listed(t, [{ id: 1, title: 'Call Jo', done: false }]);
   v.tasks.delete(1);
   const r = await app.act(op('done', 1));
   assert.deepEqual([r.status, sync.all(1).length], ['error', 0], 'nothing is kept to try again');

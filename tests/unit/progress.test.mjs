@@ -19,7 +19,6 @@ import {
   NUDGE_SPEED_MS,
   openSubtasks,
   pctOf,
-  progressPatch,
   quarterOn,
   QUARTERS,
   releaseSpeed,
@@ -35,7 +34,6 @@ import {
   tickFeel,
   trackMoves,
   typedIn,
-  undoing,
   workedOut,
 } from '../../src/js/progress.js';
 
@@ -44,13 +42,6 @@ test("progress in percent, from Vikunja's 0 to 1", () => {
   assert.equal(pctOf({ percent_done: 0.299999 }), 30);
   assert.equal(pctOf({}), 0);
   assert.equal(pctOf(null), 0);
-});
-
-test('100% marks a task done without changing its progress, and a repeating task starts its next time at 0%', () => {
-  assert.deepEqual(progressPatch({}, 60), { percent_done: 0.6 });
-  assert.deepEqual(progressPatch({}, 100), { done: true });
-  assert.deepEqual(progressPatch({}, 120), { done: true });
-  assert.deepEqual(progressPatch({ repeat_after: 86400 }, 100), { done: true, percent_done: 0 });
 });
 
 test('ticking a task also ticks its open subtasks that do not repeat, and none if the task repeats', () => {
@@ -65,12 +56,6 @@ test('ticking a task also ticks its open subtasks that do not repeat, and none i
   );
   assert.deepEqual(openSubtasks({ ...t, repeat_after: 86400 }), []);
   assert.deepEqual(openSubtasks({}), []);
-});
-
-test('an Undo that restores progress shows no message of its own', () => {
-  assert.equal(undoing({ percent_done: 0.4 }), true);
-  assert.equal(undoing({ percent_done: 0.4, done: true }), false);
-  assert.equal(undoing({}), false);
 });
 
 test("the sheet's Progress line has the quarters below done, with the task's quarter pressed, or none if done or set elsewhere", () => {

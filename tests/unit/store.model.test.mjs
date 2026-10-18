@@ -1545,14 +1545,12 @@ class Wait extends Command {
 
 // The step is named twice as often, because ops on a step not yet made, and a read that brings it, find bug 3.
 const target = fc.constantFrom(1, 2, 3, STEP, STEP);
-// Two values for each field, so two edits of one field can disagree.
+// Two values for each field, so two edits of one field can disagree. No direct save ticks a task, since a tick is an op.
 const EDITS = [
   { title: 'Mop twice' },
   { title: 'Mop once' },
   { priority: 2 },
   { priority: 4 },
-  { done: true },
-  { done: false },
   { percent_done: 0.5 },
   { percent_done: 0.25 },
   { due_date: '2026-10-18T09:00:00Z' },

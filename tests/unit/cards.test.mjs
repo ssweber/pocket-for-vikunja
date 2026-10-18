@@ -21,6 +21,8 @@ import checklists from '../../src/js/app/checklists.js';
 import actions from '../../src/js/app/actions.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import sending from '../../src/js/app/sending.js';
+import acts from '../../src/js/app/acts.js';
+import outbox from '../../src/js/app/outbox.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
 import { watching } from './reactive.mjs';
@@ -236,6 +238,16 @@ test('a checklist step’s countdown is shown to the minute, within a day', () =
 
 // The component with Today's cards. `parent` has its subtasks in the store, at their positions in its List view:
 // 14 (done) first, then Chairs, Tables and Lights.
+/* The parts that send a tick through the outbox, and what they read. A test that ticks a task passes them to its
+   component and calls `sends` on it. today() sets its own waitingByTask. */
+const { waitingByTask, ...SENDING } = Object.getOwnPropertyDescriptors(sending);
+const SENDS = [acts, Object.defineProperties({}, SENDING), outbox];
+const sends = app => {
+  Object.assign(app, { user: { id: 1 }, pending: [], failed: [], slow: [], cap: {}, places: {}, endPlace() {} });
+  app.sheet = { id: null, sub: {}, ...app.sheet };
+  app.toasts.push({ msg: '' }); // act() reads the last message
+  return app;
+};
 const today = (...more) => {
   const app = component(cards, views, alerts, tasks, leaving, ...more);
   Object.assign(app, {
@@ -639,10 +651,11 @@ test('a ticked top row stays on the card until the batch clears, and then the ne
    task's subtask or a checklist's step, on a collapsed card or an open one. */
 test('a done top row stays the card’s top row from the tap or swipe until the batch clears, however long Vikunja takes', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
-  const { app, parent, g } = today(actions),
+  const { app, parent, g } = today(actions, ...SENDS),
     v = fakeVikunja(Object.values(app.tasks)),
     send = globalThis.fetch;
-  Object.assign(app, { lines: {}, pending: [], perms: {}, render() {} });
+  sends(app);
+  Object.assign(app, { lines: {}, perms: {}, render() {} });
   app.view.groups = [{ key: 'today', tasks: [parent] }];
   // Vikunja's answers are held back until answer() is called.
   let held = [];
@@ -728,18 +741,18 @@ test('a done top row stays the card’s top row from the tap or swipe until the 
     await over(doing);
     await app.clearBatch(true);
     assert.deepEqual([top(), card().rows.map(s => s.title)], ['Lights', ['Lights']]);
-    // If the save fails, the row is released, open, where it was, and shows a message saying why.
-    v.trouble = () => 500;
+    // If Vikunja refuses the tick, the row is released, open, where it was, and a message says why.
+    v.trouble = () => 403;
     doing = app.toggleDone(app.tasks[11], ROW);
     await turn();
-    assert.deepEqual([top(), app.leaving[11]], ['Lights', 'done'], 'the row is held while the save is tried');
+    assert.deepEqual([top(), app.leaving[11]], ['Lights', 'done'], 'the row is held while the tick is sent');
     await over(doing);
     assert.deepEqual(
       [top(), app.leaving, app.tasks[11].done],
       ['Lights', {}, false],
-      'after a failed save, the row is released and not done',
+      'after a refused tick, the row is released and not done',
     );
-    assert.match(app.toast.msg, /^Not saved: /);
+    assert.match(app.toast.msg, /couldn't be saved/);
   } finally {
     globalThis.fetch = send;
   }
@@ -750,11 +763,12 @@ test('a done top row stays the card’s top row from the tap or swipe until the 
 // ticked, though Vikunja's copy of the task is still open (keep).
 test('a row ticked on Today stays ticked in a list loaded before Vikunja has answered the tick', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
-  const { app } = today(actions),
+  const { app } = today(actions, ...SENDS),
     row = app.row(task(20, { title: 'Call the plumber' })),
     v = fakeVikunja([row]),
     send = globalThis.fetch;
-  Object.assign(app, { lines: {}, pending: [], perms: {}, render() {} });
+  sends(app);
+  Object.assign(app, { lines: {}, perms: {}, render() {} });
   app.view.groups = [{ key: 'today', tasks: [row] }];
   let held = [],
     done = false;
@@ -804,7 +818,7 @@ test('a done top step of a checklist card stays the top row while the outbox tak
     outboxOf(app, app.pending);
   };
   const act = f => {
-    outbox([...app.pending, { kind: 'act', id: 'tick' + f.task, ...f }]);
+    outbox([...app.pending, { kind: 'act', ...f, id: 'tick' + f.task }]);
     return new Promise(ok => {
       taken = ok;
     });
@@ -1538,13 +1552,12 @@ test('a nudge on a checklist’s step moves the add box under it and leaves the 
 const ringed = (c, list) => {
   if (c) c.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list),
-    app = component(cards, tasks, leaving, actions, runs);
+    app = sends(component(cards, tasks, leaving, actions, runs, ...SENDS));
   Object.assign(app, {
     cardPage: {},
     cardOpen: {},
     positions: {},
     lines: {},
-    pending: [],
     perms: {},
     checklistIds: new Set(),
     openSheet(kind) {

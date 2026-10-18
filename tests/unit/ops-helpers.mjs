@@ -9,12 +9,12 @@ import outbox from '../../src/js/app/outbox.js';
 import runs from '../../src/js/app/runs.js';
 import { sync } from '../../src/js/sync.js';
 
-/* The sender with a fake outbox. Each act is queued with act() and sent at once. Messages are read from `toasts`, since
-   `toast` here is the component's own toast, which act() reads. */
-export const sender = (t, list) => {
+/* The sender with a fake outbox, and any more `parts` of the app. Each act is queued with act() and sent at once.
+   Messages are read from `toasts`, since `toast` here is the component's own toast, which act() reads. */
+export const sender = (t, list, ...parts) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja(list),
-    app = component(tasks, acts, sending, outbox, runs);
+    app = component(tasks, acts, sending, outbox, runs, ...parts);
   Object.assign(app, {
     user: { id: 1 },
     pending: [],

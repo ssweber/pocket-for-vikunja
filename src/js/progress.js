@@ -11,10 +11,6 @@ export const pctOf = t => Math.round((t?.percent_done || 0) * 100);
    gives each subtask as its own row shows it (subRow, app/tasks.js). */
 export const openSubtasks = (t, row = s => s) =>
   repeats(t) ? [] : (t.related_tasks?.subtask || []).map(row).filter(s => !s.done && !repeats(s));
-// Whether a patch is an Undo that restores progress. It shows no message.
-export const undoing = extra => 'percent_done' in extra && !extra.done;
-export const progressPatch = (t, pct) =>
-  pct >= 100 ? { done: true, ...(repeats(t) && { percent_done: 0 }) } : { percent_done: pct / 100 };
 export const HOLD_MS = 450; // holding a row this long (ms) lifts it so it can be reordered
 
 /* ---------- swipe stops ---------- */

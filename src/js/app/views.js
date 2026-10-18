@@ -810,7 +810,7 @@ export default {
     return { rows, cards, done: this.withoutTemplates(doneAll, true).filter(t => this.doneByMe(t)), ...read };
   },
   /* Whether Done today lists `t`, a task done today. Vikunja doesn't record who ticked a task, so Pocket puts the
-     user's ✅ on what they tick (signTick, actions.js), as on a checklist's step. A task ticked in Vikunja's web app has
+     user's ✅ on what they tick (mark, ops/stages.js), as on a checklist's step. A task ticked in Vikunja's web app has
      none, so it counts only when it is assigned to the user, is in a project only they can see, or is a checklist they
      started. */
   doneByMe(t) {

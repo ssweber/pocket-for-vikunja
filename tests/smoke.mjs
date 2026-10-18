@@ -35,6 +35,7 @@ import {
   still,
   swipeRow,
   synced,
+  toast,
   toastGone as toastGoneOn,
   uncovered,
   watchSlide,
@@ -4383,59 +4384,73 @@ try {
       });
     }
   });
-  await step('a-tick-whose-reply-is-lost-is-saved', async () => {
-    // The tick reaches Vikunja, which moves the task to its next date, but the reply is lost. Pocket reads the task back
-    // and reports that it repeats, rather than that it wasn't saved. That way the task is not ticked again, which would skip a date.
-    const r = await make(`Pocket smoke repeat lost ${stamp}`, { due_date: todayAt(9), repeat_after: 86400 });
+  await step('a-tick-whose-reply-is-lost-is-made-once', async () => {
+    // The tick reaches Vikunja, which moves the task to its next date, but the reply is lost. The tick waits in the
+    // Outbox, and the relay answers it from what it kept when it is sent again, so the task isn't ticked twice, which
+    // would skip a date.
+    const r = await make(`Pocket smoke repeat lost ${stamp}`, { due_date: todayAt(9), repeat_after: 86400 }),
+      at = `**/v2/tasks/${r.id}`;
+    let lost = 0;
     const lose = async x => {
-      if (x.request().method() !== 'PATCH') return x.fallback();
+      if (x.request().method() !== 'PATCH' || lost++) return x.fallback();
       await x.fetch();
       return x.abort('connectionreset');
     };
     try {
       await toastGone();
       await refreshToday();
-      await page.route(`**/api/v2/tasks/${r.id}`, lose);
+      await page.route(at, lose);
       await page.click(`${rowOf(r.title)} > .check`, { timeout: 15000 });
       await expect(page.locator('#said')).toContainText(`Done: ${r.title}. It repeats, next `, { timeout: 20000 });
+      await later(30000); // flush's timer sends what waits
+      await synced(page);
       const due = new Date((await get(r.id)).due_date).getTime();
       if (due !== new Date(r.due_date).getTime() + 864e5)
         throw new Error('the due date is ' + (await get(r.id)).due_date);
     } finally {
-      await page.unroute(`**/api/v2/tasks/${r.id}`, lose);
+      await page.unroute(at, lose);
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }
   });
 
-  await step('a-tick-not-saved-says-so-on-its-row-with-try-again', async () => {
-    // The tick is undone, and a message on the row says why, with a Try again button that ticks the task.
-    const r = await make(`Pocket smoke not saved ${stamp}`, { due_date: todayAt(23) });
-    const cut = x => (x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback());
+  // A refused change waits in the Outbox, marked failed, until Try again or Cancel there.
+  const retryInOutbox = async text => {
+    await page.click('#btn-refresh');
+    await page.locator(`#outbox-rows .ob-row:has-text("${text}")`).getByRole('button', { name: 'Try again' }).click();
+    await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
+    await page.click('#btn-sheet-close');
+  };
+  const refusing = x =>
+    x.request().method() === 'PATCH'
+      ? x.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Forbidden' }) })
+      : x.fallback();
+  await step('a-tick-vikunja-refuses-goes-back-and-waits-in-the-outbox', async () => {
+    // The row is open again, and a message says why, with a button to the Outbox. Try again there ticks the task.
+    const r = await make(`Pocket smoke not saved ${stamp}`, { due_date: todayAt(23) }),
+      at = `**/v2/tasks/${r.id}`;
     try {
       await toastGone();
       await refreshToday();
-      await page.route(`**/api/v2/tasks/${r.id}`, cut);
+      await page.route(at, refusing);
       await tick(r.title);
-      const line = rowLine(page, 'Not saved: no connection');
-      await expect(line).toBeVisible({ timeout: 20000 });
-      await noToast(page);
-      await page.unroute(`**/api/v2/tasks/${r.id}`, cut);
-      await line.getByRole('button', { name: 'Try again' }).click();
-      await expect(page.locator(`${rowOf(r.title)}.leaving`)).toHaveClass(/\bdone\b/);
+      await toast(page, `A tick on “${r.title}” couldn't be saved: Forbidden.`);
+      await expect(page.locator(rowOf(r.title))).not.toHaveClass(/\bdone\b/);
+      await page.unroute(at, refusing);
+      await retryInOutbox('Done: ' + r.title);
       await synced(page);
       if (!(await get(r.id)).done) throw new Error('Try again did not mark the task done');
     } finally {
-      await page.unroute(`**/api/v2/tasks/${r.id}`, cut);
+      await page.unroute(at, refusing);
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }
   });
   /* After a full swipe, the row shows as done once it has slid away, not when Vikunja answers. While the reply is held
      back, the row is in place and ticked, and the green is gone. Tapping its tick then takes effect once the answer
-     arrives. If the save fails, the row is open again and shows a message with Try again, as a tick does. */
+     arrives. If Vikunja refuses it, the row is open again and the tick waits in the Outbox, as a tick's does. */
   await step('a-full-swipes-row-shows-done-as-it-goes-and-is-open-again-when-its-not-saved', async () => {
     const r = await make(`Pocket smoke gap ${stamp}`, { due_date: todayAt(23) }),
       R = rowOf(r.title),
-      at = `**/api/v2/tasks/${r.id}`;
+      at = `**/v2/tasks/${r.id}`;
     let answer = () => {},
       sent = 0;
     const answered = new Promise(ok => {
@@ -4447,7 +4462,6 @@ try {
       await answered;
       await x.fallback();
     };
-    const cut = x => (x.request().method() === 'PATCH' ? x.abort('connectionreset') : x.fallback());
     try {
       await toastGone();
       await refreshToday();
@@ -4466,23 +4480,22 @@ try {
       await synced(page);
       if ((await get(r.id)).done) throw new Error('a tick tapped before the answer was lost');
       await page.unroute(at, hold);
-      // When the save fails, the row shows as done while it slides away and is then open again, with a message.
-      await page.route(at, cut);
+      // When Vikunja refuses it, the row shows as done while it slides away and is then open again, with a message.
+      await toastGone();
+      await page.route(at, refusing);
       await swipeRow(page, R, 100);
-      const line = rowLine(page, 'Not saved: no connection');
-      await expect(line).toBeVisible({ timeout: 20000 });
+      await toast(page, `A tick on “${r.title}” couldn't be saved: Forbidden.`);
       await expect(page.locator(R)).not.toHaveClass(/\bdone\b/);
       await expect(page.locator(`${R} > .del-gap`)).toHaveCount(0);
       await expect(uncovered(page)).toHaveCount(0);
-      await page.unroute(at, cut);
-      await line.getByRole('button', { name: 'Try again' }).click();
-      await expect(page.locator(`${R}.leaving`)).toHaveClass(/\bdone\b/);
+      await page.unroute(at, refusing);
+      await retryInOutbox('Done: ' + r.title);
       await synced(page);
       if (!(await get(r.id)).done) throw new Error('Try again did not mark the task done');
     } finally {
       answer();
       await page.unroute(at, hold);
-      await page.unroute(at, cut);
+      await page.unroute(at, refusing);
       await api('/tasks/' + r.id, { method: 'DELETE' });
     }
   });
@@ -6299,7 +6312,7 @@ ${footName('Hooks')}`);
       const answered = new Promise(ok => {
           answer = ok;
         }),
-        at = `**/api/v2/tasks/${id}`;
+        at = `**/v2/tasks/${id}`;
       const hold = async x => {
         if (x.request().method() !== 'PATCH') return x.fallback();
         await answered;

@@ -7,7 +7,7 @@
    A label or a person that Vikunja refuses is reported as a problem, and the next stage starts. A lost connection, a
    busy Vikunja or a key the relay can't vouch for stops the line. */
 import { passing } from '../api.js';
-import { patiently } from '../checklists.js';
+import { DONE_MARK, patiently } from '../checklists.js';
 import { OP_WORDS } from '../messages.js';
 import { removeAssignee } from '../quickadd.js';
 import { ALREADY, sync, unpackParsed, uuid7 } from '../sync.js';
@@ -198,9 +198,10 @@ async function link(a, c) {
    or a swipe marks it (100% is done). So a repeating task moves on to its next date, and its parent's progress counts
    it. This stage comes once the task is under its parent.
 
-   The mark is sent with a key, so a repeating task whose reply was lost is ticked once, not twice. `c.arrived` gives
-   the row Vikunja's copy afterwards (`now`) and whether the task was marked done, and `c.arrive` is told what was
-   sent. */
+   The mark is sent with a key, so a repeating task whose reply was lost is ticked once, not twice. A task marked done
+   gets the user's ✅, as a tick puts on it (mark, stages.js). A repeating task moved on to its next date is open, and
+   gets none. `c.arrived` gives the row Vikunja's copy afterwards (`now`) and whether the task was marked done, and
+   `c.arrive` is told what was sent. */
 async function arrive(a, c) {
   const p = a.p;
   if (a.arrived || !(p.done || p.pct > 0)) return;
@@ -208,6 +209,7 @@ async function arrive(a, c) {
     path = '/tasks/' + a.taskId,
     body = done ? { done: true } : { percent_done: p.pct / 100 };
   const t = (await c.send(path, { method: 'PATCH', body })) || (await c.read(path));
+  if (done && t.done) await c.send(path + '/reactions', { method: 'POST', body: { value: DONE_MARK } });
   a.arrived = true;
   c.arrived = { now: t, done };
   c.arrive?.(c.arrived, body);
