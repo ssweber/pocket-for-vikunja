@@ -15,6 +15,7 @@ import tasks, {
   TASK_COUNT_REACTIONS,
   TASK_REACTIONS_COMMENTS,
   writes,
+  ID_CHUNK,
 } from '../../src/js/app/tasks.js';
 import { app as current } from '../../src/js/util.js';
 import acts from '../../src/js/app/acts.js';
@@ -1468,4 +1469,105 @@ test('a task is read again once its op stops waiting without an answer this tab 
   read([structuredClone(v.task(1))]);
   await settled();
   assert.equal(v.requests.filter(r => r.method === 'GET').length, 1, 'read again once');
+});
+
+/* Catching up, as Pocket comes back to the screen. Tasks 1 to 3 are in project 5, which Pocket lists, and on a screen.
+   Vikunja changed none of them since long before the catch-up. */
+const caught = (...more) => {
+  const old = '2020-01-01T00:00:00Z',
+    v = fakeVikunja([
+      { id: 1, title: 'Mop the floor', project_id: 5, updated: old },
+      { id: 2, title: 'Lock up', project_id: 5, updated: old },
+      { id: 3, title: 'Wipe the till', project_id: 5, updated: old },
+      ...more,
+    ]),
+    app = sender();
+  app.projById = new Map([[5, { id: 5, title: 'Closing' }]]);
+  read([...v.tasks.values()].map(t => structuredClone(t)));
+  app.view.groups = [{ key: 'open', tasks: [...v.tasks.keys()].map(id => app.row(copyOf(id))) }];
+  return { v, app, gets: () => v.requests.filter(r => r.method === 'GET') };
+};
+const shown = app => app.view.groups[0].tasks.map(t => t.id);
+
+test('catching up shows the newest copy of a task changed in Vikunja since the page loaded', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app, gets } = caught();
+  Object.assign(v.task(2), { title: 'Lock up twice', updated: new Date().toISOString() }); // a teammate's change
+  await app.catchUp();
+  assert.equal(app.tasks[2].title, 'Lock up twice');
+  const [changed, count] = gets();
+  assert.match(changed.query.get('filter'), /^updated > '\d{4}-.+Z'$/);
+  assert.deepEqual(changed.query.getAll('expand'), ['reactions', 'comment_count']);
+  assert.deepEqual([count.query.get('filter'), count.query.get('per_page'), gets().length], ['id in 1, 2, 3', '1', 2]);
+});
+
+test('a catch-up that ran while a write to a task was in flight leaves its copy to the read that follows', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app } = caught();
+  const w = writes({ 2: { priority: 3 } });
+  Object.assign(v.task(2), { title: 'Lock up twice', updated: new Date().toISOString() });
+  await app.catchUp();
+  assert.equal(app.tasks[2].title, 'Lock up');
+  w.end();
+  await settled();
+  assert.equal(app.tasks[2].title, 'Lock up twice');
+});
+
+test('catching up forgets a task deleted in Vikunja, unless an op waits on it', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app } = caught();
+  outboxOf(app, [{ id: uuid7(), kind: 'act', op: 'progress', task: 3, pct: 40, run: null }]);
+  app.keepScreen('today', { groups: app.view.groups });
+  v.tasks.delete(2);
+  v.tasks.delete(3);
+  await app.catchUp();
+  assert.deepEqual([shown(app), copyOf(2), app.tasks[2]], [[1, 3], undefined, undefined]);
+  assert.deepEqual([app.rowsOf([1, 2, 3]).map(t => t.id), saved.get('task.2')], [[1, 3], null], 'and the phone');
+  assert.equal(copyOf(3).title, 'Wipe the till', 'an op waits on it');
+  localStorage.clear();
+});
+
+test('catching up asks about a long list of tasks a part at a time', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const many = Array.from({ length: 2 * ID_CHUNK + 50 }, (_, i) => ({
+    id: 100000 + i,
+    title: 'Step ' + i,
+    project_id: 5,
+    updated: '2020-01-01T00:00:00Z',
+  }));
+  const { v, app, gets } = caught(...many);
+  v.tasks.delete(100001);
+  await app.catchUp();
+  const asked = gets().filter(r => r.query.get('filter')?.startsWith('id in'));
+  assert.deepEqual(
+    asked.filter(r => r.query.get('per_page') === '1').map(r => r.query.get('filter').split(',').length),
+    [ID_CHUNK, ID_CHUNK, 53],
+  );
+  assert.ok(asked.every(r => r.query.toString().length < 8000));
+  assert.equal(app.tasks[100001], undefined);
+  assert.equal(app.view.groups[0].tasks.length, 2 * ID_CHUNK + 52);
+});
+
+/* Vikunja's /tasks leaves out an archived project's tasks. A task in a project Pocket doesn't list isn't asked about,
+   and one whose project was archived after Pocket listed it is read alone, which finds it. */
+test('catching up keeps the tasks of an archived project', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app, gets } = caught({ id: 4, title: 'Count the float', project_id: 6, updated: '2020-01-01T00:00:00Z' });
+  v.archived.add(5);
+  v.archived.add(6);
+  await app.catchUp();
+  assert.deepEqual(shown(app), [1, 2, 3, 4]);
+  assert.deepEqual(
+    gets()
+      .map(r => r.query.get('filter'))
+      .filter(f => f?.startsWith('id in')),
+    ['id in 1, 2, 3', 'id in 1, 2, 3'],
+    'task 4 is not asked about',
+  );
+  assert.deepEqual(
+    gets()
+      .filter(r => /^\/tasks\/\d+$/.test(r.path))
+      .map(r => r.path),
+    ['/tasks/1', '/tasks/2', '/tasks/3'],
+  );
 });

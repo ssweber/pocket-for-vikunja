@@ -217,6 +217,7 @@ export default () => ({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       this.sessionChanged(); // e.g. back from signing in
+      if (this.signedIn && this.screen === 'app') this.catchUp();
       if (this.signedIn && this.screen === 'app' && !this.sheet.open) {
         this.render();
         this.updateIfNew();
@@ -228,8 +229,11 @@ export default () => ({
     });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     window.addEventListener('online', () => this.flush());
-    // Show pending entries as waiting immediately when the connection is lost.
-    this.$watch('offline', () => this.markSlow());
+    // Show pending entries as waiting immediately when the connection is lost, and catch up once it is back.
+    this.$watch('offline', v => {
+      this.markSlow();
+      if (!v) this.catchUp();
+    });
     // Expose sending state on the page so tests can wait until all changes reach Vikunja.
     Alpine.effect(() => {
       document.documentElement.dataset.sync = this.syncState;

@@ -11,12 +11,12 @@
    own row, never from the copy of it nested in its parent (related_tasks), which says only which subtasks there are
    and in what order (subRow). */
 import { app, raw, store } from '../util.js';
-import { api } from '../api.js';
+import { allPages, api, serverTime } from '../api.js';
 import { intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
 import { sync } from '../sync.js';
 import { opOf, OPS } from '../ops/index.js';
 import { repeats } from '../dates.js';
-import { allComments } from '../checklists.js';
+import { allComments, inBatches } from '../checklists.js';
 
 // Tasks deleted this session. A request that started before the delete may still bring one, or list it among another
 // task's related tasks.
@@ -582,6 +582,7 @@ export const dropCopies = () => {
     m.clear();
   dropped = clock;
   unread = null;
+  caughtAt = Date.now();
 };
 
 /* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
@@ -649,6 +650,13 @@ function keptIds(c, phone = false) {
 }
 // Tasks Vikunja answered with 404. Each is forgotten once no outbox entry points to it and it isn't open in the sheet.
 const missing = new Set();
+/* Vikunja changes tasks Pocket doesn't hear of, as a teammate's edit or a delete in the web app, so the store catches
+   up when Pocket comes back to the screen or the connection comes back (catchUp). `caughtAt` is when the last catch-up
+   started, on the phone's clock, or when the page loaded: a screen loaded since then read what it shows. */
+let caughtAt = Date.now(),
+  catching = false;
+// How many ids one request names. Some proxies refuse a URL over about 8 KB, and an id takes up to about 12 bytes.
+export const ID_CHUNK = 300;
 
 export default {
   /* Run `fn` with the writers, then show each task they touched once, also when `fn` throws. A change inside a change
@@ -745,6 +753,61 @@ export default {
     saved.set(key, savedScreen(s));
     if (fresh) this.sweep();
     else if (outboxRead) keepCopies(this, keptIds(this, true));
+  },
+  /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
+     keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
+     while a write to its task was in flight is thrown away. `updated` misses labels, people, reactions, positions and
+     subtasks ticked, so each screen's own load still runs. A catch-up that fails is tried again the next time. */
+  async catchUp() {
+    if (!this.user || this.offline || !outboxRead || catching) return;
+    catching = true;
+    const from = Date.now();
+    try {
+      const at = started(),
+        // Vikunja keeps times in whole seconds, so the second the last catch-up started in is read again.
+        changed = await allPages(
+          '/tasks?' +
+            new URLSearchParams([
+              ['filter', `updated > '${new Date(serverTime(caughtAt) - 1000).toISOString()}'`],
+              ['expand', 'reactions'],
+              ['expand', 'comment_count'],
+            ]),
+        );
+      this.change(w =>
+        w.read(
+          changed.filter(t => keptCopy(t.id)),
+          TASK_COUNT_REACTIONS,
+          at,
+        ),
+      );
+      await this.findRemoved();
+      caughtAt = from;
+    } catch {
+      /* tried again the next time */
+    } finally {
+      catching = false;
+    }
+  },
+  /* Forget the tasks the store keeps that Vikunja no longer has (lost), unless an op points to them. A count of the
+     ids that still exist (per_page=1) says whether any is gone. Then the whole list says which, and each is read alone,
+     since only Vikunja's 404 for the task itself says it was deleted. Vikunja's /tasks leaves out the tasks of an
+     archived project, so only the tasks of the projects Pocket lists are asked about. */
+  async findRemoved() {
+    const ids = [...new Set([...copies.keys(), ...bases.keys()])].filter(id =>
+      this.projById?.has(keptCopy(id)?.project_id),
+    );
+    for (let i = 0; i < ids.length; i += ID_CHUNK) {
+      const part = ids.slice(i, i + ID_CHUNK),
+        q = '/tasks?' + new URLSearchParams({ filter: 'id in ' + part.join(', ') }),
+        left = (await api(q + '&per_page=1'))?.total;
+      if (left == null || left >= part.length) continue;
+      const found = new Set((await allPages(q)).map(t => t.id));
+      await inBatches(
+        part.filter(id => !found.has(id)),
+        6,
+        id => this.readCopy(id).catch(() => null),
+      );
+    }
   },
   // The screen saved on the phone under `key`, with the copies its tasks are shown from. A screen saved before screens
   // were saved as ids is ignored.

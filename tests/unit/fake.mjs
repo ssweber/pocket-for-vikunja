@@ -24,8 +24,10 @@ const lost = () => new TypeError('network error');
    copies a task, with a "copied from" and "copied to" relation between the two. POST /tasks/:id/relations
    relates two tasks, a subtask to its parent or a copy to what it was copied from, or answers 4008 when they are
    related so already, and DELETE /tasks/:id/relations/:kind/:other removes the relation from both tasks, as Vikunja
-   does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
-   to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
+   does. GET /tasks lists the tasks a filter picks, `updated > '<time>'` or `id in <ids>`, a page at a time, and leaves
+   out the tasks of an archived project (`archived`, by project id), as Vikunja does. A task changed by a PATCH or a
+   comment gets the time in `updated`. A task's comments, assignees, position and files (POST /tasks/:id/attachments)
+   can be added to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
    one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
    that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
    is refused whole. A label on any task exists, as one a teammate made and put on a shared task does.
@@ -44,6 +46,7 @@ export function fakeVikunja(tasks = []) {
       tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])),
       labels: [],
       strangers: new Set(),
+      archived: new Set(),
       requests: [],
       relayed: new Map(),
       unknown: new Set(),
@@ -72,6 +75,7 @@ export function fakeVikunja(tasks = []) {
     const req = {
       method,
       path: new URL(url).pathname.replace(/^\/api\/(v2|v1\/plugins\/pocket\/v2)/, ''),
+      query: new URL(url).searchParams,
       body: typeof body === 'string' ? JSON.parse(body) : body,
       key,
     };
@@ -168,6 +172,7 @@ export function fakeVikunja(tasks = []) {
         created: new Date().toISOString(),
       };
       (talk.comments ||= []).push(c);
+      talk.updated = c.created;
       res = reply(c);
     } else if (placed && method === 'PUT') {
       placed.position = req.body.position;
@@ -206,6 +211,7 @@ export function fakeVikunja(tasks = []) {
         ...req.body,
         project_id: into,
         created: new Date().toISOString(),
+        updated: new Date().toISOString(),
         created_by: { id: 1 },
         related_tasks: {},
       };
@@ -256,6 +262,26 @@ export function fakeVikunja(tasks = []) {
         by = (rs[req.body.value] || []).filter(u => u.id !== 1);
       rs[req.body.value] = react[2] ? by : [...by, { id: 1, username: 'me' }];
       res = reply(req.body);
+    } else if (req.path === '/tasks' && method === 'GET') {
+      const q = new URL(url).searchParams,
+        f = q.get('filter') || '',
+        after = f.match(/^updated > '(.+)'$/),
+        ids = f
+          .match(/^id in ([\d, ]+)$/)?.[1]
+          .split(',')
+          .map(Number),
+        per = +q.get('per_page') || 50,
+        page = +q.get('page') || 1,
+        list = [...v.tasks.values()].filter(
+          t =>
+            !v.archived.has(t.project_id) &&
+            (after ? Date.parse(t.updated) > Date.parse(after[1]) : ids ? ids.includes(t.id) : true),
+        );
+      res = reply({
+        items: list.slice((page - 1) * per, page * per).map(t => withSubtasks(structuredClone(t))),
+        total: list.length,
+        total_pages: Math.max(1, Math.ceil(list.length / per)),
+      });
     } else if (!id) res = reply({ message: `the fake has no ${method} ${req.path}` }, 404);
     else if (!t) res = reply({ message: 'The task does not exist.' }, 404);
     else if (method === 'GET') res = reply(withSubtasks(t));
