@@ -28,7 +28,7 @@ import claims from '../../src/js/app/claims.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import lines from '../../src/js/app/lines.js';
 import { OPS } from '../../src/js/ops/index.js';
-import { saved } from '../../src/js/lists.js';
+import { opened, saved } from '../../src/js/lists.js';
 import { api } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 
@@ -47,6 +47,14 @@ const answering = (a, got = null) => {
   const w = sendingOp(a);
   current.change(x => x.answered(a, w, got && { ...w, replayed: false, task: got }));
   w.end();
+};
+// Copies of tasks kept on the phone by an earlier visit, as the store keeps them (keepScreen).
+const keptOnPhone = (...list) => {
+  saved.set(
+    'tasks',
+    list.map(t => t.id),
+  );
+  for (const t of list) saved.set('task.' + t.id, t);
 };
 // Vikunja answered a delete of tasks `ids`, deepest first.
 const deleted = (...ids) => answering({ kind: 'act', id: uuid7(), op: 'delete', task: ids.at(-1), ids });
@@ -351,11 +359,12 @@ test("a read leaves the fields it isn't trusted for as the copy had them, and ta
   );
 });
 
-test("a copy never holds Pocket's own fields, from a read, a saved screen or a task just sent", () => {
+test("a copy never holds Pocket's own fields, from a read, the phone or a task just sent", () => {
   const app = component(tasks),
     own = { pending: true, parent: 9, was: 'pending-x-0', place: 2048 };
   put([{ id: 1, title: 'Order cups', ...own }], TASK);
-  app.keptRows([{ id: 2, title: 'Order lids', updated: '2026-10-15T09:00:00Z', ...own }]);
+  keptOnPhone({ id: 2, title: 'Order lids', updated: '2026-10-15T09:00:00Z', ...own });
+  app.rowsOf([2]);
   put([{ id: 3, title: 'Order straws', ...own }], SAVED);
   for (const id of [1, 2, 3])
     assert.deepEqual(
@@ -363,12 +372,12 @@ test("a copy never holds Pocket's own fields, from a read, a saved screen or a t
       [],
       'task ' + id,
     );
-  assert.equal(app.tasks[2].parent, 9, 'the row keeps what the saved screen gave it');
 });
 
-/* A row shows a waiting op's effect (a step ticked offline is ticked on its row), but Vikunja doesn't have it yet. A
-   screen saved then must not keep it, or reopening Pocket would show it as Vikunja's. */
-test("a saved screen holds Vikunja's copy of each task, not a waiting op's effect on its row", () => {
+/* A row shows a waiting op's effect (a step ticked offline is ticked on its row), but Vikunja doesn't have it yet. The
+   copy kept on the phone must not have it, or reopening Pocket would show it as Vikunja's. */
+test("a saved screen holds its tasks' ids, and the phone keeps Vikunja's copy of each, not a waiting op's effect", async () => {
+  await sync.ready;
   const app = component(tasks, views),
     copy = { id: 1, title: 'Wipe the menus', done: false, project_id: 7, updated: '2026-10-15T09:00:00Z' };
   read([copy], TASK_COUNT);
@@ -376,9 +385,11 @@ test("a saved screen holds Vikunja's copy of each task, not a waiting op's effec
   outboxOf(app, [act(1, 'done')]); // a tick waiting in the outbox
   Object.assign(app, { route: { name: 'project', id: 7 }, positions: {} });
   app.view = { groups: [{ key: 'open', tasks: [t] }], project: { id: 7, title: 'Cafe' }, listView: null };
+  opened('project', 7);
   app.saveProject();
-  assert.equal(saved.get('project.7.open').groups[0].tasks[0].done, false);
-  localStorage.removeItem('pocket.saved.project.7.open');
+  assert.deepEqual(saved.get('project.7.open').groups[0].tasks, [1]);
+  assert.equal(saved.get('task.1').done, false);
+  localStorage.clear();
 });
 
 /* A read and a write still on their way when the user signs out carry the last user's tasks. The store drops its
@@ -398,27 +409,16 @@ test('a read or a write that started before sign-out puts nothing in the store',
   assert.equal(copyOf(1).title, 'Order straws', "the next user's read goes in");
 });
 
-test('opening Pocket puts a saved copy into the store only where it is newer than the copy there, or there is none', () => {
-  const app = component(tasks),
-    at = h => `2026-10-15T0${h}:00:00Z`;
-  read([
-    { id: 41, title: 'Old name', updated: at(8) },
-    { id: 42, title: 'New name', updated: at(9) },
-  ]);
-  const rows = app.keptRows([
-    { id: 41, title: 'New name', updated: at(9) },
-    { id: 42, title: 'Old name', updated: at(8) },
-    { id: 43, title: 'Only saved', updated: at(8) },
-  ]);
+test('opening Pocket reads the copies kept on the phone into the store, where it has none', () => {
+  const app = component(tasks);
+  read([{ id: 41, title: 'Read since' }]);
+  keptOnPhone({ id: 41, title: 'Kept on the phone' }, { id: 43, title: 'Only kept' });
   assert.deepEqual(
-    [41, 42, 43].map(id => copyOf(id).title),
-    ['New name', 'New name', 'Only saved'],
+    app.rowsOf([41, 43, 44]).map(t => t.title),
+    ['Read since', 'Only kept'],
+    'a task the phone has no copy of is left out',
   );
-  assert.deepEqual(
-    rows.map(t => t.title),
-    ['New name', 'New name', 'Only saved'],
-    'each row shows the newer copy',
-  );
+  localStorage.clear();
 });
 
 // An outbox entry for an op, as act() queues it.
@@ -1385,17 +1385,18 @@ test('a task whose read was thrown away while an op waited is read again once th
   assert.equal(copyOf(1).title, 'Mop the hall');
 });
 
-// A saved screen is older than any read, so a saved copy thrown away after a write to its task is no reason to read it.
-test('a saved screen shown after a write to its task does not read the task again', async t => {
+// A copy kept on the phone is older than any read, so one thrown away after a write to its task is no reason to read
+// the task again.
+test('a copy kept on the phone, read in after a write to its task, does not read the task again', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 1, title: 'Mop the floor', updated: '2026-10-17T09:00:00Z' }]),
     app = sender();
-  read([v.task(1)]);
-  app.row(copyOf(1));
   writes({ 1: { title: 'Mop twice' } }).end();
-  app.keptRows([{ id: 1, title: 'Mop the hall', updated: '2026-10-17T10:00:00Z' }]);
+  keptOnPhone({ id: 1, title: 'Mop the hall', updated: '2026-10-17T10:00:00Z' });
+  app.rowsOf([1]);
   await settled();
-  assert.deepEqual(v.requests, []);
+  assert.deepEqual([v.requests, copyOf(1)], [[], undefined]);
+  localStorage.clear();
 });
 
 /* A tick whose PATCH the page before this one made is sent again from its next stage, the ✅, which this page makes

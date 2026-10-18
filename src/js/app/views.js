@@ -15,6 +15,7 @@ import {
   FOUND_PART,
   keptGroups,
   nextBatch,
+  opened,
   OWN_META,
   parentIds,
   saved,
@@ -30,7 +31,7 @@ import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 import { tickFeel } from '../progress.js';
 import { shared } from './core.js';
-import { putting, savedScreen, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
+import { putting, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
 
 export let renderSeq = 0;
 let behindTimer,
@@ -500,11 +501,11 @@ export default {
           if (r.name === 'today') this.regroupToday();
           return;
         }
-        const s = saved.get(viewKey(r)); // a checklist's saved copy is used only after a failed load
+        const s = this.keptScreen(viewKey(r)); // a checklist's saved copy is used only after a failed load
         if (s && (r.name !== 'run' || s.shownRun)) {
           this.showSaved(r, s);
           return;
-        } // a checklist saved before it was saved by id is ignored
+        }
       }
       if (r.name === 'run' && e.runGone) {
         this.runGone(r.id);
@@ -582,32 +583,31 @@ export default {
   drawn(g) {
     return g.fold && !g.open ? [] : drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo);
   },
-  /* Cache Today, projects and Checklists for opening while they reload, including background loads. Keep copies
-     separate for each account. */
+  /* Today, a project and Checklists open from the screen saved on the phone while they reload, including background
+     loads. Each account has its own. */
   savedView(r) {
     if (!['today', 'project', 'checklists'].includes(r.name) || !this.user || saved.get('user')?.id !== this.user.id)
       return null;
-    const s = saved.get(viewKey(r));
+    const s = this.keptScreen(viewKey(r));
     return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
   },
-  // Restore cached groups with current task objects when they are as new. Keep the project's current Done toggle,
-  // and load Done tasks separately because the cache keeps only their count.
+  // Show a saved screen's ids as the store's rows. Keep the project's current Done toggle, and load Done tasks
+  // separately because the saved screen keeps only their count.
   showSaved(r, s) {
-    this.keptRows(s.steps || []);
-    this.keptRows(s.tasks || []);
+    this.rowsOf(s.steps);
+    if (s.shownRun) this.rowsOf([s.shownRun.id, ...s.shownRun.steps]);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
     const groups = keptGroups(s.groups || []).map(g => ({
       ...g,
       loading: false,
-      tasks: this.keptRows(g.tasks),
+      tasks: this.rowsOf(g.tasks),
       ...(g.key === 'done' && { open }),
       ...(g.key === 'donetoday' && { open: !!doneOpen.all().today }),
     }));
-    // A copy saved before finished checklists were whole tasks has them as summaries, which a row can't draw.
     const checklists = (s.checklists || []).map(cl => ({
       ...cl,
-      runs: this.keptRows(cl.runs || []),
-      finished: this.keptRows((cl.finished || []).filter(t => t.related_tasks)),
+      runs: this.rowsOf(cl.runs),
+      finished: this.rowsOf(cl.finished),
     }));
     const project = s.project && (this.projById.get(s.project.id) || s.project);
     Object.assign(this.view, {
@@ -654,7 +654,7 @@ export default {
         if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;
         if (this.offline || saved.get('user')?.id !== this.user?.id) break;
         try {
-          saved.set(k.key, savedScreen({ ...(await k.load()), at: new Date().toISOString() }));
+          this.keepScreen(k.key, { ...(await k.load()), at: new Date().toISOString() });
         } catch {
           /* retried after the next screen loads */
         }
@@ -667,13 +667,15 @@ export default {
   // reads put them in Vikunja's copies, which the screen is saved from.
   preloads() {
     const out = [{ hash: '#/today', key: 'today', load: async () => this.todayFrom(await this.readToday(), t => t) }];
-    const p = this.projById.get(saved.get('project.last')) || this.favorites[0];
+    const p = this.projById.get(saved.get('projects.recent')?.[0]) || this.favorites[0];
     if (p)
       out.push({
         hash: '#/project/' + p.id,
         key: viewKey({ name: 'project', id: p.id }),
         load: async () => {
           const d = await this.readProject(p, false); // Done's count only (keptGroups)
+          // A favourite loaded before any project was opened is kept as the one last opened.
+          if (!saved.get('projects.recent')?.length) opened('project', p.id);
           return {
             groups: [
               { key: 'open', cls: '', title: 'Open', tasks: d.list, heads: d.heads },
@@ -752,7 +754,7 @@ export default {
     this.todayDay = +startOfDay();
     Object.assign(this.positions, positions);
     Object.assign(this.view, { cards, groups: this.keepMarked(groups) });
-    saved.set('today', savedScreen({ groups, cards, steps, positions, at: new Date().toISOString() }));
+    this.keepScreen('today', { groups, cards, steps, positions, at: new Date().toISOString() });
   },
   /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
   async readToday() {
@@ -889,7 +891,7 @@ export default {
     Object.assign(this.positions, d.positions);
     Object.assign(this.positions, waitingPositions(this.pending)); // a move made while loading
     Object.assign(this.view, { project: d.project, listView: d.listView, groups: this.keepMarked(groups) });
-    saved.set('project.last', p.id); // preloads now loads this project in the background
+    opened('project', p.id); // preloads now loads this project in the background
     this.saveProject();
     if (open && !d.finished) this.loadDoneSection(this.view.groups[1]);
   },
@@ -1081,22 +1083,19 @@ export default {
       this.showingMore = null;
     }
   },
-  // Cache the visible project with its List view positions for offline opening.
+  // Save the visible project with its List view positions for offline opening.
   saveProject() {
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
     const groups = keptGroups(this.view.groups),
       ids = groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
-    saved.set(
-      viewKey(this.route),
-      savedScreen({
-        groups,
-        project: p,
-        listView: this.view.listView,
-        at: new Date().toISOString(),
-        positions: Object.fromEntries(ids.map(id => [id, this.positions[id]])),
-      }),
-    );
+    this.keepScreen(viewKey(this.route), {
+      groups,
+      project: p,
+      listView: this.view.listView,
+      at: new Date().toISOString(),
+      positions: Object.fromEntries(ids.map(id => [id, this.positions[id]])),
+    });
   },
   /* Check for a newer Pocket alongside refreshes. Reload only when no drafts or actions would be lost, otherwise
      try on the next refresh or return. The server answers the version check in a few bytes. */

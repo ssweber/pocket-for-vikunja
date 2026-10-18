@@ -4,19 +4,22 @@
 
    Every write to what show reads happens inside change(fn), as in Python's `with update():`. fn gets the writers, and
    when it ends, change shows each task they touched once. `copies` holds Vikunja's last copy of each task, written
-   field by field by read, answer, made and answered alone, and read through copyOf. Undo compares against it, and the
-   screens are saved from it. `opsOn` holds the ops waiting in the outbox by each task they change, and each op shows
-   itself through its `apply`. The sheet and a checklist's screen hold ids and read their tasks here (sheetTask, runTask). A
-   subtask is read from its own row, never from the copy of it nested in its parent (related_tasks), which says only
-   which subtasks there are and in what order (subRow). */
-import { app, raw } from '../util.js';
+   field by field by read, answer, made and answered alone, and read through copyOf. Undo compares against it. A
+   screen is saved on the phone as the ids of its tasks, and their copies are kept beside it (keepScreen). `opsOn`
+   holds the ops waiting in the outbox by each task they change, and each op shows itself through its `apply`. The
+   sheet and a checklist's screen hold ids and read their tasks here (sheetTask, runTask). A subtask is read from its
+   own row, never from the copy of it nested in its parent (related_tasks), which says only which subtasks there are
+   and in what order (subRow). */
+import { app, raw, store } from '../util.js';
 import { api } from '../api.js';
-import { intoKeys } from '../lists.js';
+import { intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
 import { sync } from '../sync.js';
 import { opOf, OPS } from '../ops/index.js';
 import { repeats } from '../dates.js';
 
-const forgotten = new Set(); // tasks deleted this session, which copies kept on the phone may still hold
+// Tasks deleted this session. A request that started before the delete may still bring one, or list it among another
+// task's related tasks.
+const forgotten = new Set();
 // Whether a field is the same as Vikunja gave it. Lists and objects compare by content, since Vikunja writes them in one order.
 const same = (a, b) =>
   a === b || (!!a && !!b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
@@ -194,9 +197,15 @@ function reread(id) {
       app.change(w => w.read([t], REREAD, at));
       reread(id); // a write ended while it ran, so the read was thrown away
     },
-    () => rereading.delete(id),
+    e => {
+      rereading.delete(id);
+      if (e.status === 404) app.change(w => w.lost(id));
+    },
   );
 }
+// Whether a read that started at `at` is older than what Pocket knew of task `id` before a sweep dropped its copy
+// (prune). Taking it would move the task back.
+const older = (id, at) => !copies.has(id) && !bases.has(id) && [...(since.get(id)?.values() || [])].some(x => x > at);
 // Whether a read that started at `at` ran while a write to task `id` was in flight, other than `except`, the write of
 // the op the read is part of.
 export const overlaps = (id, at, except = null) =>
@@ -226,10 +235,10 @@ const idOf = k => (/^\d+$/.test(k) ? +k : k);
 
 /* Write each of task `t`'s trusted fields (`asked`) into its copy, from a request that started at `at`, unless the
    copy's field came from a newer request. A write's reply comes after its own change and has the same time, so it
-   wins. A saved screen (`at` 0) is judged by its caller instead. A field outside `asked`, or missing from the reply,
-   keeps what the copy had, so a list read without expand=reactions keeps the copy's ✅. A trusted null is taken: a
-   full read gives `labels: null` for a task with no labels. The copy is a new object each time, because Undo holds the
-   one it compared against. Nested lists and objects are shared with the reply. */
+   wins. A copy kept on the phone (`at` 0) goes only where the store has none (restore). A field outside `asked`, or
+   missing from the reply, keeps what the copy had, so a list read without expand=reactions keeps the copy's ✅. A
+   trusted null is taken: a full read gives `labels: null` for a task with no labels. The copy is a new object each
+   time, because Undo holds the one it compared against. Nested lists and objects are shared with the reply. */
 function write(id, t, asked, at) {
   const s = since.get(id) || new Map(),
     fresh = asked.filter(k => k in t && (!at || at >= (s.get(k) ?? -1)));
@@ -249,6 +258,7 @@ function write(id, t, asked, at) {
     doubts.get(id)?.delete(k);
   }
   copies.set(id, c);
+  unsaved.add(id);
   since.set(id, s);
 }
 // A task's related tasks without the tasks deleted in this session, so a reply from before a delete can't bring one
@@ -259,8 +269,8 @@ const unrelated = r =>
     : Object.fromEntries(Object.entries(r).map(([k, l]) => [k, l?.filter?.(s => !forgotten.has(s.id)) ?? l]));
 /* Vikunja's copies have one door: read, answer, made and answered. A task deleted in this session is left out, so a
    reply in flight can't bring it back. A read that started at `at` (started()) is left out for a task a write was in
-   flight on while it ran. A read without its start time is a bug. A saved screen (`at` 0) is judged by its caller, by
-   `updated` (keptRows). */
+   flight on while it ran. A read without its start time is a bug. A copy kept on the phone (`at` 0) is older than any
+   read, and goes only where the store has none (restore). */
 function read(list, asked, at) {
   inChange();
   if (typeof at !== 'number') throw new Error('A read needs the time it started (started()).');
@@ -268,8 +278,9 @@ function read(list, asked, at) {
   for (const t of list) {
     const id = t?.id;
     if (!id || forgotten.has(id)) continue;
-    // A read thrown away may hold a teammate's change that no answer brings (reread). A saved screen holds nothing newer.
-    if (overlaps(id, at)) {
+    // A read thrown away may hold a teammate's change that no answer brings (reread). A copy kept on the phone holds
+    // nothing newer.
+    if (overlaps(id, at) || older(id, at)) {
       if (at) {
         doubt(id, asked);
         touched.add(id);
@@ -310,6 +321,7 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
         known = Object.entries(fields).filter(([, v]) => v !== UNKNOWN);
       for (const [k] of known) s.set(k, w.at);
       bases.set(id, { ...bases.get(id), ...Object.fromEntries(known) });
+      unsaved.add(id);
       since.set(id, s);
     }
     touched.add(id);
@@ -333,6 +345,7 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
 // Remove a deleted task's copy, its row, and the row from the lists on screen.
 function gone(id) {
   copies.delete(id);
+  store.del('saved.task.' + id);
   forgotten.add(id);
   for (const m of [bases, given]) m.delete(id);
   delete host.tasks[id];
@@ -342,8 +355,12 @@ function gone(id) {
 // the row is made from `t` until a read brings one, without the tasks deleted in this session among its related tasks.
 function base(t) {
   inChange();
-  if (!copies.has(t.id))
+  if (!copies.has(t.id)) {
+    // A task a sweep dropped starts afresh from what its row is made from, until a read brings its copy.
+    if (!bases.has(t.id)) since.delete(t.id);
     bases.set(t.id, own(t.related_tasks ? { ...t, related_tasks: unrelated(t.related_tasks) } : t));
+    unsaved.add(t.id);
+  }
   given.set(t.id, t);
   touched.add(t.id);
 }
@@ -391,6 +408,7 @@ function keyOps() {
     touched.add(idOf(k));
   }
   intoKeys(c.opsOn, out, raw);
+  forgetLost();
 }
 /* Take outbox entry `a` off the tasks it changes, at once and for good, though it may still be in the outbox: once
    Vikunja has answered it, or when Restore takes back a held delete. Returns the ids of those tasks. */
@@ -463,10 +481,37 @@ function forgetTree(ids) {
   for (const [id, t] of bases)
     if (unrelated(t.related_tasks) !== t.related_tasks) {
       bases.set(id, { ...t, related_tasks: unrelated(t.related_tasks) });
+      unsaved.add(id);
       touched.add(id);
     }
 }
-const writers = { read, answer, made, base, leave, keyOps, offTasks, answered };
+/* Vikunja answered task `id` with 404, as a task deleted in the web app. It is forgotten once nothing points to it
+   (forgetLost), and a request that started before then can't bring it back (forgotten). */
+function lost(id) {
+  inChange();
+  missing.add(id);
+  forgetLost();
+}
+// Forget the tasks Vikunja answered with 404 that no outbox entry points to, and that aren't open in the sheet.
+function forgetLost() {
+  inChange();
+  if (!missing.size) return;
+  const held = pointed(host),
+    ids = [...missing].filter(id => !held.has(id) && host.sheet?.id !== id);
+  for (const id of ids) missing.delete(id);
+  if (ids.length) forgetTree(ids);
+}
+/* Drop the copy and the row of each task not in `keep` (sweep). When each field was learnt (`since`) stays, so a read
+   that started before then can't bring the task back older (read). */
+function prune(keep) {
+  inChange();
+  for (const id of new Set([...copies.keys(), ...bases.keys(), ...Object.keys(host.tasks).map(idOf)]))
+    if (typeof id === 'number' && !keep.has(id)) {
+      for (const m of [copies, bases, doubts, given]) m.delete(id);
+      delete host.tasks[id];
+    }
+}
+const writers = { read, answer, made, base, leave, keyOps, offTasks, answered, lost, forgetLost, prune };
 
 /* Patch the task as its rows show it (shownAs) into tasks[id] on component `c`. Only the fields that changed are
    written, so the rows of a task that didn't change have nothing to redraw. A field Pocket keeps on a row, such as a
@@ -504,25 +549,91 @@ export const putting =
   };
 export const copyOf = id => copies.get(id);
 export const dropCopies = () => {
-  for (const m of [copies, bases, since, flying, landed, opWrites, doubts, rereading, settled, forgotten, given])
+  for (const m of [
+    copies,
+    bases,
+    since,
+    flying,
+    landed,
+    opWrites,
+    doubts,
+    rereading,
+    settled,
+    forgotten,
+    given,
+    unsaved,
+    missing,
+  ])
     m.clear();
   dropped = clock;
+  unread = null;
 };
-/* A screen is saved with Vikunja's copy of each task, never its row, so a saved screen holds no waiting op's effect
-   and none of Pocket's own fields. A row with no copy is saved as it is. Only a done parent named by its subtask
-   (readProject) has none. */
-const savedCopies = list => (list || []).map(t => copies.get(t.id) || t);
-// A screen as it is saved on the phone: the tasks in its groups, its cards' steps, its checklists and a checklist's
-// screen's tasks are copies.
-export const savedScreen = s => ({
-  ...s,
-  ...(s.groups && { groups: s.groups.map(g => ({ ...g, tasks: savedCopies(g.tasks) })) }),
-  ...(s.steps && { steps: savedCopies(s.steps) }),
-  ...(s.tasks && { tasks: savedCopies(s.tasks) }),
-  ...(s.checklists && {
-    checklists: s.checklists.map(cl => ({ ...cl, runs: savedCopies(cl.runs), finished: savedCopies(cl.finished) })),
-  }),
+
+/* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
+   the ids of its tasks opens from them before its load returns, and a save writes only the copies that changed
+   (`unsaved`). A task with no copy keeps what its row was made from (bases), as a done parent named by its subtask
+   does (readProject). */
+let unread = null; // the ids of the copies kept on the phone that the store hasn't read yet, once their list is read
+const unsaved = new Set();
+const keptCopy = id => copies.get(id) ?? bases.get(id);
+/* Read the copies kept on the phone into the store: those of tasks `ids`, or all that are left. A screen saved on the
+   phone reads its own tasks' copies first, so its first row isn't held up by the rest (keptScreen). A copy the store
+   has already is newer, and a copy read after a write to its task is thrown away (read). */
+function restore(c, ids = null) {
+  unread ||= new Set(saved.get('tasks') || []);
+  const list = (ids ?? [...unread])
+    .filter(id => unread.delete(id) && !copies.has(id))
+    .map(id => saved.get('task.' + id))
+    .filter(Boolean);
+  if (list.length) c.change(w => w.read(list, SAVED, 0));
+  for (const t of list) unsaved.delete(t.id); // the phone has them as they are
+}
+// Keep on the phone the copies of tasks `ids`, and no others. Another tab may have kept more since this one read them.
+function keepCopies(c, ids) {
+  restore(c);
+  const was = new Set(saved.get('tasks') || []),
+    kept = [...ids].filter(id => keptCopy(id));
+  for (const id of was) if (!ids.has(id) || !keptCopy(id)) store.del('saved.task.' + id);
+  for (const id of kept) if (unsaved.has(id) || !was.has(id)) saved.set('task.' + id, keptCopy(id));
+  unsaved.clear();
+  saved.set('tasks', kept);
+}
+// A sweep waits until the outbox is read, or it would drop the copies of the tasks its entries change.
+let outboxRead = false;
+sync.ready.then(() => {
+  outboxRead = true;
 });
+// The ids of the tasks the outbox's entries point to.
+const pointed = c => {
+  const out = new Set();
+  for (const e of c.user ? sync.all(c.user.id) : [])
+    for (const id of [...(e.kind === 'act' && OPS[e.op] ? shownOn(e) : []), e.task, e.taskId]) out.add(opsId(id));
+  return out;
+};
+/* The ids of the tasks whose copies the store keeps (sweep): those the kept screens show (keptScreens) and those the
+   outbox's entries point to, which are kept on the phone too, and on this page the tasks of the screen on display,
+   the sheet's task with its parents and subtasks, and the rows marked or holding a message. Each comes with its
+   subtasks, which its ring counts. */
+function keptIds(c, phone = false) {
+  const keep = new Set(),
+    add = id => typeof id === 'number' && keep.add(id);
+  for (const k of keptScreens()) for (const id of screenIds(saved.get(k)) || []) add(id);
+  for (const id of pointed(c)) add(id);
+  if (!phone) {
+    for (const g of c.view?.groups || []) for (const t of g.tasks) add(t.id);
+    for (const cl of c.view?.checklists || [])
+      for (const t of [...(cl.runs || []), ...(cl.finished || []), ...(cl.templates || [])]) add(t.id);
+    const r = c.view?.shownRun,
+      s = c.tasks[c.sheet?.id];
+    for (const id of r ? [r.id, ...r.steps] : []) add(id);
+    for (const x of [s, ...(s?.related_tasks?.parenttask || []), ...(s?.related_tasks?.subtask || [])]) add(x?.id);
+    for (const k of [...Object.keys(c.leaving || {}), ...Object.keys(c.lines || {})]) add(idOf(k));
+  }
+  for (const id of [...keep]) for (const s of keptCopy(id)?.related_tasks?.subtask || []) add(s.id);
+  return keep;
+}
+// Tasks Vikunja answered with 404. Each is forgotten once no outbox entry points to it and it isn't open in the sheet.
+const missing = new Set();
 
 export default {
   /* Run `fn` with the writers, then show each task they touched once, also when `fn` throws. A change inside a change
@@ -571,7 +682,10 @@ export default {
   // Read a task into its copy, and return the copy. A read that started before the task's last answer is late (read).
   async readCopy(id) {
     const at = started(),
-      t = await api('/tasks/' + id);
+      t = await api('/tasks/' + id).catch(e => {
+        if (e.status === 404) this.change(w => w.lost(id));
+        throw e;
+      });
     this.change(w => w.read([t], TASK, at));
     return copies.get(id) || null;
   },
@@ -598,18 +712,45 @@ export default {
     const r = this.view.shownRun;
     return r ? this.tasks[r.id] || null : null;
   },
-  /* Rows from a screen saved on the phone, for a screen shown before it has loaded. A saved copy goes into the store
-     where there is none, or where it is newer. Tasks deleted since are left out. */
-  keptRows(list) {
-    const newer = (a, b) => Date.parse(a.updated) > Date.parse(b.updated),
-      kept = list.filter(t => !forgotten.has(t.id));
+  /* Drop the copies and rows that no kept screen, outbox entry or open screen needs (keptIds), and keep on the phone
+     the copies of the kept screens' tasks and the outbox's. Runs when a load replaces a screen's ids (keepScreen), and
+     once as Pocket opens. */
+  sweep() {
+    if (!this.user || !outboxRead) return;
+    restore(this);
     this.change(w => {
-      for (const t of kept) {
-        if (!copies.has(t.id) || newer(t, copies.get(t.id))) w.read([t], SAVED, 0);
-        if (!this.tasks[t.id]) w.base(t);
-      }
+      w.forgetLost();
+      w.prune(keptIds(this));
     });
-    return kept.map(t => this.tasks[t.id]);
+    keepCopies(this, keptIds(this, true));
+  },
+  // Save screen `s` on the phone under `key`, as the ids of its tasks, with their copies. A load sweeps the store.
+  keepScreen(key, s, fresh = true) {
+    if (!this.user) return;
+    saved.set(key, savedScreen(s));
+    if (fresh) this.sweep();
+    else if (outboxRead) keepCopies(this, keptIds(this, true));
+  },
+  // The screen saved on the phone under `key`, with the copies its tasks are shown from. A screen saved before screens
+  // were saved as ids is ignored.
+  keptScreen(key) {
+    const s = saved.get(key),
+      ids = s && screenIds(s);
+    if (!ids) return null;
+    restore(this, ids);
+    setTimeout(() => restore(this));
+    return s;
+  },
+  // The rows of the tasks `ids` of a saved screen, from the store's copies. A task with no copy, as one deleted since,
+  // is left out.
+  rowsOf(ids = []) {
+    restore(this, ids);
+    const made = ids.filter(id => !this.tasks[id] && keptCopy(id));
+    if (made.length)
+      this.change(w => {
+        for (const id of made) w.base(keptCopy(id));
+      });
+    return ids.map(id => this.tasks[id]).filter(Boolean);
   },
   // Show each task's waiting ops as the outbox has them now (keyOps).
   keyOutbox() {
@@ -631,9 +772,12 @@ export default {
     return this.tasks[id] || null;
   },
   removeRow(id) {
-    for (const g of this.view.groups) {
-      const i = g.tasks.findIndex(t => t.id === id);
-      if (i >= 0) g.tasks.splice(i, 1);
+    for (const list of [
+      ...this.view.groups.map(g => g.tasks),
+      ...(this.view.checklists || []).flatMap(cl => [cl.runs, cl.finished]),
+    ]) {
+      const i = list?.findIndex(t => t.id === id) ?? -1;
+      if (i >= 0) list.splice(i, 1);
     }
   },
 };

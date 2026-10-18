@@ -47,6 +47,7 @@ function app() {
       this.projects = list;
     },
     refreshPending() {},
+    sweep() {},
     async loadProjects() {
       this.shown.push('projects');
     },

@@ -330,6 +330,7 @@ export default {
       this.refreshPending();
       await this.render();
       this.flush();
+      sync.ready.then(() => this.sweep()); // once as Pocket opens, with the outbox read
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       // Offline: carry on with what was loaded last time, if anything was.
@@ -339,6 +340,7 @@ export default {
         this.setProjects(saved.get('projects') || []);
         this.refreshPending();
         await this.render();
+        sync.ready.then(() => this.sweep());
         return;
       }
       Object.assign(this.view, { loading: false, error: errText(e), bootFailed: true });

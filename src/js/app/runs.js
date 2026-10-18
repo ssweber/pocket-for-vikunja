@@ -34,13 +34,13 @@ import {
 import { routeOf } from '../routing.js';
 import { stepAnswers } from '../asks.js';
 import { KEPT, packParsed, sync, uuid7 } from '../sync.js';
-import { saved } from '../lists.js';
+import { opened, saved } from '../lists.js';
 import { completeAsk, notKnown, sentLater, startedText, toOutbox } from '../messages.js';
 import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks } from './acts.js';
 import { lastTick, stagesOf, stepsAdding } from '../ops/index.js';
-import { copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, opsId, putting, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
 
 const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -280,7 +280,7 @@ export default {
       e.name = e.was = p ? p.name : now.title;
       return;
     }
-    this.saveRun();
+    this.saveRun(false);
     this.say('Renamed', { place: 'sheet:top' });
   },
   /* Keep at least one assignee when changing who the run is for. The person is assigned or unassigned as an `assign`
@@ -303,7 +303,7 @@ export default {
       e.forIds = was;
       return;
     }
-    this.saveRun();
+    this.saveRun(false);
     this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
   },
   // Delete a checklist from its ⋯ menu or its sheet. Its steps are deleted too, so none is left as a separate task.
@@ -373,25 +373,15 @@ export default {
       at: keep ? keep.at : asked >= 0 ? asked : null,
       last: keep?.last || last || (before?.notes ? { ...before, held: null } : null),
     };
+    opened('run', id);
     this.saveRun();
     if (last === undefined) reading.then(l => this.lateLast(id, l));
   },
-  // Save the open checklist so it opens offline: its ids, and Vikunja's copies of the checklist and its steps. Pocket
-  // keeps the last 8 checklists opened.
-  saveRun() {
+  // Save the open checklist so it opens offline, as the ids of the checklist and its steps. A save that isn't a load
+  // (`fresh` false), as a rename or Last time's notes, doesn't sweep the store.
+  saveRun(fresh = true) {
     const r = this.view.shownRun;
-    if (!r) return;
-    const ids = [r.id, ...(saved.get('runs.recent') || []).filter(id => id !== r.id)];
-    for (const id of ids.slice(8)) store.del('saved.run.' + id);
-    saved.set('runs.recent', ids.slice(0, 8));
-    saved.set(
-      'run.' + r.id,
-      savedScreen({
-        shownRun: r,
-        tasks: [r.id, ...r.steps].map(id => this.tasks[id]).filter(Boolean),
-        at: new Date().toISOString(),
-      }),
-    );
+    if (r) this.keepScreen('run.' + r.id, { shownRun: r, at: new Date().toISOString() }, fresh);
   },
   /* Load notes from the last finished checklist of this template, including step notes. Return {id, title, notes},
      or null when there is no readable checklist. */
@@ -434,7 +424,7 @@ export default {
       JSON.stringify(r.last.notes.map(n => n.id)) === JSON.stringify(last.notes.map(n => n.id)) &&
       r.last.id === last.id;
     r.last = same ? { ...last, held: r.last.held } : { ...last, held: this.runView?.step?.id ?? null };
-    this.saveRun();
+    this.saveRun(false);
   },
   /* The checklist on its screen, from its steps as their rows show them, so a tick, a skip or a note waiting in the
      outbox shows through its op. Memoize once per input change, read runNow only when time changes visible text, and

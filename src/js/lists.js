@@ -21,6 +21,54 @@ export const saved = {
     } catch {}
   },
 };
+/* A screen is saved as the ids of its tasks, and the store's copies, saved beside it, give the tasks (app/tasks.js).
+   The store keeps the copies of the kept screens' tasks: Today, Checklists, the last KEPT_PROJECTS projects opened and
+   the last KEPT_RUNS checklists opened. */
+export const KEPT_PROJECTS = 5,
+  KEPT_RUNS = 8;
+const projectKey = id => viewKey({ name: 'project', id }),
+  runKey = id => 'run.' + id;
+export const keptScreens = () => [
+  'today',
+  'checklists',
+  ...(saved.get('projects.recent') || []).map(projectKey),
+  ...(saved.get('runs.recent') || []).map(runKey),
+];
+// Put project or checklist `id` first among those last opened, and forget the saved screens of those no longer kept.
+export const opened = (kind, id) => {
+  const [list, n, key] =
+      kind === 'run' ? ['runs.recent', KEPT_RUNS, runKey] : ['projects.recent', KEPT_PROJECTS, projectKey],
+    ids = [id, ...(saved.get(list) || []).filter(x => x !== id)];
+  for (const x of ids.slice(n)) store.del('saved.' + key(x));
+  saved.set(list, ids.slice(0, n));
+};
+const idsOf = list => (list || []).map(t => t?.id ?? t);
+// A screen as it is saved: its groups, its cards' steps and its checklists hold the ids of their tasks.
+export const savedScreen = s => ({
+  ...s,
+  ...(s.groups && { groups: s.groups.map(g => ({ ...g, tasks: idsOf(g.tasks) })) }),
+  ...(s.steps && { steps: idsOf(s.steps) }),
+  ...(s.checklists && {
+    checklists: s.checklists.map(cl => ({ ...cl, runs: idsOf(cl.runs), finished: idsOf(cl.finished) })),
+  }),
+});
+/* The ids of the tasks saved screen `s` shows, with the templates Checklists lists, whose sheets open from their
+   copies. A screen saved before screens were saved as ids holds whole tasks, and gives null, so it is ignored. */
+export const screenIds = s => {
+  if (!s) return [];
+  const ids = [
+    ...(s.groups || []).flatMap(g => g.tasks || []),
+    ...(s.steps || []),
+    ...(s.tasks || []),
+    ...(s.checklists || []).flatMap(cl => [
+      ...(cl.runs || []),
+      ...(cl.finished || []),
+      ...(cl.templates || []).map(t => t.id),
+    ]),
+    ...(s.shownRun ? [s.shownRun.id, ...(s.shownRun.steps || [])] : []),
+  ];
+  return ids.every(Number.isInteger) ? ids : null;
+};
 // Sort a list's open tasks. Dated tasks come first, soonest first. Undated tasks follow, sorted by priority and then
 // newest first.
 export const soonestFirst = tasks => [

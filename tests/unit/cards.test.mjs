@@ -1166,20 +1166,13 @@ const runScreen = () => {
 const stepsOn = app => app.view.shownRun.steps.map(id => app.tasks[id]);
 
 /* A checklist's screen holds ids and reads the checklist and its steps from tasks, the objects every list shows. So a
-   step ticked on Today shows on the screen at once, and the screen is saved as its ids and Vikunja's copies. */
+   step ticked on Today shows on the screen at once, and the screen is saved as its ids. */
 test("a checklist's screen reads its steps by id, so a step ticked in a list shows on it at once", () => {
   const app = runScreen();
   assert.deepEqual([Object.keys(app.view.shownRun), app.runTask], [['id', 'steps', 'at', 'last'], app.tasks[50]]);
   app.saveRun();
   const kept = saved.get('run.50');
-  assert.deepEqual(
-    [kept.shownRun.steps, kept.tasks.map(t => t.id)],
-    [
-      [51, 52, 53, 54],
-      [50, 51, 52, 53, 54],
-    ],
-    'the saved screen is its ids and the tasks it reads',
-  );
+  assert.deepEqual([kept.shownRun.steps, kept.tasks], [[51, 52, 53, 54], undefined], 'the saved screen is its ids');
   assert.equal(app.runView.steps[2].done, false);
   outboxOf(app, [{ kind: 'act', id: 'done53', op: 'done', task: 53, run: 50 }]); // C ticked on Today's card
   assert.equal(app.runView.steps[2].done, true);

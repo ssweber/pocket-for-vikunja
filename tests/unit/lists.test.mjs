@@ -15,7 +15,10 @@ import {
   keptGroups,
   nestSubtasks,
   nextBatch,
+  opened,
+  saved,
   sameGroup,
+  savedScreen,
   soonestFirst,
   TODAY_DAYS,
   todayAt,
@@ -23,12 +26,13 @@ import {
   todayOrder,
   viewKey,
 } from '../../src/js/lists.js';
-import { component } from './fake.mjs';
+import { component, fakeVikunja } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views, { renderSeq } from '../../src/js/app/views.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
+import { sync } from '../../src/js/sync.js';
 import sending from '../../src/js/app/sending.js';
 import lines from '../../src/js/app/lines.js';
 
@@ -256,7 +260,8 @@ test("a project's saved copy keeps the Done count but not its tasks, and opens D
   assert.equal(done.tasks.length, 2, 'the groups on screen are not changed');
   const app = component(views, tasks);
   Object.assign(app, { projById: new Map([[5, { id: 5, title: 'Big' }]]), positions: {}, view: { groups: [] } });
-  const copy = { groups: [open, done], project: { id: 5 }, at: new Date().toISOString() };
+  app.change(w => w.read([{ id: 1, title: 'Mop the floor' }], TASK, started()));
+  const copy = { ...savedScreen({ groups: [open, done] }), project: { id: 5 }, at: new Date().toISOString() };
   app.showSaved({ name: 'project', id: 5 }, copy);
   assert.deepEqual(
     app.view.groups.map(g => [g.key, g.open, g.tasks.length]),
@@ -267,7 +272,7 @@ test("a project's saved copy keeps the Done count but not its tasks, and opens D
     'Done was closed since the copy was saved, so it is closed and draws no tasks',
   );
   localStorage.setItem('pocket.done.open', JSON.stringify({ 5: true }));
-  app.showSaved({ name: 'project', id: 5 }, { ...copy, groups: [open, { ...done, open: false }] });
+  app.showSaved({ name: 'project', id: 5 }, { ...copy, ...savedScreen({ groups: [open, { ...done, open: false }] }) });
   assert.deepEqual(
     app.view.groups.map(g => [g.key, g.open, g.tasks.length, g.loaded]),
     [
@@ -278,6 +283,81 @@ test("a project's saved copy keeps the Done count but not its tasks, and opens D
   );
   localStorage.removeItem('pocket.done.open');
 });
+
+/* Each kind of screen is saved on the phone as the ids of its tasks. Shown again, it shows the store's newest copy of
+   each, also after a reload, and a task Vikunja answers with 404 leaves it. `screen` is the screen as its load saves
+   it, from rows 11 and 12, and `shown` gives the titles of the rows it shows. */
+const SCREENS = [
+  [
+    'Today',
+    { name: 'today' },
+    rows => ({ groups: [{ key: 'today', tasks: rows }], cards: {}, steps: [] }),
+    app => app.view.groups.find(g => g.key === 'today').tasks,
+  ],
+  [
+    'A project',
+    { name: 'project', id: 7 },
+    rows => ({ groups: [{ key: 'open', tasks: rows }], project: { id: 7 } }),
+    app => app.view.groups.find(g => g.key === 'open').tasks,
+  ],
+  [
+    'Checklists',
+    { name: 'checklists' },
+    rows => ({ checklists: [{ project: { id: 7 }, runs: rows, finished: [] }] }),
+    app => app.view.checklists[0].runs,
+  ],
+  [
+    'A checklist',
+    { name: 'run', id: 20 },
+    () => ({ shownRun: { id: 20, steps: [11, 12], at: null, last: null } }),
+    app => app.view.shownRun.steps.map(id => app.tasks[id]).filter(Boolean),
+  ],
+];
+for (const [kind, route, screen, shown] of SCREENS)
+  test(`${kind}, saved as ids, shows the store's newest copy of each task, and a task deleted in Vikunja leaves it`, async () => {
+    await sync.ready;
+    const v = fakeVikunja([
+        { id: 11, title: 'Wipe the menus', project_id: 7 },
+        { id: 12, title: 'Mop the floor', project_id: 7 },
+        { id: 20, title: 'Close up', project_id: 7, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } },
+      ]),
+      open = () =>
+        Object.assign(component(views, tasks), {
+          user: { id: 1 },
+          projById: new Map([[7, { id: 7, title: 'Cafe' }]]),
+          positions: {},
+        }),
+      key = viewKey(route),
+      app = open();
+    app.change(w =>
+      w.read(
+        [...v.tasks.values()].map(t => structuredClone(t)),
+        TASK,
+        started(),
+      ),
+    );
+    if (route.id) opened(route.name, route.id);
+    app.keepScreen(key, { ...screen([11, 12].map(id => app.row(copyOf(id)))), at: new Date().toISOString() });
+    assert.equal(JSON.stringify(saved.get(key)).includes('Wipe'), false, 'the saved screen holds no task');
+    v.task(11).title = 'Wipe all the menus';
+    await app.readCopy(11);
+    v.tasks.delete(12);
+    await app.readCopy(12).catch(() => {});
+    app.showSaved(route, app.keptScreen(key));
+    assert.deepEqual(
+      shown(app).map(t => t.title),
+      ['Wipe all the menus'],
+    );
+    app.sweep(); // as the next load does
+    const again = open();
+    again.showSaved(route, again.keptScreen(key));
+    assert.deepEqual(
+      shown(again).map(t => t.title),
+      ['Wipe all the menus'],
+      'after a reload',
+    );
+    localStorage.clear();
+  });
 
 /* A long screen is rendered in batches. The first rows render at once, then the rest render down the lists in order,
    one batch per frame, each batch sized to about a frame's work. Scrolling near the end of the rendered rows renders

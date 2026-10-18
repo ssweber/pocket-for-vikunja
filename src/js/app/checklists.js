@@ -29,7 +29,7 @@ import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
 import { addLines, lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
-import { copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, putting, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -392,7 +392,7 @@ export default {
     )
       return;
     this.view.checklists = checklists;
-    saved.set('checklists', savedScreen({ checklists, at: new Date().toISOString() }));
+    this.keepScreen('checklists', { checklists, at: new Date().toISOString() });
   },
   // Read the checklist projects from Vikunja. `own` maps each open checklist to the copy to use. That is the copy on
   // screen, or Vikunja's copy when preloading.

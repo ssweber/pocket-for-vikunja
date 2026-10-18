@@ -22,7 +22,7 @@ import {
 import { positionOrder, SPACING } from '../order.js';
 import { addLines, cancelOf, linesUnder, movedFrom, noneWaiting, opOf, passUps } from '../ops/index.js';
 import { heldTasks, hold, waits } from './acts.js';
-import { opsId, savedScreen } from './tasks.js';
+import { opsId } from './tasks.js';
 
 let waitTimer;
 // A flush asked for while one runs, which runs once more when that one ends. The first may have passed by an entry
@@ -340,7 +340,7 @@ export default {
     // Also update the copy kept for opening offline.
     const k = viewKey(this.route),
       s = saved.get(k);
-    if (placed && s) saved.set(k, savedScreen({ ...s, groups: keptGroups(this.view.groups) }));
+    if (placed && s) this.keepScreen(k, { ...s, groups: keptGroups(this.view.groups) }, false);
   },
   /* A task that arrived done (its line was marked done in quick add) is ticked on its row and leaves with the batch,
      the same as a task the user ticks there (toggleDone, actions.js). It leaves Today, or moves to Done in a

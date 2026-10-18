@@ -1,9 +1,9 @@
 /* A randomized test of the store (src/js/app/tasks.js). fast-check generates sequences of commands on a few tasks: ops
-   queued, sent, answered in any order, refused, lost and undone, reads finishing late, rows marked as leaving, and a
-   teammate's changes in the web app. Each sequence then sends and answers everything still
-   waiting, and reads every task. The checks after each command compare the app with a model made from the fake
-   Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own functions. A failure
-   prints the seed and the shortest sequence that breaks a check. */
+   queued, sent, answered in any order, refused, lost and undone, reads finishing late, rows marked as leaving, a
+   teammate's changes in the web app, and sweeps that drop the copies no kept screen needs. Each sequence then sends
+   and answers everything still waiting, and reads every task. The checks after each command compare the app with a
+   model made from the fake Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own
+   functions. A failure prints the seed and the shortest sequence that breaks a check. */
 import './browser.mjs';
 import { stores, used } from './outbox-db.mjs';
 import { test } from 'node:test';
@@ -142,6 +142,7 @@ class Model {
     this.unsure = new Map(); // task id -> field -> when Vikunja changed it without Pocket being told
     this.relaxed = new Map(); // task id -> the fields a KNOWN bug met in this sequence may have left wrong
     this.met = new Set(); // the KNOWN entries met in this sequence
+    this.missing = new Set(); // tasks Vikunja answered with 404, forgotten once no outbox entry points to them
   }
   relaxes(id, k) {
     return !!this.relaxed.get(id)?.has(k);
@@ -231,6 +232,23 @@ class Model {
   shown(id) {
     const b = this.copies.get(id) ?? this.bases.get(id);
     return b ? this.waitingOn(id).reduce((t, a) => opOf(a).apply(t, a), b) : null;
+  }
+  // The ids the outbox's entries point to, from the outbox's database, a waiting step's as its id once it is made.
+  pointed() {
+    const out = new Set(),
+      real = id => (typeof id === 'string' ? (sync.taskOf(id.replace(/^pending-/, '')) ?? id) : id);
+    for (const e of stores.get('outbox').values())
+      if (e.user === ME.id)
+        for (const id of [...(e.kind === 'act' && OPS[e.op] ? opOf(e).on(e) : []), e.task, e.taskId])
+          if (id != null) out.add(String(real(id)));
+    return out;
+  }
+  // A task Vikunja answered with 404 is forgotten once no outbox entry points to it. The test never opens the sheet.
+  letGo() {
+    const held = this.pointed(),
+      ids = [...this.missing].filter(id => !held.has(String(id)));
+    for (const id of ids) this.missing.delete(id);
+    if (ids.length) this.forgetTree(ids);
   }
   // Vikunja changed `fields` of task `id` (all of CHECKED by default) without telling Pocket.
   doubt(id, fields = CHECKED) {
@@ -368,7 +386,33 @@ const HEARD = {
   // The outbox changed. An op that stops waiting, refused or gone, has stopped waiting for its requests (abandon).
   keyOps(w, fn) {
     w.abandon();
-    return fn();
+    fn();
+    w.model.letGo();
+  },
+  lost(w, fn, id) {
+    fn(id);
+    w.model.missing.add(id);
+    w.model.letGo();
+  },
+  forgetLost(w, fn) {
+    fn();
+    w.model.letGo();
+  },
+  /* The sweep drops the copy and the row of each task not in `keep`. Check 7: it never drops the copy of a task an
+     outbox entry points to, or of a task the kept screen shows. Pocket's news of a task dropped stays (tags). */
+  prune(w, fn, keep) {
+    const m = w.model,
+      must = new Set([...m.pointed(), ...[...(w.screen || [])].map(String)]),
+      had = [...w.copiesNow()].filter(([, c]) => c).map(([id]) => id);
+    fn(keep);
+    for (const id of had)
+      if (must.has(String(id)) && !copyOf(id))
+        w.broken.push(`check 7: the sweep dropped the copy of ${id}, which the outbox or the kept screen needs`);
+    for (const id of new Set([...m.copies.keys(), ...m.bases.keys(), ...[...m.rows].map(Number)]))
+      if (Number.isInteger(id) && !keep.has(id)) {
+        for (const x of [m.copies, m.bases, m.frozen, m.leaving]) x.delete(id);
+        m.rows.delete(String(id));
+      }
   },
   offTasks(w, fn, a) {
     w.model.settled.add(a.id);
@@ -401,6 +445,7 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
 class World {
   constructor(clock) {
     for (const s of stores.values()) s.clear();
+    localStorage.clear(); // the screens and copies the last sequence kept on the phone
     sync.entries = new Map();
     for (const k of ['volatile', 'bytes', 'claimed', 'held']) sync[k].clear();
     clock.reset();
@@ -960,8 +1005,9 @@ const WAITING_STEP = {
    was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
    given, a task Pocket deleted is gone, and the step not yet made shows its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
    4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. 6: a fold took
-   out of the outbox only ops Vikunja never made, and lost no change the user asked for (prune). A field a KNOWN bug
-   met in the sequence may have left wrong is skipped. */
+   out of the outbox only ops Vikunja never made, and lost no change the user asked for (prune). 7: a sweep kept the
+   copy of each task the outbox or a kept screen needs (HEARD.prune). A field a KNOWN bug met in the sequence may have
+   left wrong is skipped. */
 function checks(w) {
   w.known({ via: 'sweep' });
   const out = w.broken.splice(0),
@@ -1463,6 +1509,25 @@ class SecondParent extends Command {
     return `SecondParent(${this.t})`;
   }
 }
+/* Today is saved with the rows of some tasks, as its load saves it, and the store sweeps: it drops the copies and rows
+   that no kept screen, outbox entry or row on screen needs (check 7). */
+class Sweep extends Command {
+  constructor(ts) {
+    super();
+    this.ts = ts;
+  }
+  can() {
+    return true;
+  }
+  async act(w) {
+    const ids = [...new Set(this.ts.map(t => w.target(t)))].filter(id => typeof id === 'number' && w.app.tasks[id]);
+    w.screen = new Set(ids);
+    w.app.keepScreen('today', { groups: [{ key: 'today', tasks: ids.map(id => w.app.tasks[id]) }] });
+  }
+  toString() {
+    return `Sweep(${this.ts})`;
+  }
+}
 // Time passes on the fake clock, which Pocket and the fake Vikunja both read.
 class Wait extends Command {
   constructor(ms) {
@@ -1521,6 +1586,7 @@ const COMMANDS = [
   fc.tuple(target, fc.constantFrom(...Object.keys(SHEET))).map(([t, f]) => new Sheet(t, f)),
   fc.constantFrom(3, STEP).map(t => new SecondParent(t)),
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
+  fc.uniqueArray(target, { maxLength: 3 }).map(ts => new Sweep(ts)),
 ];
 
 /* Send and answer everything still waiting: make the step, cancel what Vikunja refused, send what
