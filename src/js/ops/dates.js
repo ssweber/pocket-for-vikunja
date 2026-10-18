@@ -1,8 +1,7 @@
 // Moving a task to another date, changing how it repeats, and the Undo of each.
-import { ApiError } from '../api.js';
 import { isSet, repeats } from '../dates.js';
-import { changedSince, OP_WORDS } from '../messages.js';
-import { patch } from './stages.js';
+import { OP_WORDS } from '../messages.js';
+import { changed, now, patch } from './stages.js';
 
 // Vikunja writes a date in its own format, so two dates are compared as times.
 const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
@@ -13,18 +12,6 @@ const gotOf = a => {
   const d = a.got?.task?.due_date;
   return d && sameTime(d, a.due) ? d : a.due;
 };
-// Reads Vikunja's copy, or null for a task deleted since.
-const now = (a, c) =>
-  c.read('/tasks/' + a.task).catch(e => {
-    if (e.status === 404) return null;
-    throw e;
-  });
-// A stage can't read the title the row showed, so the sender gives `said` the entry itself (sendAct).
-const changed = what =>
-  Object.assign(new ApiError(409, what + ' changed since then'), {
-    drop: true,
-    said: a => changedSince(a.label || 'it'),
-  });
 const OFF = { repeat_after: 0, repeat_mode: 0 };
 const repeatOf = t => (t && repeats(t) ? { repeat_after: t.repeat_after, repeat_mode: t.repeat_mode } : null);
 const sameRepeat = (t, r) => t.repeat_after === r.repeat_after && t.repeat_mode === r.repeat_mode;

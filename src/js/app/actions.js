@@ -3,7 +3,7 @@
    parent's computed progress. Reordering in a project writes List view positions. A template keeps its step order
    in its notes instead. */
 import { api, NetError, patchTask } from '../api.js';
-import { dueInfo, isSet, movedDue, repeats } from '../dates.js';
+import { dueInfo, isSet, movedDue, plainReminders, reminderKey, repeats } from '../dates.js';
 import { figurePatch, isSubtask, openSubtasks, pctOf, progressPatch } from '../progress.js';
 import {
   changedSince,
@@ -36,13 +36,6 @@ const HELD_MS = 60e3;
 // The ✅ requests, sent one after another in the order their ticks saved. Otherwise a slow untick's request could
 // arrive after the next tick's and take that ✅ off.
 let marks = Promise.resolve();
-export const reminderKey = r =>
-  r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
-// A relative reminder is saved as its reference date and offset, so it keeps following that date.
-export const plainReminders = t =>
-  (t?.reminders || []).map(r =>
-    r.relative_to ? { relative_to: r.relative_to, relative_period: r.relative_period || 0 } : { reminder: r.reminder },
-  );
 const rolls = t => t.repeat_after > 0 || t.repeat_mode === 1;
 // Whether `now`, Vikunja's copy, already has the change `body` made to `before`. Completing a repeating task moves
 // its due date forward and leaves it open, so that counts as saved.

@@ -1,5 +1,7 @@
 // The requests several ops share. Each is a stage, `(a, c) => Promise`, which app/acts.js runs with `c`: `c.send` is a
 // write with its own key, `c.read` a plain read, and `c.once` a body built once and kept in the entry.
+import { ApiError } from '../api.js';
+import { changedSince } from '../messages.js';
 import { TASK } from '../app/tasks.js';
 import { DONE_MARK, SKIP_MARK } from '../checklists.js';
 import { figurePatch } from '../progress.js';
@@ -57,3 +59,16 @@ export const figureOf = async (c, up, name = 'figure') => {
     if (e.status !== 404) throw e;
   }
 };
+
+// Reads Vikunja's copy, or null for a task deleted since.
+export const now = (a, c) =>
+  c.read('/tasks/' + a.task).catch(e => {
+    if (e.status === 404) return null;
+    throw e;
+  });
+// A stage can't read the title the row showed, so the sender gives `said` the entry itself (sendAct).
+export const changed = what =>
+  Object.assign(new ApiError(409, what + ' changed since then'), {
+    drop: true,
+    said: a => changedSince(a.label || 'it'),
+  });

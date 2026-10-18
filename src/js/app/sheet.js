@@ -1,7 +1,7 @@
 // A task's sheet: its details, labels and people, comments and attachments. What's done to the task is in actions.js.
 import { fmtSize, INLINE_TYPES, mimeOf, sizeLimit, taskDrafts, ZERO } from '../util.js';
 import { allPages, api, errText, items, NetError } from '../api.js';
-import { addDays, dueInfo, fmtTime, isSet, startOfDay } from '../dates.js';
+import { addDays, dueInfo, fmtTime, isSet, plainReminders, reminderKey, startOfDay } from '../dates.js';
 import { htmlToText, sanitize, textToHtml } from '../html.js';
 import { notesOnly, stepInfos, stepsOf, templateName, templateTitle, withLinesOf } from '../checklists.js';
 import { listViewOf, positionOrder } from '../order.js';
@@ -9,7 +9,6 @@ import { atTime } from '../quickadd.js';
 import { notSaved } from '../messages.js';
 import { inTextField, slideStarts, typedIn } from '../progress.js';
 import { fileEntry, NO_ROOM, NOT_KEPT, randomId, sync } from '../sync.js';
-import { plainReminders, reminderKey } from './actions.js';
 import { blankSheet, shared } from './core.js';
 import { sliding } from './progress.js';
 import { seats, seatUnder } from './seat.js';

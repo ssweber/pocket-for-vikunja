@@ -84,6 +84,13 @@ export const toLocalInput = iso => {
 };
 export const fromLocalInput = v => (v ? new Date(v).toISOString() : ZERO);
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
+export const reminderKey = r =>
+  r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);
+// A relative reminder is saved as its reference date and offset, so it keeps following that date.
+export const plainReminders = t =>
+  (t?.reminders || []).map(r =>
+    r.relative_to ? { relative_to: r.relative_to, relative_period: r.relative_period || 0 } : { reminder: r.reminder },
+  );
 /* The due date for a task moved to `day`. It keeps its time of day, or has no time if it had none. A time on `day`
    that has already passed becomes no time, so the task is due all day. A later time would make it late again within
    the hour. */
