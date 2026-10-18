@@ -53,16 +53,7 @@ import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks, nextN } from './acts.js';
 import { lastTick } from '../ops/index.js';
-import {
-  copyOf,
-  opsId,
-  putting,
-  savedScreen,
-  started,
-  TASK_COMMENTS,
-  TASK_REACTIONS_COMMENTS,
-  writing,
-} from './tasks.js';
+import { copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
 
 const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
@@ -430,7 +421,9 @@ export default {
       });
     }
   },
-  // Keep at least one assignee when changing who the run is for.
+  /* Keep at least one assignee when changing who the run is for. The person is assigned or unassigned as an `assign`
+     op, which changes the people Vikunja has by that one, so a step claimed meanwhile keeps its claim. Offline it
+     waits in the Outbox. A refusal waits there too, and the sender says so. */
   async setRunFor(u) {
     const e = this.sheet.runEdit,
       run = this.runTask;
@@ -442,21 +435,14 @@ export default {
       return;
     }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
-    const who = e.people.filter(x => e.forIds.includes(x.id));
-    try {
-      const [, w] = await writing({ [run.id]: { assignees: who } }, () =>
-        api(`/tasks/${run.id}/assignees/bulk`, { method: 'PUT', body: { assignees: e.forIds.map(id => ({ id })) } }),
-      );
-      this.change(x => x.made(run.id, w));
-      this.saveRun();
-      this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
-    } catch (err) {
+    const who = e.people.filter(x => e.forIds.includes(x.id)),
+      r = await (on ? this.removeAssignee(run, u.id) : this.addAssignee(run, u));
+    if (r.status === 'error') {
       e.forIds = was;
-      this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {
-        place: 'sheet:top',
-        cls: 'failed',
-      });
+      return;
     }
+    this.saveRun();
+    this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
   },
   // Delete a checklist from its ⋯ menu or its sheet. Its steps are deleted too, so none is left as a separate task.
   async confirmDeleteRun(run, steps) {

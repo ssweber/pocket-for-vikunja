@@ -26,7 +26,6 @@ import runs from '../../src/js/app/runs.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
 import { held, older, sync, uuid7 } from '../../src/js/sync.js';
-import { ApiError, NetError } from '../../src/js/api.js';
 import * as ops from '../../src/js/ops/index.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
@@ -454,7 +453,7 @@ class World {
     clock.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: START });
     this.clock = clock;
     this.v = fakeVikunja(checklist());
-    this.v.labels.push(LABEL);
+    this.v.labels.push(LABEL, MOP);
     this.inner = globalThis.fetch;
     Object.assign(this, {
       t: 0,
@@ -494,7 +493,7 @@ class World {
       pick(
         actions,
         ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'parentIdOf'],
-        ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'changeList'],
+        ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'sendSet'],
       ),
       leaving,
     );
@@ -1445,14 +1444,16 @@ class StepMade extends Command {
     return 'StepMade';
   }
 }
-/* The user adds or removes a person or a label in a task's sheet (actions.js). Vikunja refuses a person already on the
-   task, or a label or person not on it, and the sheet says so (sheet.js). */
-const LABEL = { id: 600, title: 'floor' };
+/* The user adds or removes a person or a label in a task's sheet (actions.js), which queues an assign or label op. A new
+   label is made as its op is sent, once. */
+const LABEL = { id: 600, title: 'floor' },
+  MOP = { id: 601, title: 'mop' };
 const SHEET = {
   assign: (app, t) => app.addAssignee(t, { id: 7, username: 'bob' }),
   unassign: (app, t) => app.removeAssignee(t, 7),
   label: (app, t) => app.addLabelTo(t, LABEL),
   unlabel: (app, t) => app.removeLabelFrom(t, LABEL.id),
+  'new label': (app, t) => app.addLabelTo(t, null, 'Urgent'),
 };
 class Sheet extends Command {
   constructor(t, change) {
@@ -1465,11 +1466,7 @@ class Sheet extends Command {
   }
   async act(w) {
     const id = w.target(this.t);
-    w.bg(
-      SHEET[this.change](w.app, w.app.tasks[id]).catch(e => {
-        if (!(e instanceof ApiError || e instanceof NetError)) throw e;
-      }),
-    );
+    w.sending(SHEET[this.change](w.app, w.app.tasks[id]));
   }
   toString() {
     return `Sheet(${this.t}, ${this.change})`;
@@ -1481,6 +1478,7 @@ const CHANGES = {
   percent_done: () => 0.75,
   due_date: t => (t.due_date === '2026-10-20T09:00:00Z' ? '0001-01-01T00:00:00Z' : '2026-10-20T09:00:00Z'),
   assignees: t => [...(t.assignees || []), { id: 7, username: 'bob' }],
+  labels: t => [...(t.labels || []).filter(l => l.id !== MOP.id), MOP],
   title: t => t.title + ' (renamed)',
   priority: () => 3,
 };

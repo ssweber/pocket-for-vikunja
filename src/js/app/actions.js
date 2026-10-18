@@ -23,8 +23,8 @@ import { patiently, stepsOf, vikunjaNext } from '../checklists.js';
 import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks } from '../order.js';
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
-import { addLines, movedFrom, waitingPositions } from '../ops/index.js';
-import { copyOf, started, TASK, writes, writing } from './tasks.js';
+import { addLines, movedFrom, personOf, tagOf, waitingPositions } from '../ops/index.js';
+import { copyOf, started, TASK, writes } from './tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -1135,49 +1135,26 @@ export default {
   },
 
   /* ---------- people and labels ---------- */
-  // Save assignee changes before applying them to the screen and to Vikunja's copy.
+  /* Put a person or a label on task `t`, or take one off, as an `assign` or `label` op. The row shows it at once, and
+     the op changes Vikunja's people or labels by that one when it is sent. A new label (`l` null) is made with `title`
+     as it is sent. Each op keeps the people or labels the row showed, for Cancel's words. */
   addAssignee(t, u) {
-    return this.changeList(
-      t,
-      'assignees',
-      list => [...list.filter(x => x.id !== u.id), u],
-      () => api(`/tasks/${t.id}/assignees`, { method: 'POST', body: { user_id: u.id } }),
-    );
+    return this.sendSet(t, { op: 'assign', person: personOf(u), add: true, was: (t.assignees || []).map(personOf) });
   },
   removeAssignee(t, uid) {
-    return this.changeList(
-      t,
-      'assignees',
-      list => list.filter(u => u.id !== uid),
-      () => api(`/tasks/${t.id}/assignees/${uid}`, { method: 'DELETE' }),
-    );
+    const u = (t.assignees || []).find(x => x.id === uid) || { id: uid };
+    return this.sendSet(t, { op: 'assign', person: personOf(u), add: false, was: (t.assignees || []).map(personOf) });
   },
-  // Add a label, creating it with title first when l is null.
-  async addLabelTo(t, l, title) {
-    if (!l) {
-      l = await api('/labels', { method: 'POST', body: { title } });
-      this.labels.push(l);
-    }
-    return this.changeList(
-      t,
-      'labels',
-      list => [...list.filter(x => x.id !== l.id), l],
-      () => api(`/tasks/${t.id}/labels`, { method: 'POST', body: { label_id: l.id } }),
-    );
+  addLabelTo(t, l, title) {
+    return this.sendSet(t, { op: 'label', tag: tagOf(l || { title }), add: true, was: (t.labels || []).map(tagOf) });
   },
   removeLabelFrom(t, lid) {
-    return this.changeList(
-      t,
-      'labels',
-      list => list.filter(l => l.id !== lid),
-      () => api(`/tasks/${t.id}/labels/${lid}`, { method: 'DELETE' }),
-    );
+    const l = (t.labels || []).find(x => x.id === lid) || { id: lid, title: '' };
+    return this.sendSet(t, { op: 'label', tag: tagOf(l), add: false, was: (t.labels || []).map(tagOf) });
   },
-  /* Change task `t`'s people or labels (`field`) with `request`, and put the list in Vikunja's copy once it is made.
-     Vikunja's list becomes its copy's, changed by `change`, not the row's, which also shows the ops still waiting. */
-  async changeList(t, field, change, request) {
-    const [, w] = await writing({ [t.id]: { [field]: change((copyOf(t.id) ?? t)[field] || []) } }, request);
+  // A sheet that changed its task redraws the screen behind it as it closes (dirty).
+  sendSet(t, fields) {
     if (this.sheet.id === t.id) this.sheet.dirty = true;
-    this.change(x => x.made(t.id, w));
+    return this.act({ task: t.id, run: null, ...fields });
   },
 };

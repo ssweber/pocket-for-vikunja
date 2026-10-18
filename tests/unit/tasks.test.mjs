@@ -1293,50 +1293,11 @@ test('a task Vikunja deleted loses its row in the same change as its copy', () =
 });
 
 /* A direct write names the values it sets (writes), and its answer puts those values into Vikunja's copy. Each kind of
-   caller is tested below: the sheet's people and labels, a checklist's people, a step's people and labels removed in
-   its edit box, a step removed from a template, and the steps a template's Add made before it stopped. */
+   caller is tested below: a step's people and labels removed in its edit box, a step removed from a template, and the
+   steps a template's Add made before it stopped. */
 test('a write names the values it sets, so field names alone are refused', () => {
   component(tasks);
   assert.throws(() => writes({ 1: ['labels'] }), /names the values/);
-});
-
-test("people and labels changed in a task's sheet show in Vikunja's copy and on the row", async () => {
-  const v = fakeVikunja([{ id: 1, title: 'Buy rope', assignees: [], labels: [] }]),
-    app = component(tasks, actions);
-  v.labels.push({ id: 500, title: 'rope' });
-  Object.assign(app, { labels: [], sheet: { id: 1 } });
-  read([v.task(1)]);
-  const row = app.row(copyOf(1)),
-    ids = list => (list || []).map(x => x.id),
-    shown = () => [ids(copyOf(1).assignees), ids(copyOf(1).labels), ids(row.assignees), ids(row.labels)];
-  await app.addAssignee(row, { id: 7, username: 'bob' });
-  await app.addLabelTo(row, v.labels[0]);
-  assert.deepEqual(shown(), [[7], [500], [7], [500]], 'added');
-  await app.removeAssignee(row, 7);
-  await app.removeLabelFrom(row, 500);
-  assert.deepEqual(shown(), [[], [], [], []], 'removed');
-});
-
-test("a checklist's people changed in its sheet show in Vikunja's copy", async () => {
-  const v = fakeVikunja([{ id: 1, title: 'Closing', assignees: [{ id: 1, username: 'me' }] }]),
-    app = component(tasks, runs);
-  read([v.task(1)]);
-  app.row(copyOf(1));
-  const people = [
-    { id: 1, username: 'me' },
-    { id: 7, username: 'bob' },
-  ];
-  Object.assign(app, {
-    view: { groups: [], shownRun: { id: 1 } },
-    sheet: { id: 1, runEdit: { forIds: [1], people } },
-    saveRun() {},
-    forText: () => 'For me and bob',
-  });
-  await app.setRunFor(people[1]);
-  assert.deepEqual(
-    copyOf(1).assignees.map(u => u.id),
-    [1, 7],
-  );
 });
 
 // A template's sheet, open on template 1 with step 2, for the step's edit box and its Remove.
@@ -1459,21 +1420,6 @@ test('a task that two crossing writes left unsure is read once, after the last o
   const reads = v.requests.filter(r => r.method === 'GET' && r.path === '/tasks/1');
   assert.equal(reads.length, 1);
   assert.deepEqual([copyOf(1).title, copyOf(1).percent_done, copyOf(1).priority], ['Mop twice', 0.4, 3]);
-});
-
-/* The row shows the ops still waiting, such as a claim not yet sent. A person added in the sheet changes Vikunja's list
-   as Vikunja has it, so the copy gets that list with the person, and the claim stays the claim's until it is sent. */
-test("a person added in the sheet goes into Vikunja's copy without a claim still waiting", async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const v = fakeVikunja([{ id: 2, title: 'Mop the floor', assignees: [] }]),
-    app = sender();
-  read([v.task(2)]);
-  const row = app.row(copyOf(2));
-  app.offline = true;
-  await app.act({ op: 'claim', task: 2, user: 1, run: null });
-  app.offline = false;
-  await app.addAssignee(row, { id: 7, username: 'bob' });
-  assert.deepEqual([copyOf(2).assignees.map(u => u.id), row.assignees.map(u => u.id).sort()], [[7], [1, 7]]);
 });
 
 const settled = async () => {

@@ -27,12 +27,12 @@ import {
   withOrder,
 } from '../checklists.js';
 import { captureLines } from '../quickadd.js';
-import { ALREADY, randomId, sync } from '../sync.js';
+import { randomId, sync, uuid7 } from '../sync.js';
 import { jobsFor } from './sending.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
-import { movedSteps } from '../ops/index.js';
+import { movedSteps, tagOf } from '../ops/index.js';
 import {
   copyOf,
   putting,
@@ -637,17 +637,26 @@ export default {
       this.sheet.checklistBusy = false;
     }
   },
+  /* The label goes as a `label` op, which makes the label first if Vikunja has none. The rest waits for Vikunja to
+     have it. A label op not sent now is taken back, so an interrupted Make template leaves no label to arrive later. */
   async markTemplate(t, stepIds) {
     if (!(t.labels || []).some(isTemplateLabel)) {
-      const all = (await this.loadLabels(true)).filter(isTemplateLabel);
-      let l = all.find(x => x.created_by?.id === this.user?.id) || all[0];
-      if (!l) {
-        l = await api('/labels', { method: 'POST', body: { title: 'template' } });
-        this.labels.push(l);
+      const all = (await this.loadLabels(true)).filter(isTemplateLabel),
+        l = all.find(x => x.created_by?.id === this.user?.id) || all[0] || { title: 'template' },
+        f = {
+          id: uuid7(),
+          op: 'label',
+          task: t.id,
+          run: null,
+          tag: tagOf(l),
+          add: true,
+          was: (t.labels || []).map(tagOf),
+        };
+      const r = await this.act(f, true);
+      if (r.status !== 'sent') {
+        await this.undoOps([f]).left;
+        throw r.error ?? new NetError('offline');
       }
-      await api(`/tasks/${t.id}/labels`, { method: 'POST', body: { label_id: l.id } }).catch(e => {
-        if (e.code !== ALREADY.label) throw e;
-      });
     }
     for (const id of stepIds) await patiently(() => patchTask(id, { done: true }));
     // A "copied from" link (from duplicating the template in the web app, for example) would make the template look

@@ -667,30 +667,16 @@ export default {
       this.say('Not assigned: ' + e.message, { place: 'sheet:props', cls: 'failed' });
     }
   },
-  async unassign(uid) {
-    const t = this.sheetTask; // the task shown when this started
-    try {
-      await this.removeAssignee(t, uid);
-    } catch (e) {
-      this.say('Not unassigned: ' + e.message, { place: 'sheet:props', cls: 'failed' });
-    }
+  unassign(uid) {
+    return this.removeAssignee(this.sheetTask, uid);
   },
   async addLabel(l) {
     const t = this.sheetTask; // the task shown when this started
-    try {
-      await this.addLabelTo(t, l, this.picker.q.trim());
-      if (this.sheet.id === t.id) this.picker.q = '';
-    } catch (err) {
-      this.say('Label not added: ' + err.message, { place: 'sheet:props', cls: 'failed' });
-    }
+    await this.addLabelTo(t, l, this.picker.q.trim());
+    if (this.sheet.id === t.id) this.picker.q = '';
   },
-  async removeLabel(lid) {
-    const t = this.sheetTask; // the task shown when this started
-    try {
-      await this.removeLabelFrom(t, lid);
-    } catch (e) {
-      this.say('Label not removed: ' + e.message, { place: 'sheet:props', cls: 'failed' });
-    }
+  removeLabel(lid) {
+    return this.removeLabelFrom(this.sheetTask, lid);
   },
 
   /* ---------- comments, attachments, delete ---------- */
