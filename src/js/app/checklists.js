@@ -1,6 +1,6 @@
 // Checklist projects and templates: reading them, making a template, and writing and editing its steps.
-import { andList, memo, raw, store, taskDrafts, TZ } from '../util.js';
-import { allPages, api, NetError, patchTask, why } from '../api.js';
+import { andList, memo, raw, store, taskDrafts, TZ, userCache } from '../util.js';
+import { allPages, api, NetError, passing, patchTask, why } from '../api.js';
 import { fmtTime, isSet, repeats, startOfDay } from '../dates.js';
 import { htmlToText, parseFragment } from '../html.js';
 import {
@@ -27,23 +27,13 @@ import {
   withOrder,
 } from '../checklists.js';
 import { captureLines } from '../quickadd.js';
-import { randomId, uuid7 } from '../sync.js';
+import { packParsed, randomId, uuid7 } from '../sync.js';
 import { jobsFor } from './sending.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
-import { movedSteps, startsIn, tagOf } from '../ops/index.js';
-import {
-  copyOf,
-  putting,
-  savedScreen,
-  started,
-  TASK,
-  TASK_COUNT,
-  TASK_REACTIONS_COMMENTS,
-  writes,
-  writing,
-} from './tasks.js';
+import { lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
+import { copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS, writing } from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -1079,67 +1069,78 @@ export default {
       return;
     }
     // The edit would create a new problem. Keep the text in the box so the user can fix it.
-    if (stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) {
+    if (d && stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) {
       this.say('Not changed: ' + problemText(stepProblems(d.titles)), { place: 'sheet:subtasks', cls: 'failed' });
       return;
     }
     this.sheet.stepEdit = null;
-    // Parse the edited title as quick add does. @people, *labels and !priority are applied, and the title is saved
-    // without them.
+    /* Parse the edited title as quick add does. @people, *labels and !priority are applied, as assign, label and edit
+       ops, and the title is saved without them. A person who can't see the project stays in the title, and so does
+       anyone Pocket can't look up while it can't reach Vikunja. */
     const own = todo.find(x => x.s.id === e.id),
-      p = own && this.stepParsed(own.title, e.ignore);
-    if (own) own.title = p.title;
-    this.change(w => {
-      for (const x of todo) x.shown = w.edit(x.s.id, { title: x.title });
-    });
-    // Save the renamed steps in order, so a step this one counts from is named first.
+      p = own && this.stepParsed(own.title, e.ignore),
+      line = p && (await this.stepLine(p));
+    if (own) own.title = line.body.title;
+    const was = (list, of) => (list || []).map(of);
+    const ops = [
+      // The renamed steps go in order, so a step this one counts from is named first.
+      ...todo.map(x => ({
+        op: 'edit',
+        task: x.s.id,
+        set: { title: x.title, ...(x === own && p.priority && { priority: p.priority }) },
+        was: { title: x.was, ...(x === own && p.priority && { priority: x.s.priority || 0 }) },
+      })),
+      ...(line?.people || []).map(u => ({
+        op: 'assign',
+        task: e.id,
+        person: personOf(userCache.get(u.name.toLowerCase()) ?? { id: u.id, username: u.name }),
+        add: true,
+        was: was(st.assignees, personOf),
+      })),
+      ...(line?.labels || []).map(name => ({
+        op: 'label',
+        task: e.id,
+        tag: tagOf(this.labels?.find(l => l.title.toLowerCase() === name.toLowerCase()) ?? { title: name }),
+        add: true,
+        was: was(st.labels, tagOf),
+      })),
+      // The people and labels the user tapped off.
+      ...drops.map(k => {
+        const id = +k.slice(1);
+        return k[0] === 'u'
+          ? {
+              op: 'assign',
+              task: e.id,
+              person: personOf(st.assignees.find(u => u.id === id)),
+              add: false,
+              was: was(st.assignees, personOf),
+            }
+          : {
+              op: 'label',
+              task: e.id,
+              tag: tagOf(st.labels.find(l => l.id === id)),
+              add: false,
+              was: was(st.labels, tagOf),
+            };
+      }),
+    ];
+    await this.actAll(ops.map(f => ({ run: null, ...f })));
+    this.sheet.dirty = true;
+    if (line?.problems.length)
+      this.say('Changed, but ' + line.problems.join('; '), { place: 'sheet:subtasks', cls: 'failed' });
+  },
+  // A step's new title as quick add makes it (lineOf). Without a connection, the @people stay in the title.
+  async stepLine(p) {
     try {
-      for (const x of todo) {
-        await this.saveTask(x.s.id, { title: x.title });
-        this.change(() => x.shown.ok());
-        x.saved = true;
-        this.sheet.dirty = true;
-      }
-      if (p && (p.assignees.length || p.labels.length || p.priority)) {
-        // Apply them to the existing step, the way quick add sends a line. A person who can't see the project stays in
-        // the title.
-        const job = { taskId: e.id, done: false },
-          t = await this.createTask(p, this.sheetTask?.project_id, { job });
-        if (job.body.title !== p.title || p.priority)
-          await this.saveTask(e.id, { title: job.body.title, ...(p.priority && { priority: p.priority }) });
-        if (t.problems.length)
-          this.say('Changed, but ' + t.problems.join('; '), { place: 'sheet:subtasks', cls: 'failed' });
-      }
-      // Remove the assignees and labels the user tapped off.
-      for (const k of drops) {
-        const id = +k.slice(1),
-          field = k[0] === 'u' ? 'assignees' : 'labels',
-          had = copyOf(e.id)?.[field],
-          w = writes({ [e.id]: had ? { [field]: had.filter(x => x.id !== id) } : {} });
-        await patiently(() => api(`/tasks/${e.id}/${field}/${id}`, { method: 'DELETE' }))
-          .catch(err => {
-            if (err.status !== 404) throw err;
-          })
-          .finally(() => w.end());
-        this.change(x => x.made(e.id, w));
-        this.sheet.dirty = true;
-      }
-      if ((p && (p.assignees.length || p.labels.length || p.priority)) || drops.length) {
-        const full = await this.readCopy(this.sheet.id).catch(() => null);
-        if (full && this.sheet.id === full.id) {
-          this.showTask(full);
-          this.loadSubPeople(full);
-        }
-      }
-    } catch (err) {
-      this.change(() => {
-        for (const x of todo) if (!x.saved) x.shown.undo();
-      });
-      this.say(err instanceof NetError ? 'Offline — not saved' : 'Not saved: ' + err.message, {
-        place: 'sheet:subtasks',
-        cls: 'failed',
-      });
-      if (this.subtasks.some(s => s.id === e.id) && !this.sheet.stepEdit) this.sheet.stepEdit = { ...e };
+      return await lineOf(this, packParsed(p), this.sheetTask?.project_id);
+    } catch (e) {
+      if (!passing(e)) throw e;
+      return {
+        body: { title: p.title },
+        people: [],
+        labels: p.labels,
+        problems: p.assignees.map(n => `@${n}: ${why(e)}`),
+      };
     }
   },
   // Open a step's own sheet, for notes and photos. An edit in progress is saved first. If saving fails, the current

@@ -230,6 +230,15 @@ async function figures(a, c) {
 // The stages a task is made in. The template editor and a step's new title run these themselves (createTask,
 // app/sending.js), and a step added to a checklist runs all but the last (ops/runs.js).
 export const LINE = [prepare, made, label, assignee, link, arrive];
+/* What quick add makes of line `p` in project `pid` before it is sent (prepare): the title without the @people who can
+   see the project (`body.title`), the people found (`people`, {name, id}), the labels, and what can't be done
+   (`problems`). A template step's new title is applied to the step this way (saveStepEdit). Throws when Vikunja can't
+   be reached. */
+export async function lineOf(app, p, pid) {
+  const a = { p, pid };
+  await prepare(a, { app });
+  return a;
+}
 const pending = a => 'pending-' + a.id;
 /* A line shows as a waiting row of its own until its task is made, so it changes no task's row. A line that fails
    holds back the lines under it (`pending`) and the ops on its task. A line waits only for a failed line it goes under,

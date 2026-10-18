@@ -1,15 +1,17 @@
-// Tests for the template ops (src/js/ops/templates.js), against a fake Vikunja behind the plugin's relay.
+// Tests for the template ops (src/js/ops/templates.js), and for a template step's edit box, which sends its changes as
+// ops (src/js/app/checklists.js), against a fake Vikunja behind the plugin's relay.
 import './browser.mjs';
 import { sender, settle, lastSaid } from './ops-helpers.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { started, TASK } from '../../src/js/app/tasks.js';
+import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync } from '../../src/js/sync.js';
 import checklists from '../../src/js/app/checklists.js';
 import quickadd from '../../src/js/app/quickadd.js';
 
 const TEMPLATE = { id: 601, title: 'template' },
-  FLOOR = { id: 600, title: 'floor' };
+  FLOOR = { id: 600, title: 'floor' },
+  BOB = { id: 7, username: 'bob', name: 'Bob' };
 const ids = list => (list || []).map(x => x.id);
 // Task 7, Closing, with steps 8 and 9, as Vikunja has it. `more` changes a task, by id.
 const closing = (more = {}) =>
@@ -69,5 +71,34 @@ test('Make template refused partway waits in the Outbox as no template, and Canc
     [ids(v.task(7).labels), v.task(8).done, v.task(9).done, outbox(), lastSaid(app).msg],
     [[], false, false, [], 'Cancelled.'],
     'Cancel takes the label off and opens the steps again',
+  );
+});
+
+// A template's step, 8, open in its edit box. `titles` is every step's title once it is saved (stepEditDraft).
+const editing = (app, edit, titles) => {
+  Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });
+  Object.defineProperty(app, 'stepEditDraft', { value: () => ({ titles }) });
+  Object.defineProperty(app, 'canEdit', { value: true });
+  Object.assign(app, { canSee: async () => true, findUser: async () => BOB });
+  app.projById = new Map();
+  app.sheet = { id: 7, kind: 'task', sub: {}, stepEdit: { id: 8, ignore: {}, ...edit } };
+};
+test("a step's new title applies its @person, *label and !priority as ops, and saves the title without them", async t => {
+  const { v, app } = editor(t, closing({ 7: { title: 'TEMPLATE: Closing', done: true, labels: [TEMPLATE] } }));
+  editing(app, { text: 'Mop the floor twice @bob *floor !3' }, ['Mop the floor twice @bob *floor !3', 'Lock up']);
+  await app.saveStepEdit(0);
+  assert.deepEqual(
+    [v.task(8).title, v.task(8).priority, ids(v.task(8).assignees), ids(v.task(8).labels), outbox()],
+    ['Mop the floor twice', 3, [7], [600], []],
+  );
+});
+
+test("a step's people and labels tapped off in its edit box are taken off as ops, and leave Vikunja's copy", async t => {
+  const { v, app } = editor(t, closing({ 8: { assignees: [BOB], labels: [FLOOR] } }));
+  editing(app, { text: 'Mop the floor', drop: { u7: true, l600: true } }, ['Mop the floor', 'Lock up']);
+  await app.saveStepEdit(0);
+  assert.deepEqual(
+    [ids(v.task(8).assignees), ids(v.task(8).labels), ids(copyOf(8).assignees), ids(copyOf(8).labels)],
+    [[], [], [], []],
   );
 });

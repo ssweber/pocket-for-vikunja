@@ -1295,15 +1295,14 @@ test('a task Vikunja deleted loses its row in the same change as its copy', () =
   assert.deepEqual([copyOf(1), app.rowTask(1), app.view.groups[0].tasks.map(t => t.id)], [undefined, null, [2]]);
 });
 
-/* A direct write names the values it sets (writes), and its answer puts those values into Vikunja's copy. Each kind of
-   caller is tested below: a step's people and labels removed in its edit box, and the steps a template's Add made
-   before it stopped. */
+/* A direct write names the values it sets (writes), and its answer puts those values into Vikunja's copy, as for the
+   steps a template's Add made before it stopped. */
 test('a write names the values it sets, so field names alone are refused', () => {
   component(tasks);
   assert.throws(() => writes({ 1: ['labels'] }), /names the values/);
 });
 
-// A template's sheet, open on template 1 with step 2, for the step's edit box and its Remove.
+// A template's sheet, open on template 1 with step 2.
 const templateSheet = v => {
   const app = component(tasks, actions, sending, checklists);
   read([v.task(1), v.task(2)]);
@@ -1335,15 +1334,6 @@ const template = () =>
       related_tasks: { parenttask: [{ id: 1 }] },
     },
   ]);
-
-test("a step's people and labels tapped off in its edit box leave Vikunja's copy of the step", async () => {
-  const v = template(),
-    app = templateSheet(v);
-  Object.defineProperty(app, 'stepEditDraft', { value: () => ({ titles: ['Mop'] }) });
-  app.sheet.stepEdit = { id: 2, text: 'Mop', drop: { u7: true, l500: true } };
-  await app.saveStepEdit(0);
-  assert.deepEqual([copyOf(2).assignees, copyOf(2).labels], [[], []]);
-});
 
 test("the steps a template's Add made before Vikunja refused the rest show in Vikunja's copy of the template", async () => {
   const v = template(),

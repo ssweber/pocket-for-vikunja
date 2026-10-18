@@ -49,7 +49,7 @@ import { makeTemplate, templateStep } from './templates.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
-export { addLines, dropUnder, LINE, linesUnder, passUps, photosOf, refuseLines } from './add.js';
+export { addLines, dropUnder, LINE, lineOf, linesUnder, passUps, photosOf, refuseLines } from './add.js';
 export { cancelling, startsIn, stepsAdding } from './runs.js';
 export { waitingComments } from './comments.js';
 export { waitingPositions } from './order.js';
