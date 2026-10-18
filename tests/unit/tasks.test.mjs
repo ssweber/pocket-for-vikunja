@@ -1571,3 +1571,16 @@ test('catching up keeps the tasks of an archived project', async t => {
     ['/tasks/1', '/tasks/2', '/tasks/3'],
   );
 });
+
+// Pocket keeps the copies that changed on the phone as it is hidden, so an offline open shows the newest copy it had.
+test('a copy changed since its screen was saved reaches the phone as Pocket is hidden', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app } = caught();
+  app.keepScreen('today', { groups: app.view.groups });
+  Object.assign(v.task(2), { title: 'Lock up twice', updated: new Date().toISOString() });
+  await app.catchUp();
+  assert.equal(saved.get('task.2').title, 'Lock up', 'not yet');
+  app.keepChanged();
+  assert.deepEqual([saved.get('task.2').title, saved.get('tasks')], ['Lock up twice', [1, 2, 3]]);
+  localStorage.clear();
+});

@@ -752,7 +752,12 @@ export default {
     if (!this.user) return;
     saved.set(key, savedScreen(s));
     if (fresh) this.sweep();
-    else if (outboxRead) keepCopies(this, keptIds(this, true));
+    else this.keepChanged();
+  },
+  // Keep on the phone the copies that changed since they were last kept, as Pocket is hidden, so an offline open shows
+  // the newest copy Pocket had.
+  keepChanged() {
+    if (this.user && outboxRead) keepCopies(this, keptIds(this, true));
   },
   /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
      keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran

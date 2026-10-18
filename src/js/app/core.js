@@ -238,16 +238,18 @@ export default () => ({
     Alpine.effect(() => {
       document.documentElement.dataset.sync = this.syncState;
     });
-    // Clear marked rows and send held deletions when Pocket is hidden or closed.
+    // Clear marked rows, send held deletions and keep the changed copies on the phone when Pocket is hidden or closed.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         this.foldLines();
         this.sendHeld();
+        this.keepChanged();
       }
     });
     addEventListener('pagehide', () => {
       this.foldLines();
       this.sendHeld();
+      this.keepChanged();
     });
     // Ending a toast also ends its Undo and sends any deletion waiting for that Undo.
     this.$watch('toast.show', v => {
