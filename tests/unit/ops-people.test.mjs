@@ -10,7 +10,6 @@ import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { addLines } from '../../src/js/ops/index.js';
 import actions from '../../src/js/app/actions.js';
-import checklists from '../../src/js/app/checklists.js';
 import { line } from './samples.mjs';
 
 const FLOOR = { id: 600, title: 'floor' },
@@ -173,14 +172,6 @@ test("a line's labels and people reach Vikunja's copy once they are set", async 
   const r = await app.act(f);
   assert.equal(r.status, 'sent');
   assert.deepEqual([ids(copyOf(r.ids[0]).labels), ids(copyOf(r.ids[0]).assignees)], [[600], [7]]);
-});
-
-test('Make template takes back its label op when Vikunja is out of reach, so no label arrives later', async t => {
-  const { v, app } = listed(t, [task(4, { title: 'Closing' })], checklists);
-  noConnection(app, v);
-  app.loadLabels = async () => [];
-  await assert.rejects(app.markTemplate({ id: 4, labels: [] }, []), /offline/);
-  assert.deepEqual([sync.all(1), app.tasks[4].labels], [[], []]);
 });
 
 test('each op names the person or label, and Cancel names what Vikunja keeps', () => {

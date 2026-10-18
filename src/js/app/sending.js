@@ -1,21 +1,8 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
 import { raw, userCache } from '../util.js';
-import {
-  api,
-  ApiError,
-  fileBody,
-  items,
-  NetError,
-  opening,
-  passing,
-  seenToken,
-  sharedToken,
-  TRANSIENT,
-} from '../api.js';
-import { patiently } from '../checklists.js';
+import { api, ApiError, fileBody, items, opening, passing, seenToken, sharedToken, TRANSIENT } from '../api.js';
 import { isSet, startOfDay } from '../dates.js';
-import { addedWhere, cancelName, doneText, notKnown, toOutbox, UNSURE } from '../messages.js';
-import { parseCapture } from '../quickadd.js';
+import { addedWhere, cancelName, doneText, notKnown, toOutbox } from '../messages.js';
 import { fileEntry, held, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7 } from '../sync.js';
 import {
   dayGroup,
@@ -33,8 +20,8 @@ import {
   viewKey,
 } from '../lists.js';
 import { positionOrder, SPACING } from '../order.js';
-import { addLines, LINE, linesUnder, movedFrom, noneWaiting, opOf, passUps, stageView } from '../ops/index.js';
-import { heldTasks, hold, stageContext, waits } from './acts.js';
+import { addLines, cancelOf, linesUnder, movedFrom, noneWaiting, opOf, passUps } from '../ops/index.js';
+import { heldTasks, hold, waits } from './acts.js';
 import { opsId, savedScreen } from './tasks.js';
 
 let waitTimer;
@@ -44,8 +31,6 @@ let again = false;
 // Each waiting row's object, by its entry, kept while the row is unchanged (pendingTasks).
 const waitingRows = new Map();
 const lastGroups = new Map(); // each group as listGroups last returned it, by key
-// The job for each line: the earlier try's job if the line is unchanged, else a new one.
-export const jobsFor = (kept, lines) => lines.map((line, k) => (kept[k]?.line === line ? kept[k] : { line }));
 /* What became of the lines typed together (`entries`), from sendActs' results, as one result for their add box. It is
    'error' if Vikunja refused a line or can't tell whether it has one, 'offline' if a line or its photos still wait,
    'gone' if another tab sent them, and else 'sent'. `unsent` is the text of the lines that go back to the box. A line
@@ -79,45 +64,6 @@ export const batchOf = (r, entries) => {
 };
 
 export default {
-  /* Create a task from a parsed line with the add op's stages (LINE, ops/add.js), for the template editor and a step's
-     new title. `job` records how far it got, and `save` stores the job. Each request is sent with a key made from
-     `job.key`, so a retry after a lost reply makes nothing twice. `made` is called as soon as the task exists. `parent`
-     makes the task a subtask of that task. Returns the task, which is just {id, project_id} if an earlier try made it. It has `problems` (what couldn't be done, such as an @username who can't see the
-     project) and, for a line marked done or given a percentage, `arrived`: {now: Vikunja's copy after that was set,
-     done}. Throws on a lost connection or a busy Vikunja. */
-  async createTask(parsed, pid, { job = {}, save = async () => {}, made, parent } = {}) {
-    Object.assign(job, { op: 'add', p: parsed, pid, under: parent ?? null });
-    job.problems ||= [];
-    job.stage ||= 0;
-    job.key ||= uuid7(); // the relay reads the key's time from it
-    const c = stageContext(job, this, save);
-    c.made = made;
-    try {
-      // A request that gets no answer may still have reached Vikunja, and a cancelled step must then be deleted there.
-      // So the first request waits while Pocket knows it is offline, and flush sends it once a read gets through.
-      if (job.stage < LINE.length && !job.sent && (this.offline || navigator.onLine === false)) {
-        if (navigator.onLine !== false) setTimeout(() => this.flush());
-        this.offline = true;
-        throw new NetError('offline');
-      }
-      const seen = stageView(job);
-      while (job.stage < LINE.length) {
-        await patiently(() => LINE[job.stage](seen, c.start()));
-        job.stage++;
-        await save();
-      }
-    } catch (e) {
-      // The relay can't tell whether Vikunja made the change. The line is refused, with words that say only the user can
-      // check. These callers keep nothing in the Outbox, so the words don't offer its Try again.
-      if (e.code === 'unknown') e.message = UNSURE;
-      throw e;
-    }
-    return Object.assign(
-      { ...(c.task || { id: job.taskId, project_id: job.projectId }) },
-      { problems: job.problems },
-      c.arrived && { arrived: c.arrived },
-    );
-  },
   async findUser(name) {
     const key = name.toLowerCase();
     if (userCache.has(key)) return userCache.get(key);
@@ -133,32 +79,6 @@ export default {
       body: { other_task_id: childId, relation_kind: 'subtask' },
       on: { [parentId]: {}, [childId]: {} },
     });
-  },
-  /* Create one task per line, in order. With `parent`, each becomes a subtask of it, in the parent's project unless
-     the line names one. Returns the ids created and how many lines were used, and stops at the first error. `jobs`
-     (from jobsFor) records how far each line got, so a retry carries on, and sends each request with the key it had.
-     `ignores` holds the chips tapped off for each line, on top of `ignore`. */
-  async createLines(lines, { pid, parent, ignore = {}, ignores = [], jobs = jobsFor([], lines) } = {}) {
-    const ids = [],
-      problems = [];
-    let used = 0;
-    try {
-      for (const [k, line] of lines.entries()) {
-        const parsed = parseCapture(line, this.projects, { ...this.parseOpts, ignore: { ...ignore, ...ignores[k] } });
-        if (parsed.title) {
-          const t = await this.createTask(parsed, parent ? parent.project_id : pid, {
-            job: jobs[k],
-            parent: parent?.id,
-          });
-          ids.push(t.id);
-          problems.push(...t.problems);
-        }
-        used++;
-      }
-      return { ids, used, problems, error: null };
-    } catch (error) {
-      return { ids, used, problems, error };
-    }
   },
   // Queue the lines typed in an add box, each as an add op (addLines), with the photos on the first, and send them.
   // Returns what became of them (batchOf), and whether they were kept on the phone (`kept`, `full`, as queue gives).
@@ -772,8 +692,11 @@ export default {
      under it move up to what the cancelled line was under, and the message says so. If the cancelled line was under
      nothing, those lines become separate tasks. Cancelling the first line of a pasted list does this. The photos added
      with it are dropped too. A line whose first request was sent can't be cancelled, because Vikunja may have its
-     task. Its row has no Cancel then, but a tap can still arrive while the request goes out. */
+     task. Its row has no Cancel then, but a tap can still arrive while the request goes out. A step waiting to be added
+     to a template is cancelled as the Outbox cancels it (cancelMade). */
   async cancelPending(id) {
+    const a = this.pending.find(e => e.id === id);
+    if (a && cancelOf(a) === 'unmade') return this.cancelMade(id);
     let raw = '',
       title = '',
       rest = 0,

@@ -1,4 +1,4 @@
-/* Adding a task: one line typed in an add box, or a step's title from the template editor. Each line is its own op.
+/* Adding a task: one line typed in an add box, or a new template's name. Each line is its own op.
    The lines typed together share `batch`, and a line under another line names it as `under: 'pending-<entry>'`. The
    entry also keeps how far each stage got, so a try that is cut off carries on where it stopped. Every write is sent
    with a key, and the relay answers a request Vikunja already made from what it stored, so nothing is made twice. The
@@ -71,7 +71,7 @@ async function prepare(a, c) {
 async function made(a, c) {
   if (a.taskId) return;
   const t = await c.send(`/projects/${a.to}/tasks`, { method: 'POST', body: a.body });
-  sync.claim(t.id, a.id || a.key);
+  sync.claim(t.id, a.id);
   Object.assign(a, {
     taskId: t.id,
     projectId: t.project_id,
@@ -227,8 +227,8 @@ async function figures(a, c) {
   for (const [i, up] of (a.ups || []).entries()) await figureOf(c.start(i), real(up), 'figure' + i);
 }
 
-// The stages a task is made in. The template editor and a step's new title run these themselves (createTask,
-// app/sending.js), and a step added to a checklist runs all but the last (ops/runs.js).
+// The stages a task is made in. A step added to a checklist or a template runs all but the last (ops/runs.js,
+// ops/templates.js).
 export const LINE = [prepare, made, label, assignee, link, arrive];
 /* What quick add makes of line `p` in project `pid` before it is sent (prepare): the title without the @people who can
    see the project (`body.title`), the people found (`people`, {name, id}), the labels, and what can't be done

@@ -26,10 +26,9 @@ import views from '../../src/js/app/views.js';
 import claims from '../../src/js/app/claims.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import lines from '../../src/js/app/lines.js';
-import checklists from '../../src/js/app/checklists.js';
 import { OPS } from '../../src/js/ops/index.js';
 import { saved } from '../../src/js/lists.js';
-import { api, ApiError } from '../../src/js/api.js';
+import { api } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 
 // A read as a screen's load makes it: started, answered, then put into Vikunja's copies, inside a change.
@@ -1295,64 +1294,10 @@ test('a task Vikunja deleted loses its row in the same change as its copy', () =
   assert.deepEqual([copyOf(1), app.rowTask(1), app.view.groups[0].tasks.map(t => t.id)], [undefined, null, [2]]);
 });
 
-/* A direct write names the values it sets (writes), and its answer puts those values into Vikunja's copy, as for the
-   steps a template's Add made before it stopped. */
+// A write names the values it sets (writes), and its answer puts those values into Vikunja's copy.
 test('a write names the values it sets, so field names alone are refused', () => {
   component(tasks);
   assert.throws(() => writes({ 1: ['labels'] }), /names the values/);
-});
-
-// A template's sheet, open on template 1 with step 2.
-const templateSheet = v => {
-  const app = component(tasks, actions, sending, checklists);
-  read([v.task(1), v.task(2)]);
-  app.row(copyOf(1));
-  const step = app.row(copyOf(2));
-  for (const [k, value] of Object.entries({
-    canEdit: true,
-    subtasks: [step],
-    stepWordsOnly: t => t,
-  }))
-    Object.defineProperty(app, k, { value, configurable: true });
-  Object.assign(app, {
-    sheet: { id: 1, kind: 'task', stepEdit: null },
-    showTask() {},
-    loadSubPeople() {},
-    keepTemplate() {},
-  });
-  return app;
-};
-const template = () =>
-  fakeVikunja([
-    { id: 1, title: 'TEMPLATE: Closing', done: true, related_tasks: { subtask: [{ id: 2, title: 'Mop' }] } },
-    {
-      id: 2,
-      title: 'Mop',
-      done: true,
-      assignees: [{ id: 7, username: 'bob' }],
-      labels: [{ id: 500, title: 'floor' }],
-      related_tasks: { parenttask: [{ id: 1 }] },
-    },
-  ]);
-
-test("the steps a template's Add made before Vikunja refused the rest show in Vikunja's copy of the template", async () => {
-  const v = template(),
-    app = templateSheet(v);
-  v.trouble = req => (req.method === 'GET' ? 'offline' : null); // the template isn't read again
-  Object.defineProperty(app, 'draft', { value: () => ({ added: ['Lock up', 'Turn off'], renames: [] }) });
-  Object.defineProperty(app, 'draftIgnores', { value: () => [] });
-  app.sheet.addRows = [{ text: 'Lock up' }, { text: 'Turn off' }];
-  app.sheet.addBox = { text: '' };
-  // Vikunja makes the first step, then refuses the second.
-  app.createLines = async () => {
-    v.tasks.set(3, { id: 3, title: 'Lock up', done: true, related_tasks: { parenttask: [{ id: 1 }] } });
-    return { ids: [3], used: 1, problems: [], error: new ApiError(403, 'Forbidden') };
-  };
-  await app.addTemplateSteps();
-  assert.deepEqual(
-    copyOf(1).related_tasks.subtask.map(s => s.id),
-    [2, 3],
-  );
 });
 
 /* A request whose reply never came may reach Vikunja later. The op's write stays in flight until a later try is

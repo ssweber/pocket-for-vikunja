@@ -233,8 +233,8 @@ export function parseCapture(
     }
     for (const x of found.reverse()) drop(x, 'labels');
   }
-  // @username stays in the title for now. createTask removes each @username that gets assigned, as Vikunja does. A
-  // space is needed before the @, so email addresses are left alone.
+  // @username stays in the title for now. An add op removes each @username that gets assigned (prepare, ops/add.js),
+  // as Vikunja does. A space is needed before the @, so email addresses are left alone.
   const people = [];
   if (!ignore.assignees)
     for (const x of out.title.matchAll(tokenRe(P.assignee))) {

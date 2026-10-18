@@ -1,6 +1,6 @@
 // Checklist projects and templates: reading them, making a template, and writing and editing its steps.
 import { andList, memo, raw, store, taskDrafts, TZ, userCache } from '../util.js';
-import { allPages, api, NetError, passing, patchTask, why } from '../api.js';
+import { allPages, api, NetError, passing, why } from '../api.js';
 import { fmtTime, isSet, repeats, startOfDay } from '../dates.js';
 import { htmlToText, parseFragment } from '../html.js';
 import {
@@ -13,10 +13,8 @@ import {
   isTemplateLabel,
   notesOnly,
   parseStep,
-  patiently,
   problemText,
   roleOf,
-  STEP_IGNORE,
   stepInfos,
   stepProblems,
   stepsOf,
@@ -24,16 +22,14 @@ import {
   repeatWords,
   templateName,
   templateTitle,
-  withOrder,
 } from '../checklists.js';
 import { captureLines } from '../quickadd.js';
-import { packParsed, randomId, uuid7 } from '../sync.js';
-import { jobsFor } from './sending.js';
+import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
-import { lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
-import { copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS, writing } from './tasks.js';
+import { addLines, lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
+import { copyOf, putting, savedScreen, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -329,44 +325,37 @@ export default {
       this.settingUp = false;
     }
   },
-  // The example template has four steps. The first is assigned to the user, and the third is due 18 minutes after the
-  // second. The lines are created with quick add's label, assignee and priority parsing off, so the user's settings
-  // can't change them.
+  /* The example template has four steps, each with its notes. The first is assigned to the user, and the third is due
+     18 minutes after the second. The lines are read with quick add's label, assignee and priority parsing off, so the
+     user's settings can't change them. */
   async addExample(p) {
-    const title = templateTitle('Example: Opening up'),
+    const off = { labels: true, assignees: true, priority: true },
       steps = [
         'Turn on the espresso machine',
         'Put the croissants in the oven',
         'Take the croissants out T#18m',
         'Wipe down the tables',
       ];
-    const made = await this.createLines([title], {
-      pid: p.id,
-      ignore: { ...STEP_IGNORE, labels: true, assignees: true, priority: true },
+    const r = await this.newTemplate(p.id, 'Example: Opening up', steps, {
+      ignore: off,
+      ignores: steps.map(() => off),
+      more: (tpl, [first, , third]) => [
+        {
+          op: 'edit',
+          task: tpl,
+          rebase: 'notes',
+          text: 'This is an example. Tap Start and tick off its steps. Then edit it to make your own template, or delete it from its ⋯ menu.',
+        },
+        { op: 'assign', task: first, person: personOf(this.user), add: true, was: [] },
+        {
+          op: 'edit',
+          task: third,
+          rebase: 'notes',
+          text: "Due 18 minutes after the croissants go in. Every checklist shows a step's notes and photos on that step.",
+        },
+      ],
     });
-    if (made.error) throw made.error;
-    const t = { id: made.ids[0], title, project_id: p.id, labels: [], due_date: null };
-    await patiently(() =>
-      patchTask(t.id, {
-        description:
-          '<p>This is an example. Tap Start and tick off its steps. Then edit it to make your own template, or delete it from its ⋯ menu.</p>',
-      }),
-    );
-    const r = await this.createLines(steps, {
-      parent: t,
-      ignore: { ...STEP_IGNORE, labels: true, assignees: true, priority: true },
-    });
-    if (r.error) throw r.error;
-    await patiently(() =>
-      api(`/tasks/${r.ids[0]}/assignees`, { method: 'POST', body: { user_id: this.user.id } }),
-    ).catch(() => {});
-    await patiently(() =>
-      patchTask(r.ids[2], {
-        description:
-          "<p>Due 18 minutes after the croissants go in. Every checklist shows a step's notes and photos on that step.</p>",
-      }),
-    ).catch(() => {});
-    await this.markTemplate(t, r.ids);
+    if (r.status !== 'sent') throw r.refused ?? r.error ?? new NetError('offline');
   },
   // Whether Getting started shows on Checklists: for a project's admin (who can share it), until they hide it.
   gettingStarted(pid) {
@@ -561,9 +550,10 @@ export default {
     return role !== 'run' && role !== 'step'; // a checklist Pocket doesn't know, or one of its steps, is hidden
   },
 
-  /* Make the open task a template. Label it "template" and mark its steps done, so none of them is a to-do anywhere.
-     Then mark the task itself done, or leave it open if it has a due date, so it stays due. The task comes last. If
-     this is interrupted, the task is not yet a template, and the button can finish the job. */
+  /* Make the open task a template, as a makeTemplate op (ops/templates.js): it labels the task, marks the open
+     subtasks done as its steps, and marks the task done last. The sheet shows the template at once. Once Vikunja has
+     it, the sheet says when it is due. Offline it waits in the Outbox. A refusal waits there too, and the sender says
+     why. */
   async makeTemplate() {
     const t = this.sheetTask;
     if (!t || this.sheet.checklistBusy) return;
@@ -574,11 +564,13 @@ export default {
     }
     this.sheet.checklistBusy = true;
     try {
-      await this.markTemplate(
-        t,
-        this.subtasks.filter(s => !s.done).map(s => s.id),
-      );
-      const full = await this.readCopy(t.id);
+      const steps = this.subtasks.filter(s => !s.done).map(s => s.id),
+        r = await this.act({ op: 'makeTemplate', task: t.id, run: null, steps });
+      if (r.status === 'offline')
+        this.say("Saved offline. It goes to Vikunja when you're back online.", { place: 'sheet:top' });
+      if (r.status !== 'sent') return;
+      const full = await this.readCopy(t.id).catch(() => null);
+      if (!full) return;
       if (this.sheet.id === t.id) {
         this.showTask(full);
         this.sheet.dirty = true;
@@ -590,43 +582,42 @@ export default {
               (repeats(full) ? 'moves it to its next date.' : "marks it done, because it doesn't repeat."),
         { place: 'sheet:top' },
       );
-    } catch (e) {
-      this.say('Template not created: ' + e.message, { place: 'sheet:top', cls: 'failed' });
     } finally {
       this.sheet.checklistBusy = false;
     }
   },
-  /* The label goes as a `label` op, which makes the label first if Vikunja has none. The rest waits for Vikunja to
-     have it. A label op not sent now is taken back, so an interrupted Make template leaves no label to arrive later. */
-  async markTemplate(t, stepIds) {
-    if (!(t.labels || []).some(isTemplateLabel)) {
-      const all = (await this.loadLabels(true)).filter(isTemplateLabel),
-        l = all.find(x => x.created_by?.id === this.user?.id) || all[0] || { title: 'template' },
-        f = {
-          id: uuid7(),
-          op: 'label',
-          task: t.id,
-          run: null,
-          tag: tagOf(l),
-          add: true,
-          was: (t.labels || []).map(tagOf),
-        };
-      const r = await this.act(f, true);
-      if (r.status !== 'sent') {
-        await this.undoOps([f]).left;
-        throw r.error ?? new NetError('offline');
-      }
-    }
-    for (const id of stepIds) await patiently(() => patchTask(id, { done: true }));
-    // A "copied from" link (from duplicating the template in the web app, for example) would make the template look
-    // like a checklist being set up, so delete it.
-    for (const c of t.related_tasks?.copiedfrom || [])
-      await patiently(() => api(`/tasks/${t.id}/relations/copiedfrom/${c.id}`, { method: 'DELETE' })).catch(e => {
-        if (e.status !== 404) throw e;
-      });
-    await patiently(() =>
-      patchTask(t.id, { done: !isSet(t.due_date), ...(t.title && { title: templateTitle(t.title) }) }),
+  // Line `text` of a template's name or steps, as a step's box reads it with the chips in `off` tapped off, packed as
+  // the add box packs a line (itemsOf). Null for a line with no title.
+  templateLine(text, off = {}) {
+    return itemsOf([{ raw: text, p: this.stepParsed(text, off), under: null }])[0] ?? null;
+  },
+  /* Queue a new template in project `pid`: its task, named `name` with the prefix, as an add op, a templateStep op for
+     each of `lines`, then the makeTemplate op, which waits for the steps. `ignore` holds the chips tapped off for the
+     name, and `ignores` for each line. `more(template, steps)` gives ops on the new tasks, named by their waiting ids,
+     that go before makeTemplate. Returns how sending went (actAll), with `refused` the error that refused the name before
+     its task was made. */
+  async newTemplate(pid, name, lines, { ignore = {}, ignores = [], more = () => [] } = {}) {
+    const [tpl] = addLines([this.templateLine(templateTitle(name), ignore)], { pid }),
+      task = 'pending-' + tpl.id,
+      label = templateName(tpl.p.title);
+    const steps = lines.flatMap((text, k) => {
+        const x = this.templateLine(text, ignores[k]);
+        return x
+          ? [{ id: uuid7(), op: 'templateStep', task, under: task, pid, p: x.p, after: null, label, run: null }]
+          : [];
+      }),
+      waits = steps.map(f => 'pending-' + f.id);
+    // The caller says what became of the name, which isn't a line of quick add's to give back there.
+    const r = await this.actAll(
+      [
+        tpl,
+        ...steps,
+        ...more(task, waits).map(f => ({ run: null, ...f })),
+        { op: 'makeTemplate', task, steps: [], lines: waits, label, run: null },
+      ],
+      new Set([tpl.id]),
     );
+    return { ...r, refused: r.all.find(x => x.id === tpl.id && x.status === 'error' && !sync.taskOf(tpl.id))?.error };
   },
 
   /* ---------- writing steps: in New template, and under a template ---------- */
@@ -692,7 +683,7 @@ export default {
   sendSteps(which) {
     const b = this.stepBox(which),
       lines = captureLines(b.text || '');
-    if (!lines.length || (which === 'add' && this.sheet.subBusy)) return;
+    if (!lines.length) return;
     const one = lines.length === 1,
       was = { text: b.text, keep: b.keep, from: b.from, ignore: b.ignore };
     const made = lines.map(text =>
@@ -700,15 +691,12 @@ export default {
     );
     Object.assign(b, { text: '', keep: false, from: null, ignore: {} });
     if (which === 'add') {
-      // A line whose earlier send was interrupted continues from its job, so no step is added twice.
-      for (const r of made) r.job = b.jobs?.find(j => j.text === r.text)?.job;
       this.sheet.addRows = made;
       if (this.draft('add').problem) {
         this.sheet.addRows = [];
         Object.assign(b, was);
         return;
       }
-      b.jobs = null;
       return this.addTemplateSteps();
     }
     const rows = this.draftRows('new'),
@@ -778,9 +766,9 @@ export default {
     };
     this.$nextTick(() => document.getElementById('nt-name')?.focus());
   },
-  /* Create the template: the task first, then its steps, then mark the task as a template. If this is interrupted, the
-     task stays in the project with the steps made so far. Tapping Create template again continues from there
-     (nt.jobs). So does Use as checklist template on the task. */
+  /* Create the template from New template, as ops (newTemplate). Online the sheet waits for them, and Checklists then
+     lists the template. Offline they wait in the Outbox. If Vikunja refuses the name, the sheet stays open and says
+     why. A refusal after that waits in the Outbox, and the sender says why. */
   async createTemplate() {
     const nt = this.sheet.newTpl;
     if (nt && !nt.busy && (nt.add.text || '').trim()) this.sendSteps('new'); // text still in the box counts as a step
@@ -789,156 +777,64 @@ export default {
     if (!name || !d.added.length || d.problem || nt.busy) return;
     const shown = templateName(this.stepParsed(name, nt.box.ignore).title); // without @people and *labels
     nt.busy = true;
-    let t = null;
-    try {
-      // A changed name starts over with a new task and new steps.
-      const line = templateTitle(name),
-        kept = nt.jobs?.name[0]?.line === line ? nt.jobs : null;
-      const jobs = (nt.jobs = { name: jobsFor(kept?.name || [], [line]), steps: jobsFor(kept?.steps || [], d.added) });
-      const made = await this.createLines([line], {
-        pid: nt.project.id,
-        ignore: { ...STEP_IGNORE, ...nt.box.ignore },
-        jobs: jobs.name,
-      });
-      if (made.error) throw made.error;
-      t = { id: made.ids[0], project_id: nt.project.id, labels: [] };
-      const r = await this.createLines(d.added, {
-        parent: t,
-        ignore: STEP_IGNORE,
-        ignores: this.draftIgnores('new'),
-        jobs: jobs.steps,
-      });
-      if (r.error) throw r.error;
-      await this.markTemplate(t, r.ids);
-      nt.made = true;
-      taskDrafts.delete('newtpl:' + nt.project.id);
-      if (this.sheet.newTpl === nt) this.closeSheet(true);
-      if (this.route.name === 'checklists') this.render();
-      else this.go('#/checklists');
-      this.say(`Created ${shown}. Start it here.`, { place: 'checklists' });
-    } catch (e) {
+    const r = await this.newTemplate(nt.project.id, name, d.added, {
+      ignore: nt.box.ignore,
+      ignores: this.draftIgnores('new'),
+    });
+    if (r.refused && r.refused.code !== 'unknown') {
       nt.busy = false;
-      this.say(
-        t ? `Not finished: ${why(e)}. Tap Create template again to finish “${shown}”.` : 'Not created: ' + why(e),
-        { place: 'sheet:top', cls: 'failed' },
-      );
+      this.say('Not created: ' + why(r.refused), { place: 'sheet:top', cls: 'failed' });
+      return;
     }
+    nt.made = true;
+    taskDrafts.delete('newtpl:' + nt.project.id);
+    if (this.sheet.newTpl === nt) this.closeSheet(true);
+    if (this.route.name === 'checklists') this.render();
+    else this.go('#/checklists');
+    if (r.status === 'sent') this.say(`Created ${shown}. Start it here.`, { place: 'checklists' });
+    else if (r.status === 'offline')
+      this.say("Saved offline. It goes to Vikunja when you're back online.", { place: 'checklists' });
   },
-  // Add steps to a template: create them, mark them done like the template's other steps, and give a name to any step
-  // they count from.
+  /* Add the box's lines under the template as steps, a templateStep op each, which the sheet shows at once and which
+     Vikunja makes done. A step a new line counts from gets the name the line gives it, as an edit, first. If the box is
+     under a step, the new steps go after it, each after the one before, and the box moves under the last of them.
+     Offline they wait in the Outbox. */
   async addTemplateSteps() {
     const t = this.sheetTask,
       d = this.draft('add');
-    if (!t || !d.added.length || d.problem || this.sheet.subBusy) return;
-    this.sheet.subBusy = true;
-    const r = { ids: [], problems: [], error: null };
-    // Each row keeps its job, so an Add after an interrupted one sends each request with the key it had and makes
-    // nothing twice.
-    const rows = this.sheet.addRows.filter(x => x.text.trim()),
-      jobs = jobsFor(
-        rows.map(x => x.job),
-        d.added,
-      );
-    rows.forEach((x, k) => {
-      x.job = jobs[k];
-    });
-    const under = this.sheet.subAt;
-    let links = null;
-    try {
-      // The sheet's step rows read each step's own copy, so each answer goes into the store.
-      for (const { key, title } of d.renames) {
-        const id = +key.slice(5),
-          [got, w] = await writing({ [id]: { title } }, () => patiently(() => patchTask(id, { title })));
-        this.change(x => {
-          x.made(id, w);
-          x.answer([got], TASK, w);
-        });
-      }
-      // Linking the new steps changes the template's subtasks. Which steps it linked is known only once it ends.
-      const [added, w] = await writing({ [t.id]: {} }, () =>
-        this.createLines(d.added, { parent: t, ignore: STEP_IGNORE, ignores: this.draftIgnores('add'), jobs }),
-      );
-      Object.assign(r, added);
-      links = w;
-      for (const id of r.ids)
-        await writing({ [id]: { done: true } }, () => patiently(() => patchTask(id, { done: true }))).then(
-          ([got, w]) =>
-            this.change(x => {
-              x.made(id, w);
-              x.answer([got], TASK, w);
-            }),
-          e => r.problems.push(e.message),
-        );
-      // If the box is under a step, put the new steps after that step in the order line. Start from the order Vikunja
-      // has now.
-      if (under != null && r.ids.length)
-        await patiently(() =>
-          this.saveTask(t.id, null, now => {
-            const ids = stepsOf(now)
-                .map(s => s.id)
-                .filter(id => !r.ids.includes(id)),
-              k = ids.indexOf(under);
-            return k < 0
-              ? null
-              : { description: withOrder(now.description, [...ids.slice(0, k + 1), ...r.ids, ...ids.slice(k + 1)]) };
-          }),
-        ).catch(e => r.problems.push('not put in their place: ' + e.message));
-    } catch (e) {
-      r.error = e;
-    }
-    /* A step that was created but not linked to the template (Vikunja refused the link) is deleted, so it doesn't stay
-       as a separate task on someone's Today. The next Add creates it again. Offline, the step is kept so the next Add
-       can continue with it. */
-    if (r.error && !(r.error instanceof NetError))
-      for (const x of rows)
-        if (x.job?.taskId && !x.job.linked && !r.ids.includes(x.job.taskId)) {
-          await api('/tasks/' + x.job.taskId, { method: 'DELETE' }).then(
-            () => {
-              x.job = null;
-            },
-            () => {},
-          );
-        }
-    if (this.sheet.id === t.id) {
-      this.sheet.subBusy = false;
-      if (r.error) {
-        // Lines that were not added go back in the box with their jobs, so the next try can continue from them.
-        const left = this.sheet.addRows.filter(x => x.text.trim()).slice(r.ids.length),
-          b = this.stepBox('add');
-        b.text = [...left.map(x => x.text), b.text].filter(x => x?.trim()).join('\n');
-        b.jobs = left.map(x => ({ text: x.text, job: x.job }));
-        this.sheet.addRows = [];
-        // The steps added before it stopped are in Vikunja, so its copy of the template lists them.
-        const c = copyOf(t.id),
-          had = (c?.related_tasks?.subtask || []).filter(s => !r.ids.includes(s.id));
-        if (links)
-          this.change(w =>
-            w.made(t.id, links, {
-              related_tasks: {
-                ...c?.related_tasks,
-                subtask: [...had, ...r.ids.map((id, k) => ({ id, title: d.added[k], done: true }))],
-              },
-            }),
-          );
-      } else {
-        // If the box was under a step, move it under the last added step.
-        this.sheet.addRows = [];
-        if (under != null && this.sheet.subAt === under && r.ids.length) this.sheet.subAt = r.ids.at(-1);
-      }
-      this.sheet.dirty = true;
-      try {
-        const full = await this.readCopy(t.id);
-        if (full && this.sheet.id === full.id) this.showTask(full);
-      } catch {}
-    }
-    const but = r.problems.length ? `, but ${r.problems.join('; ')}` : '';
-    if (r.error)
-      this.say(`Added ${r.ids.length} of ${d.added.length}${but}. Stopped: ${why(r.error)}`, {
-        place: 'sheet:subtasks',
-        cls: 'failed',
+    if (!t || !d.added.length || d.problem) return;
+    const ignores = this.draftIgnores('add'),
+      label = templateName(t.title),
+      renames = d.renames.map(({ key, title }) => {
+        const id = +key.slice(5);
+        return { op: 'edit', task: id, run: null, set: { title }, was: { title: this.tasks[id]?.title ?? '' } };
       });
-    else if (but) this.say(`Added ${r.ids.length}${but}`, { place: 'sheet:subtasks', cls: 'failed' });
-    else this.unsay('sheet:subtasks'); // clear the message from an earlier failed try
+    // A batch added while the one before it waits goes after that one's last step (subAfter).
+    let after = this.sheet.subAt == null ? null : (this.sheet.subAfter ?? this.sheet.subAt);
+    const steps = d.added.flatMap((text, k) => {
+      const x = this.templateLine(text, ignores[k]);
+      if (!x) return [];
+      const f = { id: uuid7(), op: 'templateStep', task: t.id, under: t.id, pid: t.project_id, p: x.p, after, label };
+      if (after != null) after = 'pending-' + f.id;
+      return [f];
+    });
+    this.sheet.addRows = [];
+    if (!steps.length) return;
+    const last = 'pending-' + steps.at(-1).id;
+    if (after != null) this.sheet.subAfter = last;
+    const r = await this.actAll([...renames, ...steps.map(f => ({ run: null, ...f }))]);
+    this.sheet.dirty = true;
+    if (this.sheet.id !== t.id) return;
+    const made = sync.taskOf(steps.at(-1).id);
+    if (made && this.sheet.subAfter === last) {
+      this.sheet.subAt = made;
+      this.sheet.subAfter = null;
+    }
+    if (r.status === 'offline')
+      this.say(`Saved offline. ${steps.length === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {
+        place: 'sheet:subtasks',
+      });
+    else if (r.status === 'sent') this.unsay('sheet:subtasks'); // clear the message from an earlier failed try
   },
   // A row's time chip as a list for x-for: [d] when there is something to show, else [].
   draftShown(d) {

@@ -416,7 +416,7 @@ function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}) {
     P = QUICK_ADD_PREFIXES[mode];
   const nodes = list.lines.map(l => {
     const p = parseCapture(l.text, [], { mode, dueTime, now: NOW });
-    // Assigning a person removes their name from the title, as createTask does (sync.js).
+    // Assigning a person removes their name from the title, as an add op does (prepare, ops/add.js).
     return {
       title: p.assignees.reduce((t, n) => removeAssignee(t, P.assignee, n), p.title),
       done: l.done,

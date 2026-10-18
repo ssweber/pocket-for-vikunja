@@ -45,7 +45,6 @@ export const blankSheet = kind => ({
   commentDraft: '',
   commentBusy: false,
   sub: newBox(),
-  subBusy: false,
   assigning: false,
   assignName: '',
   project: null,

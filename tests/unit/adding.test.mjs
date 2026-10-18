@@ -18,7 +18,7 @@ import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { UNKNOWN } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
-import { sync, unpackParsed } from '../../src/js/sync.js';
+import { sync } from '../../src/js/sync.js';
 
 const DAY = 86400;
 // The parts that queue and send a line, and put the result on the screen. The fake's own flush and render stay.
@@ -261,23 +261,14 @@ test('a new label is not sent again once Vikunja answered it, and the requests a
   );
 });
 
-test("a line's labels are added to the labels the task already has, and a new label on two lines is created once", async t => {
-  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5, labels: [{ id: 1, title: 'Old' }] }]),
+test('a new label on two lines is created once', async t => {
+  const v = fakeVikunja(),
     app = adding(t);
-  v.labels.push({ id: 1, title: 'Old' });
   app.loadLabels = views.loadLabels;
-  // As a step's new title with *labels is applied to the step (checklists.js).
-  await app.createTask(unpackParsed(line('Pack the van', { labels: ['New'] }).p), 5, {
-    job: { taskId: 9, done: false },
-  });
-  assert.deepEqual(
-    v.task(9).labels.map(l => l.title),
-    ['Old', 'New'],
-  );
   await send(app, entry([line('Chairs', { labels: ['Spare'] }), line('Tables', { labels: ['Spare'] })]));
   assert.deepEqual(
     v.requests.filter(r => r.path === '/labels' && r.method === 'POST').map(r => r.body.title),
-    ['New', 'Spare'],
+    ['Spare'],
   );
   assert.deepEqual(
     [v.task(101).labels, v.task(102).labels].map(ls => ls.map(l => l.title)),

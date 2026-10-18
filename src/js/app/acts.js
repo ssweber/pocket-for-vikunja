@@ -84,12 +84,11 @@ const told = new Map();
    after Try again. A stage puts Vikunja's copy of the task in `task`, and a comment Vikunja made in `comment`. Both
    are kept in the entry (`a.got`), so the answer has them when a later stage finishes on another try. `reply` is the
    task with where it came from, for answer, and `from(t)` where any reply came from. `start(at)` starts the parts at
-   `at`, and `skip` counts a part without sending it, so the requests after it keep their keys. A job that is not in
-   the outbox, such as the template editor's, passes its own `save` (createTask, sending.js). */
-export function stageContext(a, app, save = () => sync.save(a)) {
-  let part = 0;
-  const id = a.id ?? a.key,
+   `at`, and `skip` counts a part without sending it, so the requests after it keep their keys. */
+export function stageContext(a, app) {
+  const save = () => sync.save(a),
     none = { at: 0, replayed: true, crossed: new Map() };
+  let part = 0;
   const c = {
     app,
     save,
@@ -104,11 +103,11 @@ export function stageContext(a, app, save = () => sync.save(a)) {
     },
     set task(t) {
       (a.got ||= {}).task = t;
-      told.set(id, c.from(t));
+      told.set(a.id, c.from(t));
     },
     get reply() {
       const t = c.task;
-      return t && { ...(told.get(id) || none), task: t };
+      return t && { ...(told.get(a.id) || none), task: t };
     },
     get comment() {
       return a.got?.comment ?? null;
@@ -187,7 +186,7 @@ export default {
      replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`), every result
      (`all`), and whether the ops reached the phone's database (`kept`, `full`, as queue gives). An Undo keeps the
      objects in `list` and passes them to undoOps, never copies, because what undoOps needs is kept only while those
-     objects are. */
+     objects are. With `quiet`, the caller says what became of the ops, or of those whose ids it holds (a Set). */
   async actAll(list, quiet = false) {
     const entries = list.map(f => this.actEntry(f)),
       last = entries.at(-1).id;
@@ -199,7 +198,7 @@ export default {
     const { kept, full } = await this.queue(entries);
     await sync.lock(() => this.fold(entries));
     return {
-      ...(await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null)),
+      ...(await this.sendActs(last, kept, full, quiet === true ? new Set(entries.map(e => e.id)) : quiet || null)),
       entry: last,
       kept,
       full,
@@ -382,7 +381,7 @@ export default {
       }
     });
     if (!lines) this.refreshPending();
-    const others = out.filter(x => x.boxed && x.batch !== batch);
+    const others = out.filter(x => x.boxed && x.batch !== batch && !quiet?.has(x.id));
     if (others.length) this.reportSent(others);
     if (last.status === 'offline') {
       sync.keep();

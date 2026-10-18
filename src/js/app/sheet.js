@@ -816,14 +816,12 @@ export default {
     return this.checklistRole === 'template' ? 'add:+' : 'sub';
   },
   // Whether the box's button would add anything. For subtasks, at least one line has a title. For steps, the typed text
-  // has no problem and nothing is already being sent.
+  // has no problem.
   get subBoxCan() {
     const w = this.subBoxW;
     if (!w) return false;
     if (w === 'sub') return this.boxParsedLines('sub').some(p => p.title);
-    return (
-      !this.sheet.subBusy && !!(this.box(w).text || '').trim() && !this.draft(this.stepWhich).info.get('+')?.problem
-    );
+    return !!(this.box(w).text || '').trim() && !this.draft(this.stepWhich).info.get('+')?.problem;
   },
   /* A step as its row shows it (task-row.html, g.step): its index among the steps, its number and its text. A step
      written in New template has a `key`. Its number and text are read together with the other rows there (draft), and

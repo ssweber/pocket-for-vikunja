@@ -415,9 +415,8 @@ test("a template's step being edited isn't saved when the user's access arrives 
     checklistIds: new Set([7]),
     tasks: { 1: tpl },
     sheet: { id: 1, kind: 'task', stepEdit: null },
-    saveTask: async (id, patch) => {
-      saves.push(id);
-      return patch;
+    actAll: async list => {
+      saves.push(...list.map(f => f.task));
     },
   });
   app.sheet.stepEdit = { id: 2, text: 'Mop the floor', ignore: {} };

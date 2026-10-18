@@ -1,7 +1,8 @@
-// Tests for the template ops (src/js/ops/templates.js), and for a template step's edit box, which sends its changes as
-// ops (src/js/app/checklists.js), against a fake Vikunja behind the plugin's relay.
+// Tests for the template ops (src/js/ops/templates.js) and the template editor that queues them
+// (src/js/app/checklists.js), against a fake Vikunja behind the plugin's relay: Make template, New template, steps added
+// under a template, and a step's edit box.
 import './browser.mjs';
-import { sender, settle, lastSaid } from './ops-helpers.mjs';
+import { sender, noConnection, settle, lastSaid } from './ops-helpers.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
@@ -47,6 +48,13 @@ const editor = (t, list) => {
   return s;
 };
 const outbox = () => sync.all(1);
+// Connect again, and send what waits.
+const online = async (t, app, v) => {
+  v.trouble = () => null;
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => !outbox().some(e => !e.failed));
+};
 
 test('Make template refused partway waits in the Outbox as no template, and Cancel takes back what it made', async t => {
   const { v, app } = editor(t, closing());
@@ -71,6 +79,117 @@ test('Make template refused partway waits in the Outbox as no template, and Canc
     [ids(v.task(7).labels), v.task(8).done, v.task(9).done, outbox(), lastSaid(app).msg],
     [[], false, false, [], 'Cancelled.'],
     'Cancel takes the label off and opens the steps again',
+  );
+});
+
+test('Make template shows the template at once, waits in the Outbox offline, and is sent whole', async t => {
+  const { v, app } = editor(t, closing({ 9: { done: true } }));
+  Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });
+  app.sheet = { id: 7, kind: 'task', sub: {} };
+  noConnection(app, v);
+  await app.makeTemplate();
+  assert.deepEqual(
+    [app.tasks[7].done, app.tasks[7].title, app.tasks[7].labels.map(l => l.title), outbox()[0].steps],
+    [true, 'TEMPLATE: Closing', ['template'], [8]],
+    'the row is the template, and only the open step is marked done',
+  );
+  assert.equal(lastSaid(app).msg, "Saved offline. It goes to Vikunja when you're back online.");
+  await online(t, app, v);
+  assert.deepEqual(
+    [ids(v.task(7).labels), v.task(7).done, v.task(7).title, v.task(8).done, outbox()],
+    [[601], true, 'TEMPLATE: Closing', true, []],
+  );
+});
+
+/* New template (sheet/new-template.html) in project 5, named "Opening up", with the lines typed as its steps. */
+const newTemplate = (app, lines) => {
+  app.sheet = {
+    kind: 'newtpl',
+    sub: {},
+    newTpl: {
+      project: { id: 5, title: 'Café' },
+      box: { text: 'Opening up', ignore: {} },
+      rows: lines.map(text => app.newStepRow(text)),
+      add: { text: '' },
+      busy: false,
+    },
+  };
+  return app.sheet.newTpl;
+};
+test('New template makes its task, its steps done under it, and then the template, as ops', async t => {
+  const { v, app } = editor(t, []);
+  newTemplate(app, ['Turn on the machine', 'Wipe the tables T#10m']);
+  await app.createTemplate();
+  assert.deepEqual(
+    [101, 102, 103].map(id => [v.task(id).title, v.task(id).done]),
+    [
+      ['TEMPLATE: Opening up', true],
+      ['Turn on the machine', true],
+      ['Wipe the tables T#10m', true],
+    ],
+  );
+  assert.deepEqual(
+    [ids(v.task(101).labels), ids(v.task(101).related_tasks.subtask), lastSaid(app).msg],
+    [[601], [102, 103], 'Created Opening up. Start it here.'],
+  );
+});
+
+test('New template offline waits in the Outbox and is made once Pocket reaches Vikunja', async t => {
+  const { v, app } = editor(t, []);
+  noConnection(app, v);
+  const nt = newTemplate(app, ['Turn on the machine']);
+  await app.createTemplate();
+  assert.deepEqual(
+    [outbox().map(e => e.op), nt.made, lastSaid(app).msg],
+    [['add', 'templateStep', 'makeTemplate'], true, "Saved offline. It goes to Vikunja when you're back online."],
+  );
+  await online(t, app, v);
+  assert.deepEqual(
+    [v.task(101).title, v.task(101).done, ids(v.task(101).labels), v.task(102).done, outbox()],
+    ['TEMPLATE: Opening up', true, [601], true, []],
+  );
+});
+
+test('New template keeps its sheet open when Vikunja refuses its name, and sends none of its steps', async t => {
+  const { v, app } = editor(t, []);
+  v.trouble = r => (r.method === 'POST' && r.path === '/projects/5/tasks' ? 403 : null);
+  const nt = newTemplate(app, ['Turn on the machine']);
+  await app.createTemplate();
+  assert.deepEqual(
+    [nt.busy, nt.made, lastSaid(app).msg, outbox(), v.tasks.size],
+    [false, undefined, 'Not created: HTTP 403 from the fake', [], 0],
+  );
+});
+
+test('steps added under a step of a template go after it, each after the one before, and are made done', async t => {
+  const { v, app } = editor(
+    t,
+    closing({
+      7: { title: 'TEMPLATE: Closing', done: true, labels: [TEMPLATE], description: '<p>pocket:order 8 9</p>' },
+    }),
+  );
+  app.sheet = { id: 7, kind: 'task', sub: {}, subAt: 8, subAfter: null, addRows: [] };
+  const draft = added =>
+    Object.defineProperty(app, 'draft', { value: () => ({ added, renames: [] }), configurable: true });
+  Object.defineProperty(app, 'draftIgnores', { value: () => [] });
+  draft(['Wipe the till', 'Count the float']);
+  noConnection(app, v);
+  await app.addTemplateSteps();
+  assert.equal(lastSaid(app).msg, "Saved offline. They go to Vikunja when you're back online.");
+  // A second batch, added while the first waits, goes after the first.
+  draft(['Turn off the lights']);
+  await app.addTemplateSteps();
+  await online(t, app, v);
+  assert.deepEqual(
+    [v.task(7).description, [101, 102, 103].map(id => v.task(id).done)],
+    ['<p>pocket:order 8 101 102 103 9</p>', [true, true, true]],
+  );
+  draft(['Set the alarm']);
+  await app.addTemplateSteps();
+  assert.deepEqual(
+    [v.task(7).description, app.sheet.subAt],
+    ['<p>pocket:order 8 101 102 103 104 9</p>', 104],
+    'once its steps are made, the box sits under the last of them',
   );
 });
 
