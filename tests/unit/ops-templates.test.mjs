@@ -82,6 +82,56 @@ test('Make template refused partway waits in the Outbox as no template, and Canc
   );
 });
 
+// Task 7 was duplicated from tasks 5 and 6 in the web app, so it has two "copied from" links.
+const copied = () =>
+  [
+    ...closing({ 7: { related_tasks: { subtask: [{ id: 8 }, { id: 9 }], copiedfrom: [{ id: 5 }, { id: 6 }] } } }),
+    { id: 5, title: 'Closing (old)', related_tasks: { copiedto: [{ id: 7 }] } },
+    { id: 6, title: 'Closing (older)', related_tasks: { copiedto: [{ id: 7 }] } },
+  ].map(t => ({ project_id: 5, done: false, description: '', labels: [], assignees: [], ...t }));
+test('Make template refused as it deletes its second "copied from" link puts back the first on Cancel', async t => {
+  const { v, app } = editor(t, copied());
+  v.trouble = r => (r.method === 'DELETE' && r.path === '/tasks/7/relations/copiedfrom/6' ? 403 : null);
+  await app.act({ op: 'makeTemplate', task: 7, run: null, steps: [8, 9] });
+  assert.deepEqual(ids(v.task(7).related_tasks.copiedfrom), [6], 'the first link is deleted');
+  v.trouble = () => null;
+  await app.dropAct(outbox()[0].id);
+  await settle(t, () => !outbox().length);
+  assert.deepEqual(
+    [ids(v.task(7).related_tasks.copiedfrom).sort(), ids(v.task(7).labels), v.task(8).done, outbox()],
+    [[5, 6], [], false, []],
+  );
+});
+
+test("Cancel of Make template leaves a step a teammate ticked first, and puts back a repeating step's date", async t => {
+  const due = '2026-10-09T09:00:00.000Z',
+    { v, app } = editor(t, closing({ 8: { due_date: due, repeat_after: 86400 } }));
+  noConnection(app, v);
+  await app.act({ op: 'makeTemplate', task: 7, run: null, steps: [8, 9] });
+  v.task(9).done = true; // a teammate ticks step 9 in the web app
+  // Vikunja refuses the last request, which marks the task done and names it.
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/7' ? 403 : null);
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => outbox()[0]?.failed);
+  assert.notEqual(v.task(8).due_date, due, 'Vikunja moves the repeating step on to its next date');
+  v.trouble = () => null;
+  await app.dropAct(outbox()[0].id);
+  await settle(t, () => !outbox().length);
+  assert.deepEqual([v.task(8).due_date, v.task(8).done, v.task(9).done, outbox()], [due, false, true, []]);
+});
+
+test('Try again after Vikunja refused to name the template keeps a rename made since', async t => {
+  const { v, app } = editor(t, closing());
+  v.trouble = r => (r.method === 'PATCH' && r.path === '/tasks/7' ? 403 : null);
+  await app.act({ op: 'makeTemplate', task: 7, run: null, steps: [8, 9] });
+  v.trouble = () => null;
+  v.task(7).title = 'Closing up'; // a teammate renames it in the web app
+  await app.retryAct(outbox()[0].id);
+  await settle(t, () => !outbox().length);
+  assert.deepEqual([v.task(7).title, v.task(7).done, outbox()], ['TEMPLATE: Closing up', true, []]);
+});
+
 test('Make template shows the template at once, waits in the Outbox offline, and is sent whole', async t => {
   const { v, app } = editor(t, closing({ 9: { done: true } }));
   Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });

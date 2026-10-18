@@ -11,7 +11,8 @@
    - apply(t, a): the task as it will be once the op is made, as a new object. It changes neither argument.
    - on(a): the ids of the tasks it changes, whose rows show it while it waits (shownOn, tasks.js).
    - stages: its requests in order, `(a, c) => Promise` each (stages.js), or a function of the entry giving them.
-   - keepReads: Try again keeps what the first try read (`a.fixed`), instead of reading Vikunja's copy again.
+   - keepReads: Try again keeps what the first try read (`a.fixed`), instead of reading Vikunja's copy again: all of it
+     (true), or the reads a list names.
    - invert(a): the fields of the op that undoes entry `a`, from what `a` recorded, or null for no Undo.
    - merge(older, newer): what replaces an unsent `older` and the `newer` op on its task: an entry, CANCEL or null.
    - waiting: the key of the component's `waiting` that marks its task's rows once it has waited a while.
@@ -124,8 +125,9 @@ export const DEFAULTS = {
 export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
 /* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
    answered. `until` holds a delete back while Restore shows, an add's stages keep the task they made, a label op keeps
-   the label it found or made (`labelId`), and a checklist's start keeps its copies and where it moved its template
-   (`copied`, `notes`, `ticked`). `cut` is how many of its stages a cancelled op had sent (cancelling). */
+   the label it found or made (`labelId`), a checklist's start keeps its copies and where it moved its template
+   (`copied`, `notes`, `ticked`), and Make template keeps what it did to each step and each link (`tickedSteps`,
+   `uncopied`). `cut` is how many of its stages a cancelled op had sent (cancelling). */
 export const SENT = [
   'files',
   'stage',
@@ -155,6 +157,8 @@ export const SENT = [
   'notes',
   'copied',
   'ticked',
+  'tickedSteps',
+  'uncopied',
   'cut',
 ];
 const full = new WeakMap();

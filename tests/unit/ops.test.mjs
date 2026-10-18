@@ -29,11 +29,11 @@ test('every op defines every field, null for the default, and the comment on OPS
     for (const a of [{ op: name }, { op: name, taskId: 4 }])
       assert.deepEqual(
         [
-          typeof full.keepReads,
+          typeof full.keepReads === 'boolean' || full.keepReads.every(k => typeof k === 'string'),
           ['kept', 'back', 'lines', 'undone'].includes(refusalOf(a)),
           ['undo', 'text', 'back', 'lines', 'made', 'unmade'].includes(cancelOf(a)),
         ],
-        ['boolean', true, true],
+        [true, true, true],
         name,
       );
     assert.ok(Array.isArray(op.asks) && Array.isArray(op.saw), `${name} declares asks and saw`);

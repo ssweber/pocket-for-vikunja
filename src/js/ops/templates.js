@@ -3,21 +3,21 @@
    them is a to-do anywhere. Every request has a key. Cancel takes back what the op made, with the same op marked
    `cancelled`, in stages that come after the ones it sent (cancelledStages). */
 import { allPages } from '../api.js';
-import { isSet } from '../dates.js';
+import { isSet, repeats } from '../dates.js';
 import { OP_WORDS } from '../messages.js';
 import { ALREADY } from '../sync.js';
 import { ZERO } from '../util.js';
 import { isTemplateLabel, templateTitle } from '../checklists.js';
 import { opsId, MOVED, TASK } from '../app/tasks.js';
 import { LINE } from './add.js';
-import { cancelledStages, notFound, patch, place, unadd, unplace } from './stages.js';
+import { movedFrom } from './ticks.js';
+import { backOf, cancelledStages, notFound, now, patch, place, unadd, unplace } from './stages.js';
 
-/* Mark task `id` done or not done, and put Vikunja's answer into its copy. Vikunja moves a repeating task marked done on
-   to its next date instead, and Pocket's copy may not know that it repeats, so only the reply says what a tick left. A
-   task deleted in the meantime is skipped. */
-async function setDone(c, id, done) {
-  const body = { done },
-    sure = done ? {} : body,
+/* Change task `id`'s fields (`body`), and put Vikunja's answer into its copy. Returns Vikunja's reply. Vikunja moves a
+   repeating task marked done on to its next date instead, and Pocket's copy may not know that it repeats, so only the
+   reply says what a tick left. A task deleted in the meantime is skipped. */
+async function setTask(c, id, body) {
+  const sure = body.done === true ? {} : body,
     t = await c.send('/tasks/' + id, { method: 'PATCH', body, on: { [id]: sure } }).catch(e => {
       notFound(e);
       return false;
@@ -27,6 +27,7 @@ async function setDone(c, id, done) {
       w.made(id, c.from(t), sure);
       if (t) w.answer([t], TASK, c.from(t));
     });
+  return t || null;
 }
 
 /* ---------- making a task a template ---------- */
@@ -58,16 +59,35 @@ async function label(a, c) {
       if (e.code !== ALREADY.label) throw e;
     });
 }
-// Each step the sheet showed open (`steps`) is marked done, one stage each, so Cancel knows which it reached.
-const tickStep = i => (a, c) => setDone(c, a.steps[i], true);
+/* Each step the sheet showed open (`steps`) is marked done, one stage each, so Cancel knows which it reached. A step
+   Vikunja has done already, as when a teammate ticked it, is left alone. Each tick keeps what the step had before and
+   what the tick left in those fields (`tickedSteps`), so Cancel puts back only a step nobody has changed since. */
+const tickStep = i => async (a, c) => {
+  const id = a.steps[i],
+    was = await c.once('step' + i, async () => {
+      const t = await now({ task: id }, c);
+      return t && !t.done ? { done: false, ...(repeats(t) && movedFrom(t)) } : null;
+    });
+  if (!was) return;
+  (a.tickedSteps ||= [])[i] = { was };
+  await c.save();
+  const t = await setTask(c, id, { done: true });
+  if (t) a.tickedSteps[i].left = Object.fromEntries(Object.keys(was).map(k => [k, t[k]]));
+};
 /* A "copied from" link, made when the task was duplicated in the web app, would make the template look like a
-   checklist being set up, so it is deleted. The links are read once, for Cancel. */
+   checklist being set up, so it is deleted. The links are read once. Each is recorded before its request
+   (`uncopied`), so Cancel puts back every link this op may have deleted, also after a refusal partway. */
 async function uncopy(a, c) {
   const ids = await c.once('copies', async () =>
     ((await c.read('/tasks/' + a.task)).related_tasks?.copiedfrom || []).map(x => x.id),
   );
-  for (const id of ids)
+  for (const id of ids) {
+    if (!(a.uncopied ||= []).includes(id)) {
+      a.uncopied.push(id);
+      await c.save();
+    }
     await c.send(`/tasks/${a.task}/relations/copiedfrom/${id}`, { method: 'DELETE', on: { [id]: {} } }).catch(notFound);
+  }
 }
 /* Last, the task is marked done, unless it has a due date, so a template with a date stays due. Its title gets the
    "TEMPLATE: " prefix. Both come from Vikunja's copy, read once. */
@@ -83,9 +103,18 @@ const MAKES = a => [find, label, ...(a.steps || []).map((_, i) => tickStep(i)), 
 // What Cancel takes back, each part only once the stage that made it is done (`cut`).
 const unlabel = (a, c) =>
   c.send(`/tasks/${a.task}/labels/${a.labelId}`, { method: 'DELETE', on: { [a.task]: {} } }).catch(notFound);
-const untickStep = i => (a, c) => setDone(c, a.steps[i], false);
+// A step goes back to what it had before its tick, only in the fields Vikunja still has as the tick left them. Without
+// the tick's answer, the step counts as left as the tick asked: done, and with its dates unknown.
+const untickStep = i => async (a, c) => {
+  const s = a.tickedSteps?.[i];
+  if (!s) return;
+  const id = a.steps[i],
+    { body } = await backOf(a, c, s.was, s.left ?? { done: true }, { id, name: 'back' + i });
+  if (Object.keys(body).length) await setTask(c, id, body);
+};
+// A link that is there again, as one whose delete Vikunja refused, is no error.
 async function recopy(a, c) {
-  for (const id of a.fixed.copies)
+  for (const id of a.uncopied)
     await c
       .send(`/tasks/${a.task}/relations`, {
         method: 'POST',
@@ -97,12 +126,11 @@ async function recopy(a, c) {
       });
 }
 const UNMAKES = a => {
-  const done = k => (a.cut || 0) > k,
-    n = (a.steps || []).length;
+  const done = k => (a.cut || 0) > k;
   return [
     ...(done(1) && a.fixed?.labeled ? [unlabel] : []),
     ...(a.steps || []).flatMap((_, i) => (done(2 + i) ? [untickStep(i)] : [])),
-    ...(done(2 + n) && a.fixed?.copies?.length ? [recopy] : []),
+    ...(a.uncopied?.length ? [recopy] : []),
   ];
 };
 
@@ -125,7 +153,8 @@ const asTemplate = t => ({
 export const makeTemplate = {
   apply: (t, a) => (a.cancelled ? { ...t } : asTemplate(t)),
   stages: cancelledStages(MAKES, UNMAKES),
-  keepReads: true,
+  // A refusal at `finish` is tried again with the title Vikunja has then, so a rename made since stays.
+  keepReads: ['labeled', 'copies'],
   refusal: a => (a.cancelled ? 'dropped' : 'kept'),
   cancel: a => (a.cancelled ? 'undo' : 'unmade'),
   sheetPlace: 'sheet:top',
@@ -150,7 +179,7 @@ export const makeTemplate = {
 
 const [prepare, made, labels, people, link] = LINE;
 // A step is made under its template as an add box's line is made (LINE), then marked done.
-const tick = (a, c) => setDone(c, a.taskId, true);
+const tick = (a, c) => setTask(c, a.taskId, { done: true });
 const ADDS = a => [prepare, made, labels, people, link, tick, ...(a.after != null ? [place] : [])];
 
 /* A step added to template `task`: a line typed in the box under the template's steps, or in New template, as quick

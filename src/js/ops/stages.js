@@ -109,16 +109,17 @@ const sameField = (k, x, y) => {
    first sent. A field Vikunja still has as the op left it (`check`) goes back, and a field that has its value before
    needs nothing. Any other value is a change made since, which stays, and the Undo ends as changed since once it has
    sent the rest (`left`). Without `check`, as when this tab never saw the op's answer, any other value counts as a
-   change made since. */
-export const backOf = (a, c, back, check) =>
-  c.once('back', async () => {
-    const t = await now(a, c),
+   change made since. A Cancel stage that puts back another task than the op's names it (`id`), and keeps the body
+   under its own `name`. */
+export const backOf = (a, c, back, check, { id = a.task, name = 'back' } = {}) =>
+  c.once(name, async () => {
+    const t = await now({ task: id }, c),
       body = {};
     let left = !t;
     for (const [k, v] of Object.entries(t ? back : {}))
       if (check && !sameField(k, t[k], v) && sameField(k, t[k], check[k])) body[k] = v;
       else if (!sameField(k, t[k], v)) left = true;
-    if (left && t) c.task = t;
+    if (left && t && id === a.task) c.task = t;
     return { body, left };
   });
 

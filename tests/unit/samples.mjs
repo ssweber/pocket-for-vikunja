@@ -398,6 +398,25 @@ export const SAMPLES = {
       v.task(9).done,
     unseen: ['related_tasks'],
   },
+  // Task 7 has the "template" label already, as a teammate's Make template that stopped partway leaves it. Cancel
+  // leaves the label on.
+  'makeTemplate, labelled already': {
+    op: 'makeTemplate',
+    labels: [TEMPLATE],
+    tasks: [
+      task(7, 'Closing', { labels: [TEMPLATE], related_tasks: { subtask: [{ id: 8 }] } }),
+      task(8, 'Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
+    ],
+    fields: (ops, t = { id: 7 }) => ({
+      op: 'makeTemplate',
+      task: t.id,
+      steps: { 7: [8], 1: [2, 3] }[t.id] || [],
+      label: t.title || 'Closing',
+      run: null,
+    }),
+    made: v =>
+      v.task(7).title === 'TEMPLATE: Closing' && v.task(7).done && v.task(7).labels.length === 1 && v.task(8).done,
+  },
   // A step added to template 7 after its first step, as the box under that step sends it. It is made done.
   templateStep: {
     labels: [TEMPLATE],

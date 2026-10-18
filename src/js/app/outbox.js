@@ -136,7 +136,10 @@ export default {
     await sync.lock(async () => {
       const e = await sync.fresh(id);
       if (!e?.failed) return;
-      if (!opOf(e).keepReads) delete e.fixed;
+      const keep = opOf(e).keepReads;
+      if (Array.isArray(keep) && e.fixed)
+        e.fixed = Object.fromEntries(Object.entries(e.fixed).filter(([k]) => keep.includes(k)));
+      else if (!keep) delete e.fixed;
       delete e.failed;
       e.fails = 0;
       e.key = uuid7();
