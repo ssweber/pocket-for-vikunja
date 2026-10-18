@@ -145,10 +145,10 @@ const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
    a task with nothing in it as well. The write starts with the op's first request and stays in flight across tries,
    because a request whose reply was lost may still reach Vikunja. It ends once the op stops waiting in the outbox:
    answered, refused or gone (keyOps). The op's change counts from its first request in this session (`at`), also when
-   Try again sends it after it was refused. An op sent before this page loaded (`before`) whose requests the relay
-   only replays here was made at a time the page doesn't know, before all of its reads (stageContext). Once it makes a
-   request fresh, it counts from that request, so its part made earlier can overwrite a teammate's change the page
-   read. So its tasks are read again once it is answered (`replays`). */
+   Try again sends it after it was refused. An op sent before this page loaded was made at a time the page doesn't
+   know, so it counts from before all of the page's reads (EARLIER) until it makes a request fresh (`start`,
+   stageContext). From then on its part made earlier can overwrite a teammate's change the page read, so its tasks are
+   read again once it is answered (`replays`). */
 export const sendingOp = a => {
   const was = opWrites.get(a.id);
   if (was && !was.ended) return was;
@@ -165,7 +165,7 @@ export const sendingOp = a => {
   const w = writes(on);
   Object.assign(
     w,
-    was ? { at: was.at, start: was.start, before: was.before } : { start: w.at, before: !!a.sent, replays: !!a.sent },
+    was ? { at: was.at, start: was.start } : { at: a.sent ? EARLIER : w.at, start: w.at, replays: !!a.sent },
   );
   opWrites.set(a.id, w);
   return w;

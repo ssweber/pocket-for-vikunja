@@ -126,8 +126,8 @@ export function stageContext(a, app, save = () => sync.save(a)) {
         own?.end();
       }
       /* A replayed reply is as old as its request's first send, which was no earlier than the op's first request. An op
-         sent before this page loaded counts from before this page while the relay only replays it (sendingOp). */
-      if (w?.before) Object.assign(w, { before: replayed, at: replayed ? EARLIER : w.start });
+         sent before this page loaded counts from before this page until it makes a request fresh (sendingOp). */
+      if (w?.at === EARLIER && !replayed) w.at = w.start;
       if (replayed && w) w.replays = true;
       const from = { at: replayed ? (w?.at ?? at) : at, replayed, crossed: w?.crossed ?? new Map(), fields: w?.fields };
       if (got && typeof got === 'object') heard.set(got, from);

@@ -1506,7 +1506,7 @@ test("an op sent again with Try again counts from its first request, so a teamma
 
 /* An op that the page before this one sent, and Vikunja made, is sent again, and the relay replays every request.
    Vikunja made it before this page read the tasks, so a teammate's change read since stays, on the step and on the
-   checklist's progress the op wrote. */
+   checklist's progress the op wrote. It stays from the op's answer on, not only once the tasks are read again. */
 test("an op sent before the page loaded, and only replayed now, leaves a teammate's change read since", async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([
@@ -1523,9 +1523,30 @@ test("an op sent before the page loaded, and only replayed now, leaves a teammat
   for (const k of [1, 2]) app.row(copyOf(k));
   const e = { id, kind: 'act', op: 'progress', task: 2, pct: 40, run: 1, sent: true, stage: 0, fails: 0 };
   await sync.add({ ...e, fixed: { figure: { percent_done: 0.4 } }, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  const { go } = holding((path, method) => method === 'GET');
   await app.sendActs(id);
   await settled();
+  assert.deepEqual([copyOf(1).percent_done, copyOf(2).percent_done], [0.9, 0.75], 'before the tasks are read again');
+  go();
+  await settled();
   assert.deepEqual([copyOf(1).percent_done, copyOf(2).percent_done], [0.9, 0.75]);
+});
+
+/* A tick the page before this one sent never reached Vikunja, and this page makes all of it fresh. Its change counts
+   from its first request here, so the ✅, which no reply brings, goes into the copy with its answer. */
+test('an op sent before the page loaded, and made fresh now, shows in the copy from its answer on', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', done: false, reactions: {} }]),
+    app = sender(),
+    id = uuid7();
+  read([structuredClone(v.task(1))], TASK_REACTIONS_COMMENTS);
+  app.row(copyOf(1));
+  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, stage: 0, fails: 0 };
+  await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  holding((path, method) => method === 'GET');
+  await app.sendActs(id);
+  await settled();
+  assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅']?.map(u => u.id)], [true, [1]]);
 });
 
 /* A request whose reply was lost can reach Vikunja before a teammate's change, and the read that shows the change is
@@ -1589,7 +1610,7 @@ test("an op sent before the page loaded, and finished fresh now, leaves a teamma
     id = uuid7();
   await api('/tasks/1', { method: 'PATCH', body: { done: true }, key: id + ':0:0' });
   v.task(1).done = false; // a teammate unticks it
-  read([v.task(1)], TASK_REACTIONS_COMMENTS);
+  read([structuredClone(v.task(1))], TASK_REACTIONS_COMMENTS);
   app.row(copyOf(1));
   const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, stage: 1, fails: 0 };
   await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
