@@ -68,12 +68,21 @@ export async function tokenHash(t) {
 let serverOffset = null; // Vikunja's clock minus the phone's, from the Date header of its replies
 // Convert a time on the phone's clock to Vikunja's.
 export const serverTime = ms => ms + (serverOffset ?? 0);
-/* The earliest moment, on Vikunja's clock, at which a send that got no reply could have created something. Before
-   sending a copy or a file again, Pocket looks for one created after this moment. The 3 seconds cover the Date
-   header's whole seconds and the reply's travel time, so one made elsewhere before the send isn't taken for it. An
-   outbox entry saved before Pocket recorded send times has no `triedAt`, so 2 minutes before its capture `at` is used.
-   Vikunja can't tag a request, so one made elsewhere in those few seconds could still be mistaken for it. */
-export const triedSince = (triedAt, at) => (triedAt ? serverTime(triedAt) - 3000 : new Date(at).getTime() - 2 * 60000);
+/* A file upload's body, as a browser builds one from FormData, with a boundary made from the upload's key. The relay
+   answers a key sent again with another body with 422, and FormData picks a new boundary on every send. */
+export function fileBody(file, name, key) {
+  const b = 'pocket-' + key,
+    safe = name.replace(/"/g, '%22').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  return new Blob(
+    [
+      `--${b}\r\nContent-Disposition: form-data; name="files"; filename="${safe}"\r\n`,
+      `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`,
+      file,
+      `\r\n--${b}--\r\n`,
+    ],
+    { type: 'multipart/form-data; boundary=' + b },
+  );
+}
 /* Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
    renewal, so renewing takes Vikunja's "vikunja-token-refresh" lock. If another tab renewed while this one waited for
    the lock, its new token is used instead of spending the cookie again. */
@@ -162,7 +171,7 @@ async function request(
   const headers = {};
   const token = sharedToken.get();
   if (auth && token) headers.Authorization = 'Bearer ' + token;
-  const form = body instanceof FormData; // for a file upload the browser sets the content type
+  const form = body instanceof Blob; // a file upload, whose content type is the body's own (fileBody)
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
   if (key) headers['Idempotency-Key'] = '"' + key + '"'; // a structured-field string, so quoted
   let res;

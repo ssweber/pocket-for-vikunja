@@ -62,7 +62,9 @@ export function fakeVikunja(tasks = []) {
   };
   v.task = id => v.tasks.get(id);
   globalThis.fetch = async (url, { method = 'GET', headers = {}, body } = {}) => {
-    const key = headers['Idempotency-Key']?.replace(/^"|"$/g, '');
+    const key = headers['Idempotency-Key']?.replace(/^"|"$/g, ''),
+      // A file's body as the relay compares it, byte for byte.
+      bytes = body instanceof Blob ? Buffer.from(await body.arrayBuffer()).toString('latin1') : body;
     const req = {
       method,
       path: new URL(url).pathname.replace(/^\/api\/(v2|v1\/plugins\/pocket\/v2)/, ''),
@@ -77,7 +79,7 @@ export function fakeVikunja(tasks = []) {
         'Idempotency-Unknown': 'true',
       });
     if (typeof trouble === 'number') return reply({ message: `HTTP ${trouble} from the fake` }, trouble);
-    const fp = `${method} ${req.path}\n${body ?? ''}`,
+    const fp = `${method} ${req.path}\n${bytes ?? ''}`,
       kept = key && v.relayed.get(key);
     if (kept && kept.fp !== fp) return reply({ message: 'this Idempotency-Key was used for a different request' }, 422);
     if (kept) {
@@ -148,8 +150,9 @@ export function fakeVikunja(tasks = []) {
         res = reply({ message: 'Successfully deleted.' });
       }
     } else if (attach && method === 'POST') {
-      const f = req.body.get('files'),
-        a = { id: 2000 + v.requests.length, file: { name: f.name, size: f.size }, created: new Date().toISOString() };
+      // One file in a multipart body (fileBody, api.js): the boundary, the part's headers, and the file's bytes.
+      const [, , name, data] = bytes.match(/^--([^\r]+)\r\n[^]*?filename="([^"]*)"[^]*?\r\n\r\n([^]*)\r\n--\1--\r\n$/),
+        a = { id: 2000 + v.requests.length, file: { name, size: data.length }, created: new Date().toISOString() };
       (attach.attachments ||= []).push(a);
       res = reply({ success: [a], errors: null });
     } else if (talk && method === 'POST') {

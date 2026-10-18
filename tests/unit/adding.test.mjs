@@ -737,7 +737,7 @@ test("a parent's progress is written once, by the last line under it, after subt
 const photo = () => new File([new Uint8Array([1, 2, 3])], 'van.jpg', { type: 'image/jpeg' });
 const withPhoto = (app, e) => {
   const es = opsOf(app, e);
-  es[0].files = [{ key: 'k' + es[0].id, name: 'van.jpg', size: 3, type: 'image/jpeg', tried: false, sent: false }];
+  es[0].files = [{ key: 'k' + es[0].id, name: 'van.jpg', size: 3, type: 'image/jpeg', sent: false }];
   return es;
 };
 test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines and ticks after it are sent', async t => {
@@ -766,6 +766,28 @@ test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines
   v.trouble = () => null;
   const sent = await app.sendEntry(sync.all(1)[0].id);
   assert.deepEqual([sent.status, sent.uploaded, sync.all(1)], ['sent', 1, []]);
+});
+
+test('a photo whose reply is lost is sent again with the same key and body, and Vikunja gets it once', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 7, title: 'Wipe the till', project_id: 5 }]),
+    app = adding(t),
+    e = entry([line('Pack the van')]);
+  let lose = true;
+  v.trouble = r => (r.path.endsWith('/attachments') && lose ? 'lost' : null);
+  await app.sendLines(withPhoto(app, e), [photo()]);
+  lose = false;
+  const sent = await app.sendEntry(sync.all(1)[0].id),
+    uploads = v.requests.filter(x => x.path.endsWith('/attachments'));
+  assert.deepEqual(
+    [sent.uploaded, uploads.length, uploads[1].key === uploads[0].key, uploads[1].replayed],
+    [1, 2, true, true],
+    'the second send is answered from the first',
+  );
+  assert.deepEqual(
+    v.task(101).attachments.map(a => a.file),
+    [{ name: 'van.jpg', size: 3 }],
+  );
 });
 
 test('a refused change to a task does not hold back subtasks added to it, and no message names a line that waits', async t => {

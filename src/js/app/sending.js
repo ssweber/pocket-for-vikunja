@@ -3,6 +3,7 @@ import { raw, userCache } from '../util.js';
 import {
   api,
   ApiError,
+  fileBody,
   items,
   NetError,
   opening,
@@ -10,7 +11,6 @@ import {
   seenToken,
   sharedToken,
   TRANSIENT,
-  triedSince,
 } from '../api.js';
 import { patiently } from '../checklists.js';
 import { isSet, startOfDay } from '../dates.js';
@@ -341,29 +341,29 @@ export default {
     }
     return uploaded;
   },
-  // Upload one waiting file, unless an earlier try that was cut off already uploaded it. A file Vikunja rejects (for
-  // example because it is too big, or the task is gone) is reported and dropped. After a server error the file is
-  // kept to try again, and `trouble` makes its row show that. `sent` marks the file as dealt with. Returns whether
-  // the file is on the task.
+  /* Upload one waiting file with a key of its own (`upload`), kept in the entry before it is first sent, so an upload
+     sent again after a lost reply is made once. A file Vikunja rejects (for example because it is too big, or the task
+     is gone) is reported and dropped. After a server error the file is kept to try again, and `trouble` makes its row
+     show that. `sent` marks the file as dealt with. Returns whether the file is on the task. */
   async sendFile(entry, taskId, f) {
     const problems = (entry.problems ||= []);
     let ok = false;
     try {
-      if (f.tried && (await this.hasAttachment(taskId, f, entry.at))) ok = true;
+      const file = await sync.file(f.key);
+      if (!file) problems.push(`${f.name} was lost on this device before it uploaded`);
       else {
-        const file = await sync.file(f.key);
-        if (!file) problems.push(`${f.name} was lost on this device before it uploaded`);
-        else {
-          f.tried = true;
-          f.triedAt = Date.now();
+        if (!f.upload) {
+          f.upload = uuid7();
           await sync.save(entry);
-          const form = new FormData();
-          form.append('files', file, f.name);
-          const r = await api(`/tasks/${taskId}/attachments`, { method: 'POST', body: form });
-          // Vikunja answers OK even when it rejects a file, and puts the reasons in `errors`.
-          if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`);
-          else ok = true;
         }
+        const r = await api(`/tasks/${taskId}/attachments`, {
+          method: 'POST',
+          body: fileBody(file, f.name, f.upload),
+          key: f.upload,
+        });
+        // Vikunja answers OK even when it rejects a file, and puts the reasons in `errors`.
+        if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`);
+        else ok = true;
       }
     } catch (e) {
       if (e instanceof ApiError && (e.status >= 500 || TRANSIENT.has(e.status))) {
@@ -372,19 +372,14 @@ export default {
         e.again = true;
       }
       if (passing(e) || e.again || e.status === 401) throw e;
-      problems.push(`${f.name} didn't upload: ${e.message}`);
+      // The relay can't tell whether Vikunja has the file, and only the user can check.
+      problems.push(
+        e.code === 'unknown' ? notKnown(f.name).replace(/\.$/, '') : `${f.name} didn't upload: ${e.message}`,
+      );
     }
     f.sent = true;
     await sync.save(entry, [f.key]);
     return ok;
-  },
-  // Whether the file was already uploaded to the task since the entry was added.
-  async hasAttachment(taskId, f, at) {
-    const t = await api('/tasks/' + taskId),
-      since = triedSince(f.triedAt, at);
-    return (t?.attachments || []).some(
-      a => a.file?.name === f.name && a.file?.size === f.size && new Date(a.created).getTime() >= since,
-    );
   },
   // Put tasks that just reached Vikunja into the list on screen, where they belong, without waiting for the list to
   // reload. On a patchy connection the reload can fail, and the list would otherwise stay as it was, without them.

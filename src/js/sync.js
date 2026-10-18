@@ -301,7 +301,6 @@ export const fileEntry = f => ({
   name: f.name,
   size: f.size,
   type: f.type,
-  tried: false,
   sent: false,
 });
 /* Turn the lines typed in a box into the lines an add op is made from (addLines, ops/add.js). `lines` is [{raw, p,
