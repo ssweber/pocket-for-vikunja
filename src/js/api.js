@@ -209,8 +209,9 @@ async function request(
     const reason = j.detail || j.message || res.statusText || 'HTTP ' + res.status;
     /* The relay answers 409 while the first request with this key still runs, so Pocket waits and asks again. A wait
        is at most 10 seconds, whatever Retry-After says. With Idempotency-Unknown, the relay doesn't know whether
-       that request made the change, and only the user can tell. */
-    if (res.status === 409 && key) {
+       that request made the change, and only the user can tell. Vikunja's own 409, such as a link it has already, gives
+       its error code, and is a refusal. */
+    if (res.status === 409 && key && j.code === undefined) {
       if (res.headers.get('idempotency-unknown') === 'true') throw new ApiError(409, reason, 'unknown');
       if (busy >= 3) throw new ApiError(409, reason, 'running');
       const s = parseFloat(res.headers.get('retry-after'));

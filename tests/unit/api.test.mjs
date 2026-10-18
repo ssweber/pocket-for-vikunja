@@ -266,3 +266,11 @@ test('a 409 with Idempotency-Unknown is not sent again, and is not a reason to t
   );
   assert.ok(!passing(e));
 });
+test("a 409 that gives Vikunja's error code is Vikunja's refusal, not the relay waiting, and is not sent again", async () => {
+  component();
+  const sent = relay([409, { code: 4008, message: 'The task relation already exists.' }]);
+  const e = await api('/tasks/5/relations', { method: 'POST', body: {}, key: KEY }).catch(e => e);
+  assert.equal(sent.length, 1);
+  assert.deepEqual([e.status, e.code], [409, 4008]);
+  assert.ok(!passing(e));
+});

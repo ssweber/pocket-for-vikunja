@@ -19,7 +19,7 @@ const lost = () => new TypeError('network error');
    and a read lists each subtask as the subtask is now. A task marked done gets the time in done_at, and a task opened
    again loses it.
    POST /projects/:id/tasks creates a task with the next id, never one a deleted task had. POST /tasks/:id/relations
-   makes one task a subtask of another, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
+   makes one task a subtask of another, or answers 4008 when it is one already, and DELETE /tasks/:id/relations/subtask/:other removes the relation from both
    tasks, as Vikunja does. A task's comments, assignees, position and files (POST /tasks/:id/attachments) can be added
    to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
    one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
@@ -200,9 +200,14 @@ export function fakeVikunja(tasks = []) {
       res = reply(made);
     } else if (over && method === 'POST') {
       const sub = v.tasks.get(req.body.other_task_id);
-      ((over.related_tasks ||= {}).subtask ||= []).push({ id: sub.id });
-      ((sub.related_tasks ||= {}).parenttask ||= []).push({ id: over.id });
-      res = reply(req.body);
+      if (!sub) res = reply({ message: 'The task does not exist.' }, 404);
+      else if (over.related_tasks?.subtask?.some(s => s.id === sub.id))
+        res = reply({ code: 4008, message: 'The task relation already exists.' }, 409);
+      else {
+        ((over.related_tasks ||= {}).subtask ||= []).push({ id: sub.id });
+        ((sub.related_tasks ||= {}).parenttask ||= []).push({ id: over.id });
+        res = reply(req.body);
+      }
     } else if (cut && method === 'DELETE') {
       const [, a, kind, b] = cut,
         back = { subtask: 'parenttask', parenttask: 'subtask' }[kind];
