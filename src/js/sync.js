@@ -57,6 +57,7 @@ class Told extends Set {
 export const sync = {
   entries: new Map(), // id -> entry, what the screen shows
   volatile: new Set(), // ids of entries kept in memory only
+  adding: new Map(), // id -> the save of an entry this tab is adding (add)
   bytes: new Map(), // key -> File, for files kept in memory only
   claimed: new Map(), // task id -> {key, at}, see claim()
   held: new Told(), // ids of deletions in this tab that can still be restored, not sent yet
@@ -143,7 +144,12 @@ export const sync = {
 
   // Save a new entry and its files together. Returns {kept, full}. `kept` says whether it reached the database, and
   // `full` whether the phone is out of space.
-  async add(entry, files) {
+  add(entry, files) {
+    const saving = this.put(entry, files).finally(() => this.adding.delete(entry.id));
+    this.adding.set(entry.id, saving);
+    return saving;
+  },
+  async put(entry, files) {
     this.entries.set(entry.id, entry);
     tell();
     try {
@@ -211,6 +217,8 @@ export const sync = {
   },
   // The entry to send from. It is the database's copy, which another tab may have changed. Null if that tab sent it.
   async fresh(id) {
+    // An entry this tab is still adding isn't in the database yet, and would read as sent by another tab.
+    await this.adding.get(id);
     if (this.volatile.has(id)) return this.entries.get(id) || null;
     try {
       const e = await this.tx(['outbox'], 'readonly', s => s('outbox').get(id));

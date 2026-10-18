@@ -849,3 +849,13 @@ test('a tick on a task deleted in Vikunja since leaves the outbox, and says why'
     ["A tick on “Call Jo” couldn't be saved: The task does not exist.", null],
   );
 });
+test('an Undo the sender reads while it is still being saved on the phone stays in the outbox to be sent', async t => {
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  const e = { id: uuid7(), kind: 'act', op: 'undone', task: 5, user: 1, at: new Date().toISOString(), n: 0, files: [] },
+    adding = sync.add(e, []),
+    read = await sync.fresh(e.id);
+  await adding;
+  assert.deepEqual([read?.id, sync.all(1).map(x => x.id)], [e.id, [e.id]]);
+});
