@@ -1809,7 +1809,8 @@ try {
 
   await step('cancel-a-start-whose-copy-was-made', async () => {
     // The checklist's copy reaches Vikunja but the reply doesn't, and the start is cancelled without a connection. Once
-    // Pocket reaches Vikunja, it finds and deletes the copy, so no half-made checklist is left looking like a second template.
+    // Pocket reaches Vikunja, it sends the copy's request again with its key, gets the copy and deletes it, so no
+    // half-made checklist is left looking like a second template.
     const copies = async () => ((await api('/tasks/' + template.id)).related_tasks?.copiedto || []).length;
     const before = await copies();
     let first = true;
@@ -1821,7 +1822,7 @@ try {
       }
       return r.abort('internetdisconnected');
     };
-    await page.route('**/api/v2/tasks/*/duplicate', lose);
+    await page.route('**/api/v1/plugins/pocket/v2/tasks/*/duplicate', lose);
     await toastGone();
     await openStart();
     await page.fill('#start-name', 'Called off');
@@ -1832,7 +1833,7 @@ try {
     const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} ·"):has-text("· Called off")`;
     await page.click(`${waiting} button[aria-label^="Don't start"]`);
     await page.waitForSelector(waiting, { state: 'detached' });
-    await page.unroute('**/api/v2/tasks/*/duplicate', lose);
+    await page.unroute('**/api/v1/plugins/pocket/v2/tasks/*/duplicate', lose);
     await context.setOffline(false);
     await online();
     await until('the copy is still in Vikunja', async () => (await copies()) === before, 40000);
@@ -1855,14 +1856,14 @@ try {
       await r.fetch();
       return r.abort('internetdisconnected');
     };
-    await page.route('**/api/v2/tasks/*/duplicate', lose); // the checklist's own copy goes through, and the reply to its first step's copy is lost
+    await page.route('**/api/v1/plugins/pocket/v2/tasks/*/duplicate', lose); // the checklist's own copy goes through, and the reply to its first step's copy is lost
     await toastGone();
     await openStart();
     await page.click('#start-go');
     await said('checklists', 'starts as soon as Pocket reaches Vikunja');
     await online();
     await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
-    await page.unroute('**/api/v2/tasks/*/duplicate', lose);
+    await page.unroute('**/api/v1/plugins/pocket/v2/tasks/*/duplicate', lose);
     const after = await copies();
     if (after.some((n, i) => n !== before[i] + 1))
       throw new Error(`copies of each step: ${before} before, ${after} after`);

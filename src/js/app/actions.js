@@ -4,7 +4,7 @@
    its step order in its notes instead. */
 import { api, NetError, patchTask } from '../api.js';
 import { dueInfo, isSet, movedDue, plainReminders, reminderKey, repeats } from '../dates.js';
-import { figurePatch, isSubtask, openSubtasks, pctOf } from '../progress.js';
+import { isSubtask, openSubtasks, pctOf } from '../progress.js';
 import {
   dayWord,
   doneText,
@@ -46,9 +46,8 @@ export default {
   /* ---------- saving a change ---------- */
   /* Save a task's changes straight to Vikunja, and put Vikunja's answer into its copy, which shows it on the rows.
      Resolves to Vikunja's copy, or rejects if the save fails. The caller writes nothing more, since the copy has it.
-     The sheet's own fields go through the outbox as edits. What still saves here is a parent's progress
-     (writeFigure), a checklist's name (saveRunName), a template step's name and asks, and a step's place in a template
-     or a checklist. */
+     The sheet's own fields go through the outbox as edits. What still saves here is a checklist's name (saveRunName), a
+     template step's name and asks, and a step's place in a template. */
   async saveTask(id, patch, rebase) {
     this.writing++; // counts until the reply arrives
     try {
@@ -237,12 +236,6 @@ export default {
     const run = this.stepRun(t) ?? null,
       up = run ? null : inSheet ? this.sheet.id : isSubtask(t) ? this.parentIdOf(t) : null;
     return { run, ...(typeof up === 'number' && { up }) };
-  },
-  /* Save a checklist's computed percent_done after a step is inserted. It reads the checklist first and saves only if
-     the percentage changed, without a message. Templates are skipped. An op does this in its last stage instead
-     (figure, ops/stages.js). */
-  writeFigure(id) {
-    return this.saveTask(id, null, now => (this.role(now) === 'template' ? null : figurePatch(now)));
   },
   // Find a task's parent from the task itself, from the open sheet, or from the subtask relations of the loaded tasks.
   parentIdOf(t) {

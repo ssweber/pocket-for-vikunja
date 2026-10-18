@@ -27,12 +27,12 @@ import {
   withOrder,
 } from '../checklists.js';
 import { captureLines } from '../quickadd.js';
-import { randomId, sync, uuid7 } from '../sync.js';
+import { randomId, uuid7 } from '../sync.js';
 import { jobsFor } from './sending.js';
 import { saved } from '../lists.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
-import { movedSteps, tagOf } from '../ops/index.js';
+import { movedSteps, startsIn, tagOf } from '../ops/index.js';
 import {
   copyOf,
   putting,
@@ -531,40 +531,9 @@ export default {
     ];
     return who.length ? 'For ' + andList(who) : '';
   },
-  /* Cancel a checklist start that is still waiting to be sent. Anything that already reached Vikunja is deleted
-     (sendRun), now or once there is a connection. The outbox entry stays until then, so no half-made copy is left
-     behind. */
-  async cancelStart(id) {
-    let gone = false,
-      made = false;
-    await sync.lock(async () => {
-      const e = await sync.fresh(id);
-      if (!e) {
-        gone = true;
-        return;
-      }
-      made = !!(e.tried || e.steps.some(s => s.tried));
-      if (made) await sync.save({ ...e, cancelled: true });
-      else await sync.remove(id);
-    });
-    this.refreshPending();
-    if (gone) {
-      this.say("The checklist had already started. Delete it from its ⋯ menu if you don't need it.", {
-        place: ['sheet:top', 'checklists'],
-      });
-      this.render();
-      return;
-    }
-    if (made) {
-      await sync.lock(() => this.sendEntry(id));
-      this.refreshPending();
-    }
-    this.say('Not started', { place: ['sheet:top', 'checklists'] });
-    this.render();
-  },
   // The checklist starts in a project that are waiting to be sent or being sent now.
   startingIn(pid) {
-    return this.pending.filter(e => e.kind === 'run' && !e.cancelled && e.template.project_id === pid);
+    return startsIn(this.pending, pid);
   },
   /* The open checklists in checklist projects, and whether each is the user's (started by the user or assigned to the
      user). Today shows only the user's checklists. Returns {index, mine, open}. `index` maps each checklist id to that

@@ -1475,7 +1475,7 @@ test('Repeat copies the step above the box right after it, whatever is on the ca
   app.seatFoot = () => {};
   app.showStep(2); // tap C, which puts it on the card
   app.say = (text, o) => said.push({ text, ...o });
-  app.dropStep = async () => false; // the step is still waiting, so it is not sent
+  app.cancelMade = async () => false; // the step is still waiting, so it is not sent
   app.runBoxAt = 51; // the box is under A
   await app.repeatAbove();
   assert.deepEqual(

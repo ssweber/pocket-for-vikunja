@@ -343,7 +343,8 @@ const ACTIONS = [
 ];
 
 /* Vikunja's tasks by id, with only what a change can differ in: no times Vikunja sets itself, and the people,
-   reactions, comments and related tasks as their ids or text. A row is compared the same way (shape). */
+   reactions, comments and related tasks as their ids or text, without a kind of relation that lists none. A row is
+   compared the same way (shape). */
 const shape = (t, exists = () => true) =>
   t &&
   Object.fromEntries(
@@ -363,7 +364,9 @@ const shape = (t, exists = () => true) =>
                 )
               : k === 'related_tasks'
                 ? Object.fromEntries(
-                    Object.entries(v || {}).map(([kind, list]) => [kind, (list || []).map(s => s.id).filter(exists)]),
+                    Object.entries(v || {})
+                      .map(([kind, list]) => [kind, (list || []).map(s => s.id).filter(exists)])
+                      .filter(([, ids]) => ids.length),
                   )
                 : v,
       ]),
@@ -576,7 +579,15 @@ test('every op in OPS has a sample', () => {
    entry excuses one rule (`rule`, its name in RULES) for the sample named `sample`, in the states that `state` matches,
    after `action` (any action when left out). t.diagnostic names each scenario it excuses. An entry that no scenario
    needs any more fails the test, so it is removed once the bug is fixed. */
-const KNOWN = [];
+const KNOWN = [
+  {
+    sample: 'startRun',
+    rule: 'Undo puts back what the op changed',
+    state: /^unknown, but made$/,
+    action: 'Undo',
+    why: "the relay can't say whether Vikunja made the checklist's copy, so its Undo can't find the copy to delete it",
+  },
+];
 
 for (const [name, sample] of Object.entries(SAMPLES))
   test(`${name} passes the lifecycle checks`, async t => {

@@ -2,7 +2,7 @@
 import { fmtSize, taskDrafts } from '../util.js';
 import { addedText, parseStep } from '../checklists.js';
 import { older, sendState, sync, uuid7 } from '../sync.js';
-import { cancelOf, dropUnder, opOf, passUps, photosOf } from '../ops/index.js';
+import { cancelling, cancelOf, dropUnder, opOf, passUps, photosOf } from '../ops/index.js';
 import { UNKNOWN } from '../messages.js';
 import { copyOf } from './tasks.js';
 
@@ -23,15 +23,7 @@ export default {
     const rows = [];
     for (const e of [...this.failed, ...this.pending].sort(older)) {
       const when = whenText(e.at);
-      if (e.kind === 'run') {
-        const what = (e.cancelled ? 'Cancelling the start of ' : 'Starting ') + e.template.title;
-        rows.push({ key: e.id, text: what, when, drop: e.cancelled ? null : ['cancelStart', e.id] });
-      } else if (e.kind === 'step') {
-        const text = e.cancelled
-          ? `Removing ${quoted(e.title)}, because its insert was cancelled`
-          : `${e.from || e.tpl != null ? 'Repeated' : 'Inserted'} in ${e.runTitle}: ${quoted(e.title)}`;
-        rows.push({ key: e.id, text, when, drop: e.cancelled ? null : ['dropStep', e.id] });
-      } else if (e.kind === 'act') {
+      if (e.kind === 'act') {
         // A change the relay can't vouch for wasn't refused, so its reason stands alone. A line is cancelled as its
         // waiting row's Cancel does it, until its first request is sent.
         const why = e.failed?.message,
@@ -164,6 +156,7 @@ export default {
     const a = [...this.failed, ...this.pending].find(e => e.id === id);
     if (!a) return;
     const how = cancelOf(a);
+    if (how === 'unmade') return this.cancelMade(id);
     let gone = false,
       started = false,
       under = [],
@@ -232,5 +225,40 @@ export default {
       },
     });
     this.flush(); // sends the actions that waited behind it
+  },
+  /* Cancel an op that makes tasks (its cancel is 'unmade'): a checklist's start, or a step added to a checklist. Its
+     row's × cancels it at any point, and the Outbox does before it is sent or once it is refused. Not sent yet, it
+     leaves the outbox. Sent, what it made is deleted by its own stages (cancelling), now or once Pocket reaches
+     Vikunja. The ops waiting on a step it was adding leave with it. With `quiet`, Pocket says nothing. Returns whether
+     it had been sent in full. */
+  async cancelMade(id, quiet = false) {
+    const a = [...this.failed, ...this.pending].find(e => e.id === id);
+    let was = null;
+    await sync.lock(async () => {
+      const e = (was = await sync.fresh(id));
+      if (!e) return;
+      if (e.sent) await sync.save(cancelling(e));
+      else {
+        await sync.remove(id);
+        this.unmade(id);
+      }
+      for (const x of sync.all(e.user))
+        if (x.kind === 'act' && x.task === 'pending-' + id) {
+          await sync.remove(x.id);
+          this.unmade(x.id);
+        }
+    });
+    if (was?.sent) await sync.lock(() => this.sendEntry(id));
+    this.refreshPending();
+    if (!quiet)
+      this.say(
+        !was
+          ? (a && opOf(a).gone) || 'It was sent before it could be stopped.'
+          : ['Cancelled.', opOf(was).dropped(was, '', copyOf)].filter(Boolean).join(' '),
+        { place: ['sheet:top', 'checklists', 'step'] },
+      );
+    this.render();
+    this.flush(); // sends the ops that waited behind it
+    return !was;
   },
 };

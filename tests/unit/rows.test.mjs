@@ -684,7 +684,7 @@ test('deleting a step added during a checklist asks once, whether from its × or
   };
   try {
     const s = step({ added: 'Inserted', pending: 'e1' });
-    Object.assign(app, { runAdded: null, dropStep: async () => true });
+    Object.assign(app, { runAdded: null, cancelMade: async () => true });
     assert.equal(app.askDeleteStep(s), false);
     assert.deepEqual(asked, [
       "Delete “Take the croissants out”? This step was added to this checklist only. The template doesn't change.",

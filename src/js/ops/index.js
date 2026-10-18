@@ -44,10 +44,12 @@ import { due, repeat } from './dates.js';
 import { edit } from './edit.js';
 import { project } from './project.js';
 import { link, unlink } from './links.js';
+import { addStep, startRun } from './runs.js';
 
 // Import an op's helpers from here, never from its own file. Imported first, its file would load the other ops while
 // stages.js is still loading, and they fail without it.
-export { addLines, dropUnder, LINE, linesUnder, madeStage, passUps, photosOf, refuseLines } from './add.js';
+export { addLines, dropUnder, LINE, linesUnder, passUps, photosOf, refuseLines } from './add.js';
+export { cancelling, startsIn, stepsAdding } from './runs.js';
 export { waitingComments } from './comments.js';
 export { waitingPositions } from './order.js';
 export { lastTick, movedFrom } from './ticks.js';
@@ -77,6 +79,8 @@ export const OPS = {
   unlink,
   assign,
   label,
+  startRun,
+  addStep,
 };
 
 // What each field is when an op sets it to null.
@@ -97,7 +101,8 @@ export const DEFAULTS = {
   // 'undo': nothing goes back, and Cancel offers Undo. 'text': its text goes back to its box and Cancel says so, or
   // with no text Cancel offers Undo. 'back': its text goes back, and its `dropped` words say so. 'lines': the lines
   // under it go back to their box. An unsent line is cancelled as its waiting row's Cancel does it (cancelPending).
-  // 'made': the task it made stays, and the lines under it are sent under that task. Cancel offers no Undo.
+  // 'made': the task it made stays, and the lines under it are sent under that task. Cancel offers no Undo. 'unmade':
+  // the tasks it made are deleted by its own stages, which Cancel marks `cancelled` (cancelMade). Cancel offers no Undo.
   cancel: 'undo',
   sheetPlace: null,
   answered: (app, a) => {
@@ -115,8 +120,9 @@ export const DEFAULTS = {
 // that op's entry (undoOps).
 export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
 /* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
-   answered. `until` holds a delete back while Restore shows, an add's stages keep the task they made, and a label op
-   keeps the label it found or made (`labelId`). */
+   answered. `until` holds a delete back while Restore shows, an add's stages keep the task they made, a label op keeps
+   the label it found or made (`labelId`), and a checklist's start keeps its copies and where it moved its template
+   (`copied`, `notes`, `ticked`). `cut` is how many of its stages a cancelled op had sent (cancelling). */
 export const SENT = [
   'files',
   'stage',
@@ -143,6 +149,10 @@ export const SENT = [
   'linked',
   'arrived',
   'labelId',
+  'notes',
+  'copied',
+  'ticked',
+  'cut',
 ];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't

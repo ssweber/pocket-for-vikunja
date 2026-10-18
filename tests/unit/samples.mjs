@@ -4,6 +4,7 @@
 export const ME = { id: 1, username: 'me', name: '' },
   BOB = { id: 7, username: 'bob', name: '' },
   FLOOR = { id: 600, title: 'floor' },
+  TEMPLATE = { id: 601, title: 'template' },
   ZERO = '0001-01-01T00:00:00Z',
   D9 = '2026-10-09T09:00:00.000Z';
 export const task = (id, title, more = {}) => ({
@@ -305,5 +306,101 @@ export const SAMPLES = {
     },
     made: v => v.task(1).description === '<p>pocket:order 3 2</p>',
     cannot: ['partly done'],
+  },
+  /* A checklist started from template 7, with its two steps, at the time the template was due, so the template moves
+     on to the next day. In the randomized test, task `t` is the template, with steps 2 and 3 when it is the checklist. */
+  startRun: {
+    labels: [TEMPLATE],
+    tasks: [
+      task(7, 'Closing', {
+        labels: [TEMPLATE],
+        due_date: D9,
+        repeat_after: 86400,
+        description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>',
+        related_tasks: { subtask: [{ id: 8 }, { id: 9 }] },
+      }),
+      task(8, 'Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
+      task(9, 'Lock up 30m after Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
+    ],
+    fields: (ops, t = { id: 7 }) => {
+      const steps = { 7: [8, 9], 1: [2, 3] }[t.id] || [];
+      return {
+        op: 'startRun',
+        task: t.id,
+        run: null,
+        template: { id: t.id, title: 'Closing', project_id: 5 },
+        name: '',
+        for: [ME],
+        steps: steps.map((from, i) => ({
+          from,
+          title: i ? 'Lock up' : 'Mop the floor',
+          due: null,
+          timed: !!i,
+          remind: !!i,
+          tpl: i ? 'Lock up 30m after Mop the floor' : 'Mop the floor',
+        })),
+        tick: D9,
+      };
+    },
+    made: v => {
+      const run = v.task(101);
+      return (
+        run.title.endsWith(' · #1') &&
+        !run.labels.length &&
+        run.assignees.some(u => u.id === ME.id) &&
+        run.description === '<p>Lock the back door too.</p><p>pocket:run</p><p>pocket:order 102 103</p>' &&
+        v.task(103).title === 'Lock up' &&
+        v.task(103).reminders.length === 1 &&
+        v.task(7).due_date !== D9
+      );
+    },
+    unseen: ['related_tasks'],
+  },
+  // A step inserted in the checklist after its last step, as its add box sends it.
+  addStep: {
+    tasks: checklist({ 1: { description: '<p>pocket:order 2 3</p>' } }),
+    fields: (ops, t = { id: 1, project_id: 5, title: 'Closing' }) => ({
+      op: 'addStep',
+      task: t.id,
+      run: t.id,
+      title: 'Sweep up',
+      p: line('Sweep up').p,
+      from: null,
+      tpl: null,
+      before: null,
+      after: 3,
+      under: t.id,
+      pid: t.project_id,
+      runTitle: t.title,
+    }),
+    made: v =>
+      v.task(101).description === '<p>pocket:added</p>' &&
+      v.task(1).description === '<p>pocket:order 2 3 101</p>' &&
+      v.task(1).related_tasks.subtask.some(s => s.id === 101),
+  },
+  // Step 2 repeated in the checklist, as Repeat sends it: a copy of it goes right after it.
+  'addStep, repeated': {
+    op: 'addStep',
+    tasks: checklist({
+      1: { description: '<p>pocket:order 2 3</p>' },
+      2: { description: '<p>pocket:step Mop the floor</p>' },
+    }),
+    fields: (ops, t = { id: 1, project_id: 5, title: 'Closing' }) => ({
+      op: 'addStep',
+      task: t.id,
+      run: t.id,
+      title: 'Mop the floor',
+      from: 2,
+      tpl: 'Mop the floor',
+      before: 3,
+      after: 2,
+      under: t.id,
+      pid: t.project_id,
+      runTitle: t.title,
+    }),
+    made: v =>
+      v.task(101).description === '<p>pocket:step Mop the floor</p><p>pocket:added</p>' &&
+      v.task(1).description === '<p>pocket:order 2 101 3</p>',
+    unseen: ['related_tasks'],
   },
 };

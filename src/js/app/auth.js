@@ -16,7 +16,7 @@ import {
 import { sync } from '../sync.js';
 import { saved } from '../lists.js';
 import { dropCopies } from './tasks.js';
-import { opOf } from '../ops/index.js';
+import { cancelOf, opOf } from '../ops/index.js';
 
 let confirming = null; // app.confirmAccount() while it runs
 
@@ -176,7 +176,7 @@ export default {
         tasks = mine.filter(row),
         files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
       const count = (n, word) => (n === 1 ? 'a ' + word : `${n} ${word}s`);
-      const runs = mine.filter(e => e.kind === 'run' || (e.kind === 'act' && !e.taskId && !row(e))).length,
+      const runs = mine.filter(e => e.kind === 'act' && cancelOf(e) !== 'made' && !row(e)).length,
         n = tasks.length + files.length + runs;
       const what = [
         tasks.length && count(tasks.length, 'task'),

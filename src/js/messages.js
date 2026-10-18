@@ -427,6 +427,27 @@ export const OP_WORDS = {
     refused: (a, title) => 'Adding' + (title ? ` “${title}”` : ' a task'),
     dropped: keeps((a, title) => (a.taskId ? `${it(title)} is added.` : '')),
   },
+  /* A checklist started from a template (`a.template`), and a step added to a checklist (`a.runTitle`). Cancel deletes
+     what each made, so it says only "Cancelled." (dropped), or that Vikunja may or may not have a task whose answer
+     is unknown. `gone` is what Cancel says once the op was sent in full. */
+  startRun: {
+    text: a => `${a.cancelled ? 'Cancelling the start of' : 'Starting'} “${a.template.title}”`,
+    refused: a => (a.cancelled ? 'Cleaning up a cancelled start' : 'Starting ' + a.template.title),
+    dropped: keeps(() => ''),
+    gone: "The checklist had already started. Delete it from its ⋯ menu if you don't need it.",
+  },
+  addStep: {
+    text: a =>
+      a.cancelled
+        ? `Removing “${named(a.title)}”, because its insert was cancelled`
+        : `${a.from || a.tpl != null ? 'Repeated' : 'Inserted'} in ${a.runTitle}: “${named(a.title)}”`,
+    refused: a =>
+      a.cancelled
+        ? `Removing “${named(a.title)}”`
+        : `${a.from || a.tpl != null ? 'Repeating' : 'Inserting'} “${named(a.title)}”`,
+    dropped: keeps(() => ''),
+    gone: "It was already sent. Delete it from the checklist if you don't need it.",
+  },
 };
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names =>

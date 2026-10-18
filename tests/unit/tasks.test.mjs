@@ -1137,14 +1137,17 @@ test('a tick on a step still being inserted shows on its row once Vikunja has ma
     view: { shownRun: { id: 50, steps: [51], at: null, last: null } },
   });
   const step = {
-    kind: 'step',
+    kind: 'act',
+    op: 'addStep',
     id: 'e1',
+    task: 50,
     run: 50,
     title: 'Wipe the counter',
     at: now,
     after: 51,
     before: null,
-    items: [],
+    user: 1,
+    who: me,
   };
   const tick = { kind: 'act', id: 't1', task: 'pending-e1', op: 'done', run: 50, user: 1, who: me, at: now, items: [] };
   app.pending = [step, tick];

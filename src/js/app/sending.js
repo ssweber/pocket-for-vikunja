@@ -33,17 +33,7 @@ import {
   viewKey,
 } from '../lists.js';
 import { positionOrder, SPACING } from '../order.js';
-import {
-  addLines,
-  LINE,
-  linesUnder,
-  madeStage,
-  movedFrom,
-  noneWaiting,
-  opOf,
-  passUps,
-  stageView,
-} from '../ops/index.js';
+import { addLines, LINE, linesUnder, movedFrom, noneWaiting, opOf, passUps, stageView } from '../ops/index.js';
 import { heldTasks, hold, stageContext, waits } from './acts.js';
 import { opsId, savedScreen } from './tasks.js';
 
@@ -56,11 +46,6 @@ const waitingRows = new Map();
 const lastGroups = new Map(); // each group as listGroups last returned it, by key
 // The job for each line: the earlier try's job if the line is unchanged, else a new one.
 export const jobsFor = (kept, lines) => lines.map((line, k) => (kept[k]?.line === line ? kept[k] : { line }));
-// Send a line's task request again with its key. The relay gives Vikunja's answer to the first, or the task is made now.
-export const resendTask = (app, j, save) => {
-  j.stage = madeStage;
-  return LINE[madeStage](j, stageContext(j, app, save).start());
-};
 /* What became of the lines typed together (`entries`), from sendActs' results, as one result for their add box. It is
    'error' if Vikunja refused a line or can't tell whether it has one, 'offline' if a line or its photos still wait,
    'gone' if another tab sent them, and else 'sent'. `unsent` is the text of the lines that go back to the box. A line
@@ -94,11 +79,10 @@ export const batchOf = (r, entries) => {
 };
 
 export default {
-  /* Create a task from a parsed line with the add op's stages (LINE, ops/add.js), for the template editor, a step's new
-     title and a step inserted in a checklist. `job` records how far it got, and `save` stores the job. Each request is
-     sent with a key made from `job.key`, so a retry after a lost reply makes nothing twice. `made` is called as soon as
-     the task exists. `parent` makes the task a subtask of that task. Returns the task, which is just {id, project_id}
-     if an earlier try made it. It has `problems` (what couldn't be done, such as an @username who can't see the
+  /* Create a task from a parsed line with the add op's stages (LINE, ops/add.js), for the template editor and a step's
+     new title. `job` records how far it got, and `save` stores the job. Each request is sent with a key made from
+     `job.key`, so a retry after a lost reply makes nothing twice. `made` is called as soon as the task exists. `parent`
+     makes the task a subtask of that task. Returns the task, which is just {id, project_id} if an earlier try made it. It has `problems` (what couldn't be done, such as an @username who can't see the
      project) and, for a line marked done or given a percentage, `arrived`: {now: Vikunja's copy after that was set,
      done}. Throws on a lost connection or a busy Vikunja. */
   async createTask(parsed, pid, { job = {}, save = async () => {}, made, parent } = {}) {
@@ -143,7 +127,7 @@ export default {
     return u;
   },
   // A link changes the related tasks of both tasks, so an op's write names both (`on`, stageContext).
-  linkSubtask(parentId, childId, send = api) {
+  linkSubtask(parentId, childId, send) {
     return send(`/tasks/${parentId}/relations`, {
       method: 'POST',
       body: { other_task_id: childId, relation_kind: 'subtask' },
@@ -311,11 +295,9 @@ export default {
   async sendEntry(id) {
     const entry = await sync.fresh(id);
     if (!entry) return { status: 'gone', ids: [], tasks: [] }; // another tab sent it
-    if (entry.kind === 'run') return this.sendRun(entry);
-    if (entry.kind === 'step') return this.sendStep(entry);
     if (entry.kind === 'act') return this.sendAct(entry);
-    // A capture an older Pocket saved, before each line was its own op. Nothing is sent for it.
-    if (!entry.taskId) {
+    // What an older Pocket saved before each change was an op: a capture, or a checklist's start or step. It is dropped.
+    if (entry.kind || !entry.taskId) {
       await sync.remove(entry.id);
       return { ids: [], tasks: [], status: 'gone' };
     }

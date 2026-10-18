@@ -16,10 +16,9 @@ import views from '../../src/js/app/views.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
-import runs from '../../src/js/app/runs.js';
 import { UNKNOWN } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
-import { sync, unpackParsed, uuid7 } from '../../src/js/sync.js';
+import { sync, unpackParsed } from '../../src/js/sync.js';
 
 const DAY = 86400;
 // The parts that queue and send a line, and put the result on the screen. The fake's own flush and render stay.
@@ -77,12 +76,6 @@ const shown = (app, r) => {
 const send = async (app, e) => shown(app, await app.sendLines(opsOf(app, e)));
 // Send the lines again, as flush or a later add does, and read what became of them.
 const resend = async (app, e) => shown(app, batchOf(await app.sendActs(e.entries.at(-1).id), e.entries));
-// An entry that isn't an add op, saved and sent.
-const queued = async (app, e) => {
-  await sync.add(e, []);
-  app.refreshPending();
-  return app.sendEntry(e.id);
-};
 const clear = async () => {
   for (const x of sync.all(1)) await sync.remove(x.id);
 };
@@ -290,81 +283,6 @@ test("a line's labels are added to the labels the task already has, and a new la
     [v.task(101).labels, v.task(102).labels].map(ls => ls.map(l => l.title)),
     [['Spare'], ['Spare']],
   );
-});
-
-test('a step inserted in a checklist, cancelled after its reply was lost, is found by its key and deleted', async t => {
-  const v = fakeVikunja([{ id: 9, title: 'Opening', project_id: 5 }]),
-    app = adding(t);
-  Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep });
-  const id = uuid7(),
-    is = r => r.method === 'POST' && r.path === '/projects/5/tasks';
-  v.trouble = r => (is(r) ? 'lost' : null);
-  const step = {
-    id,
-    kind: 'step',
-    user: 1,
-    at: new Date().toISOString(),
-    items: [],
-    files: [],
-    fails: 0,
-    run: 9,
-    project: 5,
-    title: 'Sweep up',
-    from: null,
-    tpl: null,
-  };
-  assert.equal((await queued(app, step)).status, 'offline');
-  await sync.save({ ...sync.entries.get(id), cancelled: true }); // as dropStep does
-  v.trouble = () => null;
-  assert.equal((await app.sendEntry(id)).status, 'sent');
-  const posts = v.requests.filter(is);
-  assert.deepEqual(
-    posts.map(r => [r.key, !!r.replayed]),
-    [
-      [`${id}:1:0`, false],
-      [`${id}:1:0`, true],
-    ],
-    "the task's request is sent again with its key",
-  );
-  assert.deepEqual(
-    [v.tasks.has(101), sync.all(1).length],
-    [false, 0],
-    'the task is deleted, and nothing is left waiting',
-  );
-});
-
-test('a step inserted in a checklist while Pocket knows it is offline, then cancelled, sends nothing', async t => {
-  const v = fakeVikunja([{ id: 9, title: 'Opening', project_id: 5 }]),
-    app = adding(t);
-  Object.assign(app, { sendStep: runs.sendStep, unsendStep: runs.unsendStep, dropStep: runs.dropStep, offline: true });
-  v.trouble = () => 'offline';
-  const id = uuid7(),
-    step = {
-      id,
-      kind: 'step',
-      user: 1,
-      at: new Date().toISOString(),
-      items: [],
-      files: [],
-      fails: 0,
-      run: 9,
-      project: 5,
-      title: 'Sweep up',
-      from: null,
-      tpl: null,
-    };
-  assert.equal((await queued(app, step)).status, 'offline');
-  await app.dropStep(id, true);
-  // Back online, as a read that gets through finds, and whatever is still waiting is sent.
-  v.trouble = () => null;
-  app.offline = false;
-  for (const e of sync.all(1)) await app.sendEntry(e.id);
-  assert.deepEqual(
-    v.requests.filter(r => r.method !== 'GET').map(r => [r.method, r.path]),
-    [],
-    'no request for the step was made',
-  );
-  assert.equal(sync.all(1).length, 0, 'nothing is left waiting');
 });
 
 // Run `p` while moving the mocked clock, so the waits between a busy Vikunja's tries (patiently) pass.

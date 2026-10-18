@@ -31,7 +31,7 @@ test('every op defines every field, null for the default, and the comment on OPS
         [
           typeof full.keepReads,
           ['kept', 'back', 'lines', 'undone'].includes(refusalOf(a)),
-          ['undo', 'text', 'back', 'lines', 'made'].includes(cancelOf(a)),
+          ['undo', 'text', 'back', 'lines', 'made', 'unmade'].includes(cancelOf(a)),
         ],
         ['boolean', true, true],
         name,
@@ -410,6 +410,14 @@ const WORDS = {
     ],
     ["Doesn't repeat: a step", 'Changing how a task repeats', '“it” stays without a repeat.', '“it” has no repeat.'],
   ],
+  startRun: [
+    ['Starting “Closing”', 'Starting Closing', '', ''],
+    ['Starting “Closing”', 'Starting Closing', '', ''],
+  ],
+  addStep: [
+    ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
+    ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
+  ],
 };
 test('each op says what the outbox said before: its row, its refusal, and what cancelling it leaves', () => {
   assert.deepEqual(Object.keys(WORDS).sort(), Object.keys(OPS).sort());
@@ -426,6 +434,9 @@ test('each op says what the outbox said before: its row, its refusal, and what c
         person: { id: 7, username: 'bob' },
         tag: { id: 600, title: 'Urgent' },
         add: true,
+        template: { id: 7, title: 'Closing', project_id: 5 },
+        title: 'Sweep up',
+        runTitle: 'Closing · Oct 3 · #1',
       });
       assert.deepEqual(
         [op.text(a(0), title), op.refused(a(0), title), op.dropped(a(0), title), op.dropped(a(1), title)],

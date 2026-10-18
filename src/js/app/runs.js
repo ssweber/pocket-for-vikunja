@@ -1,17 +1,6 @@
 // Start checklists and compute their steps, progress, countdowns and pending changes.
 import { andList, memo, motion, raw, store, ZERO } from '../util.js';
-import {
-  allPages,
-  api,
-  ApiError,
-  errText,
-  items,
-  NetError,
-  passing,
-  patchTask,
-  serverTime,
-  triedSince,
-} from '../api.js';
+import { allPages, api, ApiError, errText, items, NetError, serverTime } from '../api.js';
 import { addDays, dueInfo, fmtTime, isSet, startOfDay } from '../dates.js';
 import { pctOf, tickFeel, workedOut } from '../progress.js';
 import { haptic } from '../haptics.js';
@@ -29,7 +18,6 @@ import {
   noteOf,
   notesOnly,
   parseStep,
-  patiently,
   plainRun,
   runParts,
   plainStep,
@@ -45,14 +33,13 @@ import {
 } from '../checklists.js';
 import { routeOf } from '../routing.js';
 import { stepAnswers } from '../asks.js';
-import { INSERT_STEPS, NO_ROOM, NOT_KEPT, packParsed, randomId, RUN_STEPS, runProgress, sync, uuid7 } from '../sync.js';
-import { resendTask } from './sending.js';
+import { KEPT, packParsed, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
-import { completeAsk, sentLater, startedText } from '../messages.js';
+import { completeAsk, notKnown, sentLater, startedText, toOutbox } from '../messages.js';
 import { newBox } from './core.js';
 import { renderSeq } from './views.js';
-import { keptTicks, nextN } from './acts.js';
-import { lastTick } from '../ops/index.js';
+import { keptTicks } from './acts.js';
+import { lastTick, stagesOf, stepsAdding } from '../ops/index.js';
 import { copyOf, opsId, putting, savedScreen, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
 
 const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
@@ -168,8 +155,8 @@ export default {
     const s = this.starting;
     return s ? `Setting up… ${Math.round((100 * s.done) / s.total)}%` : 'Setting up…';
   },
-  /* Queue the start so a lost connection resumes creation where it stopped. Time the first step from the Start
-     tap. Other timed steps receive dates when the step they depend on is completed. */
+  /* Start a checklist as a startRun op, so a lost connection carries on where it stopped, and nothing is made twice.
+     The first step is timed from the Start tap. Other timed steps get dates when the step they wait on is done. */
   async startRun() {
     const st = this.sheet.start;
     if (!st?.template || st.busy) return;
@@ -189,184 +176,58 @@ export default {
           timed: offset !== null,
           remind: offset >= 6e4,
           tpl: s.title,
-          taskId: null,
-          tried: false,
-          linked: false,
-          ready: false,
         };
       });
     const who = st.people.filter(u => st.forIds.includes(u.id));
     // tick is the template's due date when this start ticks the template (tickOf). The new checklist is due then too.
-    const entry = {
-      id: randomId(),
-      kind: 'run',
-      user: this.user?.id,
-      at: start.toISOString(),
-      files: [],
+    const f = {
+      id: uuid7(),
+      op: 'startRun',
+      task: st.template.id,
+      run: null,
       template: st.template,
       name: st.name.trim(),
       for: (who.length ? who : [this.user]).map(u => ({ id: u.id, username: u.username, name: u.name || '' })),
       steps,
       tick: this.tickOf(st.template),
-      fails: 0,
     };
     st.busy = true;
-    this.starting = { id: entry.id, done: 0, total: 6 + steps.length * 3 };
-    const { kept, full } = await sync.add(entry, []);
-    const r = await sync.lock(() => this.sendEntry(entry.id));
+    this.starting = { id: f.id, done: 0, total: stagesOf(f).length };
+    const r = await this.actAll([f], true),
+      runId = r.ids?.[0];
     this.starting = null;
     st.busy = false;
-    this.refreshPending();
     if (r.status === 'sent' || r.status === 'gone') {
       this.closeSheet(true);
-      if (r.runId) this.openRun(r.runId);
+      if (runId) this.openRun(runId);
       // Keep the start's Undo at the top until work begins or the screen closes. A timer would move the step card
       // while someone reads it.
       this.say('Started', {
         place: 'run',
         ms: null,
-        action: r.runId && {
-          label: 'Undo',
-          fn: async () => {
-            await this.deleteRun(r.runId);
-            if (r.ticked) await this.untick(r.ticked);
-          },
-        },
+        action: runId && { label: 'Undo', fn: () => this.unstart(f, runId) },
       });
-      if (this.places.run) this.places.run.startOf = r.runId;
-      else this.toast.startOf = r.runId;
+      if (this.places.run) this.places.run.startOf = runId;
+      else this.toast.startOf = runId;
     } else if (r.status === 'offline') {
-      sync.keep();
       this.closeSheet(true);
       if (this.route.name === 'checklists') this.render();
       else this.go('#/checklists');
-      this.say(!kept ? (full ? NO_ROOM : NOT_KEPT) : `${st.template.title} starts as soon as Pocket reaches Vikunja.`, {
-        place: 'checklists',
-        cls: kept ? '' : 'failed',
-      });
-    } else this.say('Not started: ' + r.error.message, { place: 'sheet:top', cls: 'failed' });
+      // A start the phone couldn't keep is said where it was sent from (sendActs).
+      if (r.kept) this.say(`${st.template.title} starts as soon as Pocket reaches Vikunja.`, { place: 'checklists' });
+    } else
+      this.say(
+        r.error.code === 'unknown' ? notKnown(r.error.what) : 'Not started: ' + r.error.message + (r.kept ? KEPT : ''),
+        { place: 'sheet:top', cls: 'failed', action: r.kept ? toOutbox(this) : null },
+      );
   },
-  async sendRun(j) {
-    const save = () => sync.save(j),
-      c = { save, taken: new Set([j.runId, ...j.steps.map(s => s.taskId)].filter(Boolean)) };
-    const none = { ids: [], tasks: [], problems: [], uploaded: 0 };
-    if (j.cancelled) return this.unstart(j, c, none);
-    try {
-      for (const step of RUN_STEPS)
-        while (!step.done(j)) {
-          await patiently(() => step.run(j, c));
-          await save();
-          if (this.starting?.id === j.id) this.starting.done = runProgress(j);
-        }
-      await sync.remove(j.id);
-      return {
-        ...none,
-        status: 'sent',
-        runId: j.runId,
-        title: j.title,
-        ticked: j.ticked?.to ? { id: j.template.id, ...j.ticked } : null,
-        changed: 1,
-      };
-    } catch (error) {
-      // Keep the start after connection or session loss, and allow a few retries for persistent server errors.
-      if (
-        passing(error) ||
-        (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))
-      ) {
-        await save();
-        return { ...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
-      }
-      // Keep the cancelled start until its partial copies are deleted.
-      error.what = 'Starting ' + j.template.title;
-      j.cancelled = true;
-      await save();
-      await this.unstart(j, c, none);
-      return { ...none, status: 'error', error };
-    }
-  },
-  /* Delete partial copies from a cancelled or permanently failed start, steps first. Find copies whose replies
-     were lost, and keep offline cleanup queued. */
-  async unstart(j, c, none) {
-    try {
-      if (!j.runId && j.tried) {
-        const t = await this.findCopy(j.template.id, j, j.at, c.taken, j.id, null);
-        if (t) {
-          j.runId = t.id;
-          c.taken.add(t.id);
-        }
-      }
-      for (const s of j.steps)
-        if (!s.taskId && s.tried) {
-          const t = await this.findCopy(s.from, s, j.at, c.taken, j.id, j.runId);
-          if (t) {
-            s.taskId = t.id;
-            c.taken.add(t.id);
-          }
-        }
-      await sync.save(j);
-      const kids = j.runId
-        ? await api('/tasks/' + j.runId).then(
-            t => (t.related_tasks?.subtask || []).map(s => s.id),
-            e => {
-              if (e.status === 404) return [];
-              throw e;
-            },
-          )
-        : [];
-      for (const id of [...new Set([...j.steps.map(s => s.taskId).filter(Boolean), ...kids]), j.runId].filter(
-        Boolean,
-      )) {
-        await patiently(() => api('/tasks/' + id, { method: 'DELETE' })).catch(e => {
-          if (e.status !== 404) throw e;
-        });
-        this.change(w => w.forget(id));
-      }
-      await sync.remove(j.id);
-      return { ...none, status: 'sent', changed: 0 };
-    } catch (error) {
-      if (passing(error) || error.status === 401 || error.status >= 500) {
-        await sync.save(j);
-        return { ...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
-      }
-      await sync.remove(j.id);
-      error.what = 'Cleaning up a cancelled start';
-      return { ...none, status: 'error', error };
-    }
-  },
-  /* Undo the template's advanced due date only if no one changed it after this start. */
-  async untick({ id, from, to, done }) {
-    try {
-      const t = await api('/tasks/' + id);
-      if (t.done === done && Date.parse(t.due_date) === Date.parse(to))
-        await patiently(() => patchTask(id, { due_date: from, done: false }));
-    } catch {}
-  },
-  /* Find a copy made by this interrupted duplicate attempt. Match the user, attempt time, unused id, unchanged
-     title and lack of subtasks or another parent. Leave copies from other people or devices alone. */
-  async findCopy(from, rec, at, taken, key, run) {
-    const src = await api('/tasks/' + from),
-      since = triedSince(rec.triedAt, at);
-    const until = rec.triedUntil ? serverTime(rec.triedUntil) + 3000 : Infinity;
-    const near = (src.related_tasks?.copiedto || []).filter(
-      t =>
-        !taken.has(t.id) &&
-        !sync.claimedByOther(t.id, key) &&
-        new Date(t.created).getTime() >= since &&
-        new Date(t.created).getTime() <= until,
-    );
-    for (const c of near) {
-      const t = await api('/tasks/' + c.id),
-        r = t.related_tasks || {};
-      const asCopied = run !== null || t.title === src.title || t.title === rec.triedTitle;
-      if (
-        t.created_by?.id === this.user?.id &&
-        asCopied &&
-        !r.subtask?.length &&
-        (r.parenttask || []).every(p => p.id === run)
-      )
-        return t;
-    }
-    return null;
+  /* Undo a start, as the op that takes it back: it deletes the checklist and its steps, and puts back the template's
+     date if the start moved it and nobody has moved it since. */
+  unstart(f, id) {
+    this.undoOps([f], false);
+    this.notify('Checklist removed');
+    if (this.route.name === 'run' && this.route.id === id) this.leaveRun();
+    else this.render();
   },
   /* Edit the run's optional name and assignees in its menu. runParts supports both the current name order and
      older runs with the day last. */
@@ -606,8 +467,8 @@ export default {
       .map(id => this.tasks[id])
       .filter(t => t && !this.beingDeleted(t.id))
       .map(plainStep);
-    for (const e of this.pending)
-      if (e.kind === 'step' && !e.cancelled && e.run === r.id && !base.some(s => s.id === e.taskId)) {
+    for (const e of stepsAdding(this.pending, r.id))
+      if (!base.some(s => s.id === e.taskId)) {
         const k = base.findIndex(s => s.id === e.before),
           a = k < 0 ? base.findIndex(s => s.id === e.after) : -1,
           id = 'pending-' + e.id;
@@ -1129,7 +990,7 @@ export default {
   },
   // Undo a step just added. Cancel it if it is still waiting to be sent, otherwise delete it.
   async undoAdded(id, title) {
-    if (await this.dropStep(id, true)) {
+    if (await this.cancelMade(id, true)) {
       const tid = sync.taskOf(id);
       if (tid)
         await this.deleteAddedStep(
@@ -1152,73 +1013,30 @@ export default {
     const r = await this.act({ op: 'progress', task: s.id, pct });
     if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;
   },
-  async addStep(fields) {
+  /* Add a step to the checklist on screen as an addStep op. It shows in place at once, and can be ticked while it
+     waits to be sent. */
+  async addStep({ id, title, p, from = null, tpl = null, before, after }) {
     const r = this.view.shownRun,
       run = this.runTask;
     if (!r || !run) return;
     // If the step to insert before is itself waiting to be sent, use the step that one goes before.
-    if (typeof fields.before === 'string')
-      fields.before = this.pending.find(e => 'pending-' + e.id === fields.before)?.before ?? null;
-    const entry = {
-      id: uuid7(),
-      kind: 'step',
-      user: this.user?.id,
-      at: new Date().toISOString(),
-      n: nextN(),
-      files: [],
-      fails: 0,
+    if (typeof before === 'string') before = this.pending.find(e => 'pending-' + e.id === before)?.before ?? null;
+    await this.act({
+      id,
+      op: 'addStep',
+      task: r.id,
       run: r.id,
+      title,
+      from,
+      tpl,
+      before,
+      after,
+      under: r.id,
+      pid: run.project_id,
       runTitle: run.title,
-      project: run.project_id,
-      from: null,
-      tpl: null,
-      ...fields,
-    };
-    const { kept, full } = await sync.add(entry, []);
-    this.refreshPending();
-    const res = await sync.lock(() => this.sendEntry(entry.id));
-    this.refreshPending();
-    // Show errors beside the box the step was added from.
-    if (res.status === 'offline') {
-      sync.keep();
-      if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, { place: ['cap', 'step'], cls: 'failed' });
-    }
-    if (res.status === 'error')
-      this.say(`${res.error.what} couldn't be done: ${res.error.message}.`, { place: ['cap', 'step'], cls: 'failed' });
-    if (res.status === 'sent' && this.view.shownRun?.id === entry.run) this.render();
-    return entry.id;
-  },
-  async sendStep(j) {
-    const save = () => sync.save(j),
-      c = { save, taken: new Set() },
-      none = { ids: [], tasks: [], problems: [], uploaded: 0 };
-    if (j.cancelled) return this.unsendStep(j, c, none);
-    try {
-      for (const step of INSERT_STEPS)
-        while (!step.done(j)) {
-          await patiently(() => step.run(j, c));
-          await save();
-          // Vikunja has made the step, so the ops on it are filed under its id from now on (opsId).
-          if (step.name === 'task') this.change(w => w.keyOps());
-        }
-      await sync.remove(j.id);
-      return { ...none, status: 'sent', changed: 1 };
-    } catch (error) {
-      if (
-        passing(error) ||
-        (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++j.fails < 5)))
-      ) {
-        await save();
-        return { ...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
-      }
-      // Delete any partial copy after permanent rejection, including a step that was created but never attached to
-      // the run.
-      const made = j.taskId || j.job?.taskId;
-      if (made) await api('/tasks/' + made, { method: 'DELETE' }).catch(() => {});
-      await sync.remove(j.id);
-      error.what = (j.from || j.tpl != null ? 'Repeating' : 'Inserting') + ` “${j.title}”`;
-      return { ...none, status: 'error', error };
-    }
+      ...(!from && { p: p ?? packParsed({ title, labels: [], assignees: [] }) }),
+    });
+    return id;
   },
   // Ask whether to delete a step added during a checklist. Used by the step's × and its row's Delete.
   askDeleteStep(s) {
@@ -1231,75 +1049,17 @@ export default {
   /* Delete an open inserted or repeated step, as a delete op with no Restore, which writes the checklist's progress
      last. Template steps must be skipped instead. undo skips confirmation and messages for Repeat's Undo, and asked
      records confirmation before a swipe. Return whether the step was removed. A refusal keeps the step, and the
-     sender says why. */
+     sender says why. A step still being added is cancelled instead. */
   async deleteAddedStep(s, undo = false, asked = false) {
     if (!s?.added || s.done || (!undo && !asked && !this.askDeleteStep(s))) return false;
     if (s.pending) {
-      await this.dropStep(s.pending, undo);
+      await this.cancelMade(s.pending, undo);
       return true;
     }
     if ((await this.deleteNow([[s.id]])).status === 'error') return false;
     if (!undo) this.say('Step deleted', { place: ['sheet:top', 'step'] });
     this.render();
     return true;
-  },
-  /* Cancel a pending step and its actions. If creation may have reached Vikunja, keep cleanup queued until the
-     copy can be found and deleted. quiet suppresses the Undo message. Return whether insertion had already
-     finished. */
-  async dropStep(id, quiet = false) {
-    let tried = false,
-      gone = false;
-    await sync.lock(async () => {
-      const e = await sync.fresh(id);
-      if (!e) {
-        gone = true;
-        return;
-      }
-      tried = !!(e.taskId || e.tried || e.job?.sent);
-      if (tried) await sync.save({ ...e, cancelled: true });
-      else await sync.remove(id);
-      for (const a of sync.all(this.user?.id))
-        if (a.kind === 'act' && a.task === 'pending-' + id) await sync.remove(a.id);
-    });
-    if (tried) await sync.lock(() => this.sendEntry(id));
-    this.refreshPending();
-    if (!quiet)
-      this.say(
-        gone
-          ? "It was already sent. Delete it from the checklist if you don't need it."
-          : tried && this.pending.some(e => e.id === id)
-            ? 'Not inserted. Pocket removes the part that reached Vikunja once it is back online.'
-            : 'Not sent.',
-        { place: ['sheet:top', 'step'] },
-      );
-    if (this.route.name === 'run') this.render();
-    return gone;
-  },
-  // Delete a cancelled step that may have reached Vikunja. Find it first if its id is unknown.
-  async unsendStep(j, c, none) {
-    try {
-      let id = j.taskId || j.job?.taskId || null;
-      if (!id && j.from && j.tried) id = (await this.findCopy(j.from, j, j.at, c.taken, j.id, j.run))?.id ?? null;
-      // A new step's task whose reply was lost: its request sent again with its key gives the task, or makes it now.
-      if (!id && j.job?.sent && j.job.body) {
-        await resendTask(this, j.job, c.save);
-        id = j.job.taskId;
-      }
-      if (id)
-        await patiently(() => api('/tasks/' + id, { method: 'DELETE' })).catch(e => {
-          if (e.status !== 404) throw e;
-        });
-      await sync.remove(j.id);
-      return { ...none, status: 'sent', changed: 0 };
-    } catch (error) {
-      if (passing(error) || error.status === 401 || error.status >= 500) {
-        await sync.save(j);
-        return { ...none, status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
-      }
-      await sync.remove(j.id);
-      error.what = `Removing “${j.title}”`;
-      return { ...none, status: 'error', error };
-    }
   },
   async refreshRunTask(id) {
     try {

@@ -111,7 +111,7 @@ function touches(h) {
     [/\/assignees(\/\w+)?$/, 'assignees'],
     [/\/labels(\/\w+)?$/, 'labels'],
     [/\/position$/, 'position'],
-    [/\/relations/, 'related_tasks'],
+    [/\/relations|\/duplicate$/, 'related_tasks'],
   ])
     if (re.test(path)) return [k];
   if (h.method !== 'PATCH') return [];
@@ -683,8 +683,9 @@ class World {
     // A field Vikunja changes that the op's answer doesn't carry, such as a position, is new to Pocket until it reads.
     const unseen = h.e && Object.entries(ALL).find(([n, s]) => (s.op ?? n) === h.e.op)?.[1].unseen;
     if (h.id && unseen) this.model.doubt(h.id, unseen);
-    // A link, or taking one out, changes the related tasks of both tasks, which only a read brings.
-    if (h.id && /\/relations/.test(h.url))
+    // A link, or taking one out, changes the related tasks of both tasks, and a copy those of the task copied, which
+    // only a read brings.
+    if (h.id && /\/relations|\/duplicate$/.test(h.url))
       for (const x of [h.id, ...otherOf(h)]) this.model.doubt(x, ['related_tasks']);
   }
   /* A refusal or an unknown answer stops op `e` before its answer. The store then reads again the tasks the op's
@@ -989,7 +990,8 @@ class World {
   }
 }
 
-// What the world starts with: the checklist read in full, as a screen loads it, and a step still being added to it.
+/* What the world starts with: the checklist read in full, as a screen loads it, and a step still being added to it. The
+   step's entry only holds its waiting id, as an addStep op's entry does, and StepMade makes the step. */
 async function open(clock) {
   const w = (world = new World(clock));
   await w.startRead([1, 2, 3], TASK_REACTIONS_COMMENTS);
@@ -1469,8 +1471,8 @@ class ClearBatch extends Command {
     return 'ClearBatch';
   }
 }
-/* Vikunja makes the step being added, under the checklist, and its ops are filed under its id, as sendStep does. It
-   waits for the outbox's lock, as sendStep does. */
+/* Vikunja makes the step being added, under the checklist, and its ops are filed under its id, as an addStep op does.
+   It waits for the outbox's lock, as the sender does. */
 class StepMade extends Command {
   can(m) {
     return m.w.stepId === null && !m.w.making;

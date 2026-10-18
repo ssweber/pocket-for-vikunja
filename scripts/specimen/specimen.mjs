@@ -1323,8 +1323,10 @@ document.addEventListener('alpine:init', () =>
       const mk = title => ({ ...s.steps[5], id: ++n, title, comments: [], assignees: [] });
       const inRow = [...s.steps.slice(0, 5), mk('Fill the water jug'), mk('Wipe the counter'), ...s.steps.slice(5)];
       this.pending.push({
-        kind: 'step',
+        kind: 'act',
+        op: 'addStep',
         id: 'specimen-step',
+        task: run.id,
         run: run.id,
         title: 'Stack the trays',
         before: s.steps[5].id,

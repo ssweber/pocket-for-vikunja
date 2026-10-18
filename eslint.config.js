@@ -25,7 +25,7 @@ const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/j
 // The files that still write to Vikunja directly, not through the outbox. Each phase removes the files it finishes.
 // The ops and their sender stay on it for good, since that is where writes belong. They write through a stage's
 // c.send, which no selector here matches yet.
-const WRITERS = ['src/js/api.js', 'src/js/sync.js', 'src/js/app/actions.js', 'src/js/app/asks.js', 'src/js/app/auth.js',
+const WRITERS = ['src/js/api.js', 'src/js/app/actions.js', 'src/js/app/asks.js', 'src/js/app/auth.js',
   'src/js/app/checklists.js', 'src/js/app/runs.js', 'src/js/app/sending.js', 'src/js/app/views.js',
   'src/js/ops/**', 'src/js/app/acts.js'];
 const RESTRICTED = [

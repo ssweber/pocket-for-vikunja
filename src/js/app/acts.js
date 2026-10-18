@@ -184,9 +184,10 @@ export default {
     return this.actAll([fields], quiet);
   },
   /* Queue ops (their fields) together, so their rows show in one change (rule 10), fold each into an earlier op it
-     replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`) and every
-     result (`all`). An Undo keeps the objects in `list` and passes them to undoOps, never copies, because what undoOps
-     needs is kept only while those objects are. */
+     replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`), every result
+     (`all`), and whether the ops reached the phone's database (`kept`, `full`, as queue gives). An Undo keeps the
+     objects in `list` and passes them to undoOps, never copies, because what undoOps needs is kept only while those
+     objects are. */
   async actAll(list, quiet = false) {
     const entries = list.map(f => this.actEntry(f)),
       last = entries.at(-1).id;
@@ -197,7 +198,12 @@ export default {
     });
     const { kept, full } = await this.queue(entries);
     await sync.lock(() => this.fold(entries));
-    return { ...(await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null)), entry: last };
+    return {
+      ...(await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null)),
+      entry: last,
+      kept,
+      full,
+    };
   },
   /* Fold each of `entries`, just queued, into the op before it on its task, if that op has sent nothing, isn't held,
      hasn't failed and isn't an Undo. The new op's merge decides what becomes of the two. Only the op just before it
@@ -452,6 +458,7 @@ export default {
         await patiently(() => stages[a.stage](seen, c.start()));
         a.stage++;
         await sync.save(a, [], filesOut(a));
+        if (this.starting?.id === a.id) this.starting.done = a.stage;
       }
       // An op whose stages sent nothing changed nothing in Vikunja, so it has no write in flight.
       const r = c.reply;

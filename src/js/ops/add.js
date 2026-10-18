@@ -227,10 +227,9 @@ async function figures(a, c) {
   for (const [i, up] of (a.ups || []).entries()) await figureOf(c.start(i), real(up), 'figure' + i);
 }
 
-// The stages a task is made in. The template editor, a step's new title and an inserted step run these themselves
-// (createTask, app/sending.js).
+// The stages a task is made in. The template editor and a step's new title run these themselves (createTask,
+// app/sending.js), and a step added to a checklist runs all but the last (ops/runs.js).
 export const LINE = [prepare, made, label, assignee, link, arrive];
-export const madeStage = LINE.indexOf(made);
 const pending = a => 'pending-' + a.id;
 /* A line shows as a waiting row of its own until its task is made, so it changes no task's row. A line that fails
    holds back the lines under it (`pending`) and the ops on its task. A line waits only for a failed line it goes under,
