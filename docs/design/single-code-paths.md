@@ -41,6 +41,8 @@ Built on `dev`, and described by the code and its comments:
   the keys rule;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
 - sign-in with Vikunja's session only;
+- screens saved on the phone as the ids of their tasks, with the store's copies kept beside them and swept to what
+  the kept screens and the outbox need (phase 11, part (a));
 - the lifecycle test and the randomized store test.
 
 The user's phone check covers everything up to phase 5. Phase 6 (dates) and what came after it haven't been checked
@@ -111,28 +113,39 @@ project with links, and people and labels. These are left:
 
 ### 11. Screens hold ids
 
-- **A screen holds ids,** in Vikunja's order, with each waiting task's id where it will be. The saved copy of a screen
-  is its ids, and Vikunja's copies replace the tasks inside it. Old saved screens are read as they are, or ignored.
-  Delete `keptRows`, `cache` and `forgotten`.
-- **Pruning the copies.** The store keeps a task's copy while a kept screen shows its id, an op in the outbox points to
-  it, or it is open in the sheet (with its parent and subtasks) or is a step of the checklist on screen. The kept
-  screens are Today, Lists, Checklists and the last 5 projects opened. The sweep runs when a fresh load replaces a
-  screen's ids, and once when Pocket opens. A task Vikunja answers with 404 goes once no op points to it.
+Part (a) is built: a screen is saved on the phone as the ids of its tasks, and the store keeps Vikunja's copies on the
+phone beside them (`keepScreen`, `tasks.js`). A sweep drops the copies that no kept screen, outbox entry or open screen
+needs, a task Vikunja answers with 404 is forgotten once nothing points to it, and nothing from a request that started
+before sign-out goes into the store. The copies stay in localStorage. Opening Today from the phone's copies on seed M
+took as long to the first row with them in IndexedDB (fast 186 and 181 ms, phone 1,842 and 1,786 ms) as in
+localStorage (181 and 184 ms, 1,850 and 1,762 ms), and IndexedDB would make opening a screen wait on a promise.
+
+Replicache keeps the server's state apart from the changes not yet confirmed, and shows the one replayed on the other,
+as Pocket shows Vikunja's copy with the waiting ops applied. Its server sends a version with each pull, and the last
+change it applied for each client, so a client knows which of its changes a snapshot holds and drops them in the same
+step. Vikunja gives neither, so Pocket orders what it learns by when each request started, and can't do better until
+Vikunja reports a version (`upstream-task-updated.md`). Replicache's undo is a change of its own, so a reply to the
+change it undoes lands under it. The lifecycle test now checks that for every op with an `invert` ("Undo, then the
+reply"), and every op passes, so no `invert` needed a fix.
+
+Left for part (b):
+
 - **Keeping the store current,** when Pocket comes back to the screen or the connection comes back. Changed tasks:
   `GET /tasks?filter=updated > T&expand=reactions`, with T on Vikunja's clock a second before the last update started.
   Removed tasks: `GET /tasks?filter=id in <ids>&per_page=1`, and if `total` is lower than the number of ids, the same
   query in full, dropping the tasks it doesn't return unless an op points to them. Split long id lists, because some
-  proxies refuse URLs over about 8 KB. Each screen's own load still decides which tasks are on it.
-- **Where the copies are kept.** Measure the time to the first row before moving them to IndexedDB. If it delays the
-  first row, keep them in localStorage under the kept screens' bound.
-- Read Replicache's design doc first. Its design is this one, and it covers a reply that arrives after its change was
-  undone. Check that holds for every op's `invert`.
-- From the Veyrn comparison: `dropCopies` leaves `clock` as it is, so a read still running at sign-out writes the old
-  user's tasks. Check whether v2's `/tasks` returns tasks from archived projects.
+  proxies refuse URLs over about 8 KB. Each screen's own load still decides which tasks are on it. A task it drops goes
+  through `lost` (`tasks.js`), as a 404 does.
+- From the Veyrn comparison: check whether v2's `/tasks` returns tasks from archived projects.
 - An op sent before a reload has no time on the new page. One whose requests the relay only replays there counts from
   before the page's reads (`EARLIER`). One that also makes a request fresh there counts from its first request on the
   page. Its part made before the reload can then overwrite a teammate's change the page read, until the read of its
   tasks that follows its answer. A per-request time kept in the entry would settle it.
+- `forgotten` stays. Ids made its saved screens' part unneeded, but a request that started before a delete can still
+  bring the deleted task, or list it among another task's related tasks, and only `forgotten` tells such a task from
+  one the sweep dropped.
+- The phone's copies are written when a screen is saved, as the screens were. A change answered after the last load
+  reaches the phone with the next one.
 
 ### 12. Messages
 
@@ -147,9 +160,10 @@ every waiting op that isn't a line "a change to a checklist". Make template's Ca
 
 Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied, read from the store by
 id". Rule 3 becomes "Every change is an op sent through the outbox, each request with a key". Add that a task's kind
-comes from `role()`, and Today's groups from `dayGroup`. Rule 6 now has lint behind it. Delete "Copies of a task that
-are not the store's yet" from `roadmap.md`. Update `main.go`'s header and the Privacy and security section of
-`docs/guide.md` for the relay and its table. Delete this file.
+comes from `role()`, and Today's groups from `dayGroup`. The map's row for the copies kept on the phone names
+`app/tasks.js`. Rule 6 now has lint behind it. Delete "Copies of a task that are not the store's yet" from
+`roadmap.md`. Update `main.go`'s header and the Privacy and security section of `docs/guide.md` for the relay and its
+table. Delete this file.
 
 ### End of the major work
 
