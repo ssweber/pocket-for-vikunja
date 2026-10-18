@@ -16,7 +16,7 @@ import {
   stageView,
   stagesOf,
 } from '../ops/index.js';
-import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
+import { CREATED, firstSent, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
@@ -125,18 +125,23 @@ export function stageContext(a, app) {
       part++;
     },
     async send(path, { on, ...opts } = {}) {
-      // The op's write starts before the entry says it was sent, so it can tell an op sent before this page loaded.
+      // The op's write starts with its first request (sendingOp).
       c.write ||= c.begin?.() ?? null;
       c.write?.fly();
+      const key = `${a.key || a.id}:${a.stage}:${part++}`,
+        first = a.sentAt?.[key],
+        at = started();
+      /* The entry keeps when each request was first sent (sentAt), so a page that sends it again knows how old the
+         relay's replayed answer is. The first request's time is saved before it goes, and from then on Cancel can't
+         stop the op. */
+      (a.sentAt ||= {})[key] = first ?? at;
       if (!a.sent) {
         a.sent = true;
         await save();
-      } // from now on Cancel can't stop it
-      const key = `${a.key || a.id}:${a.stage}:${part++}`,
-        own = on && !c.write ? writes(on) : null,
+      }
+      const own = on && !c.write ? writes(on) : null,
         w = own ?? c.write;
       if (on && c.write) for (const [t, fields] of Object.entries(on)) c.write.add(+t, fields);
-      const at = started();
       let replayed = false,
         got;
       try {
@@ -144,12 +149,13 @@ export function stageContext(a, app) {
       } finally {
         own?.end();
       }
-      /* A replayed reply is as old as its request's first send, which was no earlier than the op's first request. An op
-         sent before this page loaded counts from before this page until it makes a request fresh (sendingOp). */
-      if (w?.at === EARLIER && !replayed) w.at = w.start;
+      /* A replayed reply is as old as its request's first send. A page that closed before saving that time sent it
+         after the op's first request. A reply that isn't replayed was made now. */
+      a.sentAt[key] = replayed ? (first ?? w?.at ?? at) : at;
+      if (c.write) c.write.at = firstSent(a);
       if (replayed && w) w.replays = true;
       const from = {
-        at: replayed ? (w?.at ?? at) : at,
+        at: a.sentAt[key],
         start: at,
         replayed,
         crossed: w?.crossed ?? new Map(),

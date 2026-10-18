@@ -1302,9 +1302,10 @@ test("an op sent again with Try again counts from its first request, so a teamma
   assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅'].map(u => u.id)], [false, [1]]);
 });
 
-/* An op that the page before this one sent, and Vikunja made, is sent again, and the relay replays every request.
-   Vikunja made it before this page read the tasks, so a teammate's change read since stays, on the step and on the
-   checklist's progress the op wrote. It stays from the op's answer on, not only once the tasks are read again. */
+/* An op that the page before this one sent, and Vikunja made, is sent again, and the relay replays every request. The
+   entry kept when each request was first sent. Vikunja made it before this page read the tasks, so a teammate's change
+   read since stays, on the step and on the checklist's progress the op wrote. It stays from the op's answer on, not
+   only once the tasks are read again. */
 test("an op sent before the page loaded, and only replayed now, leaves a teammate's change read since", async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([
@@ -1312,14 +1313,15 @@ test("an op sent before the page loaded, and only replayed now, leaves a teammat
       { id: 2, title: 'Mop the floor', percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } },
     ]),
     app = sender(),
-    id = uuid7();
+    id = uuid7(),
+    sentAt = { [id + ':0:0']: started(), [id + ':1:0']: started() };
   await api('/tasks/2', { method: 'PATCH', body: { percent_done: 0.4 }, key: id + ':0:0' });
   await api('/tasks/1', { method: 'PATCH', body: { percent_done: 0.4 }, key: id + ':1:0' });
   Object.assign(v.task(1), { percent_done: 0.9 }); // a teammate's changes
   Object.assign(v.task(2), { percent_done: 0.75 });
   read([v.task(1), v.task(2)]);
   for (const k of [1, 2]) app.row(copyOf(k));
-  const e = { id, kind: 'act', op: 'progress', task: 2, pct: 40, run: 1, sent: true, stage: 0, fails: 0 };
+  const e = { id, kind: 'act', op: 'progress', task: 2, pct: 40, run: 1, sent: true, sentAt, stage: 0, fails: 0 };
   await sync.add({ ...e, fixed: { figure: { percent_done: 0.4 } }, user: 1, at: QUEUED, n: 0, files: [] }, []);
   const { go } = holding((path, method) => method === 'GET');
   await app.sendActs(id);
@@ -1331,15 +1333,16 @@ test("an op sent before the page loaded, and only replayed now, leaves a teammat
 });
 
 /* A tick the page before this one sent never reached Vikunja, and this page makes all of it fresh. Its change counts
-   from its first request here, so the ✅, which no reply brings, goes into the copy with its answer. */
+   from its first request Vikunja made, here, so the ✅, which no reply brings, goes into the copy with its answer. */
 test('an op sent before the page loaded, and made fresh now, shows in the copy from its answer on', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 1, title: 'Mop the floor', done: false, reactions: {} }]),
     app = sender(),
     id = uuid7();
+  const sentAt = { [id + ':0:0']: started() };
   read([structuredClone(v.task(1))], TASK_REACTIONS_COMMENTS);
   app.row(copyOf(1));
-  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, stage: 0, fails: 0 };
+  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, sentAt, stage: 0, fails: 0 };
   await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
   holding((path, method) => method === 'GET');
   await app.sendActs(id);
@@ -1400,22 +1403,47 @@ test('a copy kept on the phone, read in after a write to its task, does not read
 });
 
 /* A tick whose PATCH the page before this one made is sent again from its next stage, the ✅, which this page makes
-   fresh. A teammate unticked the task after the PATCH, and this page read that. The op's change counts from the ✅'s
-   request, newer than the read, so its tasks are read once it is answered, and the copy shows the untick. */
+   fresh. A teammate unticked the task after the PATCH, and this page read that. The op's change counts from the
+   PATCH's request, older than the read, so the copy keeps the untick. The ✅ comes with the read that follows. */
 test("an op sent before the page loaded, and finished fresh now, leaves a teammate's change read since", async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const v = fakeVikunja([{ id: 1, title: 'Mop the floor', done: false, reactions: {} }]),
     app = sender(),
-    id = uuid7();
+    id = uuid7(),
+    sentAt = { [id + ':0:0']: started() };
   await api('/tasks/1', { method: 'PATCH', body: { done: true }, key: id + ':0:0' });
   v.task(1).done = false; // a teammate unticks it
   read([structuredClone(v.task(1))], TASK_REACTIONS_COMMENTS);
   app.row(copyOf(1));
-  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, stage: 1, fails: 0 };
+  const e = { id, kind: 'act', op: 'done', task: 1, run: null, sent: true, sentAt, stage: 1, fails: 0 };
   await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
   await app.sendActs(id);
   await settled();
   assert.deepEqual([copyOf(1).done, copyOf(1).reactions['✅'].map(u => u.id)], [false, [1]]);
+});
+
+/* A step's progress, whose PATCH the page before this one made, writes its checklist's progress fresh on this page.
+   A teammate changed the step's progress after the PATCH, and this page read that. The PATCH counts from when the page
+   before sent it, so the copy keeps the teammate's change from the op's answer on. */
+test("an op's part made before the page loaded doesn't overwrite a teammate's change this page read", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([
+      { id: 1, title: 'Closing', percent_done: 0, related_tasks: { subtask: [{ id: 2 }] } },
+      { id: 2, title: 'Mop the floor', percent_done: 0, related_tasks: { parenttask: [{ id: 1 }] } },
+    ]),
+    app = sender(),
+    id = uuid7(),
+    sentAt = { [id + ':0:0']: started() };
+  await api('/tasks/2', { method: 'PATCH', body: { percent_done: 0.4 }, key: id + ':0:0' });
+  v.task(2).percent_done = 0.75; // a teammate's change
+  read([structuredClone(v.task(1)), structuredClone(v.task(2))]);
+  for (const k of [1, 2]) app.row(copyOf(k));
+  const e = { id, kind: 'act', op: 'progress', task: 2, pct: 40, run: 1, sent: true, sentAt, stage: 1, fails: 0 };
+  await sync.add({ ...e, fixed: { figure: { percent_done: 0.4 } }, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  holding((path, method) => method === 'GET');
+  await app.sendActs(id);
+  await settled();
+  assert.deepEqual([copyOf(1).percent_done, copyOf(2).percent_done], [0.4, 0.75]);
 });
 
 /* The relay can't tell whether Vikunja made a request whose first try never finished, and here Vikunja did. The op

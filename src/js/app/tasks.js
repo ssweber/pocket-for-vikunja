@@ -16,6 +16,7 @@ import { intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.j
 import { sync } from '../sync.js';
 import { opOf, OPS } from '../ops/index.js';
 import { repeats } from '../dates.js';
+import { allComments } from '../checklists.js';
 
 // Tasks deleted this session. A request that started before the delete may still bring one, or list it among another
 // task's related tasks.
@@ -74,23 +75,22 @@ const bases = new Map(); // task id -> what a row was made from while Vikunja's 
 const settled = new Set();
 
 /* Vikunja's copy of a task only moves forward. Vikunja gives no version number, so Pocket orders what it learns by
-   when it started each request, on `clock`: a counter, not the time, so two requests in one millisecond keep their
-   order. A field of a reply is taken only if its request started after the request behind that field of the copy
-   (`since`). A read is also thrown away for a task a write was in flight on at any time while it ran (`flying`,
-   `landed`), because it may carry the task from before or after that write, and the next read decides. */
-// The time of a request sent before this page loaded. The page doesn't know it, so it counts as before every request
-// the page sent.
-export const EARLIER = 1;
-let clock = EARLIER;
-// When a request starts, for read and writes.
-export const started = () => ++clock;
+   when it started each request, on `clock`. A field of a reply is taken only if its request started after the request
+   behind that field of the copy (`since`). A read is also thrown away for a task a write was in flight on at any time
+   while it ran (`flying`, `landed`), because it may carry the task from before or after that write, and the next read
+   decides. */
+let clock = 0;
+/* When a request starts, for read and writes: the phone's time in microseconds, one more than the last at least, so
+   two requests in one millisecond keep their order. An outbox entry keeps the times of its requests, and the time
+   carries over to the next page. */
+export const started = () => (clock = Math.max(clock + 1, Date.now() * 1000));
 /* When the copies were last dropped, as a user signed out (dropCopies). A request that started before then may bring
-   the last user's tasks, so nothing it brings goes into the store. A write sent before this page loaded (EARLIER)
-   counts from its first request on the page (`start`), and a saved copy (0) is the new user's. */
+   the last user's tasks, so nothing it brings goes into the store. A write counts from the start of its try on this
+   page (`start`), and a saved copy (0) is the new user's. */
 let dropped = 0;
 const before = w => {
   const at = typeof w === 'number' ? w : (w.start ?? w.at);
-  return at > EARLIER && at <= dropped;
+  return at > 0 && at <= dropped;
 };
 const since = new Map(); // task id -> field -> when the request behind that field of its copy started
 const flying = new Map(); // task id -> the writes to it in flight (writes)
@@ -141,7 +141,7 @@ export function writes(on = {}, idle = false) {
       for (const id of w.fields.keys()) {
         flying.get(id)?.delete(w);
         if (!flying.get(id)?.size) flying.delete(id);
-        landed.set(id, ++clock);
+        landed.set(id, started());
         reread(id);
       }
     },
@@ -159,11 +159,8 @@ const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
    write starts with the op's first request and stays in flight across tries, because a request whose reply was lost
    may still reach Vikunja. It ends once the op stops waiting in the outbox: answered, refused or gone (keyOps). A try
    after a refusal or an unknown answer, as Try again or Cancel makes, is in flight only from its first request, since
-   no earlier request of the op is on its way then. The op's change counts from its first request in this session
-   (`at`), also when Try again sends it after it was refused. An op sent before this page loaded was made at a time the page doesn't know, so it counts from before all
-   of the page's reads (EARLIER) until it makes a request fresh (`start`, stageContext). From then on its part made
-   earlier can overwrite a teammate's change the page read, so its tasks are read again once it is answered
-   (`replays`). */
+   no earlier request of the op is on its way then. The op's change counts from its first request (`at`), also when
+   Try again sends it after it was refused, and also when the page before this one sent it (firstSent). */
 export const sendingOp = a => {
   const was = opWrites.get(a.id);
   if (was && !was.ended) return was;
@@ -179,34 +176,39 @@ export const sendingOp = a => {
       for (const k of op.replyOnly(a)) on[id][k] = UNKNOWN;
     }
   const w = writes(on, !!was);
-  Object.assign(
-    w,
-    was ? { at: was.at, start: was.start } : { at: a.sent ? EARLIER : w.at, start: w.at, replays: !!a.sent },
-  );
+  Object.assign(w, { at: firstSent(a) ?? w.at, start: was?.start ?? w.at });
   opWrites.set(a.id, w);
   return w;
 };
+/* The time of op entry `a`'s earliest request, as the entry keeps the time of each (sentAt, stageContext). Null for an
+   op not sent yet, or sent by an older Pocket, which keeps no times. */
+export const firstSent = a => (a.sentAt ? Math.min(...Object.values(a.sentAt)) : null);
 /* When Pocket's writes leave fields of a copy unsure, the task is read again once no write to it is in flight
    (reread), once however many writes left it unsure. Two writes crossed, or Vikunja changed what only its reply can
    say, and that reply wasn't taken. Or a read that may hold a teammate's change was thrown away. A read taken, or a
    reply that brings the field, ends the doubt. */
 const doubts = new Map(); // task id -> the fields of its copy that may be old
 const rereading = new Set(); // the tasks being read again
-// What a read again asks for: every field of a task, and its reactions (expand=reactions).
-const REREAD = [...TASK, 'reactions'];
+// What a read again asks for: every field of a task, its reactions, and its comments where the copy has them.
+const REREAD = [...TASK, 'reactions', 'comments'];
 const doubt = (id, fields) => {
-  const d = doubts.get(id) || new Set();
-  for (const k of fields) if (REREAD.includes(k)) d.add(k);
+  const d = doubts.get(id) || new Set(),
+    t = copies.get(id) ?? bases.get(id);
+  for (const k of fields) if (REREAD.includes(k) && (k !== 'comments' || (t && 'comments' in t))) d.add(k);
   if (d.size) doubts.set(id, d);
 };
 function reread(id) {
   if (!doubts.get(id)?.size || flying.get(id)?.size || rereading.has(id) || forgotten.has(id) || !app) return;
   rereading.add(id);
-  const at = started();
-  api(`/tasks/${id}?expand=reactions`).then(
+  const at = started(),
+    asked = doubts.get(id).has('comments') ? REREAD : REREAD.filter(k => k !== 'comments');
+  (asked === REREAD
+    ? api(`/tasks/${id}?expand=reactions&expand=comments`).then(allComments)
+    : api(`/tasks/${id}?expand=reactions`)
+  ).then(
     t => {
       rereading.delete(id);
-      app.change(w => w.read([t], REREAD, at));
+      app.change(w => w.read([t], asked, at));
       reread(id); // a write ended while it ran, so the read was thrown away
     },
     e => {
@@ -349,8 +351,7 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   doubt(id, [
     ...Object.keys(mine).filter(k => mine[k] === UNKNOWN),
     ...Object.keys(fields).filter(k => !kept.includes(k) || !same(c[k], fields[k])),
-    // Vikunja made part of the op at a time this page doesn't know: before a replayed reply came, or before the page
-    // loaded (sendingOp).
+    // Vikunja made part of the op before a replayed reply came, and a teammate may have changed the task since.
     ...(w.replayed || w.replays ? REREAD : []),
   ]);
 }

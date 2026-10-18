@@ -128,12 +128,13 @@ export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'ru
    the label it found or made (`labelId`), a checklist's start keeps its copies and where it moved its template
    (`copied`, `notes`, `ticked`), and Make template keeps what it did to each step and each link (`tickedSteps`,
    `uncopied`). `cut` is how many of its stages a cancelled op had sent, and `unsure` says the answer to the next was
-   unknown (cancelling). */
+   unknown (cancelling). `sentAt` keeps when each request was first sent, by its key (stageContext). */
 export const SENT = [
   'files',
   'stage',
   'fails',
   'sent',
+  'sentAt',
   'key',
   'fixed',
   'got',
