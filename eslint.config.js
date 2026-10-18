@@ -11,6 +11,7 @@ import globals from 'globals';
 // selectors that file is allowed. An allowed path ending in /** allows every file under it.
 const WRITE = 'Send a change through the outbox as an op (this.act), not straight to Vikunja.';
 const KEY = "Send a write with a key (api's `key` option), so a write sent again after a lost reply is made once. An op's stage sends with c.send, which gives each request its key.";
+const ALIAS = "Call api() by its own name, so lint can check that a write has a key.";
 const STORE = 'Write the store inside this.change(w => …) with its writers (src/js/app/tasks.js). w.answer() writes what Vikunja answered, and w.leave() marks a row leaving.';
 // A write to a task's row: this.tasks[id] = …, this.tasks[id].done = …, delete or ++ on one, or Object.assign onto one.
 // The sheet's task and a checklist's are rows too (sheetTask, runTask). show() reads the leaving marks too.
@@ -35,9 +36,14 @@ const DIRECT = [
 const RESTRICTED = [
   { selector: 'Literal[value=/prefers-reduced-motion/]', message: 'Ask motion() in src/js/util.js whether things may move.', allow: ['src/js/util.js'] },
   { selector: "CallExpression[callee.name='addDays'][arguments.1.value=8]", message: "Ask dayGroup() in src/js/lists.js which of Today's groups a date is in, or use TODAY_DAYS.", allow: ['src/js/lists.js'] },
-  { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']", message: WRITE, allow: DIRECT },
-  // A call to api with a method other than GET and no key.
-  { selector: "CallExpression[callee.name='api'] > ObjectExpression:has(> Property[key.name='method']:not([value.value='GET'])):not(:has(> Property[key.name='key']))", message: KEY, allow: DIRECT },
+  { selector: "CallExpression[callee.name='api'] > ObjectExpression > Property[key.name='method']:not([value.value='GET'])", message: WRITE, allow: DIRECT },
+  /* A call to api with no key whose options may make it a write: a method other than GET, a spread (...opts), or
+     options a selector can't read, such as a variable. A selector can't follow api through a variable or a function,
+     so api is called by its own name only, and lint fails where it is renamed, imported under another name or passed
+     on. It can't see inside a spread either, so `{ ...opts, key }` passes whatever `opts` holds. */
+  { selector: "CallExpression[callee.name='api'] > ObjectExpression:has(> :matches(Property[key.name='method']:not([value.value='GET']), SpreadElement)):not(:has(> Property[key.name='key']))", message: KEY, allow: DIRECT },
+  { selector: "CallExpression[callee.name='api'][arguments.1]:not([arguments.1.type='ObjectExpression']), CallExpression[callee.name='api'] > SpreadElement", message: KEY, allow: DIRECT },
+  { selector: "Identifier[name='api']:not(CallExpression > .callee, ImportSpecifier > Identifier, MemberExpression > .property, Property > .key), ImportSpecifier[imported.name='api']:not([local.name='api']), ImportDeclaration[source.value=/api\\.js$/] > ImportNamespaceSpecifier", message: ALIAS, allow: DIRECT },
   { selector: `:matches(AssignmentExpression > MemberExpression.left, UpdateExpression > MemberExpression.argument, UnaryExpression[operator='delete'] > MemberExpression.argument) ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `CallExpression[callee.object.name='Object'][callee.property.name='assign'] > MemberExpression.arguments:first-child ${ROW}`, message: STORE, allow: ['src/js/app/tasks.js'] },
   { selector: `:matches(${HELD('sheet', 'task')}, ${HELD('view', 'run')})`, message: BY_ID, allow: ['src/js/app/tasks.js'] },
