@@ -455,7 +455,7 @@ function forgetTree(ids) {
       touched.add(id);
     }
 }
-const writers = { read, answer, made, base, leave, keyOps, offTasks, answered, forget, forgetTree };
+const writers = { read, answer, made, base, leave, keyOps, offTasks, answered };
 
 /* Patch the task as its rows show it (shownAs) into tasks[id] on component `c`. Only the fields that changed are
    written, so the rows of a task that didn't change have nothing to redraw. A field Pocket keeps on a row, such as a

@@ -367,14 +367,6 @@ const HEARD = {
     w.model.settled.add(a.id);
     return fn(a);
   },
-  forget(w, fn, id) {
-    fn(id);
-    w.model.gone(id);
-  },
-  forgetTree(w, fn, ids) {
-    fn(ids);
-    w.model.forgetTree(ids);
-  },
 };
 function spying(w, writers) {
   const out = {};

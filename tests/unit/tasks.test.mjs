@@ -47,6 +47,8 @@ const answering = (a, got = null) => {
   current.change(x => x.answered(a, w, got && { ...w, replayed: false, task: got }));
   w.end();
 };
+// Vikunja answered a delete of tasks `ids`, deepest first.
+const deleted = (...ids) => answering({ kind: 'act', id: uuid7(), op: 'delete', task: ids.at(-1), ids });
 
 test('a task read again is the same object and shows what Vikunja has now', () => {
   const app = component(tasks);
@@ -177,14 +179,13 @@ test('a change that throws still shows what it wrote, and the error goes on', ()
   assert.equal(t.done, true, 'the next change shows its writes when it ends');
 });
 
-/* A deleted task's copy goes through put like any answer, so its answer time is recorded. A read that started before
-   the delete then leaves it deleted. */
-test("forget records an answer time, so a read in flight doesn't bring the task back", () => {
+// A read that started before a delete was answered leaves the task deleted.
+test("a delete's answer forgets the task, so a read in flight doesn't bring it back", () => {
   const app = component(tasks);
   read([{ id: 1, title: 'Call Jo' }]);
   app.row(copyOf(1));
   const at = started();
-  app.change(w => w.forget(1));
+  deleted(1);
   put([{ id: 1, title: 'Call Jo' }], TASK, at);
   assert.deepEqual([copyOf(1), app.rowTask(1)], [undefined, null]);
 });
@@ -314,7 +315,7 @@ test('a deleted task is removed from every list and forgotten', () => {
     { key: 'overdue', tasks: [t] },
     { key: 'today', tasks: [other, t] },
   ];
-  app.change(w => w.forget(1));
+  deleted(1);
   assert.deepEqual(
     app.view.groups.map(g => g.tasks.map(x => x.id)),
     [[], [2]],
@@ -868,7 +869,7 @@ test('a read in flight does not bring back a task deleted meanwhile', () => {
   app.row(copyOf(1));
   app.row(copyOf(2));
   const landing = putting(TASK);
-  app.change(w => w.forgetTree([1]));
+  deleted(1);
   const list = landing([
     { id: 1, title: 'Call Jo' },
     { id: 2, title: 'Buy milk' },
@@ -903,7 +904,7 @@ test('a deleted task leaves every related list, and a read from before the delet
   app.subRows(app.row(copyOf(2)));
   app.change(w => w.base({ id: 4, title: 'Load tables', related_tasks: { parenttask: [{ id: 2 }, { id: 1 }] } }));
   const before = started();
-  app.change(w => w.forgetTree([1]));
+  deleted(1);
   assert.deepEqual(copyOf(3).related_tasks.parenttask, [{ id: 2 }], 'the step names only the parent left');
   assert.deepEqual(app.tasks[4].related_tasks.parenttask, [{ id: 2 }], 'and so does a row with no copy yet');
   put(
@@ -1003,7 +1004,7 @@ test("a read of a task carries when it started, so a stale one doesn't bring bac
   };
   const reading = app.readCopy(1);
   await new Promise(ok => setImmediate(ok));
-  app.change(w => w.forgetTree([2])); // Vikunja answered the subtask's delete
+  deleted(2);
   land();
   await reading;
   assert.deepEqual(
@@ -1199,7 +1200,7 @@ test('a task Vikunja deleted loses its row in the same change as its copy', () =
   ]);
   const rows = [1, 2].map(id => app.row(copyOf(id)));
   app.view.groups = [{ key: 'open', tasks: rows }];
-  app.change(w => w.forget(1));
+  deleted(1);
   assert.deepEqual([copyOf(1), app.rowTask(1), app.view.groups[0].tasks.map(t => t.id)], [undefined, null, [2]]);
 });
 
