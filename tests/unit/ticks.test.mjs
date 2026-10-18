@@ -3,14 +3,14 @@
 // row's tick waits for the batch to clear (leaving.js).
 import './browser.mjs';
 import './outbox-db.mjs';
-import { DAY, patches, opened } from './actions-helpers.mjs';
+import { collected, DAY, patches, opened } from './actions-helpers.mjs';
 import { component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
 import tasks, { started, TASK } from '../../src/js/app/tasks.js';
 import sending from '../../src/js/app/sending.js';
-import { stageContext } from '../../src/js/app/acts.js';
+import { stageContext, undosKept } from '../../src/js/app/acts.js';
 import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
@@ -864,6 +864,25 @@ test("the Undo of a repeating task's tick whose reply was lost unticks it, when 
   app.offline = false;
   assert.equal(await app.undoOps([f]).left, 0);
   assert.deepEqual([v.task(1).done, sync.all(1).length], [false, 0]);
+});
+test('Pocket forgets what it kept to undo a tick, a progress, an edit, a person or a label once no Undo can be tapped', async t => {
+  const { v, app } = listed(
+    t,
+    [1, 2, 3, 4].map(id => ({ id, title: 'Task ' + id, done: false, percent_done: 0, assignees: [], labels: [] })),
+  );
+  v.labels.push({ id: 600, title: 'floor' });
+  await collected(); // what earlier tests kept
+  const n = undosKept();
+  await app.toggleDone(app.tasks[1], ROW);
+  await app.setProgress(app.tasks[2], 40, ROW);
+  await app.act({ op: 'edit', task: 3, run: null, set: { title: 'Paint the gate' }, was: { title: 'Task 3' } });
+  await app.addAssignee(app.tasks[4], { id: 7, username: 'bob' });
+  await app.addLabelTo(app.tasks[4], { id: 600, title: 'floor' });
+  await collected();
+  assert.equal(undosKept(), n + 1, 'only the tick shows an Undo, on its row until the batch clears');
+  await app.clearBatch(true);
+  await collected();
+  assert.equal(undosKept(), n);
 });
 test('a tick on a task deleted in Vikunja since leaves the outbox, and says why', async t => {
   const { v, app } = listed(t, [{ id: 1, title: 'Call Jo', done: false }]);

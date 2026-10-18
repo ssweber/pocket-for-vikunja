@@ -1,6 +1,8 @@
 // Helpers that actions.test.mjs, ticks.test.mjs and reschedule.test.mjs share: a day in seconds, the patches that
-// reached the fake Vikunja, and a task opened in the sheet.
+// reached the fake Vikunja, a task opened in the sheet, and garbage collection.
 import './browser.mjs';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { started, TASK } from '../../src/js/app/tasks.js';
 
 export const DAY = 86400;
@@ -13,4 +15,11 @@ export const opened = (app, t, more = {}) => {
   app.row(structuredClone(t));
   app.sheet = { ...more, id: t.id };
   return app.sheetTask;
+};
+// Collect garbage, and let the callbacks of a FinalizationRegistry run for what was collected.
+v8.setFlagsFromString('--expose-gc');
+const gc = vm.runInNewContext('gc');
+export const collected = async () => {
+  gc();
+  for (let i = 0; i < 3; i++) await new Promise(ok => setImmediate(ok));
 };

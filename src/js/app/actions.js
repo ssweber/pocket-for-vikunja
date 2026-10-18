@@ -464,7 +464,6 @@ export default {
     this.say(movedToProject(title(pid), subs.length), {
       place: at,
       action: { label: 'Undo', fn: undo },
-      gone: () => this.forgetUndo([f]),
     });
   },
   /* Task `id`'s subtasks at every level, each once, as their rows show them. A subtask Pocket has no copy of is read
@@ -541,7 +540,6 @@ export default {
     this.say(`No longer a subtask of ${ops.length === 1 ? `“${first.title}”` : ops.length + ' tasks'}`, {
       place: 'sheet:top',
       action: { label: 'Undo', fn: undo },
-      gone: () => this.forgetUndo(ops),
     });
   },
   // Whether Move all to today has anything to move. Repeating tasks and repeating checklists don't count.
@@ -594,7 +592,6 @@ export default {
     this.say(movedText(moves.length, stays), {
       place: 'overdue',
       action: { label: 'Undo', fn: undo },
-      gone: () => this.forgetUndo(moves),
     });
     this.render();
     await sending;
@@ -643,7 +640,6 @@ export default {
       row: !kept && this.rowSeen(t.id) ? { id: t.id, stays: true } : null,
       place: 'cap',
       action: undo,
-      gone: () => this.forgetUndo([op]),
     });
     const r = await sending;
     // An Undo tapped while the move was being sent deals with a refusal itself.
@@ -652,7 +648,6 @@ export default {
     const e = r.error,
       unknown = e.code === 'unknown';
     failed = true;
-    this.forgetUndo([op]);
     if (!unknown) {
       await sync.lock(() => sync.remove(r.entry));
       this.refreshPending();

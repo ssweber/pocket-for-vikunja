@@ -1,7 +1,7 @@
 // Tests for moving a task's date on Today and Move all (src/js/app/actions.js), against a fake Vikunja: the row moves
 // at once, the change waits offline, and Undo puts the date back.
 import './browser.mjs';
-import { DAY, patches } from './actions-helpers.mjs';
+import { collected, DAY, patches } from './actions-helpers.mjs';
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -554,20 +554,26 @@ test('Undo of Move all shows the old dates at once, while the moves are still be
     globalThis.fetch = real;
   }
 });
+// The messages end, and their Undos with them. act() reads the last message, so a blank one is left.
+const messagesGone = app => app.toasts.splice(0, Infinity, { msg: '' });
 test('Pocket forgets what it kept to undo a move once its Undo has gone, or has run', async c => {
   const { app } = onToday(c, [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 7, 16).toISOString() }]);
   app.view.groups[1].tasks.push(app.tasks[1]);
+  await collected(); // what earlier tests kept
   const n = undosKept();
   await moveTo(app, app.tasks[1], new Date(2026, 9, 9), 'Fri 9');
+  await collected();
   assert.equal(undosKept(), n + 1);
-  app.toast.gone();
+  messagesGone(app);
+  await collected();
   assert.equal(undosKept(), n, 'its message has gone');
   app.offline = true;
   await moveTo(app, app.tasks[1], new Date(2026, 9, 8), 'Tomorrow');
-  const first = lastUndo(app);
   await moveTo(app, app.tasks[1], new Date(2026, 9, 10), 'Sat 10');
+  await collected();
   assert.equal(undosKept(), n + 2, 'a move that replaced another keeps both Undos');
   await lastUndo(app).action.fn();
-  first.gone();
+  messagesGone(app);
+  await collected();
   assert.equal(undosKept(), n, "one Undo has run, and the other's message has gone");
 });

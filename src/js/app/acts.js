@@ -20,11 +20,16 @@ import { CREATED, EARLIER, opsId, overlaps, sendingOp, started, TASK, writes } f
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;
-/* For each op queued in this tab whose Undo can still be tapped, the op that undoes it (`inverts`), built from the
-   entry as queued, and from Vikunja's answer once this tab sees it. An op a later op replaced (fold) moves to
-   `folded`. Both forget an op once its Undo has gone (forgetUndo). */
+/* For each op queued in this tab that has an invert, the op that undoes it (`inverts`), built from the entry as queued,
+   and from Vikunja's answer once this tab sees it. An op a later op replaced (fold) moves to `folded`. Only an Undo
+   reads them, and an Undo holds the fields its op was queued with. So each is forgotten once those fields are garbage
+   collected (`unheld`): its message has closed, or its caller showed none. */
 const inverts = new Map(),
-  folded = new Set();
+  folded = new Set(),
+  unheld = new FinalizationRegistry(id => {
+    inverts.delete(id);
+    folded.delete(id);
+  });
 // The fields of an outbox entry that say whose it is, where it is in the order and how its sending went.
 const PLACE = ['id', 'kind', 'user', 'who', 'at', 'n', 'files', 'stage', 'fails', 'failed', 'label'];
 // How many ops this tab keeps an Undo for, for the tests.
@@ -179,11 +184,16 @@ export default {
   },
   /* Queue ops (their fields) together, so their rows show in one change (rule 10), fold each into an earlier op it
      replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`) and every
-     result (`all`). A caller that shows an Undo for an op with an invert calls forgetUndo once that Undo has gone. */
+     result (`all`). An Undo keeps the objects in `list` and passes them to undoOps, never copies, because what undoOps
+     needs is kept only while those objects are. */
   async actAll(list, quiet = false) {
     const entries = list.map(f => this.actEntry(f)),
       last = entries.at(-1).id;
-    for (const e of entries) if (opOf(e).invert) inverts.set(e.id, opOf(e).invert(e));
+    entries.forEach((e, i) => {
+      if (!opOf(e).invert) return;
+      inverts.set(e.id, opOf(e).invert(e));
+      unheld.register(list[i], e.id);
+    });
     const { kept, full } = await this.queue(entries);
     await sync.lock(() => this.fold(entries));
     return { ...(await this.sendActs(last, kept, full, quiet ? new Set(entries.map(e => e.id)) : null)), entry: last };
@@ -258,7 +268,6 @@ export default {
       if (!quiet)
         for (const f of list.filter(f => folded.has(f.id)))
           this.say(changedSince(this.actTitle(f.task)), { row: { id: opsId(f.task), stays: true, cls: 'failed' } });
-      this.forgetUndo(list);
       const entries = back.map(f => this.actEntry(f)),
         ids = new Set(entries.map(e => e.id)),
         { kept, full } = entries.length ? await this.queue(entries) : {};
@@ -271,13 +280,6 @@ export default {
       return left + r.all.filter(x => ids.has(x.id) && x.status === 'error').length;
     };
     return { left: undo() };
-  },
-  // Forget the Undos of the ops queued from `list`, once they can't be tapped: their message has gone, or Undo ran.
-  forgetUndo(list) {
-    for (const f of list) {
-      inverts.delete(f.id);
-      folded.delete(f.id);
-    }
   },
   // An op's outbox entry. It stores the task's title so the Outbox can name the action after a reload, and the
   // user as /user gave them, for the ✅, the comment or the claim the op shows.
