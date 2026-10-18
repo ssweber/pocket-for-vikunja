@@ -197,7 +197,7 @@ test("Cancel's Undo does nothing once its message has gone", async t => {
   assert.deepEqual(sync.all(1), []);
 });
 /* The words each op says after Cancel are in WORDS above, and parse.mjs checks an answer's, which are read from HTML.
-   A comment's text goes back to its box, so it has no Undo. Unit tests have no DOM, so these ops hold no HTML. */
+   A comment's text goes back to its box, so it has no Undo. */
 test('Cancel offers Undo except for a comment, whose text goes back to its box', async t => {
   const { app } = offlineSender(t);
   const cancel = async f => {

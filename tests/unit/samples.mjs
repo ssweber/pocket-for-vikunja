@@ -53,7 +53,7 @@ export const line = (title, p) => ({
    several ops queued together, and the last is the one tried. `queue(app, fields)` queues it where the app has its own
    way. `cannot` names the states that can't arise for the op: an op whose requests are all in one stage is never
    partly done. `unseen` names the fields Vikunja changes that the task's row doesn't show. A sample named other than
-   its op says which op it tries (`op`). Keep each sample small. Unit tests have no DOM, so a comment holds no HTML. */
+   its op says which op it tries (`op`). Keep each sample small. The unit tests read only the HTML Pocket writes in notes (dom.mjs). */
 export const SAMPLES = {
   done: {
     tasks: checklist(),
