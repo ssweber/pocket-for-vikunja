@@ -583,7 +583,7 @@ export const dropCopies = () => {
   dropped = clock;
   unread = null;
   caughtAt = null;
-  loadedAt = Date.now();
+  shownFrom = Date.now();
 };
 
 /* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
@@ -598,7 +598,16 @@ const keptCopy = id => copies.get(id) ?? bases.get(id);
    phone reads its own tasks' copies first, so its first row isn't held up by the rest (keptScreen). A copy the store
    has already is newer, and a copy read after a write to its task is thrown away (read). */
 function restore(c, ids = null) {
-  unread ||= new Set(saved.get('tasks') || []);
+  if (!unread) {
+    unread = new Set(saved.get('tasks') || []);
+    // The phone's copies may be as old as the oldest kept screen's load, so the next catch-up reads from then.
+    const oldest = Math.min(
+      ...keptScreens()
+        .map(k => Date.parse(saved.get(k)?.at))
+        .filter(Number.isFinite),
+    );
+    if (unread.size && oldest < (shownFrom ?? Infinity)) shownFrom = oldest;
+  }
   const list = (ids ?? [...unread])
     .filter(id => unread.delete(id) && !copies.has(id))
     .map(id => saved.get('task.' + id))
@@ -655,10 +664,12 @@ function keptIds(c, phone = false) {
 const missing = new Set();
 /* Vikunja changes tasks Pocket doesn't hear of, as a teammate's edit or a delete in the web app, so the store catches
    up when Pocket comes back to the screen or the connection comes back (catchUp). It reads what changed since the last
-   catch-up started (`caughtAt`), kept on Vikunja's clock, since the phone's clock may be set between catch-ups. Before
-   the first, it reads from when the page loaded (`loadedAt`, on the phone's clock). */
+   catch-up started (`caughtAt`), kept on Vikunja's clock, since the phone's clock may be set between catch-ups. It
+   also reads what changed since the oldest read behind a copy this page shows, which no catch-up has covered yet
+   (`shownFrom`, on the phone's clock): the page's load, or the oldest kept screen's load once the phone's copies are
+   read (restore). */
 let caughtAt = null,
-  loadedAt = Date.now(),
+  shownFrom = Date.now(),
   catching = false;
 // How many ids one request names. Some proxies refuse a URL over about 8 KB, and an id takes up to about 12 bytes.
 export const ID_CHUNK = 300;
@@ -771,14 +782,16 @@ export default {
   async catchUp() {
     if (!this.user || this.offline || !outboxRead || catching) return;
     catching = true;
-    const from = serverTime(Date.now());
+    const from = serverTime(Date.now()),
+      was = shownFrom,
+      since = Math.min(caughtAt ?? Infinity, was === null ? Infinity : serverTime(was));
     try {
       const at = started(),
         // Vikunja keeps times in whole seconds, so the second the last catch-up started in is read again.
         changed = await allPages(
           '/tasks?' +
             new URLSearchParams([
-              ['filter', `updated > '${new Date((caughtAt ?? serverTime(loadedAt)) - 1000).toISOString()}'`],
+              ['filter', `updated > '${new Date(since - 1000).toISOString()}'`],
               ['expand', 'reactions'],
               ['expand', 'comment_count'],
             ]),
@@ -792,6 +805,7 @@ export default {
       );
       await this.findRemoved();
       caughtAt = from;
+      if (shownFrom === was) shownFrom = null;
     } catch {
       /* tried again the next time */
     } finally {

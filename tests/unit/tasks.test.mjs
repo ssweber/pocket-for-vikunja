@@ -1625,3 +1625,21 @@ test("a catch-up after the phone's clock was set back finds a change made since 
   ahead = 0;
   await api('/tasks/1'); // the tests after this one see both clocks agree
 });
+
+/* Pocket opened offline shows the copies the phone kept when Today last loaded, yesterday. Once the connection is back,
+   the catch-up reads what changed since then, which includes a teammate's change made before the page loaded. */
+test('a catch-up after an offline open finds a change made before the page loaded', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await sync.ready;
+  const yesterday = new Date(Date.now() - 86400000).toISOString(),
+    v = fakeVikunja([{ id: 1, title: 'Mop the floor', project_id: 5, updated: yesterday }]),
+    app = component(tasks);
+  Object.assign(app, { user: { id: 1 }, projById: new Map([[5, { id: 5, title: 'Closing' }]]) });
+  keptOnPhone(structuredClone(v.task(1)));
+  saved.set('today', { groups: [{ key: 'today', tasks: [1] }], at: yesterday });
+  app.view.groups = [{ key: 'today', tasks: app.rowsOf(app.keptScreen('today').groups[0].tasks) }];
+  Object.assign(v.task(1), { title: 'Mop the floor twice', updated: new Date(Date.now() - 3600000).toISOString() });
+  await app.catchUp();
+  assert.equal(app.tasks[1].title, 'Mop the floor twice');
+  localStorage.clear();
+});

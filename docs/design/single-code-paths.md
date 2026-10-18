@@ -44,8 +44,10 @@ Built on `dev`, and described by the code and its comments:
 - screens saved on the phone as the ids of their tasks, with the store's copies kept beside them, swept to what the
   kept screens and the outbox need, and kept on the phone as Pocket is hidden too;
 - the store catching up when Pocket comes back to the screen or the connection comes back (`catchUp`, `tasks.js`). It
-  can't see what Vikunja's `updated` misses (see Lessons), nor a change to a phone's copy made before the page loaded,
-  which each screen's own load reads. It doesn't ask about the tasks of a project Pocket doesn't list, as an archived
+  reads what changed since the oldest kept screen was loaded. It can't see what Vikunja's `updated` misses (see
+  Lessons). It can miss a change to a task whose copy is older than that, as an op's task on no kept screen. When the
+  phone's clock was set back between two pages, it can also miss a change made soon after that screen was loaded.
+  Each screen's own load reads those. It doesn't ask about the tasks of a project Pocket doesn't list, as an archived
   one;
 - each request's time kept in its op's entry (`sentAt`), so an op sent before a reload counts from its own requests;
 - the lifecycle test and the randomized store test, which reloads between any two requests and catches up.
