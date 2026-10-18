@@ -5,7 +5,7 @@ import { OP_WORDS } from '../messages.js';
 import { CANCEL } from '../sync.js';
 import { setOne } from './stages.js';
 
-// A label as an entry keeps it. A label not yet made, shown with an id from its title, has none.
+// The fields of a label that an entry keeps. A label Vikunja hasn't made yet has no id.
 export const tagOf = l => ({
   id: typeof l.id === 'number' ? l.id : null,
   title: l.title || '',

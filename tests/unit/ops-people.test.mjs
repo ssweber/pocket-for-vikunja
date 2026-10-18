@@ -190,16 +190,20 @@ test('each op names the person or label, and Cancel names what Vikunja keeps', (
   assert.deepEqual(
     [
       OPS.assign.text(a, 'Mop'),
+      OPS.assign.text({ ...a, person: me }, 'Mop'),
       OPS.assign.refused({ ...a, add: false, person: me }, 'Mop'),
       OPS.assign.dropped(a, 'Mop', copy),
+      OPS.assign.dropped({ ...a, was: [] }, 'Mop'),
       OPS.label.text({ ...a, add: false }, 'Mop'),
       OPS.label.dropped(a, 'Mop', copy),
       OPS.label.dropped({ ...a, was: [] }, 'Mop'),
     ],
     [
       'Assigning Bob to “Mop”',
+      'Assigning “Mop” to you',
       'Unassigning you from “Mop”',
-      '“Mop” people stay you and Bob.',
+      '“Mop” stays assigned to you and Bob.',
+      '“Mop” stays unassigned.',
       'Removing label floor from “Mop”',
       '“Mop” labels stay floor and mop.',
       '“Mop” has no labels.',

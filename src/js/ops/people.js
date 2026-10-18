@@ -76,7 +76,7 @@ export const unclaim = {
   replyOnly: null,
 };
 
-// A person as an entry keeps them: what the words and the rows show.
+// The fields of a person that an entry keeps: what the op's words and the task's rows show of them.
 export const personOf = u => ({ id: u.id, username: u.username || '', name: u.name || '' });
 const withPerson = (list, u, add) => [...(list || []).filter(x => x.id !== u.id), ...(add ? [u] : [])];
 /* `person` is assigned (`add`) or unassigned, on the people Vikunja has when it is sent (setOne), so a person a teammate

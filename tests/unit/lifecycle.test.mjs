@@ -400,21 +400,16 @@ const CLAIMS = [
   [/^(?:stays|is) (done|not done)$/, (t, m) => t.done === (m[1] === 'done')],
   [/^(?:stays|is) (finished|open)$/, (t, m) => t.done === (m[1] === 'finished')],
   [/^stays unassigned$/, t => !t.assignees.length],
-  [/^stays assigned to you$/, t => same(t.assignees, [ME.id])],
   [
-    /^people stay (.+)$/,
+    /^stays assigned to (.+)$/,
     (t, m) => names(m[1]).length === t.assignees.length && names(m[1]).includes('you') === t.assignees.includes(ME.id),
   ],
-  [/^has no people$/, t => !t.assignees.length],
   [/^labels stay (.+)$/, (t, m) => names(m[1]).length === t.labels.length],
   [/^has no labels$/, t => !t.labels.length],
   [/^stays in Vikunja$/, t => !!t],
   [/^is deleted$/, t => !t],
   [/^(?:stays|is) a subtask of “(.+)”$/, (t, m, id) => t.related_tasks?.parenttask?.includes(id(m[1]))],
-  [
-    /^(?:stays out of|is no longer a subtask of) “(.+)”$/,
-    (t, m, id) => !t.related_tasks?.parenttask?.includes(id(m[1])),
-  ],
+  [/^(?:isn't|is no longer) a subtask of “(.+)”$/, (t, m, id) => !t.related_tasks?.parenttask?.includes(id(m[1]))],
 ];
 
 /* The rules every scenario keeps. Each returns what broke it, or nothing. */

@@ -173,9 +173,12 @@ const peopleWords = (a, t) => {
 };
 // A person by name, or as "you" for the user.
 const someone = (a, u) => (u.id === a.user ? 'you' : u.name || u.username);
+// Assigning the user reads as a claim does: Assigning “X” to you.
 const assigning = (a, title) =>
   a.add
-    ? `Assigning ${someone(a, a.person)} to ${task(title)}`
+    ? a.person.id === a.user
+      ? `Assigning ${task(title)} to you`
+      : `Assigning ${someone(a, a.person)} to ${task(title)}`
     : `Unassigning ${someone(a, a.person)} from ${task(title)}`;
 const labelling = (a, title) =>
   a.add ? `Adding label ${a.tag.title} to ${task(title)}` : `Removing label ${a.tag.title} from ${task(title)}`;
@@ -229,7 +232,7 @@ const subWords = link =>
     const parents = copy(a.task)?.related_tasks?.parenttask,
       sub = parents ? parents.some(p => p.id === a.up) : link ? a.stage > 0 : !(a.stage > 0),
       parent = over(a, link ? 'another task' : 'its parent');
-    if (!(a.stage > 0)) return `${it(title)} stays ${sub ? 'a subtask of' : 'out of'} ${parent}.`;
+    if (!(a.stage > 0)) return `${it(title)} ${sub ? 'stays a subtask of' : "isn't a subtask of"} ${parent}.`;
     return `${it(title)} is ${sub ? 'a subtask of' : 'no longer a subtask of'} ${parent}.${upStays(a, copy)}`;
   });
 export const OP_WORDS = {
@@ -309,12 +312,9 @@ export const OP_WORDS = {
   assign: {
     text: (a, title) => assigning(a, title),
     refused: (a, title) => assigning(a, title),
-    dropped: keeps((a, title, copy) => {
-      const list = copy(a.task)?.assignees ?? a.was ?? [];
-      return list.length
-        ? `${it(title)} people stay ${andList(list.map(u => someone(a, u)))}.`
-        : `${it(title)} has no people.`;
-    }),
+    dropped: keeps(
+      (a, title, copy) => `${it(title)} stays ${peopleWords(a, { assignees: copy(a.task)?.assignees ?? a.was })}.`,
+    ),
   },
   label: {
     text: (a, title) => labelling(a, title),

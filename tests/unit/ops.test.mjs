@@ -341,13 +341,13 @@ const WORDS = {
     [
       'Making “Unlock the door” a subtask of another task',
       'Making “Unlock the door” a subtask of another task',
-      '“Unlock the door” stays out of another task.',
+      "“Unlock the door” isn't a subtask of another task.",
       '“Unlock the door” is a subtask of another task.',
     ],
     [
       'Making a task a subtask of another task',
       'Making a task a subtask of another task',
-      '“it” stays out of another task.',
+      "“it” isn't a subtask of another task.",
       '“it” is a subtask of another task.',
     ],
   ],
@@ -369,10 +369,10 @@ const WORDS = {
     [
       'Assigning bob to “Unlock the door”',
       'Assigning bob to “Unlock the door”',
-      '“Unlock the door” has no people.',
-      '“Unlock the door” has no people.',
+      '“Unlock the door” stays unassigned.',
+      '“Unlock the door” stays unassigned.',
     ],
-    ['Assigning bob to a task', 'Assigning bob to a task', '“it” has no people.', '“it” has no people.'],
+    ['Assigning bob to a task', 'Assigning bob to a task', '“it” stays unassigned.', '“it” stays unassigned.'],
   ],
   label: [
     [
