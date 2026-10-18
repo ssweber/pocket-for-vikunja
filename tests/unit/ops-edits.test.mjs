@@ -184,24 +184,12 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       words({ rebase: 'order' }),
     ],
     [
-      [
-        'Renaming “Wipe the till” to “Wipe the counter”',
-        'Renaming “Wipe the till”',
-        '“it” keeps its title in Vikunja.',
-      ],
-      [
-        'Priority: High on “Wipe the till”',
-        'Priority on “Wipe the till”',
-        '“it” keeps the priority it has in Vikunja.',
-      ],
+      ['Renaming “Wipe the till” to “Wipe the counter”', 'Renaming “Wipe the till”', '“it” keeps its title.'],
+      ['Priority: High on “Wipe the till”', 'Priority on “Wipe the till”', '“it” keeps its priority.'],
       'No priority on “Wipe the till”',
-      ['Notes on “Wipe the till”', 'Notes on “Wipe the till”', '“it” keeps the notes it has in Vikunja.'],
-      ['Reminders on “Wipe the till”', 'Reminders on “Wipe the till”', '“it” keeps the reminders it has in Vikunja.'],
-      [
-        'Moving a step in “Wipe the till”',
-        'Moving a step in “Wipe the till”',
-        '“it” keeps its order of steps in Vikunja.',
-      ],
+      ['Notes on “Wipe the till”', 'Notes on “Wipe the till”', '“it” notes stay as they are.'],
+      ['Reminders on “Wipe the till”', 'Reminders on “Wipe the till”', '“it” reminders stay as they are.'],
+      ['Moving a step in “Wipe the till”', 'Moving a step in “Wipe the till”', '“it” steps stay in their order.'],
     ],
   );
 });

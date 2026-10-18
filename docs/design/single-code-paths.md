@@ -76,14 +76,6 @@ and empty the Outbox on each phone, before the next phone check.
 - **A first request waits while Pocket knows it is offline.** Once a request is sent the op can't be cancelled, so an
   op made offline must stay unsent until a read gets through.
 
-## Open bugs
-
-The lifecycle test found these. Each is in its test's `KNOWN` list until it is fixed. Both are words: an op stopped
-partway says in its Cancel words what Vikunja already has. They need new words, which the user agrees first.
-
-5. **Cancel of a delete refused at its parent's progress** says the task stays in Vikunja, which has deleted it.
-6. **Cancel of a progress refused at its parent's progress** doesn't say that Vikunja has the new progress.
-
 ## Phases to come
 
 ### 7 and 8. Ticks, progress, sheet fields, project, links, people and labels

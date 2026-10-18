@@ -166,7 +166,7 @@ test('Cancel asks nothing, says what Vikunja keeps, and its Undo puts the entry 
   );
   assert.deepEqual(
     [lastSaid(app).msg, lastSaid(app).action.label, lastSaid(app).place],
-    ['Cancelled. “Pay the rent” stays due today.', 'Undo', 'sheet:top'],
+    ['Cancelled. “Pay the rent” due date stays today.', 'Undo', 'sheet:top'],
   );
   await lastSaid(app).action.fn();
   assert.deepEqual(
@@ -205,8 +205,8 @@ test('Cancel offers Undo except for a comment, whose text goes back to its box',
     await app.dropAct(sync.all(1).at(-1).id);
     return [lastSaid(app).msg, lastSaid(app).action?.label ?? null];
   };
-  assert.deepEqual(await cancel({ op: 'done' }), ['Cancelled. “Wipe the till” stays not done in Vikunja.', 'Undo']);
-  assert.deepEqual(await cancel({ op: 'claim' }), ['Cancelled. You are not assigned to “Wipe the till”.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'done' }), ['Cancelled. “Wipe the till” stays not done.', 'Undo']);
+  assert.deepEqual(await cancel({ op: 'claim' }), ['Cancelled. “Wipe the till” stays unassigned.', 'Undo']);
   assert.deepEqual(await cancel({ op: 'answer', html: '' }), [
     "Cancelled. Your answer to “Wipe the till” isn't saved.",
     'Undo',
@@ -223,7 +223,7 @@ test("Cancel's Undo puts a refused change back as refused, to try again", async 
   await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   const [e] = app.failed;
   await app.dropAct(e.id);
-  assert.deepEqual([app.failed, lastSaid(app).msg], [[], 'Cancelled. “Wipe the till” stays not done in Vikunja.']);
+  assert.deepEqual([app.failed, lastSaid(app).msg], [[], 'Cancelled. “Wipe the till” stays not done.']);
   await lastSaid(app).action.fn();
   assert.deepEqual(
     [app.failed.map(x => [x.id, x.failed.message]), reached(v, 'PATCH', /^\/tasks\/7$/).length],
@@ -425,10 +425,7 @@ test('Cancel of a line whose task was made leaves the task in Vikunja, offers no
   const { v, app, es } = await halfAdded(t);
   v.trouble = () => null;
   await app.dropAct(es[0].id);
-  assert.deepEqual(
-    [lastSaid(app).msg, lastSaid(app).action],
-    ['Cancelled. “Load chairs” stays in Vikunja. The rest of the change is not sent.', null],
-  );
+  assert.deepEqual([lastSaid(app).msg, lastSaid(app).action], ['Cancelled. “Load chairs” is added.', null]);
   await settle(t, () => !sync.all(1).length);
   assert.deepEqual(
     [made(v), reached(v, 'POST', /\/relations$/).map(r => r.path), sync.all(1)],

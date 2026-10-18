@@ -286,16 +286,64 @@ test('on a checklist, a note on a step or the checklist is called a comment, as 
 test('dropping a finish or a reopen says what Vikunja has, also when only its first part was sent', () => {
   assert.deepEqual(
     [0, 1].map(stage => OP_WORDS.finish.dropped({ op: 'finish', stage }, 'Closing up')),
-    [
-      'The checklist stays open in Vikunja.',
-      'The checklist stays finished in Vikunja. The rest of the change is not sent.',
-    ],
+    ['“Closing up” stays open.', '“Closing up” is finished.'],
   );
   assert.deepEqual(
     [0, 1].map(stage => OP_WORDS.reopen.dropped({ op: 'reopen', stage }, 'Closing up')),
+    ['“Closing up” stays finished.', '“Closing up” is open.'],
+  );
+});
+
+/* Pocket's copy of each task holds Vikunja's values. Task 7 is a subtask of 1. Without a copy, the words name the
+   value before the change. */
+test("Cancel's words name each value as Pocket's copy of the task has it, and a partly sent op first says what Vikunja has", () => {
+  const COPIES = {
+      1: { id: 1, title: 'Groceries', percent_done: 0.6 },
+      7: {
+        id: 7,
+        title: 'Buy mlk',
+        priority: 1,
+        percent_done: 0.4,
+        due_date: new Date(2031, 9, 20, 9).toISOString(),
+        assignees: [{ id: 1 }, { id: 2, username: 'sam' }],
+        related_tasks: { parenttask: [{ id: 1 }] },
+        project_id: 5,
+      },
+    },
+    copy = id => COPIES[id],
+    words = (op, a, c = copy) => OP_WORDS[op].dropped({ op, task: 7, user: 1, stage: 0, ...a }, 'Buy milk', c);
+  assert.deepEqual(
     [
-      'The checklist stays finished in Vikunja.',
-      'The checklist stays open in Vikunja. The rest of the change is not sent.',
+      words('edit', { set: { title: 'Buy milk' }, was: { title: 'Buy mk' } }),
+      words('edit', { set: { priority: 3 }, was: { priority: 0 } }),
+      words('edit', { set: { priority: 3 }, was: { priority: 0 } }, () => undefined),
+      words('progress', { pct: 80, up: 1 }),
+      words('progress', { pct: 40, up: 1, stage: 1 }),
+      words('due', { due: '0001-01-01T00:00:00Z' }),
+      words('delete', { ids: [7], up: 1 }),
+      words('delete', { ids: [7], up: 1, stage: 1 }),
+      words('done', { up: 1 }),
+      words('claim', {}),
+      words('unlink', { up: 1, over: 'Groceries' }),
+      words('link', { up: 1, over: 'Groceries', stage: 1 }),
+      words('project', { pid: 6, was: { 7: 5 }, into: 'Errands', from: 'Home' }),
+      words('repeat', { set: { repeat_after: 86400 }, was: { repeat_after: 604800 } }, () => undefined),
+    ],
+    [
+      '“Buy milk” title stays “Buy mlk”.',
+      '“Buy milk” priority stays Low.',
+      '“Buy milk” stays without a priority.',
+      '“Buy milk” progress stays 40%.',
+      '“Buy milk” progress is 40%. “Groceries” progress stays 60%.',
+      '“Buy milk” due date stays Mon, Oct 20, 2031.',
+      '“Buy milk” stays in Vikunja.',
+      '“Buy milk” is deleted. “Groceries” progress stays 60%.',
+      '“Buy milk” stays not done.',
+      '“Buy milk” stays assigned to you and sam.',
+      '“Buy milk” stays a subtask of “Groceries”.',
+      '“Buy milk” is a subtask of “Groceries”. “Groceries” progress stays 60%.',
+      '“Buy milk” stays in Home.',
+      '“Buy milk” repeat stays every week.',
     ],
   );
 });

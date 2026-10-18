@@ -37,22 +37,26 @@ registerHooks({
 });
 const tab = async name => {
   const from = path => import(new URL(`${path}?tab=${name}`, import.meta.url));
-  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages] = await Promise.all(
-    [
-      './fake.mjs',
-      ...[
-        'app/tasks',
-        'app/acts',
-        'app/sending',
-        'app/outbox',
-        'app/runs',
-        'app/actions',
-        'sync',
-        'ops/index',
-        'messages',
-      ].map(p => `../../src/js/${p}.js`),
-    ].map(from),
-  );
+  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages, dates, checklists, util] =
+    await Promise.all(
+      [
+        './fake.mjs',
+        ...[
+          'app/tasks',
+          'app/acts',
+          'app/sending',
+          'app/outbox',
+          'app/runs',
+          'app/actions',
+          'sync',
+          'ops/index',
+          'messages',
+          'dates',
+          'checklists',
+          'util',
+        ].map(p => `../../src/js/${p}.js`),
+      ].map(from),
+    );
   // A delete is held for Restore and sent as the app sends it (holdDelete, sendHeld).
   const deletes = Object.fromEntries(['holdDelete', 'sendHeld', 'parentIdOf'].map(k => [k, actions.default[k]]));
   return {
@@ -62,6 +66,9 @@ const tab = async name => {
     uuid7: sync.uuid7,
     ops,
     messages,
+    dates,
+    checklists,
+    util,
     parts: [tasks, acts, sending, outbox, runs].map(m => m.default).concat(deletes),
   };
 };
@@ -71,7 +78,10 @@ const A = await tab('a'),
   B = await tab('b'),
   R = await tab('r');
 const { OPS, opOf, refusalOf } = A.ops;
-const { UNSURE } = A.messages;
+const { dayWord, UNSURE } = A.messages;
+const { dayName, isSet } = A.dates;
+const { PRIOS } = A.util;
+const named = title => A.checklists.parseStep(title).title;
 
 const deferred = () => {
   let resolve;
@@ -367,6 +377,35 @@ const outbox = () => [...stores.get('outbox').values()];
 const changes = (x, id) =>
   !x.ref.made[id] ? null : Object.keys(x.ref.made[id]).filter(k => !same(x.ref.made[id][k], x.before[id]?.[k]));
 const PROBLEM = /couldn't|may not have|refused|Not sent|Not undone/;
+// How a task repeats, as the sheet's Repeats list names it.
+const every = t =>
+  t.repeat_mode === 1
+    ? 'every month'
+    : ({ 86400: 'every day', 604800: 'every week', 1209600: 'every 2 weeks' }[t.repeat_after] ??
+      `every ${t.repeat_after / 86400} days`);
+/* What Cancel's words say of a task after its title, such as "progress stays 40%", and whether Vikunja's task `t` has
+   it. Words not listed here name no value of Vikunja's. */
+const CLAIMS = [
+  [/^title stays “(.*)”$/, (t, m) => named(t.title) === m[1]],
+  [/^priority stays (.+)$/, (t, m) => PRIOS[t.priority]?.label === m[1]],
+  [/^stays without a priority$/, t => !t.priority],
+  [/^progress (?:stays|is) (\d+)%$/, (t, m) => Math.round(t.percent_done * 100) === +m[1]],
+  [/^due date stays (.+)$/, (t, m) => isSet(t.due_date) && dayWord(dayName(t.due_date)) === m[1]],
+  [/^stays without a due date$/, t => !isSet(t.due_date)],
+  [/^repeat (?:stays|is) (.+)$/, (t, m) => every(t) === m[1]],
+  [/^(?:stays without a|has no) repeat$/, t => !t.repeat_after && t.repeat_mode !== 1],
+  [/^(?:stays|is) (done|not done)$/, (t, m) => t.done === (m[1] === 'done')],
+  [/^(?:stays|is) (finished|open)$/, (t, m) => t.done === (m[1] === 'finished')],
+  [/^stays unassigned$/, t => !t.assignees.length],
+  [/^stays assigned to you$/, t => same(t.assignees, [ME.id])],
+  [/^stays in Vikunja$/, t => !!t],
+  [/^is deleted$/, t => !t],
+  [/^(?:stays|is) a subtask of “(.+)”$/, (t, m, id) => t.related_tasks?.parenttask?.includes(id(m[1]))],
+  [
+    /^(?:stays out of|is no longer a subtask of) “(.+)”$/,
+    (t, m, id) => !t.related_tasks?.parenttask?.includes(id(m[1])),
+  ],
+];
 
 /* The rules every scenario keeps. Each returns what broke it, or nothing. */
 const RULES = [
@@ -416,6 +455,24 @@ const RULES = [
       !x.cancelWords.includes(UNSURE) &&
       same(x.end, x.before) &&
       `Cancel said “${x.cancelWords}”, and Vikunja has none of the change`,
+  ],
+  /* Each value Cancel's words name, as Vikunja has it when Cancel is tapped. Only checked when nothing else waits, so
+     that Vikunja then is known (x.cancelled). A task is found by its title. */
+  [
+    "Cancel's words name the values Vikunja has",
+    x => {
+      if (!x.cancelled) return;
+      const id = title => x.sample.tasks.find(t => named(t.title) === title)?.id,
+        wrong = [];
+      for (const [said, title, rest] of x.cancelWords.matchAll(/“([^”]+)” ([^.]+)\./g)) {
+        const claim = CLAIMS.find(([re]) => re.test(rest));
+        if (!claim || id(title) === undefined) continue;
+        const t = x.cancelled[id(title)];
+        if (!(t ? claim[1](t, rest.match(claim[0]), id) : rest === 'is deleted'))
+          wrong.push(`said ${said} Vikunja has ${JSON.stringify(t)}`);
+      }
+      return wrong.join('; ');
+    },
   ],
   [
     'Undo puts back what the op changed',
@@ -512,26 +569,7 @@ test('every op in OPS has a sample', () => {
    entry excuses one rule (`rule`, its name in RULES) for the sample named `sample`, in the states that `state` matches,
    after `action` (any action when left out). t.diagnostic names each scenario it excuses. An entry that no scenario
    needs any more fails the test, so it is removed once the bug is fixed. */
-const KNOWN = [
-  /* Cancel of a progress refused at its parent's progress says the step "keeps the progress it has in Vikunja", the
-     same words as before anything was sent. Vikunja has the new progress, and the words don't say so. */
-  {
-    sample: 'progress',
-    state: /^partly done, refused/,
-    action: 'Cancel',
-    rule: 'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
-    why: "Cancel of a partly sent progress doesn't say Vikunja has the new progress",
-  },
-  /* Cancel of a delete refused at its parent's progress says the task "stays in Vikunja". Vikunja has deleted it. The
-     delete's `dropped` words don't look at a.stage. */
-  {
-    sample: 'delete',
-    state: /^partly done, refused/,
-    action: 'Cancel',
-    rule: 'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
-    why: 'Cancel of a partly sent delete says the task stays in Vikunja, which has deleted it',
-  },
-];
+const KNOWN = [];
 
 for (const [name, sample] of Object.entries(SAMPLES))
   test(`${name} passes the lifecycle checks`, async t => {

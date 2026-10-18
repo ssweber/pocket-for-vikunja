@@ -1101,7 +1101,7 @@ try {
       await page.click('#btn-refresh');
       await waiting.getByRole('button', { name: 'Cancel' }).click();
       await expect(waiting).toHaveCount(0);
-      await expect(placeLine(page, 'sheet:top')).toContainText(`Cancelled. “${T('cancelled move')}” stays due `);
+      await expect(placeLine(page, 'sheet:top')).toContainText(`Cancelled. “${T('cancelled move')}” due date stays `);
       await placeLine(page, 'sheet:top').getByRole('button', { name: 'Undo' }).click();
       await expect(waiting).toHaveCount(1);
       await page.click('#btn-sheet-close');

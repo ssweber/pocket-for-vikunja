@@ -200,8 +200,9 @@ export default {
     if (how === 'lines') this.linesBack(under, said);
     else if (how === 'text' || how === 'back') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    // The op's words say what Vikunja keeps, or that it may or may not have a change whose answer is unknown.
-    const words = [opOf(a).dropped(a, a.label || this.actTitle(a.task))];
+    // The op's words say what Vikunja keeps, from Pocket's copies, or that it may or may not have a change whose answer
+    // is unknown.
+    const words = [opOf(a).dropped(a, a.label || this.actTitle(a.task), copyOf)];
     const back =
       said.back &&
       how !== 'back' &&

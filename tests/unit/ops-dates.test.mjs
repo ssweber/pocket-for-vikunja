@@ -301,12 +301,12 @@ test('a repeat sets its fields, its Undo goes back to what each had, and a later
     [
       'Repeats every week: Water the plants',
       'Repeats every month: Water the plants',
-      "“Water the plants” still doesn't repeat.",
+      '“Water the plants” stays without a repeat.',
     ],
   );
   assert.equal(
     OPS.repeat.dropped({ ...a, was: WEEKLY }, 'Water the plants'),
-    '“Water the plants” still repeats every week.',
+    '“Water the plants” repeat stays every week.',
     'Cancel names the repeat it had before',
   );
 });
@@ -552,7 +552,7 @@ test("Cancel of a template's date taken off partway says its repeat is gone", as
   await app.dropAct(app.failed[0].id);
   assert.equal(
     lastSaid(app).msg,
-    'Cancelled. “TEMPLATE: Closing” no longer repeats, because its date was only partly removed. Set its repeat again in its sheet.',
+    'Cancelled. “TEMPLATE: Closing” no longer repeats. Its due date stays Fri, Oct 9. Set its repeat again in its sheet.',
   );
 });
 test('a move is one stage, so its entry is saved once when sent and once when answered', async t => {
