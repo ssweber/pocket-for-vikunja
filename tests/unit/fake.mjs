@@ -24,7 +24,7 @@ const lost = () => new TypeError('network error');
    to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
    one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
    that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
-   is refused whole.
+   is refused whole. A label on any task exists, as one a teammate made and put on a shared task does.
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
@@ -101,7 +101,9 @@ export function fakeVikunja(tasks = []) {
       set = bulk && v.tasks.get(+bulk[1]);
     const tag = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/labels$/) || [])[1]),
       untag = req.path.match(/^\/tasks\/(\d+)\/labels\/(\d+)$/),
-      label = id => v.labels.find(l => l.id === id);
+      // A label on a task counts as one Vikunja has, as Vikunja lets anyone who can see the task use it.
+      label = id =>
+        v.labels.find(l => l.id === id) ?? [...v.tasks.values()].flatMap(t => t.labels || []).find(l => l.id === id);
     const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
       noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
@@ -113,7 +115,8 @@ export function fakeVikunja(tasks = []) {
       const l = { id: 500 + v.labels.length, title: req.body.title };
       v.labels.push(l);
       res = reply(l);
-    } else if (set && method === 'PUT' && bulk[2] === 'labels') {
+    } else if (bulk && method === 'PUT' && !set) res = reply({ message: 'The task does not exist.' }, 404);
+    else if (set && method === 'PUT' && bulk[2] === 'labels') {
       if (!req.body.labels.every(({ id }) => label(id))) res = noLabel();
       else {
         set.labels = req.body.labels.map(({ id }) => label(id));

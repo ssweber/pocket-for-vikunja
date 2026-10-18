@@ -2,6 +2,8 @@
    sample's tasks are Vikunja's before the op. A test passes its own copy of the ops (src/js/ops/index.js) to `fields`
    where a sample builds its fields with them, since each tab in lifecycle.test.mjs has its own. */
 export const ME = { id: 1, username: 'me', name: '' },
+  BOB = { id: 7, username: 'bob', name: '' },
+  FLOOR = { id: 600, title: 'floor' },
   ZERO = '0001-01-01T00:00:00Z',
   D9 = '2026-10-09T09:00:00.000Z';
 export const task = (id, title, more = {}) => ({
@@ -51,7 +53,7 @@ export const line = (title, p) => ({
 });
 
 /* What each op is tried with: the tasks Vikunja has before (`tasks`), the fields it is queued with (`fields`), and what
-   Vikunja has once it is made (`made`). The fake Vikunja answers each request as Vikunja does. `fields` may list
+   Vikunja has once it is made (`made`). `labels` are the labels Vikunja has besides those on the tasks. The fake Vikunja answers each request as Vikunja does. `fields` may list
    several ops queued together, and the last is the one tried. `queue(app, fields)` queues it where the app has its own
    way. `cannot` names the states that can't arise for the op: an op whose requests are all in one stage is never
    partly done. `unseen` names the fields Vikunja changes that the task's row doesn't show. `parented` says the op needs a task
@@ -249,6 +251,38 @@ export const SAMPLES = {
     fields: { op: 'link', task: 3, up: 1, over: 'Closing', was: [], run: null },
     made: v => v.task(1).related_tasks.subtask.some(s => s.id === 3) && v.task(1).percent_done === 0.5,
     parented: true,
+  },
+  // Bob is assigned to step 2.
+  assign: {
+    tasks: checklist(),
+    fields: { op: 'assign', task: 2, person: BOB, add: true, was: [], run: null },
+    made: v => v.task(2).assignees.some(u => u.id === BOB.id),
+    cannot: ['partly done'],
+  },
+  'assign, taken off': {
+    op: 'assign',
+    tasks: checklist({ 2: { assignees: [ME, BOB] } }),
+    fields: { op: 'assign', task: 2, person: BOB, add: false, was: [ME, BOB], run: null },
+    made: v =>
+      v
+        .task(2)
+        .assignees.map(u => u.id)
+        .join() === String(ME.id),
+    cannot: ['partly done'],
+  },
+  // A label Vikunja doesn't have yet is made, then put on step 2.
+  label: {
+    tasks: checklist(),
+    fields: { op: 'label', task: 2, tag: { id: null, title: 'Urgent' }, add: true, was: [], run: null },
+    made: v => v.task(2).labels.some(l => l.title === 'Urgent'),
+  },
+  'label, taken off': {
+    op: 'label',
+    labels: [FLOOR],
+    tasks: checklist({ 2: { labels: [FLOOR] } }),
+    fields: { op: 'label', task: 2, tag: FLOOR, add: false, was: [FLOOR], run: null },
+    made: v => !v.task(2).labels.length,
+    cannot: ['partly done'],
   },
   // The checklist's second step moves up, in its order line.
   'edit, order': {

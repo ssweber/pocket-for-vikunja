@@ -63,6 +63,24 @@ export const figureOf = async (c, up, name = 'figure') => {
   }
 };
 
+/* Put one label or person (`kind`, by id) on the task, or take it off (`a.add`), with one request that sends the whole
+   set. The set is the one Vikunja has when the op is sent, read once, plus or minus that one. A set built from Pocket's
+   copy would remove a label a teammate added since. The task is read afterwards, for the op's answer. An Undo that
+   finds the task or the label gone counts it as changed since. */
+export const setOne = (kind, idOf) => async (a, c) => {
+  const id = idOf(a);
+  if (id == null) return;
+  const since = e => {
+    throw a.undo && e.status === 404 ? changed(`its ${kind === 'labels' ? 'labels' : 'people'} have`) : e;
+  };
+  const body = await c.once('set', async () => {
+    const t = await c.read('/tasks/' + a.task).catch(since),
+      others = (t[kind] || []).map(x => x.id).filter(x => x !== id);
+    return { [kind]: [...others, ...(a.add ? [id] : [])].map(id => ({ id })) };
+  });
+  await c.send(`/tasks/${a.task}/${kind}/bulk`, { method: 'PUT', body }).catch(since);
+  c.task = await c.read('/tasks/' + a.task);
+};
 // Reads Vikunja's copy, or null for a task deleted since.
 export const now = (a, c) =>
   c.read('/tasks/' + a.task).catch(e => {

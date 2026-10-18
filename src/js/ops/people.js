@@ -1,7 +1,8 @@
-// Claiming a subtask or a step (assigning yourself to it), and letting it go.
+// Claiming a subtask or a step (assigning yourself to it), letting it go, and assigning anyone or unassigning them.
 import { ApiError } from '../api.js';
 import { assignedJustNow, OP_WORDS } from '../messages.js';
-import { ALREADY } from '../sync.js';
+import { ALREADY, CANCEL } from '../sync.js';
+import { setOne } from './stages.js';
 import { whoOf } from './shown.js';
 
 /* If another user claimed the task in the meantime, that user keeps it. This happens when two users tap at once, or
@@ -73,4 +74,42 @@ export const unclaim = {
   putBack: null,
   deletes: null,
   replyOnly: null,
+};
+
+// A person as an entry keeps them: what the words and the rows show.
+export const personOf = u => ({ id: u.id, username: u.username || '', name: u.name || '' });
+const withPerson = (list, u, add) => [...(list || []).filter(x => x.id !== u.id), ...(add ? [u] : [])];
+/* `person` is assigned (`add`) or unassigned, on the people Vikunja has when it is sent (setOne), so a person a teammate
+   assigned since stays. `was` is the people the row showed, for Cancel's words when Pocket has no copy. A claim keeps
+   its own op, so two people claiming at once still settle on one. Assigning and unassigning one person cancel out
+   while neither is sent. Each is the other's Undo. A task deleted in Vikunja since drops the op. */
+export const assign = {
+  apply: (t, a) => ({ ...t, assignees: withPerson(t.assignees, a.person, a.add) }),
+  stages: [setOne('assignees', a => a.person.id)],
+  invert: a => ({
+    op: 'assign',
+    task: a.task,
+    person: a.person,
+    add: !a.add,
+    was: a.got?.task?.assignees ?? withPerson(a.was, a.person, a.add),
+  }),
+  merge: (older, newer) =>
+    older.op === 'assign' && older.person.id === newer.person.id && older.add !== newer.add ? CANCEL : null,
+  refusal: (a, e) => (e?.status === 404 ? 'dropped' : 'kept'),
+  sheetPlace: 'sheet:props',
+  replyOnly: () => ['assignees'],
+  ...OP_WORDS.assign,
+  asks: ['person', 'add'],
+  saw: ['label', 'was'],
+  on: null,
+  keepReads: null,
+  waiting: null,
+  cancel: null,
+  answered: null,
+  holds: null,
+  waitsOn: null,
+  row: null,
+  files: null,
+  putBack: null,
+  deletes: null,
 };

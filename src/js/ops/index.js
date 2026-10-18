@@ -34,7 +34,8 @@
 import { opsId } from '../app/tasks.js';
 import { done, doneNote, finish, progress, reopen, skip, undone } from './ticks.js';
 import { answer, note } from './comments.js';
-import { claim, unclaim } from './people.js';
+import { assign, claim, unclaim } from './people.js';
+import { label } from './labels.js';
 import { position } from './order.js';
 import { del } from './delete.js';
 import { add } from './add.js';
@@ -50,6 +51,8 @@ export { waitingComments } from './comments.js';
 export { waitingPositions } from './order.js';
 export { lastTick, movedFrom } from './ticks.js';
 export { movedSteps, notesText } from './edit.js';
+export { personOf } from './people.js';
+export { tagOf } from './labels.js';
 export const OPS = {
   done,
   undone,
@@ -71,6 +74,8 @@ export const OPS = {
   project,
   link,
   unlink,
+  assign,
+  label,
 };
 
 // What each field is when an op sets it to null.
@@ -109,7 +114,8 @@ export const DEFAULTS = {
 // that op's entry (undoOps).
 export const COMMON = ['id', 'kind', 'op', 'user', 'who', 'at', 'n', 'task', 'run', 'undo'];
 /* The fields the sender and the stages write in an entry as it is sent: how far it got, what it read and what Vikunja
-   answered. `until` holds a delete back while Restore shows, and an add's stages keep the task they made. */
+   answered. `until` holds a delete back while Restore shows, an add's stages keep the task they made, and a label op
+   keeps the label it found or made (`labelId`). */
 export const SENT = [
   'files',
   'stage',
@@ -135,6 +141,7 @@ export const SENT = [
   'assigned',
   'linked',
   'arrived',
+  'labelId',
 ];
 const full = new WeakMap();
 /* The op that entry `a` names, with DEFAULTS in place of each field it sets to null or leaves out. An op Pocket doesn't

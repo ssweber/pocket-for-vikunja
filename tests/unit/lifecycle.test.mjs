@@ -183,7 +183,7 @@ async function open(tab, x) {
   return app;
 }
 
-/* A scenario's world: the fake Vikunja with the sample's tasks, an empty outbox, and tab A open (x.app). Every request
+/* A scenario's world: the fake Vikunja with the sample's tasks and labels, an empty outbox, and tab A open (x.app). Every request
    fails while the connection is down (x.down). The first write of the op tried whose key x.one picks gets the TROUBLE
    x.one names, and the relay answers that key the same way from then on. */
 async function world(sample) {
@@ -191,6 +191,7 @@ async function world(sample) {
   const v = A.fake.fakeVikunja(sample.tasks.map(t => structuredClone(t))),
     send = globalThis.fetch,
     stuck = new Map();
+  v.labels.push(...structuredClone(sample.labels || []));
   const x = { v, sample, tabs: [], later: [], down: false, one: null, before: vikunja(v) };
   globalThis.fetch = async (url, opts = {}) => {
     const key = opts.headers?.['Idempotency-Key']?.replaceAll('"', ''),
@@ -383,6 +384,8 @@ const every = t =>
     ? 'every month'
     : ({ 86400: 'every day', 604800: 'every week', 1209600: 'every 2 weeks' }[t.repeat_after] ??
       `every ${t.repeat_after / 86400} days`);
+// The names in a list such as "you and bob".
+const names = list => list.split(/, | and /);
 /* What Cancel's words say of a task after its title, such as "progress stays 40%", and whether Vikunja's task `t` has
    it. Words not listed here name no value of Vikunja's. */
 const CLAIMS = [
@@ -398,6 +401,13 @@ const CLAIMS = [
   [/^(?:stays|is) (finished|open)$/, (t, m) => t.done === (m[1] === 'finished')],
   [/^stays unassigned$/, t => !t.assignees.length],
   [/^stays assigned to you$/, t => same(t.assignees, [ME.id])],
+  [
+    /^people stay (.+)$/,
+    (t, m) => names(m[1]).length === t.assignees.length && names(m[1]).includes('you') === t.assignees.includes(ME.id),
+  ],
+  [/^has no people$/, t => !t.assignees.length],
+  [/^labels stay (.+)$/, (t, m) => names(m[1]).length === t.labels.length],
+  [/^has no labels$/, t => !t.labels.length],
   [/^stays in Vikunja$/, t => !!t],
   [/^is deleted$/, t => !t],
   [/^(?:stays|is) a subtask of “(.+)”$/, (t, m, id) => t.related_tasks?.parenttask?.includes(id(m[1]))],

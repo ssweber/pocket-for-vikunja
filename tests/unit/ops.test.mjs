@@ -73,6 +73,9 @@ test('apply returns the task as a new object, and leaves the task and the op alo
         ids: [4],
         at: '2026-10-15T09:00:00.000Z',
         html: '<p>Done</p>',
+        person: { id: 7, username: 'bob' },
+        tag: { id: 600, title: 'Urgent' },
+        add: true,
       },
       before = structuredClone(a),
       out = op.apply(task, a);
@@ -362,6 +365,24 @@ const WORDS = {
       '“it” is no longer a subtask of its parent.',
     ],
   ],
+  assign: [
+    [
+      'Assigning bob to “Unlock the door”',
+      'Assigning bob to “Unlock the door”',
+      '“Unlock the door” has no people.',
+      '“Unlock the door” has no people.',
+    ],
+    ['Assigning bob to a task', 'Assigning bob to a task', '“it” has no people.', '“it” has no people.'],
+  ],
+  label: [
+    [
+      'Adding label Urgent to “Unlock the door”',
+      'Adding label Urgent to “Unlock the door”',
+      '“Unlock the door” has no labels.',
+      '“Unlock the door” has no labels.',
+    ],
+    ['Adding label Urgent to a task', 'Adding label Urgent to a task', '“it” has no labels.', '“it” has no labels.'],
+  ],
   add: [
     ['New task: Unlock the door T#5m', 'Adding “Unlock the door T#5m”', '', ''],
     ['New task: ', 'Adding a task', '', ''],
@@ -402,6 +423,9 @@ test('each op says what the outbox said before: its row, its refusal, and what c
         ids: [3, 2, 1],
         html: '',
         set: { title: 'Unlock the back door' },
+        person: { id: 7, username: 'bob' },
+        tag: { id: 600, title: 'Urgent' },
+        add: true,
       });
       assert.deepEqual(
         [op.text(a(0), title), op.refused(a(0), title), op.dropped(a(0), title), op.dropped(a(1), title)],

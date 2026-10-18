@@ -171,6 +171,14 @@ const peopleWords = (a, t) => {
   const names = (t.assignees || []).map(u => (u.id === a.user ? 'you' : u.name || u.username));
   return names.length ? 'assigned to ' + andList(names) : 'unassigned';
 };
+// A person by name, or as "you" for the user.
+const someone = (a, u) => (u.id === a.user ? 'you' : u.name || u.username);
+const assigning = (a, title) =>
+  a.add
+    ? `Assigning ${someone(a, a.person)} to ${task(title)}`
+    : `Unassigning ${someone(a, a.person)} from ${task(title)}`;
+const labelling = (a, title) =>
+  a.add ? `Adding label ${a.tag.title} to ${task(title)}` : `Removing label ${a.tag.title} from ${task(title)}`;
 // A task's due date: "due date stays Tue, Oct 20", or "stays without a due date".
 const dueStays = d => (isSet(d) ? `due date stays ${dayWord(dayName(d))}` : 'stays without a due date');
 // An edit's words, by the field it changes (ops/edit.js).
@@ -295,6 +303,28 @@ export const OP_WORDS = {
     dropped: keeps(
       (a, title, copy) => `${it(title)} stays ${peopleWords(a, copy(a.task) ?? { assignees: [{ id: a.user }] })}.`,
     ),
+  },
+  // A person (`a.person`) or a label (`a.tag`) put on a task or taken off. Cancel names the people or labels Vikunja
+  // has, or the row's before the change (`was`).
+  assign: {
+    text: (a, title) => assigning(a, title),
+    refused: (a, title) => assigning(a, title),
+    dropped: keeps((a, title, copy) => {
+      const list = copy(a.task)?.assignees ?? a.was ?? [];
+      return list.length
+        ? `${it(title)} people stay ${andList(list.map(u => someone(a, u)))}.`
+        : `${it(title)} has no people.`;
+    }),
+  },
+  label: {
+    text: (a, title) => labelling(a, title),
+    refused: (a, title) => labelling(a, title),
+    dropped: keeps((a, title, copy) => {
+      const list = copy(a.task)?.labels ?? a.was ?? [];
+      return list.length
+        ? `${it(title)} labels stay ${andList(list.map(l => l.title))}.`
+        : `${it(title)} has no labels.`;
+    }),
   },
   delete: {
     text: (a, title, r) =>
