@@ -1527,3 +1527,21 @@ test("an op sent before the page loaded, and only replayed now, leaves a teammat
   await settled();
   assert.deepEqual([copyOf(1).percent_done, copyOf(2).percent_done], [0.9, 0.75]);
 });
+
+/* A request whose reply was lost can reach Vikunja before a teammate's change, and the read that shows the change is
+   thrown away while the op waits. The relay replays the answer when the op is sent again, so the task is read once
+   the op is answered, and the copy shows the teammate's change. */
+test("a task is read again after a replayed answer, so a teammate's change made meanwhile shows", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', percent_done: 0 }]),
+    app = sender();
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  v.trouble = r => (r.method === 'PATCH' && !v.relayed.size ? 'lost' : null);
+  const first = await app.act({ op: 'progress', task: 1, pct: 40, run: null });
+  v.task(1).percent_done = 0.75; // a teammate's change
+  read([structuredClone(v.task(1))]);
+  await app.sendActs(first.entry);
+  await settled();
+  assert.equal(copyOf(1).percent_done, 0.75);
+});

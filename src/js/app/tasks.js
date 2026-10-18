@@ -323,6 +323,8 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
   doubt(id, [
     ...Object.keys(mine).filter(k => mine[k] === UNKNOWN),
     ...Object.keys(fields).filter(k => !kept.includes(k) || !same(c[k], fields[k])),
+    // Vikunja made a replayed request before its reply came, and a read thrown away since may hold a newer change.
+    ...(w.replayed || w.replays ? REREAD : []),
   ]);
 }
 // Remove a deleted task's copy, its row, and the row from the lists on screen.
