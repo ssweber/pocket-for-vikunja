@@ -1,30 +1,82 @@
 /* A randomized test of the store (src/js/app/tasks.js). fast-check generates sequences of commands on a few tasks: ops
    queued, sent, answered in any order, refused, lost and undone, reads finishing late, rows marked as leaving, a
-   teammate's changes in the web app, and sweeps that drop the copies no kept screen needs. Each sequence then sends
+   teammate's changes in the web app, sweeps that drop the copies no kept screen needs, and reloads. Each sequence then sends
    and answers everything still waiting, and reads every task. The checks after each command compare the app with a
    model made from the fake Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own
    functions. A failure prints the seed and the shortest sequence that breaks a check. */
 import './browser.mjs';
 import { stores, used } from './outbox-db.mjs';
+import { registerHooks } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
-import { component, fakeVikunja } from './fake.mjs';
-import tasks, { copyOf, CREATED, putting, started, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
-import acts from '../../src/js/app/acts.js';
-import sending from '../../src/js/app/sending.js';
-import outbox from '../../src/js/app/outbox.js';
-import runs from '../../src/js/app/runs.js';
-import actions from '../../src/js/app/actions.js';
-import leaving from '../../src/js/app/leaving.js';
-import { held, older, sync, uuid7 } from '../../src/js/sync.js';
-import * as ops from '../../src/js/ops/index.js';
+import { fakeVikunja } from './fake.mjs';
+import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { older, uuid7 } from '../../src/js/sync.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
-const { OPS, opOf } = ops;
+/* A reload opens the other of two pages, each its own copy of the app's modules, as a new page holds nothing of the
+   page before it. A module imported with ?page=<n> imports the app's modules with it too. The pages share the fake
+   Vikunja, the outbox's database and localStorage. Two pages, used in turn, keep the memory a run takes bounded. */
+registerHooks({
+  resolve(specifier, context, next) {
+    const r = next(specifier, context),
+      page = context.parentURL && new URL(context.parentURL).searchParams.get('page');
+    return page && r.url.includes('/src/js/') && !r.url.includes('?') ? { ...r, url: `${r.url}?page=${page}` } : r;
+  },
+});
+const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
+async function loadPage(n) {
+  const from = path => import(new URL(`${path}?page=${n}`, import.meta.url)),
+    [fake, tasks, acts, sending, outbox, runs, actions, leaving, s, ops] = await Promise.all(
+      [
+        './fake.mjs',
+        ...[
+          ...['app/tasks', 'app/acts', 'app/sending', 'app/outbox', 'app/runs', 'app/actions', 'app/leaving'],
+          ...['sync', 'ops/index'],
+        ].map(p => `../../src/js/${p}.js`),
+      ].map(from),
+    );
+  await s.sync.ready;
+  return {
+    component: fake.component,
+    ...pick(tasks, 'copyOf', 'putting', 'started'),
+    ...pick(s, 'sync', 'held'),
+    ops,
+    ...pick(ops, 'OPS', 'opOf'),
+    parts: [
+      ...[tasks, acts, sending, outbox, runs].map(m => m.default),
+      pick(
+        actions.default,
+        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'deleteNow', 'deleteOf', 'parentIdOf'],
+        ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'sendSet'],
+      ),
+      leaving.default,
+    ],
+  };
+}
+const PAGES = [await loadPage(1), await loadPage(2)];
+// The page open now: its store's copies and reads, its outbox and ops, and the parts its component is made from.
+let page = 0,
+  component,
+  copyOf,
+  putting,
+  started,
+  sync,
+  held,
+  ops,
+  OPS,
+  opOf,
+  parts;
+const usePage = i => {
+  page = i;
+  ({ component, copyOf, putting, started, sync, held, ops, OPS, opOf, parts } = PAGES[i]);
+};
+usePage(0);
 /* CI=1 fixes the seed. FC_RUNS sets the number of sequences, and FC_SEED a seed to run again. FC_PATH and FC_REPLAY
    replay a failure's path and replayPath at once. FC_STATS=1 prints how often each command ran, each KNOWN bug was
    met, and checks 4 and 5 ran with nothing skipped. */
+let later = 0; // the latest time a sequence reached
 const RUNS = +process.env.FC_RUNS || 1000,
   START = Date.parse('2026-10-17T09:00:00Z'),
   SERVER = 'http://vikunja.test/api/v2';
@@ -143,6 +195,11 @@ class Model {
     this.relaxed = new Map(); // task id -> the fields a KNOWN bug met in this sequence may have left wrong
     this.met = new Set(); // the KNOWN entries met in this sequence
     this.missing = new Set(); // tasks Vikunja answered with 404, forgotten once no outbox entry points to them
+  }
+  // A new page holds none of the old page's copies, rows, marks or news.
+  reload() {
+    for (const k of ['copies', 'bases', 'tags', 'leaving', 'frozen']) this[k] = new Map();
+    for (const k of ['forgotten', 'rows', 'settled', 'missing']) this[k] = new Set();
   }
   relaxes(id, k) {
     return !!this.relaxed.get(id)?.has(k);
@@ -264,6 +321,13 @@ class Model {
 const HEARD = {
   // A read that passed straight through ends as the store takes it.
   read(w, fn, list, asked, at) {
+    // The copies kept on the phone, which a new page reads in as it sweeps, are no news of Vikunja.
+    if (at === 0) {
+      const before = w.copiesNow();
+      fn(list, asked, at);
+      for (const t of list) w.model.adopt(t.id, before.get(t.id), copyOf(t.id), [{ fields: t }]);
+      return;
+    }
     const before = w.copiesNow(),
       r = w.reading,
       end = r?.end ?? ++w.seq,
@@ -435,8 +499,6 @@ const unknownReply = () =>
     status: 409,
     headers: { 'Content-Type': 'application/json', 'Idempotency-Unknown': 'true' },
   });
-const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]]));
-
 /* One sequence's world. A write Pocket sends waits in `held` until a command lets Vikunja make it (Reach), answer it
    (Answer), or refuse it. A key the relay answered as unknown is answered that way again. Reads pass straight through.
    `t` is the fake Vikunja's log: it counts each request Vikunja answers and each change a teammate makes. `seq`
@@ -444,12 +506,15 @@ const pick = (part, ...names) => Object.fromEntries(names.map(n => [n, part[n]])
    read starts and ends, so the checks can tell which of Pocket's writes were in flight while a read ran. */
 class World {
   constructor(clock) {
+    // Each page's timer for the rows that look waiting is cleared while the clock still knows it.
+    for (const p of PAGES) if (p.app) Object.assign(p.app, { pending: [] }).markSlow();
     for (const s of stores.values()) s.clear();
     localStorage.clear(); // the screens and copies the last sequence kept on the phone
     sync.entries = new Map();
     for (const k of ['volatile', 'bytes', 'claimed', 'held']) sync[k].clear();
     clock.reset();
-    clock.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: START });
+    // The time never goes back from one sequence to the next, as the store's clock counts on it across pages.
+    clock.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: (later = Math.max(later, START) + 1000) });
     this.clock = clock;
     this.v = fakeVikunja(checklist());
     this.v.labels.push(LABEL, MOP);
@@ -483,19 +548,13 @@ class World {
       pruned: [], // the ops a fold took out of the outbox (prune)
     });
     globalThis.fetch = (url, opts = {}) => this.gate(url, opts);
-    const app = component(
-      tasks,
-      acts,
-      sending,
-      outbox,
-      runs,
-      pick(
-        actions,
-        ...['removeTask', 'holdDelete', 'undoDelete', 'sendHeld', 'deleteNow', 'deleteOf', 'parentIdOf'],
-        ...['addAssignee', 'removeAssignee', 'addLabelTo', 'removeLabelFrom', 'sendSet'],
-      ),
-      leaving,
-    );
+    this.model = new Model(this);
+    this.mount();
+  }
+  // Open the app on the page in use. Only its writes tell the model.
+  mount() {
+    const app = component(...parts),
+      w = this;
     Object.assign(app, {
       user: ME,
       pending: [],
@@ -523,13 +582,11 @@ class World {
       loadLabels: async () => (app.labels = clone(this.v.labels)),
     });
     Object.defineProperty(app, 'toast', { value: {} });
-    this.app = app;
-    this.model = new Model(this);
-    const change = app.change,
-      w = this;
+    this.app = PAGES[page].app = app;
+    const change = app.change;
     app.change = function (fn) {
       w.activity++;
-      return change.call(this, writers => fn(spying(w, writers)));
+      return w.app === app ? change.call(this, writers => fn(spying(w, writers))) : change.call(this, fn);
     };
     const fold = app.fold;
     app.fold = async function (entries) {
@@ -538,6 +595,36 @@ class World {
       await fold.call(this, entries);
       w.prune(before, given);
     };
+  }
+  /* Pocket reloads. Vikunja makes each write on its way, whose reply the old page loses, and each request Pocket gave
+     up on. Or, with `cut`, the connection drops first, and Vikunja never gets any of them. A read the old page started
+     never finishes. The new page opens on the outbox and the claims as the database has them, with nothing in memory,
+     and loads the checklist's screen. */
+  async reload(cut) {
+    while (this.held.length || this.late.length) {
+      for (const h of this.held.splice(0)) {
+        if (!cut) await this.make(h);
+        this.deliver(h);
+        h.no(new TypeError(cut ? 'Failed to fetch' : 'network error'));
+      }
+      for (const h of this.late.splice(0))
+        if (!cut) await this.make(h);
+        else if (!h.res) h.done = ++this.seq;
+      await this.settle();
+    }
+    this.reads = [];
+    this.app.user = null;
+    this.clock.setTime(Date.now() + 1000); // a reload takes a moment
+    usePage(1 - page);
+    this.mount();
+    for (const k of ['volatile', 'bytes', 'claimed', 'held']) sync[k].clear();
+    await sync.reload();
+    for (const c of await sync.tx(['claims'], 'readonly', s => s('claims').getAll())) sync.claimed.set(c.id, c);
+    this.model.reload();
+    Object.assign(this, { undos: [], seen: new Map() });
+    this.app.refreshPending();
+    await this.startRead([1, 2, 3, this.stepId ?? 1], TASK_REACTIONS_COMMENTS);
+    this.finishRead(this.reads.length - 1);
   }
   /* Check 6, as a fold takes ops out of the outbox. A fold takes out an op not yet sent (x) for a new op on its task
      (e). If e stays, it must leave the task as x and e would one after the other. If e goes too, the two together must
@@ -950,6 +1037,7 @@ class World {
     return t === STEP ? (this.stepId ?? 'pending-' + STEP) : t;
   }
   async close() {
+    later = Math.max(later, Date.now());
     this.closed = true;
     for (let i = 0; i < 100 && (this.busy.size || this.held.length); i++) {
       for (const h of this.held.splice(0)) h.no(new TypeError('Failed to fetch'));
@@ -1528,6 +1616,22 @@ class Sweep extends Command {
     return `Sweep(${this.ts})`;
   }
 }
+// Pocket reloads, between any two requests of an op, with the connection cut first or not (World.reload).
+class Reload extends Command {
+  constructor(cut) {
+    super();
+    this.cut = cut;
+  }
+  can() {
+    return true;
+  }
+  async act(w) {
+    await w.reload(this.cut);
+  }
+  toString() {
+    return `Reload(${this.cut ? 'cut' : 'lost'})`;
+  }
+}
 // Time passes on the fake clock, which Pocket and the fake Vikunja both read.
 class Wait extends Command {
   constructor(ms) {
@@ -1587,6 +1691,7 @@ const COMMANDS = [
   fc.constantFrom(3, STEP).map(t => new SecondParent(t)),
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
   fc.uniqueArray(target, { maxLength: 3 }).map(ts => new Sweep(ts)),
+  fc.boolean().map(cut => new Reload(cut)),
 ];
 
 /* Send and answer everything still waiting: make the step, cancel what Vikunja refused, send what
@@ -1845,6 +1950,28 @@ test('a Cancel that sends nothing leaves a read of the task it would change to b
       new Send(false),
       new Answer('unknown', 0),
       new StartRead([1], true),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A step's progress reaches Vikunja, and a teammate changes it. The connection drops before the checklist's progress
+   is sent, and Pocket reloads. The new page reads the teammate's change, then sends the checklist's progress fresh.
+   The step's progress counts from when the page before sent it, so it doesn't overwrite the teammate's change. */
+test("an op's part made before a reload doesn't overwrite a teammate's change the new page read", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('progress', 2),
+      new Send(false),
+      new Answer('arrives', 0),
+      new Teammate(2, 'percent_done'),
+      new Reload(true),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
