@@ -1545,3 +1545,36 @@ test("a task is read again after a replayed answer, so a teammate's change made 
   await settled();
   assert.equal(copyOf(1).percent_done, 0.75);
 });
+
+/* A comment whose request was lost before it reached Vikunja waits to be sent again, and a read of its task taken
+   meanwhile is thrown away. The comment's answer brings no task, so the task is read again once the op is answered,
+   and the copy shows a teammate's change the thrown-away read held. */
+test('a task whose read was thrown away while an op waited is read again once the op is answered', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', comments: [] }]),
+    app = sender();
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  let lose = true;
+  v.trouble = r => (r.method === 'POST' && lose ? ((lose = false), 'offline') : null);
+  const first = await app.act({ op: 'note', task: 1, html: '<p>Done</p>', run: null });
+  assert.equal(first.status, 'offline');
+  v.task(1).title = 'Mop the hall'; // a teammate's change
+  read([structuredClone(v.task(1))]);
+  await app.sendActs(first.entry);
+  await settled();
+  assert.equal(copyOf(1).title, 'Mop the hall');
+});
+
+// A saved screen is older than any read, so a saved copy thrown away after a write to its task is no reason to read it.
+test('a saved screen shown after a write to its task does not read the task again', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', updated: '2026-10-17T09:00:00Z' }]),
+    app = sender();
+  read([v.task(1)]);
+  app.row(copyOf(1));
+  writes({ 1: { title: 'Mop twice' } }).end();
+  app.keptRows([{ id: 1, title: 'Mop the hall', updated: '2026-10-17T10:00:00Z' }]);
+  await settled();
+  assert.deepEqual(v.requests, []);
+});

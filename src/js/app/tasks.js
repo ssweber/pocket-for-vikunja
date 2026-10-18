@@ -167,7 +167,8 @@ export const sendingOp = a => {
 };
 /* When Pocket's writes leave fields of a copy unsure, the task is read again once no write to it is in flight
    (reread), once however many writes left it unsure. Two writes crossed, or Vikunja changed what only its reply can
-   say, and that reply wasn't taken. A read taken, or a reply that brings the field, ends the doubt. */
+   say, and that reply wasn't taken. Or a read that may hold a teammate's change was thrown away. A read taken, or a
+   reply that brings the field, ends the doubt. */
 const doubts = new Map(); // task id -> the fields of its copy that may be old
 const rereading = new Set(); // the tasks being read again
 // What a read again asks for: every field of a task, and its reactions (expand=reactions).
@@ -274,7 +275,15 @@ function read(list, asked, at) {
   if (typeof at !== 'number') throw new Error('A read needs the time it started (started()).');
   for (const t of list) {
     const id = t?.id;
-    if (!id || forgotten.has(id) || overlaps(id, at)) continue;
+    if (!id || forgotten.has(id)) continue;
+    // A read thrown away may hold a teammate's change that no answer brings (reread). A saved screen holds nothing newer.
+    if (overlaps(id, at)) {
+      if (at) {
+        doubt(id, asked);
+        touched.add(id);
+      }
+      continue;
+    }
     write(id, t, asked, at);
     for (const k of asked) doubts.get(id)?.delete(k);
   }
