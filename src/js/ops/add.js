@@ -166,22 +166,27 @@ async function label(a, c) {
     problems(a).push(...(await setAll(a, c, 'labels', on, l => ({ label_id: l.id }), ALREADY.label, says)));
   a.labeled = true;
 }
-// The task's people are set the same way. A person Vikunja refuses (no access to the project, say) is reported, and the
-// task is kept.
+/* The task's people are set the same way. A person Vikunja refuses (no access to the project, say) is reported, and the
+   task is kept. Then the task is read, so Vikunja's copy has the labels and people the line set, which the reply that
+   made the task didn't have (CREATED). A read that fails leaves that to the next read. */
 async function assignee(a, c) {
-  if (!a.people?.length || a.assigned) return;
-  problems(a).push(
-    ...(await setAll(
-      a,
-      c,
-      'assignees',
-      a.people,
-      u => ({ user_id: u.id }),
-      ALREADY.assignee,
-      (u, m) => `@${u.name}: ${m}`,
-    )),
-  );
-  a.assigned = true;
+  if (a.people?.length && !a.assigned) {
+    problems(a).push(
+      ...(await setAll(
+        a,
+        c,
+        'assignees',
+        a.people,
+        u => ({ user_id: u.id }),
+        ALREADY.assignee,
+        (u, m) => `@${u.name}: ${m}`,
+      )),
+    );
+    a.assigned = true;
+  }
+  if (!a.labels?.length && !a.people?.length) return;
+  const t = await c.read('/tasks/' + a.taskId).catch(() => null);
+  if (t) c.app.change(w => w.answer([t], ['labels', 'assignees'], c.from(t)));
 }
 // Link the task under its parent: the line it goes under in a pasted list, or the task whose sheet it was added from. A
 // refusal here stops the line, because the list can't be put together without the link.
