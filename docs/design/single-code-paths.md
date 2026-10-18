@@ -48,11 +48,12 @@ and empty the Outbox on each phone, before the next phone check.
 - **Vikunja's copy of a task only moves forward.** Agreed with the user on 2026-10-17. Vikunja gives no version
   number, so Pocket orders what it learns by when it started each request. A field is taken only if its request
   started after the request behind that field of the copy. A read that overlaps a write to the same task is thrown
-  away, and the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. Each field
-  of an op sent in several stages counts from the request that changed it. Ops on one task go out one at a time. When
-  a direct save and an op on one task are in flight at once, Pocket takes neither's reply, and neither's change to a
-  field the other sets to another value. The rule lives in `tasks.js`, where each write the copy learns from is a
-  `writes()` with its start time.
+  away, and the next read decides. A replayed answer confirms its change but doesn't overwrite the copy. An op is in
+  flight from its first request until it leaves the outbox, across retries, and its change counts from that request.
+  Ops on one task go out one at a time. When a direct save and an op on one task are in flight at once, Pocket takes
+  neither's reply, and neither's change to a field the other sets to another value. A task whose writes leave it
+  unsure that way, or whose op's answer was replayed, is read once its writes end. The rule lives in `tasks.js`,
+  where each write the copy learns from is a `writes()` with its start time.
 - **Between Pocket and a teammate, the last write to reach Vikunja wins, field by field,** as in Vikunja's web app.
   Undo puts back only a field nobody has changed since.
 - **Only `src/js/ops/` knows which op is which.** Lint holds it. The shared code asks the op (the fields listed in the
@@ -111,6 +112,8 @@ One phase, with one review.
 ### 9. Deletes and comments
 
 Delete `deleteTasks`, `deleteTree`, `deleteRun` and `deleteAddedStep`, and the deletes in runs.js and checklists.js.
+They still call `forget`, not `forgetTree`, and most send no write (`writes`). So the parent's copy keeps listing
+the deleted task, and a read of the parent that ran meanwhile isn't thrown away.
 A template is deleted after its confirm, with no hold. Once every change goes through the Outbox, the offline line in
 `app.html` becomes "Offline. Changes wait in the Outbox." (the user's words, agreed on 2026-10-16), with the time of
 the saved screen as now, and `docs/guide.md` says the same.
@@ -154,6 +157,10 @@ allowlist with a comment saying why.
   undone. Check that holds for every op's `invert`.
 - From the Veyrn comparison: `dropCopies` leaves `clock` as it is, so a read still running at sign-out writes the old
   user's tasks. Check whether v2's `/tasks` returns tasks from archived projects.
+- An op sent before a reload has no time on the new page. One whose requests the relay only replays there counts from
+  before the page's reads (`EARLIER`). One that also makes a request fresh there counts from its first request on the
+  page, so its replayed part can overwrite a teammate's change the page read since. A per-request time kept in the
+  entry would settle it.
 
 ### 12. Messages
 
