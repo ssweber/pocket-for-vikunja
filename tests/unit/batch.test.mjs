@@ -87,6 +87,23 @@ test('leaving the screen ends the wait, and the caller clears the rows at once',
   assert.equal(went.length, 1);
 });
 
+test('a regroup waiting for the batch still runs when every mark is undone', t => {
+  const { went, b } = timer(t);
+  b.mark();
+  b.pend(); // the sheet closes, or the minute ticks, while a row is marked
+  t.mock.timers.tick(1000);
+  b.stop(); // Undo of the only mark
+  assert.equal(b.waiting, true, 'the regroup still waits');
+  t.mock.timers.tick(2999);
+  assert.equal(went.length, 0, 'for 3 seconds after the Undo');
+  t.mock.timers.tick(1);
+  assert.equal(went.length, 1, 'then it runs');
+  b.mark();
+  b.stop();
+  t.mock.timers.tick(10000);
+  assert.equal(went.length, 1, 'a regroup that has run waits no more');
+});
+
 // Marked rows (src/js/app/leaving.js) on a fake component. The test checks what tapping a row does and what runs when
 // the batch clears.
 test("tapping a marked row removes its mark, and a subtask closed with its parent keeps only the parent's mark", async t => {

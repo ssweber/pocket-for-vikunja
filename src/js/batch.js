@@ -10,6 +10,7 @@ export const TOP_MS = 1500;
 
 export function batchTimer(go, ms = BATCH_MS) {
   let waiting = false,
+    pended = false, // a regroup waits, which outlasts the marks (pend)
     scrolling = false,
     timer = null;
   const fingers = new Set(),
@@ -21,7 +22,7 @@ export function batchTimer(go, ms = BATCH_MS) {
   };
   const fire = () => {
     timer = null;
-    waiting = false;
+    waiting = pended = false;
     go();
   };
   return {
@@ -32,8 +33,10 @@ export function batchTimer(go, ms = BATCH_MS) {
     get holding() {
       return waiting || fingers.size > 0 || scrolling;
     },
-    // Something waits for the batch without restarting the wait, as a mark would.
+    // A regroup waits for the batch. Unlike a mark, it doesn't restart the wait, and it still runs when every mark is
+    // undone (stop).
     pend() {
+      pended = true;
       if (waiting) return;
       waiting = true;
       arm();
@@ -67,12 +70,12 @@ export function batchTimer(go, ms = BATCH_MS) {
       clearTimeout(timer);
       timer = null;
       fingers.clear();
-      waiting = false;
+      waiting = pended = false;
       idle.splice(0).forEach(ok => ok());
     },
-    // Every mark was undone, so nothing is left to clear.
+    // Every mark was undone. Only a regroup still waiting keeps the wait going.
     stop() {
-      waiting = false;
+      waiting = pended;
       arm();
     },
   };
