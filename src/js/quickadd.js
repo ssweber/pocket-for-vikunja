@@ -361,8 +361,10 @@ export function parseCapture(
     if (!day && repeatDay !== null) day = dayFrom(now, (repeatDay - now.getDay() + 7) % 7); // "every monday at 10"
 
     if (typeof chrono !== 'undefined') {
-      // chrono-node reads the other dates and times: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
-      const results = (DAY_FIRST ? chrono.GB : chrono.casual).parse(out.title, now, { forwardDate: true }).filter(
+      /* chrono-node reads the other dates and times: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
+         Its English parser serves every region. Numeric dates, the only ones a region changes, are read above, and its
+         GB parser reads "Oct 24" as October 2024. */
+      const results = chrono.casual.parse(out.title, now, { forwardDate: true }).filter(
         r =>
           out.title[r.index - 1] !== P.assignee && // inside an @username
           !/^for\b/i.test(r.text) && // "for 2 hours" is a duration, not a date
