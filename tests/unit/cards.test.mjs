@@ -931,7 +931,8 @@ test('the one-time hint goes on a card’s top row only', () => {
   );
 });
 
-test('a row on Today shows a short due time and the project dot on one line, and a screen reader hears the rest', () => {
+test('a row on Today shows a short due time and the project dot on one line, and a screen reader hears the rest', c => {
+  c.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) }); // so 11:30pm is later today
   const { app } = today();
   app.route = { name: 'today' };
   const due = new Date();
@@ -1003,7 +1004,8 @@ test('a row on Today shows a short due time and the project dot on one line, and
   assert.equal(app.cardHead(u, { key: 'week' }).due.text, 'Today');
 });
 
-test('a checklist card’s heading shows its name without the start day, and the due time at the right, like a task’s', () => {
+test('a checklist card’s heading shows its name without the start day, and the due time at the right, like a task’s', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) }); // so 11:30pm is later today
   const { app } = today();
   app.route = { name: 'today' };
   const made = new Date(2026, 9, 8, 7, 30),
