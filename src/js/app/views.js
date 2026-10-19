@@ -711,10 +711,7 @@ export default {
      Return whether this load is still current. */
   async settle(ids, seq) {
     if (this.view.loading) return seq === renderSeq;
-    // No row moves under a finger. The reload waits, as the batch does, until the user stops touching and scrolling.
-    const touched = this.untouched();
-    if (touched) await touched;
-    if (seq !== renderSeq) return false;
+    if (!(await this.lifted(seq))) return false;
     const now = new Set(ids),
       shown = [
         ...this.view.groups.flatMap(g => g.tasks),
@@ -735,6 +732,13 @@ export default {
     if (seq !== renderSeq) return false;
     if (arrived.length) this.flash(arrived, 'arrived');
     return true;
+  },
+  // No row moves under a finger. A reload waits, as the batch does, until the user stops touching and scrolling. Returns
+  // whether load `seq` is still current.
+  async lifted(seq) {
+    const touched = !this.view.loading && this.untouched();
+    if (touched) await touched;
+    return seq === renderSeq;
   },
   /* Keep marked and held rows through list refreshes until their batch clears. On Today, also keep their previous
      groups when repeating tasks have advanced to a new date in Vikunja. */
@@ -885,7 +889,8 @@ export default {
   },
   async loadToday(seq) {
     const got = await this.readToday();
-    if (seq !== renderSeq) return;
+    // The rows are placed once the finger lifts, by the dates they show then, so a row thrown meanwhile stays put.
+    if (seq !== renderSeq || !(await this.lifted(seq))) return;
     const { groups, cards, steps, positions } = this.todayFrom(got, t => this.row(t));
     if (
       !(await this.settle(
@@ -898,6 +903,8 @@ export default {
     Object.assign(this.positions, positions);
     Object.assign(this.view, { cards, groups: this.keepMarked(groups) });
     kids = { at: this.view.route, ids: this.cardKids() };
+    // The cards' dates were read before the wait. A card thrown meanwhile moves back to the date it was thrown to.
+    this.regroup();
     this.keepScreen('today', { groups, cards, steps, positions, at: new Date().toISOString() });
   },
   /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
@@ -1342,10 +1349,7 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of read.steps) this.row(t);
     Object.assign(this.positions, read.positions);
-    // No row moves under a finger (settle).
-    const touched = this.untouched();
-    if (touched) await touched;
-    if (seq !== renderSeq) return;
+    if (!(await this.lifted(seq))) return;
     this.view.groups = this.keepMarked([
       { key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t)) },
       {

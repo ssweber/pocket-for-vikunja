@@ -1,7 +1,7 @@
 // Tests for moving a task's date on Today and Move all (src/js/app/actions.js), against a fake Vikunja: the row moves
 // at once, the change waits offline, and Undo puts the date back.
 import './browser.mjs';
-import { collected, DAY, patches } from './actions-helpers.mjs';
+import { collected, DAY, fingers, patches } from './actions-helpers.mjs';
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +16,7 @@ import leaving from '../../src/js/app/leaving.js';
 import { isMovedGap, todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
-import views from '../../src/js/app/views.js';
+import views, { renderSeq } from '../../src/js/app/views.js';
 import { startOfDay } from '../../src/js/dates.js';
 
 test('Move all to today moves each overdue task to today at its time, or with no time if that time has passed', async t => {
@@ -648,5 +648,48 @@ test('a load that lists tasks by Vikunja’s dates places them by the dates move
     groups.map(g => [g.key, g.tasks.map(t => t.id)]).filter(([, ids]) => ids.length),
     [['nodate', [2]]],
     'Next 7 days has none of them',
+  );
+});
+
+test('a row or a card thrown while a reload waits for the finger stays where it was thrown', async c => {
+  const { v, app, at, key } = onToday(
+    c,
+    [
+      { id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() },
+      { id: 2, title: 'Paint the hall', due_date: new Date(2026, 9, 11, 9).toISOString() },
+      { id: 3, title: 'Buy paint', due_date: new Date(2026, 9, 12, 9).toISOString() },
+    ],
+    { 2: { when: new Date(2026, 9, 11, 9).toISOString(), made: null, focus: null } },
+    ['Date', 'setTimeout'],
+  );
+  v.task(2).related_tasks = { subtask: [{ id: 3, title: 'Buy paint', done: false }] };
+  v.task(3).related_tasks = { parenttask: [{ id: 2, title: 'Paint the hall', project_id: 1 }] };
+  for (const id of [2, 3]) app.change(w => w.read([v.task(id)], TASK, started()));
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(views));
+  Object.assign(app, { render() {}, todayDay: +startOfDay() });
+  Object.assign(app.view, { route: location.hash, checklists: [] });
+  app.view.groups.find(g => g.key === 'week').tasks.push(app.tasks[1], app.tasks[2]);
+  // What the reload read, before the throw: Vikunja's dates.
+  const read = { 1: v.task(1), 2: v.task(2), 3: v.task(3) };
+  app.readToday = async () => ({
+    rows: [{ t: read[1], key: 'dated' }],
+    cards: new Map([[2, { when: read[2].due_date, made: null, focus: null, from: [] }]]),
+    parents: [read[2]],
+    steps: [read[3]],
+    positions: {},
+    done: [],
+  });
+  const finger = fingers(c, app);
+  finger('pointerdown');
+  const loading = app.loadToday(renderSeq);
+  for (let i = 0; i < 5; i++) await new Promise(setImmediate);
+  await moveTo(app, app.tasks[1], new Date(), 'Today');
+  await moveTo(app, app.tasks[2], new Date(), 'Today');
+  finger('pointerup');
+  await loading;
+  assert.deepEqual(
+    [key(1), key(2), app.view.cards[2].when],
+    ['today', 'today', at(7, 0)],
+    'both stay in Today, where they were thrown, the card by its new date',
   );
 });
