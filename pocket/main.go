@@ -1,4 +1,5 @@
-// Serves Pocket for Vikunja from Vikunja itself, at <your Vikunja>/api/v1/plugins/pocket/.
+// Serves Pocket for Vikunja from Vikunja itself, at <your Vikunja>/api/v1/plugins/pocket/, and passes Pocket's changes
+// on to Vikunja's API (relay.go).
 //
 // Install: copy this pocket/ folder into <Vikunja's rootpath>/plugins/, so there is plugins/pocket/main.go and
 // plugins/pocket/app/index.html, then turn plugins on in Vikunja's config.yml
@@ -12,10 +13,10 @@
 //
 // What it does to Vikunja's data:
 //
-//   - By default, nothing of its own. It serves the files in app/. relay.go passes Pocket's changes on to Vikunja's
-//     own API, as the signed-in user, so Vikunja checks and records them as it does any request. It keeps Vikunja's
-//     answer to each in a table, pocket_relay, for 31 days, so a change sent twice is made once. The answers include
-//     the tasks they changed.
+//   - By default, one table of its own, pocket_relay. relay.go passes Pocket's changes on to Vikunja's own API, as the
+//     signed-in user, so Vikunja checks and records them as it does any request. It keeps Vikunja's answer to each in
+//     pocket_relay for 31 days, so a change sent twice is made once. The answers include the tasks they changed.
+//     Vikunja creates the table, as one of its migrations, when it starts with the plugin.
 //   - With step times turned on, one thing. When a step of a checklist run is marked done, it sets the due date of the
 //     steps in that run that are timed from it (T#40m in their template step means 40 minutes after). It writes only
 //     due_date, and the time of those steps' reminders that count from their due date (Vikunja works those out only
