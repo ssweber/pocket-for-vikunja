@@ -64,10 +64,11 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Release 0.2.0.** Give `CHANGELOG.md`'s Unreleased its version and date. Merge `dev` into `main` by pull request
-   as a merge commit, not a squash, so `dev`'s commits reach `main` and `dev` needs no restart. Publish `v0.2.0`, and
-   delete the `v0.1.0-rc.1` pre-release and its tag.
-2. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
+1. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
+2. **For 0.3.0: filtering by label.** Rows don't show their labels today, so that comes first. Then:
+   - Tapping a label on a row narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and
+     clearing it, or leaving Today, shows everything again. One label at a time.
+   - Typing `*errands` in search lists every open task with that label, wherever it is due, grouped by project.
 3. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
 
 The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
