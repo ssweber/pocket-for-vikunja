@@ -1016,7 +1016,7 @@ try {
     await page.waitForSelector('#run-steps .row:nth-of-type(1).done', { timeout: 15000 });
     if (!(await task(id)).done) throw new Error('the step is not done in Vikunja');
     // Pocket keeps the rejected change to retry, and the header shows a warning. An untick in the meantime waits behind it, so it can't arrive first.
-    await page.waitForSelector('#btn-refresh.trouble[aria-label="Outbox, 1 couldn\'t be sent"]');
+    await page.waitForSelector('#btn-refresh.trouble[aria-label="Outbox, 1 couldn\'t be saved"]');
     await toastGone().catch(() => {});
     await page.click('#run-steps .row:nth-of-type(1) .check');
     await said('step', 'Not sent. Vikunja refused an earlier change');
@@ -2937,7 +2937,7 @@ try {
     await page.fill(box, stray);
     await page.route('**/v2/tasks/*/relations', busy);
     await page.press(box, 'Enter');
-    await said('sheet:subtasks', "Saved offline. It goes to Vikunja when you're back online.");
+    await said('sheet:subtasks', 'Waiting for Vikunja. Pocket tries again every 30 seconds.');
     await page.unroute('**/v2/tasks/*/relations', busy);
     await online();
     await until('the waiting step was never put under the template', async () =>
