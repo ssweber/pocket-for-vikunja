@@ -732,6 +732,40 @@ test("a task ticked on Today joins Done today when the batch clears, newest firs
     [[], [1, 2]],
   );
 });
+test('in search, a ticked row moves to the top of Done and an unticked one to the top of Open as the batch clears', async t => {
+  const { app } = listed(
+    t,
+    [
+      { id: 1, title: 'Order the cups', done: false },
+      { id: 2, title: 'Fix the till', done: false },
+      { id: 3, title: 'Wipe the counter', done: true },
+      { id: 4, title: 'Take the croissants out', done: true },
+    ],
+    views,
+    cards,
+  );
+  app.route = { name: 'search' };
+  app.view.groups = [
+    { key: 'open', tasks: [app.tasks[1], app.tasks[2]] },
+    { key: 'done', tasks: [app.tasks[3], app.tasks[4]] },
+  ];
+  const lists = () => app.view.groups.map(g => g.tasks.map(x => x.id));
+  await app.toggleDone(app.tasks[1], ROW);
+  await app.toggleDone(app.tasks[4], ROW);
+  assert.deepEqual(
+    lists(),
+    [
+      [1, 2],
+      [3, 4],
+    ],
+    'both wait for the batch',
+  );
+  await app.clearBatch(true);
+  assert.deepEqual(lists(), [
+    [4, 2],
+    [1, 3],
+  ]);
+});
 test('an untick in Done today marks the row open, and it moves to its group on Today as the batch clears', async t => {
   const due = new Date(Date.now() + 36e5).toISOString(),
     { app } = listed(

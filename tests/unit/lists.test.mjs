@@ -1026,7 +1026,9 @@ test('a task moved to another project leaves the project’s list as the batch l
   );
 });
 
-test('a checklist’s step ticked on its project’s list leaves the list when rows regroup, and never joins Done', async t => {
+/* Checklist 30 in progress on its project's list, with its steps 31 and 32, as a sender with the batch. Done is loaded
+   and empty. */
+const checklistOnProject = t => {
   const step = (id, title) => ({
       id,
       title,
@@ -1043,26 +1045,74 @@ test('a checklist’s step ticked on its project’s list leaves the list when r
       step(31, 'Lights'),
       step(32, 'Chairs'),
     ];
-  const { app } = sender(t, list, actions, leaving, views, cards, checklists);
+  const s = sender(t, list, actions, leaving, views, cards, checklists);
   t.after(async () => {
+    s.app.clearNow();
     for (const x of sync.all(1)) await sync.remove(x.id);
   });
-  Object.assign(app, { route: { name: 'project', id: 7 }, checklistIds: new Set([7]), render() {} });
-  app.change(w => w.read(structuredClone(list), TASK, started()));
-  app.view.groups = [
-    { key: 'open', cls: '', title: 'Open', heads: [], tasks: [30, 31, 32].map(id => app.row({ id })) },
+  Object.assign(s.app, { route: { name: 'project', id: 7 }, checklistIds: new Set([7]), render() {} });
+  s.app.change(w => w.read(structuredClone(list), TASK, started()));
+  s.app.view.groups = [
+    { key: 'open', cls: '', title: 'Open', heads: [], tasks: [30, 31, 32].map(id => s.app.row({ id })) },
     { key: 'done', loaded: true, count: 0, tasks: [] },
   ];
+  return { ...s, list, groups: () => s.app.view.groups.map(g => [g.key, ids(g.tasks), g.count]) };
+};
+test('a checklist’s step ticked on its project’s list leaves the list when rows regroup, and never joins Done', async t => {
+  const { app, groups } = checklistOnProject(t);
   await app.act({ id: uuid7(), op: 'done', task: 31, run: 30 });
   app.regroup();
   assert.deepEqual(
-    app.view.groups.map(g => [g.key, ids(g.tasks), g.count]),
+    groups(),
     [
       ['open', [30, 32], undefined],
       ['done', [], 0],
     ],
     'the step leaves the open list, and Done, which leaves out steps when it loads, doesn’t take it',
   );
+});
+test('a checklist finished elsewhere goes to Done on its project’s list when rows regroup, and its open steps leave', t => {
+  const { app, list, groups } = checklistOnProject(t);
+  app.change(w => w.read([{ ...list[0], done: true, done_at: new Date().toISOString() }], TASK, started()));
+  app.regroup();
+  assert.deepEqual(groups(), [
+    ['open', [], undefined],
+    ['done', [30], 1],
+  ]);
+});
+test('rows wait to regroup while the list scrolls, and move 3 seconds after it stops', async t => {
+  const { app, groups } = checklistOnProject(t),
+    scroll = fingers(t, app);
+  await app.act({ id: uuid7(), op: 'done', task: 31, run: 30 });
+  scroll('scroll');
+  app.regroupSoon(); // the sheet closes while the list is still scrolling
+  for (let i = 0; i < 40; i++) {
+    t.mock.timers.tick(100);
+    scroll('scroll');
+  }
+  await new Promise(setImmediate);
+  assert.deepEqual(groups()[0][1], [30, 31, 32], 'nothing moves while the list scrolls');
+  t.mock.timers.tick(150); // the list stops
+  t.mock.timers.tick(2999);
+  await new Promise(setImmediate);
+  assert.deepEqual(groups()[0][1], [30, 31, 32], 'nor for 3 seconds after it stops');
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 5; i++) await new Promise(setImmediate);
+  assert.deepEqual(groups()[0][1], [30, 32], 'then the step leaves');
+});
+test('a reload’s rows settle only once the finger lifts', async t => {
+  const app = doneApp({ name: 'project', id: 5 });
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(leaving));
+  Object.assign(app.view, { groups: [{ key: 'open', tasks: [] }], checklists: [] });
+  const finger = fingers(t, app);
+  finger('pointerdown');
+  let settled = null;
+  const settling = app.settle([1], renderSeq).then(ok => (settled = ok));
+  for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+  assert.equal(settled, null, 'it waits while the finger is down');
+  finger('pointerup');
+  await settling;
+  assert.equal(settled, true, 'and goes on once it lifts');
 });
 test('a reload whose answer arrives while a finger is down changes the lists only once the finger lifts', async t => {
   doneVikunja(3);

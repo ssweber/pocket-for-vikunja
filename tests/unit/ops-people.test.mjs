@@ -220,6 +220,22 @@ test('a slide that claims a step queues the claim after the progress, so letting
   assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [['progress'], []]);
 });
 
+test('the same step claimed twice, or let go twice, while neither is sent is sent once', async t => {
+  const { app } = offlineStep(t);
+  const twice = async op => {
+    for (let i = 0; i < 2; i++) await app.act({ id: uuid7(), op, task: 2, user: 1, run: 1 });
+  };
+  await twice('claim');
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [['claim'], [1]], 'one claim');
+  await app.act({ id: uuid7(), op: 'unclaim', task: 2, user: 1, run: 1 });
+  await twice('unclaim');
+  assert.deepEqual(
+    [queued(), ids(app.tasks[2].assignees)],
+    [['unclaim'], []],
+    'letting go cancels the claim, and letting go twice more is sent once',
+  );
+});
+
 test('a person put on a checklist and taken off cancel out while neither is sent', async t => {
   const { v, app } = listed(t, [task(1, { title: 'Closing', assignees: [ME] })]);
   Object.assign(app, {
