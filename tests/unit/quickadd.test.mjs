@@ -73,6 +73,23 @@ test('"tomorrow" with a part of the day is tomorrow at that time', () => {
     });
 });
 
+test('a bare hour after an evening or a night is PM, and one written with am stays AM', () => {
+  for (const [phrase, due] of [
+    ['tonight at 10', '10/19 22:00'],
+    ['this evening at 9', '10/19 21:00'],
+    ['tomorrow evening at 10', '10/20 22:00'],
+    ['tomorrow night at 11', '10/20 23:00'],
+    ['tonight at 10:30', '10/19 22:30'],
+    ['tonight at 10am', '10/19 10:00'],
+  ])
+    sameAtEveryHour('Call mom ' + phrase, { title: 'Call mom', due, marked: [phrase] });
+  sameAtEveryHour('Call mom tomorrow morning at 10', {
+    title: 'Call mom',
+    due: '10/20 10:00',
+    marked: ['tomorrow morning at 10'],
+  });
+});
+
 test('a part of the day with no day sets nothing, and stays in the title', () => {
   for (const part of ['morning', 'afternoon', 'evening', 'night'])
     sameAtEveryHour('Call mom ' + part, { title: 'Call mom ' + part, due: null, marked: [] });

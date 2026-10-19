@@ -397,7 +397,9 @@ export function parseCapture(
         !r.start.isCertain('weekday') &&
         !r.start.isCertain('month');
       /* A bare hour from 1 to 7 is read as afternoon or evening, as people mean it: "at 5" is 5 PM. Vikunja's own quick
-         add reads it as 5 AM. "5am", "5pm", "17:00" and "05:00" are read as written. */
+         add reads it as 5 AM. After an evening or a night, any bare hour up to 11 is PM: "tonight at 10" is 10 PM.
+         "5am", "5pm", "17:00" and "05:00" are read as written. */
+      const late = time === PARTS.evening || time === PARTS.night;
       const daytime = r => {
         const d = r.start.date(),
           h = d.getHours();
@@ -405,7 +407,7 @@ export function parseCapture(
           r.start.isCertain('hour') &&
           !r.start.isCertain('meridiem') &&
           h >= 1 &&
-          h <= 7 &&
+          h <= (late ? 11 : 7) &&
           !/(^|\D)0\d/.test(r.text)
         )
           d.setHours(h + 12);
