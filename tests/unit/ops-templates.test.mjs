@@ -306,6 +306,28 @@ test("a step's people and labels tapped off in its edit box are taken off as ops
   );
 });
 
+test("a person assigned in a step's edit box and taken off again leaves nothing to send", async t => {
+  const { v, app } = editor(t, closing());
+  noConnection(app, v);
+  const titles = ['Mop the floor @bob', 'Lock up'],
+    again = drop => {
+      titles[0] = 'Mop the floor';
+      app.sheet.stepEdit = { id: 8, ignore: {}, text: titles[0], drop };
+      return app.saveStepEdit(0);
+    };
+  editing(app, { text: titles[0] }, titles);
+  await app.saveStepEdit(0);
+  await again({ u7: true });
+  assert.deepEqual(outbox(), [], 'a title that only lost its @bob is not renamed');
+  await app.act({ op: 'claim', task: 8, run: null });
+  await again({ u1: true });
+  assert.deepEqual(
+    [outbox(), ids(app.tasks[8].assignees)],
+    [[], []],
+    "unassigning yourself in the step's edit box cancels the claim",
+  );
+});
+
 test("a template's step whose add is cancelled after it was made is hidden until Vikunja deletes it", async t => {
   const { v, app } = editor(
     t,

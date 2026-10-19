@@ -978,13 +978,16 @@ export default {
     if (own) own.title = line.body.title;
     const was = (list, of) => (list || []).map(of);
     const ops = [
-      // The renamed steps go in order, so a step this one counts from is named first.
-      ...todo.map(x => ({
-        op: 'edit',
-        task: x.s.id,
-        set: { title: x.title, ...(x === own && p.priority && { priority: p.priority }) },
-        was: { title: x.was, ...(x === own && p.priority && { priority: x.s.priority || 0 }) },
-      })),
+      // The renamed steps go in order, so a step this one counts from is named first. A title that only lost its
+      // @people or *labels is not renamed, so taking a person off again leaves nothing to send.
+      ...todo
+        .filter(x => x.title !== x.was || (x === own && p.priority))
+        .map(x => ({
+          op: 'edit',
+          task: x.s.id,
+          set: { title: x.title, ...(x === own && p.priority && { priority: p.priority }) },
+          was: { title: x.was, ...(x === own && p.priority && { priority: x.s.priority || 0 }) },
+        })),
       ...(line?.people || []).map(u => ({
         op: 'assign',
         task: e.id,
