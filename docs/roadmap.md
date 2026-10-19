@@ -69,7 +69,10 @@ template for every list, with the parts a given list does not show left in it.
    - Tapping a label on a row narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and
      clearing it, or leaving Today, shows everything again. One label at a time.
    - Typing `*errands` in search lists every open task with that label, wherever it is due, grouped by project.
-3. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
+3. **For 0.3.0: the batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let
+   go so its chips stay open. When the batch clears the first row's gap, the page shortens, and at the bottom of the
+   page the scroll that causes closes the chips. Hold the batch while chips are open, as it is held for a finger.
+4. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
 
 The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
 send whenever the user chooses.
