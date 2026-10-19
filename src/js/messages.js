@@ -30,14 +30,16 @@ export const savedOffline = (n = 1, photos = 0) =>
   'Saved offline' +
   (photos ? `, with ${photos === 1 ? 'the photo' : photos + ' photos'}` : '') +
   `. ${n === 1 && !photos ? 'It goes' : 'They go'} to Vikunja when you're back online.`;
-// A change that names itself (`what`, "Finished Wipe the counter") and waits while Pocket is offline.
-export const sentLater = what => `${what}. It goes to Vikunja when you're back online.`;
 // Vikunja answered busy, so the change waits, as the Outbox says.
 export const BUSY = 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
-/* What a change that waits says, by sendActs' result `r`: Vikunja was busy (`reached`), the reply to a request was
-   lost (`lost`, the change as its refusal would name it), or Pocket is offline. */
-export const waitText = (r, n = 1, photos = 0) =>
-  r.reached ? BUSY : r.lost ? notKnown(r.lost) : savedOffline(n, photos);
+// A change that names itself (`what`, "Finished Wipe the counter") and waits: for a busy Vikunja (`reached`), or
+// while Pocket is offline.
+export const sentLater = (what, reached = false) =>
+  `${what}. ${reached ? BUSY : "It goes to Vikunja when you're back online."}`;
+/* What a change that waits says, by sendActs' result `r`: Vikunja was busy (`reached`), or Pocket is offline. A
+   request whose reply was lost puts Pocket offline too. Pocket can't tell it from one that never left the phone, and
+   sends it again with the same key, so it is made once. */
+export const waitText = (r, n = 1, photos = 0) => (r.reached ? BUSY : savedOffline(n, photos));
 // The Outbox's line while changes wait, offline or not, and once Vikunja refused some or has them all.
 export const OUTBOX = {
   sending: 'Sending…',
@@ -636,13 +638,14 @@ export const tickSaid = (done, title) => (done ? 'Done: ' : 'Not done: ') + titl
 export const doneRepeats = (title, next = '') => `Done: ${title}. It repeats${next ? ', ' + next : ''}`;
 // The same in a task's sheet, where the title is on screen already.
 export const repeatsNext = next => (next ? 'Repeats · ' + next : 'Done — repeats');
-// A checklist finished, named by `title` where nothing else on screen names it, and said to wait while `offline`.
-export const finishedText = (title = '', offline = false) => {
+// A checklist finished, named by `title` where nothing else on screen names it. `wait` is sendActs' result when the
+// finish waits (sentLater).
+export const finishedText = (title = '', wait = null) => {
   const said = title ? 'Finished ' + title : 'Finished';
-  return offline ? sentLater(said) : said;
+  return wait ? sentLater(said, wait.reached) : said;
 };
-// A step ticked while Pocket is offline, named by `title` where nothing else on screen names it.
-export const doneLater = (title = '') => sentLater(title ? tickSaid(true, title) : 'Done');
+// A step ticked while it waits (sentLater), named by `title` where nothing else on screen names it.
+export const doneLater = (title = '', reached = false) => sentLater(title ? tickSaid(true, title) : 'Done', reached);
 // Progress set with a swipe, on task `title`, or in the task's own sheet without one.
 export const progressSaid = (pct, title = '') =>
   title ? `Progress of ${title} set to ${pct}%` : `Progress set to ${pct}%`;
@@ -685,9 +688,10 @@ export const addedPart = (k, n, but = '') => `Added ${k} of ${n}${but}.`;
 export const addedStopped = (k, n, but, why) => `${addedPart(k, n, but)} Stopped: ${why}`;
 // Subtasks added from a task's sheet, with `but`.
 export const addedSubs = (n, but = '') => `Added ${n === 1 ? '1 subtask' : n + ' subtasks'}${but}`;
-// Photos sent with a task that reached Vikunja, while the photos wait.
-export const photosLater = (project, n) =>
-  `Added to ${project || 'its project'}. ${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`;
+// Photos sent with a task that reached Vikunja, while the photos wait: for a busy Vikunja (`reached`), or offline.
+export const photosLater = (project, n, reached = false) =>
+  `Added to ${project || 'its project'}. ` +
+  (reached ? BUSY : `${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`);
 // Lines added offline under a task, which Vikunja wouldn't put under it (`why`). `loose` are the titles made as tasks
 // of their own, and `unsent` the text of the lines not added.
 export const subsNotUnder = (parent, why, loose, unsent) =>

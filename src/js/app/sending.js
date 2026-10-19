@@ -61,15 +61,17 @@ const waitingRows = new Map();
 const lastGroups = new Map(); // each group as listGroups last returned it, by key
 /* What became of the lines typed together (`entries`), from sendActs' results, as one result for their add box. It is
    'error' if Vikunja refused a line or can't tell whether it has one, 'offline' if a line or its photos still wait,
-   'gone' if another tab sent them, and else 'sent'. `unsent` is the text of the lines that go back to the box. A line
-   kept in the Outbox once its task is made is not the box's error, because sendActs said what became of it. */
+   'gone' if another tab sent them, and else 'sent'. `reached` says that what waits, waits for a busy Vikunja, and not
+   for a connection. `unsent` is the text of the lines that go back to the box, and `title` names the refused line. A
+   line kept in the Outbox once its task is made is not the box's error, because sendActs said what became of it. */
 export const batchOf = (r, entries) => {
   const mine = (r.all || []).filter(x => x.batch === entries[0].batch),
     err = mine.find(x => x.status === 'error' && x.boxed),
+    waiting = mine.filter(x => x.status === 'offline' || x.filesWait),
     all = k => mine.flatMap(x => x[k] || []);
   const status = err
     ? 'error'
-    : mine.some(x => x.status === 'offline' || x.filesWait)
+    : waiting.length
       ? 'offline'
       : !mine.length
         ? entries.some(e => sync.entries.has(e.id))
@@ -80,7 +82,10 @@ export const batchOf = (r, entries) => {
           : 'sent';
   return {
     status,
+    // When an earlier entry stopped the outbox before this batch, that entry's result says why the batch waits.
+    reached: waiting.length ? waiting.every(x => x.reached) : !!r.reached,
     error: err?.error,
+    title: entries.find(e => e.id === err?.id)?.p?.title,
     ids: all('ids'),
     tasks: all('tasks'),
     problems: all('problems'),
@@ -179,7 +184,7 @@ export default {
         if (!kept) this.say(NOT_KEPT, err);
         else if (np && r.ids.length === n)
           // the task was added, and its photos are still waiting
-          this.say(photosLater(this.projById.get(r.projectId)?.title, np), { ...cap, action: open });
+          this.say(photosLater(this.projById.get(r.projectId)?.title, np, r.reached), { ...cap, action: open });
         else if (np) this.say(waitText(r, n, np), cap);
         else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.pendingPlace(t))) this.say(waitText(r, n), cap);
       } else if (r.status === 'error') {

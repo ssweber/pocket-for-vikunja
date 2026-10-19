@@ -16,7 +16,7 @@ import views from '../../src/js/app/views.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
-import { UNKNOWN } from '../../src/js/messages.js';
+import { photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
 import { sync } from '../../src/js/sync.js';
 
@@ -765,6 +765,33 @@ test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines
   v.trouble = () => null;
   const sent = await app.sendEntry(sync.all(1)[0].id);
   assert.deepEqual([sent.status, sent.uploaded, sync.all(1)], ['sent', 1, []]);
+});
+
+/* An add box says "Saved offline" only when Pocket is offline. Lines or photos that wait for a busy Vikunja say what
+   the Outbox says, because Pocket stays online and sends them again by itself. */
+for (const [why, trouble, said] of [
+  ['offline', () => 'offline', "Saved offline. They go to Vikunja when you're back online."],
+  ['busy', r => (r.method === 'POST' ? 429 : null), 'Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+])
+  test(`lines that wait say why they wait (${why})`, async t => {
+    t.after(clear);
+    const v = fakeVikunja([]),
+      app = adding(t);
+    v.trouble = trouble;
+    const r = await send(app, entry([line('Pack the van'), line('Load chairs')]));
+    assert.deepEqual([r.status, waitText(r, 2)], ['offline', said]);
+  });
+test('a photo that waits for a busy Vikunja says so, not that it goes once back online', async t => {
+  t.after(clear);
+  const v = fakeVikunja([]),
+    app = adding(t),
+    e = entry([line('Pack the van')]);
+  v.trouble = r => (r.path.endsWith('/attachments') ? 503 : null);
+  const r = shown(app, await app.sendLines(withPhoto(app, e), [photo()]));
+  assert.deepEqual(
+    [r.status, r.ids, photosLater('Van', 1, r.reached)],
+    ['offline', [101], 'Added to Van. Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+  );
 });
 
 test('a photo whose reply is lost is sent again with the same key and body, and Vikunja gets it once', async t => {

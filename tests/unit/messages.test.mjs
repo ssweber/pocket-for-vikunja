@@ -135,7 +135,7 @@ test('the row for more done tasks names what a tap shows and how many tasks are 
 });
 
 /* A change that waits while Pocket is offline ends with when it goes to Vikunja. "Saved offline" is said only while
-   Pocket is offline. A busy Vikunja and a lost reply have their own words (waitText). */
+   Pocket is offline. A busy Vikunja has its own words (waitText). */
 test('a change that waits offline says it goes to Vikunja when you are back online, for one change or several', () => {
   assert.equal(savedOffline(), "Saved offline. It goes to Vikunja when you're back online.");
   assert.equal(savedOffline(3), "Saved offline. They go to Vikunja when you're back online.");
@@ -145,8 +145,8 @@ test('a change that waits offline says it goes to Vikunja when you are back onli
     sentLater(finishedText('Wipe the counter')),
     "Finished Wipe the counter. It goes to Vikunja when you're back online.",
   );
-  assert.equal(finishedText('', true), "Finished. It goes to Vikunja when you're back online.");
-  assert.equal(finishedText('Closing', true), "Finished Closing. It goes to Vikunja when you're back online.");
+  assert.equal(finishedText('', {}), "Finished. It goes to Vikunja when you're back online.");
+  assert.equal(finishedText('Closing', {}), "Finished Closing. It goes to Vikunja when you're back online.");
   assert.equal(doneLater(), "Done. It goes to Vikunja when you're back online.");
   assert.equal(doneLater('Mop'), "Done: Mop. It goes to Vikunja when you're back online.");
   assert.equal(OUTBOX.offline, "No connection. These go to Vikunja when you're back online.");
@@ -155,13 +155,20 @@ test('a change that waits offline says it goes to Vikunja when you are back onli
   assert.equal(photosLater(undefined, 2), "Added to its project. The photos go to Vikunja when you're back online.");
 });
 
-test('a change that waits says why: offline, a busy Vikunja, or a reply that was lost', () => {
+/* A request whose reply was lost puts Pocket offline, as one that never left the phone does. Pocket sends either again
+   by itself, so neither says to tap Try again. */
+test('a change that waits says why: offline, or a busy Vikunja', () => {
   assert.equal(waitText({}, 2), "Saved offline. They go to Vikunja when you're back online.");
   assert.equal(waitText({ reached: true }), 'Waiting for Vikunja. Pocket tries again every 30 seconds.');
   assert.equal(waitText({ reached: true }), OUTBOX.busy, 'the busy words are the Outbox’s');
   assert.equal(
-    waitText({ lost: 'Adding “Opening up”' }),
-    "Adding “Opening up” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+    finishedText('Closing', { reached: true }),
+    'Finished Closing. Waiting for Vikunja. Pocket tries again every 30 seconds.',
+  );
+  assert.equal(doneLater('', true), 'Done. Waiting for Vikunja. Pocket tries again every 30 seconds.');
+  assert.equal(
+    photosLater('Orders', 2, true),
+    'Added to Orders. Waiting for Vikunja. Pocket tries again every 30 seconds.',
   );
 });
 

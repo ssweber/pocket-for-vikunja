@@ -152,6 +152,39 @@ test('Make template shows the template at once, waits in the Outbox offline, and
   );
 });
 
+/* Pocket can't tell a request that never left the phone from one whose reply was lost. Either puts Pocket offline, and
+   Pocket sends the change again by itself with the same key. So the message says it was saved offline, never to tap
+   Try again, and it names no earlier change that stopped the outbox. */
+const sheetOf = (app, id) => {
+  Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });
+  app.sheet = { id, kind: 'task', sub: {} };
+};
+test('Make template whose request never leaves the phone says it was saved offline', async t => {
+  const { v, app } = editor(t, closing());
+  sheetOf(app, 7);
+  v.trouble = r => (r.method === 'GET' ? null : 'offline');
+  await app.makeTemplate();
+  assert.equal(lastSaid(app).msg, "Saved offline. It goes to Vikunja when you're back online.");
+  await online(t, app, v);
+  assert.deepEqual([v.task(7).title, v.task(7).done, outbox()], ['TEMPLATE: Closing', true, []]);
+});
+
+test('Make template queued behind a priority edit whose reply was lost says it was saved offline', async t => {
+  const { v, app } = editor(t, closing());
+  sheetOf(app, 7);
+  noConnection(app, v);
+  await app.act({ op: 'edit', task: 7, run: null, set: { priority: 3 }, was: { priority: 0 } });
+  app.offline = false;
+  v.trouble = r => (r.method === 'PATCH' && r.body?.priority === 3 ? 'lost' : null);
+  await app.makeTemplate();
+  assert.deepEqual(
+    [lastSaid(app).msg, app.toasts.filter(x => /priority/i.test(x.msg)), outbox().map(e => e.op)],
+    ["Saved offline. It goes to Vikunja when you're back online.", [], ['edit', 'makeTemplate']],
+  );
+  await online(t, app, v);
+  assert.deepEqual([v.task(7).priority, v.task(7).done, outbox()], [3, true, []]);
+});
+
 /* New template (sheet/new-template.html) in project 5, named "Opening up", with the lines typed as its steps. */
 const newTemplate = (app, lines) => {
   app.sheet = {
@@ -355,13 +388,13 @@ test('Set up checklists says the example template waits when Vikunja is busy, an
   assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);
 });
 
-// Pocket is online, so "Saved offline" would be wrong. The step goes again with its key once Pocket reaches Vikunja.
-test('Set up checklists says a step whose reply was lost may not have reached Vikunja', async t => {
+// A lost reply puts Pocket offline. The step goes again with its key once Pocket reaches Vikunja, so it is made once.
+test('Set up checklists says a step whose reply was lost was saved offline', async t => {
   let once = true;
   const { v, app } = await setUp(t, r => (once && making(FIRST)(r) ? ((once = false), 'lost') : null));
   assert.equal(
     lastSaid(app).msg,
-    `Created the Checklists project, with an example template to try. Adding “${FIRST}” may not have reached Vikunja. Check, then tap Try again if it's missing.`,
+    "Created the Checklists project, with an example template to try. Saved offline. It goes to Vikunja when you're back online.",
   );
   await online(t, app, v);
   assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);

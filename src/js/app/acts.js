@@ -1,6 +1,6 @@
 // Queue a change as an op (src/js/ops/), and send the outbox's ops in order, each request with its own key.
 import { taskDrafts } from '../util.js';
-import { api, ApiError, NetError, passing, serverTime } from '../api.js';
+import { api, ApiError, passing, serverTime } from '../api.js';
 import { htmlToText } from '../html.js';
 import { parseStep, patiently } from '../checklists.js';
 import { CANCEL, held, older, sync, uuid7 } from '../sync.js';
@@ -419,7 +419,8 @@ export default {
   },
   /* Send an act's stages from where an earlier try stopped, saving the entry after each. An op that makes a task (its
      entry then has `taskId`) also gives the task (`ids`, and `tasks` for placeSent) and its problems, and uploads its
-     photos once it is sent (`filesWait` while they wait). What a refusal does is the op's (refusal). */
+     photos once it is sent (`filesWait` while they wait, with `reached` when Vikunja was busy). What a refusal does is
+     the op's (refusal). */
   async sendAct(a) {
     const op = opOf(a),
       stages = stagesOf(a),
@@ -525,6 +526,7 @@ export default {
         uploaded: files?.uploaded || 0,
         problems: [...none.problems, ...(files?.problems || [])],
         filesWait: files?.status === 'offline',
+        reached: !!files?.reached,
       };
     } catch (error) {
       if (
@@ -532,9 +534,7 @@ export default {
         (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))
       ) {
         await c.save();
-        // A request sent without an answer may have reached Vikunja, so the caller doesn't say it was saved offline.
-        const lost = error instanceof NetError && a.sent && op.refused(a, a.label || this.actTitle(a.task));
-        return { ...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401, lost };
+        return { ...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
       }
       // The relay can't tell whether Vikunja made the change. Only the user can check, so it is kept for Try again.
       const unknown = error.code === 'unknown',

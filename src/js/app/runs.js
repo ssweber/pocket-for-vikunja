@@ -916,7 +916,7 @@ export default {
     const r = await this.act({ op: 'finish', task: run.id });
     if (r.status === 'error') return;
     // Show the message as a toast, because the previous screen that Back returns to has no place for it.
-    this.notify(r.status === 'offline' ? finishedText('', true) : finishedText(run.title), {
+    this.notify(r.status === 'offline' ? finishedText('', r) : finishedText(run.title), {
       label: UNDO,
       fn: () => this.reopenRun(run.id),
     });

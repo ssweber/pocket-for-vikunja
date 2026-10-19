@@ -255,12 +255,12 @@ export default {
     // leaves Done.
     if (head) return this.outOfDone(t.id);
     const offline = r.status === 'offline',
-      said = was ? tickSaid(false, t.title) : finishedText(t.title, offline);
+      said = was ? tickSaid(false, t.title) : finishedText(t.title, offline && r);
     const undo = () => this.undoTicks([f]);
     // Without a visible row, show Undo at the top of the sheet, or in a toast.
     if (!rowEl) {
       if (!was)
-        this.say(offline ? finishedText('', true) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
+        this.say(offline ? finishedText('', r) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
       return;
     }
     const moves = () => !!this.searchGroups(t),
@@ -295,10 +295,11 @@ export default {
     try {
       const r = await acting;
       if (r.status === 'error') return;
-      const later = !was && r.status === 'offline' ? doneLater(t.title) : '';
-      // In a sheet while offline, the step's row says it will be sent later.
+      const later = !was && r.status === 'offline' ? doneLater(t.title, r.reached) : '';
+      // In a sheet, while the tick waits, the step's row says it will be sent later.
       if (!rowEl) {
-        if (later) this.say(later, { row: { id: t.id, text: doneLater(), stays: true }, place: 'sheet:top' });
+        if (later)
+          this.say(later, { row: { id: t.id, text: doneLater('', r.reached), stays: true }, place: 'sheet:top' });
         return;
       }
       const moves = () => !!this.searchGroups(t);
