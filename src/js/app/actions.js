@@ -563,8 +563,8 @@ export default {
     return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null;
   },
   /* Put task `t`, given the date `due`, in the Today group it belongs in now (belongsIn), or take it off Today, at once.
-     A card goes by its date with that of its open subtasks (todayDates). A task with no date goes in the group `key`
-     when one is given, as Undo puts it back where it was. Only that task moves, so no other row moves under a finger. */
+     A card goes by the dates that put it on Today (todayDates). A task with no date goes in the group `key` when one is
+     given, as Undo puts it back where it was. Only that task's row moves, so no other row redraws (rule 10). */
   placeOnToday(t, due, key) {
     const groups = this.view.groups,
       from = groups.find(g => g.tasks.some(x => x.id === t.id)),
