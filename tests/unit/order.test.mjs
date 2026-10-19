@@ -487,7 +487,10 @@ test('a refused move puts its task back and says why on its row, whichever code 
   app.positions[chairs.id] = 150;
   app.pending = [{ id: 'e1', kind: 'act', op: 'position', task: chairs.id, pos: 150, was: 100 }];
   app.positionRefused(app.pending[0], new Error('Forbidden'));
-  assert.deepEqual([app.positions[chairs.id], said], [100, [['Not reordered: Forbidden', chairs.id]]]);
+  assert.deepEqual(
+    [app.positions[chairs.id], said],
+    [100, [["The new order couldn't be saved: Forbidden.", chairs.id]]],
+  );
   app.positions[chairs.id] = 300;
   app.pending.push({ id: 'e2', kind: 'act', op: 'position', task: chairs.id, pos: 300, was: 150 });
   app.positionRefused(app.pending[0], new Error('Forbidden'));

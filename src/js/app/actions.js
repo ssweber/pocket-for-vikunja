@@ -6,22 +6,43 @@ import { NetError } from '../api.js';
 import { dueInfo, isSet, movedDue, repeats } from '../dates.js';
 import { isSubtask, openSubtasks, pctOf } from '../progress.js';
 import {
+  addedPart,
+  addedStopped,
+  addedSubs,
   dayWord,
+  deleteAsk,
+  deletedSaid,
+  deletedSteps,
+  deletedText,
+  deleteTemplateAsk,
+  doneLater,
+  doneRepeats,
   doneText,
+  finishedText,
+  movedBack,
   movedText,
   movedTo,
   movedToProject,
+  noLongerSub,
+  NOT_KEPT,
+  notDone,
   notKnown,
   notReordered,
   notMovedBack,
   notSaved,
-  sentLater,
+  placeSaid,
+  progressSaid,
+  repeatsNext,
+  tickSaid,
   toOutbox,
+  TRY_AGAIN,
+  UNDO,
+  waitText,
 } from '../messages.js';
 import { stepsOf, vikunjaNext } from '../checklists.js';
 import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks } from '../order.js';
 import { dayGroup, parentIds } from '../lists.js';
-import { itemsOf, NO_ROOM, NOT_KEPT, sync, uuid7 } from '../sync.js';
+import { itemsOf, sync, uuid7 } from '../sync.js';
 import { addLines, cancelling, cancelOf, movedFrom, opOf, personOf, tagOf, waitingPositions } from '../ops/index.js';
 import { copyOf, opsId } from './tasks.js';
 
@@ -104,10 +125,7 @@ export default {
           d = n && dueInfo(due),
           next = d ? 'next ' + d.label : '';
         if (sheet) {
-          this.say(next ? 'Repeats · ' + next : 'Done — repeats', {
-            place: 'sheet:top',
-            action: { label: 'Undo', fn: undo },
-          });
+          this.say(repeatsNext(next), { place: 'sheet:top', action: { label: UNDO, fn: undo } });
           return;
         }
         if (!inList) return;
@@ -117,7 +135,7 @@ export default {
           kind: 'done',
           out: () => (beyond() ? [t.id] : []),
           undo,
-          said: `Done: ${t.title}. It repeats${next ? ', ' + next : ''}`,
+          said: doneRepeats(t.title, next),
           gone: () => {
             if (beyond()) this.removeRow(t.id);
             else if (this.route.name === 'today') this.regroupToday();
@@ -134,7 +152,7 @@ export default {
       const text = doneText(closed.length, subs.length, t.title);
       // Show the sheet's closed-subtask count and Undo under its subtasks.
       if (sheet || inSheet) {
-        if (closed.length) this.say(text, { place: 'sheet:subtasks', action: { label: 'Undo', fn: undo } });
+        if (closed.length) this.say(text, { place: 'sheet:subtasks', action: { label: UNDO, fn: undo } });
         return;
       }
       if (!inList) return;
@@ -142,14 +160,14 @@ export default {
       // still open.
       const moves = () => !!this.searchGroups(t);
       if (was && !moves()) {
-        this.said = 'Not done: ' + t.title;
+        this.said = tickSaid(false, t.title);
         return;
       }
       this.markRow(t.id, {
         kind: was ? 'open' : 'done',
         ids,
         undo,
-        said: was ? 'Not done: ' + t.title : text,
+        said: was ? tickSaid(false, t.title) : text,
         out: () => (over ? closed : this.bothWays && !moves() ? [] : ids),
         gone: () => {
           if (over) this.moveInSearch(t, closed);
@@ -215,7 +233,7 @@ export default {
   reopenedHead(t, quiet, list) {
     this.outOfDone(t.id);
     if (quiet) return;
-    this.markRow(t.id, { kind: 'open', out: [], said: 'Not done: ' + t.title, undo: () => this.undoTicks(list) });
+    this.markRow(t.id, { kind: 'open', out: [], said: tickSaid(false, t.title), undo: () => this.undoTicks(list) });
   },
   // Remove a reopened task from Done and lower the count. The count is lowered even if Done has not loaded.
   outOfDone(id) {
@@ -237,12 +255,12 @@ export default {
     // leaves Done.
     if (head) return this.outOfDone(t.id);
     const offline = r.status === 'offline',
-      said = was ? 'Not done: ' + t.title : offline ? sentLater('Finished ' + t.title) : 'Finished ' + t.title;
+      said = was ? tickSaid(false, t.title) : finishedText(t.title, offline);
     const undo = () => this.undoTicks([f]);
     // Without a visible row, show Undo at the top of the sheet, or in a toast.
     if (!rowEl) {
       if (!was)
-        this.say(offline ? sentLater('Finished') : said, { place: 'sheet:top', action: { label: 'Undo', fn: undo } });
+        this.say(offline ? finishedText('', true) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
       return;
     }
     const moves = () => !!this.searchGroups(t),
@@ -277,20 +295,20 @@ export default {
     try {
       const r = await acting;
       if (r.status === 'error') return;
-      const later = !was && r.status === 'offline' ? sentLater('Done: ' + t.title) : '';
+      const later = !was && r.status === 'offline' ? doneLater(t.title) : '';
       // In a sheet while offline, the step's row says it will be sent later.
       if (!rowEl) {
-        if (later) this.say(later, { row: { id: t.id, text: sentLater('Done'), stays: true }, place: 'sheet:top' });
+        if (later) this.say(later, { row: { id: t.id, text: doneLater(), stays: true }, place: 'sheet:top' });
         return;
       }
       const moves = () => !!this.searchGroups(t);
       if (was && !moves()) {
-        this.said = 'Not done: ' + t.title;
+        this.said = tickSaid(false, t.title);
         return;
       }
       this.markRow(t.id, {
         kind: was ? 'open' : 'done',
-        said: later || (was ? 'Not done: ' : 'Done: ') + t.title,
+        said: later || tickSaid(!was, t.title),
         undo: () => this.undoTicks([f]),
         out: () => (this.bothWays && !moves() ? [] : [t.id]),
         gone: () => {
@@ -350,7 +368,7 @@ export default {
     if (t.done && pct < 100) return this.toggleDone(t, rowEl, { pct, sub });
     if (pct >= 100) return t.done ? undefined : this.toggleDone(t, rowEl, { sub, ...(repeats(t) && { pct: 0 }) });
     const r = await this.act({ id: uuid7(), op: 'progress', task: t.id, ...this.upOf(t, sub), pct, was: pctOf(t) });
-    if (r.status !== 'error') this.said = `Progress of ${t.title} set to ${pct}%`;
+    if (r.status !== 'error') this.said = progressSaid(pct, t.title);
   },
   // Set progress from the sheet the same way a list does. 100% ticks the task.
   async sheetProgress(t, pct) {
@@ -358,7 +376,7 @@ export default {
     if (pct >= 100) return t.done ? undefined : this.sheetDone(repeats(t) ? 0 : undefined);
     const r = await this.act({ id: uuid7(), op: 'progress', task: t.id, ...this.upOf(t), pct, was: pctOf(t) });
     this.sheet.dirty = true;
-    if (r.status !== 'error') this.said = `Progress set to ${pct}%`;
+    if (r.status !== 'error') this.said = progressSaid(pct);
   },
 
   /* ---------- moving ---------- */
@@ -391,12 +409,12 @@ export default {
     this.sheet.dirty = true;
     if (r.status === 'error') return;
     const undo = async () => {
-      if (!(await this.undoOps([f], false).left)) this.said = 'Moved back to ' + (title(from) || 'its project');
+      if (!(await this.undoOps([f], false).left)) this.said = movedBack(title(from));
       this.sheet.dirty = true;
     };
     this.say(movedToProject(title(pid), subs.length), {
       place: at,
-      action: { label: 'Undo', fn: undo },
+      action: { label: UNDO, fn: undo },
     });
   },
   /* Task `id`'s subtasks at every level, each once, as their rows show them. A subtask Pocket has no copy of is read
@@ -470,9 +488,9 @@ export default {
       if (pos !== null && was) await place(was);
       this.sheet.dirty = true;
     };
-    this.say(`No longer a subtask of ${ops.length === 1 ? `“${first.title}”` : ops.length + ' tasks'}`, {
+    this.say(noLongerSub(ops.length, first.title), {
       place: 'sheet:top',
-      action: { label: 'Undo', fn: undo },
+      action: { label: UNDO, fn: undo },
     });
   },
   // Whether Move all to today has anything to move. Repeating tasks and repeating checklists don't count.
@@ -524,7 +542,7 @@ export default {
     };
     this.say(movedText(moves.length, stays), {
       place: 'overdue',
-      action: { label: 'Undo', fn: undo },
+      action: { label: UNDO, fn: undo },
     });
     this.render();
     await sending;
@@ -555,7 +573,7 @@ export default {
     let failed = false,
       undone = false;
     const undo = {
-      label: 'Undo',
+      label: UNDO,
       fn: async () => {
         if (failed) return;
         undone = true;
@@ -564,7 +582,7 @@ export default {
         this.flash([t.id], 'arrived');
         if (!(await left)) return;
         place();
-        this.say(notMovedBack(1, to.label && dayWord(to.label)), { place: 'cap', cls: 'failed' });
+        this.say(notMovedBack(1, to.label && dayWord(to.label), t.title), { place: 'cap', cls: 'failed' });
       },
     };
     await this.$nextTick(); // waits until the row has moved
@@ -588,10 +606,10 @@ export default {
     place();
     if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false); // the move failed, so the Undo beside the add box has nothing to undo
     await this.$nextTick(); // waits until a task that left Today has its row back
-    this.say(unknown ? notKnown(e.what) : notSaved(e), {
+    this.say(unknown ? notKnown(e.what) : notSaved(e.what, e.message), {
       row: { id: t.id, stays: true, cls: 'failed' },
       place: 'cap',
-      action: unknown ? toOutbox(this) : { label: 'Try again', fn: () => this.reschedule(t, to) },
+      action: unknown ? toOutbox(this) : { label: TRY_AGAIN, fn: () => this.reschedule(t, to) },
     });
     return false;
   },
@@ -636,7 +654,7 @@ export default {
     );
     const was = Object.fromEntries(writes.map(([id]) => [id, this.positions[id]]));
     for (const [id, pos] of writes) this.positions[id] = pos;
-    this.said = `${t.title} is now ${to + 1} of ${sibs.length}`;
+    this.said = placeSaid(t.title, to + 1, sibs.length);
     for (const [i, [id, pos]] of writes.entries()) {
       const r = await this.act({ op: 'position', task: id, view, pos, was: was[id], run: null });
       if (r.status !== 'error') continue;
@@ -766,7 +784,7 @@ export default {
       // The rows and the highlight appear before queuing finishes. The waiting look is delayed until sending takes
       // a while.
       const r = await this.sendLines(entries),
-        { kept, full } = r;
+        { kept } = r;
       if (foot) this.refreshPending(); // swaps the waiting rows for the sent rows at once
       // Replace the pending card rows with their saved tasks, and keep the highlight on the right row.
       if (today)
@@ -806,30 +824,20 @@ export default {
       if (r.status === 'offline') {
         sync.keep();
         // When the subtasks were added from the add box, their rows show that they are waiting, so no message.
-        if (!foot || !kept || today)
-          this.say(
-            !kept
-              ? full
-                ? NO_ROOM
-                : NOT_KEPT
-              : `Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`,
-            { place, cls: kept ? '' : 'failed' },
-          );
+        if (!foot || !kept || today) this.say(!kept ? NOT_KEPT : waitText(r, n), { place, cls: kept ? '' : 'failed' });
       } else if (r.status === 'error') {
         if (here() && r.unsent.length) b.text = [r.unsent.join('\n'), b.text].filter(Boolean).join('\n'); // puts the lines that weren't added back in the box
         // A line whose answer is unknown stays in the Outbox, and the message's button opens the Outbox.
-        const added = r.ids.length ? `Added ${r.ids.length} of ${n}${but}. ` : '';
+        const added = r.ids.length ? addedPart(r.ids.length, n, but) + ' ' : '';
         if (r.error.code === 'unknown')
           this.say(added + notKnown(r.error.what), { place, cls: 'failed', action: toOutbox(this) });
         else
           this.say(
-            r.ids.length
-              ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}`
-              : 'Not added: ' + r.error.message,
+            r.ids.length ? addedStopped(r.ids.length, n, but, r.error.message) : notDone('added', r.error.message),
             { place, cls: 'failed' },
           );
       } else if (r.ids?.length && but)
-        this.say(`Added ${r.ids.length === 1 ? '1 subtask' : r.ids.length + ' subtasks'}${but}`, {
+        this.say(addedSubs(r.ids.length, but), {
           place,
           cls: 'failed',
         });
@@ -901,23 +909,16 @@ export default {
     try {
       tree = await this.taskTree(t.id);
     } catch (e) {
-      this.say('Not deleted: ' + e.message, { place: 'sheet:top', cls: 'failed' });
+      this.say(notDone('deleted', e.message), { place: 'sheet:top', cls: 'failed' });
       return;
     }
     const n = tree.length - 1;
-    if (
-      !confirm(
-        `Delete the template “${t.title}”` +
-          (n ? ` and its ${n} step${n === 1 ? '' : 's'}? Checklists already started keep their steps.` : '?') +
-          " This can't be undone in Pocket.",
-      )
-    )
-      return;
+    if (!confirm(deleteTemplateAsk(t.title, n))) return;
     // A refusal keeps the sheet open, and the sender says why there (sheetPlace).
     if ((await this.deleteNow([tree])).status === 'error') return;
     await leave();
     this.render();
-    this.notify(n ? `Deleted, with ${n} step${n === 1 ? '' : 's'}` : 'Deleted'); // a toast, because the sheet and row are gone
+    this.notify(deletedSteps(n)); // a toast, because the sheet and row are gone
   },
   // Only saved, writable tasks can be deleted by swiping. Checklists, their steps and templates have their own ways
   // to delete.
@@ -946,11 +947,10 @@ export default {
             ids: d.ids,
             undo,
             gone,
-            said: `Deleted ${t.title}. Restore is where the row was.`,
+            said: deletedSaid(t.title),
           });
-        const title = t.title.length > 40 ? t.title.slice(0, 38) + '…' : t.title;
-        this.notify(`Deleted “${title}”` + (d.n ? ` + ${d.n} subtask${d.n === 1 ? '' : 's'}` : ''), {
-          label: 'Undo',
+        this.notify(deletedText(t.title, d.n), {
+          label: UNDO,
           fn: undo,
           gone,
         });
@@ -971,15 +971,12 @@ export default {
     try {
       tree = await this.taskTree(t.id);
     } catch (e) {
-      this.say('Not deleted: ' + e.message, { row: { id: t.id, stays: true, cls: 'failed' }, place: 'sheet:top' });
+      this.say(notDone('deleted', e.message), { row: { id: t.id, stays: true, cls: 'failed' }, place: 'sheet:top' });
       return null;
     }
     const n = tree.length - 1,
       direct = (t.related_tasks?.subtask || []).filter(s => tree.includes(s.id)).length;
-    const deeper = n > direct ? `, ${n - direct} more under ${direct === 1 ? 'it' : 'them'}` : '';
-    return n && !confirm(`Delete “${t.title}” and its ${direct} subtask${direct === 1 ? '' : 's'}${deeper}?`)
-      ? null
-      : tree;
+    return n && !confirm(deleteAsk(t.title, direct, n - direct)) ? null : tree;
   },
   /* Ask the user to confirm the deletion, unless `tree` is given. Queue a held deletion and call show({id, n, ids})
      before the unmarked rows are hidden. The entry stays until sendHeld or undoDelete. Returns {id, n}, or null if

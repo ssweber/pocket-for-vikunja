@@ -208,7 +208,7 @@ test('New template keeps its sheet open when Vikunja refuses its name, and sends
   await app.createTemplate();
   assert.deepEqual(
     [nt.busy, nt.made, lastSaid(app).msg, outbox(), v.tasks.size],
-    [false, undefined, 'Not created: HTTP 403 from the fake', [], 0],
+    [false, undefined, "The new template couldn't be saved: HTTP 403 from the fake.", [], 0],
   );
 });
 
@@ -349,7 +349,19 @@ test('Set up checklists says the example template waits when Vikunja is busy, an
   const { v, app } = await setUp(t, r => (making(FIRST)(r) ? 503 : null));
   assert.equal(
     lastSaid(app).msg,
-    "Created the Checklists project, with an example template to try. Saved offline. It goes to Vikunja when you're back online.",
+    'Created the Checklists project, with an example template to try. Waiting for Vikunja. Pocket tries again every 30 seconds.',
+  );
+  await online(t, app, v);
+  assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);
+});
+
+// Pocket is online, so "Saved offline" would be wrong. The step goes again with its key once Pocket reaches Vikunja.
+test('Set up checklists says a step whose reply was lost may not have reached Vikunja', async t => {
+  let once = true;
+  const { v, app } = await setUp(t, r => (once && making(FIRST)(r) ? ((once = false), 'lost') : null));
+  assert.equal(
+    lastSaid(app).msg,
+    `Created the Checklists project, with an example template to try. Adding “${FIRST}” may not have reached Vikunja. Check, then tap Try again if it's missing.`,
   );
   await online(t, app, v);
   assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);

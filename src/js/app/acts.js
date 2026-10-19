@@ -1,11 +1,21 @@
 // Queue a change as an op (src/js/ops/), and send the outbox's ops in order, each request with its own key.
 import { taskDrafts } from '../util.js';
-import { api, ApiError, passing, serverTime } from '../api.js';
+import { api, ApiError, NetError, passing, serverTime } from '../api.js';
 import { htmlToText } from '../html.js';
 import { parseStep, patiently } from '../checklists.js';
-import { CANCEL, held, KEPT, NO_ROOM, NOT_KEPT, older, sync, uuid7 } from '../sync.js';
+import { CANCEL, held, older, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
-import { changedSince, notKnown, toOutbox, UNKNOWN } from '../messages.js';
+import {
+  changedSince,
+  KEPT,
+  NOT_KEPT,
+  notKnown,
+  notSaved,
+  refusedEarlier,
+  textBack,
+  toOutbox,
+  UNKNOWN,
+} from '../messages.js';
 import {
   checkFields,
   dropUnder,
@@ -200,7 +210,7 @@ export default {
   },
   /* Queue ops (their fields) together, so their rows show in one change (rule 10), fold each into an earlier op it
      replaces, and send through the last. Returns how sending went, with the last entry's id (`entry`), every result
-     (`all`), and whether the ops reached the phone's database (`kept`, `full`, as queue gives). An Undo keeps the
+     (`all`), and whether the ops reached the phone's database (`kept`, as queue gives). An Undo keeps the
      objects in `list` and passes them to undoOps, never copies, because what undoOps needs is kept only while those
      objects are. With `quiet`, the caller says what became of the ops, or of those whose ids it holds (a Set). */
   async actAll(list, quiet = false) {
@@ -211,13 +221,12 @@ export default {
       inverts.set(e.id, opOf(e).invert(e));
       unheld.register(list[i], e.id);
     });
-    const { kept, full } = await this.queue(entries);
+    const { kept } = await this.queue(entries);
     await sync.lock(() => this.fold(entries));
     return {
-      ...(await this.sendActs(last, kept, full, quiet === true ? new Set(entries.map(e => e.id)) : quiet || null)),
+      ...(await this.sendActs(last, kept, quiet === true ? new Set(entries.map(e => e.id)) : quiet || null)),
       entry: last,
       kept,
-      full,
     };
   },
   /* Fold each of `entries`, just queued, into the op before it on its task, if that op has sent nothing, isn't held,
@@ -269,7 +278,7 @@ export default {
     }
     const queued = undos.size ? this.queue([...undos.values()]) : null;
     const undo = async () => {
-      const { kept = true, full = false } = (await queued) || {},
+      const { kept = true } = (await queued) || {},
         back = [];
       let left = list.length - now.length;
       await sync.lock(async () => {
@@ -296,15 +305,13 @@ export default {
         for (const f of list.filter(f => folded.has(f.id)))
           this.say(changedSince(this.actTitle(f.task)), { row: { id: opsId(f.task), stays: true, cls: 'failed' } });
       const more = back.map(f => this.actEntry(f)),
-        added = more.length ? await this.queue(more) : { kept: true, full: false },
+        added = more.length ? await this.queue(more) : { kept: true },
         ids = new Set([
           ...[...undos.values()].map(e => e.id).filter(id => sync.entries.has(id)),
           ...more.map(e => e.id),
         ]);
       if (!ids.size) this.refreshPending();
-      const r = ids.size
-        ? await this.sendActs([...ids].at(-1), kept && added.kept, full || added.full, quiet ? ids : null)
-        : { all: [] };
+      const r = ids.size ? await this.sendActs([...ids].at(-1), kept && added.kept, quiet ? ids : null) : { all: [] };
       return left + r.all.filter(x => ids.has(x.id) && x.status === 'error').length;
     };
     return { left: undo() };
@@ -335,18 +342,18 @@ export default {
     });
   },
   // Save `entries` in the outbox, the first with `files`, and show them at once. Returns whether all of them reached
-  // the database (`kept`), and whether the phone is out of space (`full`).
+  // the database (`kept`).
   async queue(entries, files = []) {
     const adding = Promise.all(entries.map((e, i) => sync.add(e, i ? [] : files)));
     this.refreshPending();
     const r = await adding;
-    return { kept: r.every(x => x.kept), full: r.some(x => x.full) };
+    return { kept: r.every(x => x.kept) };
   },
   /* Send through action `id` in order. Keep deletions held while Restore is still available. Returns the last one's
      result, with every result in `all`, each with its entry's `id` and its line's `batch`. An add box reads its own
      lines' results there. The lines of other batches sent on the way are reported as flush reports them (reportSent).
      The entries in `quiet` get no message here, because their caller says what became of them. */
-  async sendActs(id, kept = true, full = false, quiet = null) {
+  async sendActs(id, kept = true, quiet = null) {
     // An add box shows what it sent itself, swapping each waiting row for its task in one go (submitCapture). A
     // refresh here would draw the list without either in between.
     const lines = boxed(sync.entries.get(id));
@@ -363,7 +370,7 @@ export default {
           // waits behind an earlier action Vikunja refused
           if (e.id !== id) continue;
           if (!boxed(e))
-            this.say(`Not sent. Vikunja refused an earlier change to “${parseStep(e.label || 'it').title}”.`, {
+            this.say(refusedEarlier(parseStep(e.label || 'it').title), {
               place: 'step',
               cls: 'failed',
               action: toOutbox(this),
@@ -389,8 +396,7 @@ export default {
             err.said ||
               (err.code === 'unknown'
                 ? notKnown(err.what)
-                : `${err.what || 'It'} couldn't be saved${err.saved ? ` in full (${err.saved})` : ''}: ${err.message.replace(/\.$/, '')}.` +
-                  (last.kept ? KEPT : this.wordsBack(err))),
+                : notSaved(err.what, err.message, { saved: err.saved, next: last.kept ? KEPT : textBack(err) })),
             {
               row: e.undo ? { id: opsId(e.task), stays: true } : null,
               place: inSheet ? sheetAt : 'step',
@@ -407,7 +413,7 @@ export default {
     if (others.length) this.reportSent(others);
     if (last.status === 'offline') {
       sync.keep();
-      if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, { place: 'step', cls: 'failed' });
+      if (!kept) this.say(NOT_KEPT, { place: 'step', cls: 'failed' });
     }
     return { ...last, all: out };
   },
@@ -526,7 +532,9 @@ export default {
         (error instanceof ApiError && (error.status === 401 || (error.status >= 500 && ++a.fails < 5)))
       ) {
         await c.save();
-        return { ...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401 };
+        // A request sent without an answer may have reached Vikunja, so the caller doesn't say it was saved offline.
+        const lost = error instanceof NetError && a.sent && op.refused(a, a.label || this.actTitle(a.task));
+        return { ...got(), status: 'offline', reached: error instanceof ApiError && error.status !== 401, lost };
       }
       // The relay can't tell whether Vikunja made the change. Only the user can check, so it is kept for Try again.
       const unknown = error.code === 'unknown',
@@ -586,9 +594,6 @@ export default {
       if (this.sheet.id === a.task) this.sheet.commentDraft = add(this.sheet.commentDraft);
     } else this.runDrafts[a.task] = add(this.runDrafts[a.task]);
     error.back = true;
-  },
-  wordsBack(e) {
-    return e.back ? ' Its text is back in the box.' : e.words ? ` It said: “${e.words}”` : '';
   },
   keepTick(a, there) {
     const here = serverTime(+new Date(a.at));

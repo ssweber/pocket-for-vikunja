@@ -4890,7 +4890,7 @@ try {
       };
     await page.route('**/v2/tasks/*/position', refuse);
     await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
-    await expect(rowLine(page, 'Not reordered: Forbidden')).toBeVisible();
+    await expect(rowLine(page, "The new order couldn't be saved: Forbidden.")).toBeVisible();
     await page.unroute('**/v2/tasks/*/position', refuse);
     await later(5000); // the message collapses and the row returns
     await expect

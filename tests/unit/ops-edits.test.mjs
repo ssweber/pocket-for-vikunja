@@ -161,7 +161,7 @@ test('an Undo leaves a field a teammate changed since, and says so on the row', 
     [
       'Wipe the counter and the till',
       'Wipe the counter and the till',
-      'Not undone: “Wipe the counter” has changed since then',
+      'Not undone: “Wipe the counter” has changed since then.',
       7,
     ],
   );

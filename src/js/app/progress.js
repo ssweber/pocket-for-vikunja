@@ -20,6 +20,7 @@ import {
 import { dragPlace } from '../order.js';
 import { haptic } from '../haptics.js';
 import { motion, store } from '../util.js';
+import { SAID } from '../messages.js';
 
 export let sliding = false; // true while a row is held or swiped, so the sheet can't be swiped away at the same time
 let opened = null; // the row resting open on its Delete button
@@ -840,7 +841,7 @@ export default {
           if (!x || x.done || !this.rowSlides(x)) continue;
           this.hint.at = t.id;
           if (store.get('hint.slide') !== 'said') {
-            this.said = 'Tip: swipe a task to the right to start working on it.';
+            this.said = SAID.swipeHint;
             store.set('hint.slide', 'said');
           }
           return;

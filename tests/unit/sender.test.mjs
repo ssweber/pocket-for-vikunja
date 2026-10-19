@@ -76,7 +76,10 @@ test("a change the relay can't vouch for is kept as failed, and Try again sends 
   v.trouble = r => (r.method === 'PATCH' ? 'unknown' : null);
   const r = await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   assert.deepEqual([r.status, app.failed.length, app.failed[0].failed.message], ['error', 1, UNKNOWN]);
-  assert.equal(app.toasts.at(-1).msg, 'A tick on “Wipe the till” may not have reached Vikunja.');
+  assert.equal(
+    app.toasts.at(-1).msg,
+    "A tick on “Wipe the till” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+  );
   // Its Outbox button opens the Outbox and sends nothing, because the user checks Vikunja first.
   let opened = null;
   app.openSheet = kind => {
@@ -85,10 +88,7 @@ test("a change the relay can't vouch for is kept as failed, and Try again sends 
   const sent = v.requests.length;
   app.toasts.at(-1).action.fn();
   assert.deepEqual([app.toasts.at(-1).action.label, opened, v.requests.length], ['Outbox', 'outbox', sent]);
-  assert.equal(
-    app.outboxRows[0].failed,
-    "Vikunja may or may not have this change. Check, then tap Try again if it's missing.",
-  );
+  assert.equal(app.outboxRows[0].failed, "May not have reached Vikunja. Check, then tap Try again if it's missing.");
   assert.ok(!v.task(7).done, "the change wasn't made");
   const first = v.requests.find(q => q.method === 'PATCH').key;
   v.trouble = () => null;

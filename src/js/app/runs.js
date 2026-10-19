@@ -33,9 +33,29 @@ import {
 } from '../checklists.js';
 import { routeOf } from '../routing.js';
 import { stepAnswers } from '../asks.js';
-import { KEPT, packParsed, sync, uuid7 } from '../sync.js';
+import { packParsed, sync, uuid7 } from '../sync.js';
 import { opened, saved } from '../lists.js';
-import { completeAsk, notKnown, sentLater, startedText, toOutbox } from '../messages.js';
+import {
+  completeAsk,
+  deleteRunAsk,
+  deleteStepAsk,
+  finishedText,
+  KEPT,
+  notDone,
+  notKnown,
+  notRepeated,
+  notSaved,
+  nowFor,
+  othersDoneAsk,
+  progressSaid,
+  repeatedStep,
+  SAID,
+  startedText,
+  tickSaid,
+  toOutbox,
+  UNDO,
+  waitText,
+} from '../messages.js';
 import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks } from './acts.js';
@@ -126,7 +146,7 @@ export default {
   toggleFor(st, u) {
     const on = st.forIds.includes(u.id);
     if (on && st.forIds.length === 1) {
-      this.say('A checklist needs at least one person. Tap someone else first.', { place: 'sheet:top', cls: 'failed' });
+      this.say(SAID.onePerson, { place: 'sheet:top', cls: 'failed' });
       return;
     }
     st.forIds = on ? st.forIds.filter(id => id !== u.id) : [...st.forIds, u.id];
@@ -163,7 +183,7 @@ export default {
     this.unlockSound(); // unlock countdown audio during the tap
     const problems = stepProblems(st.steps.map(s => s.title));
     if (problems.length) {
-      this.say('Not started: ' + problemText(problems), { place: 'sheet:top', cls: 'failed' });
+      this.say(notDone('started', problemText(problems)), { place: 'sheet:top', cls: 'failed' });
       return;
     }
     const start = new Date(),
@@ -202,10 +222,10 @@ export default {
       if (runId) this.openRun(runId);
       // Keep the start's Undo at the top until work begins or the screen closes. A timer would move the step card
       // while someone reads it.
-      this.say('Started', {
+      this.say(SAID.started, {
         place: 'run',
         ms: null,
-        action: runId && { label: 'Undo', fn: () => this.unstart(f, runId) },
+        action: runId && { label: UNDO, fn: () => this.unstart(f, runId) },
       });
       if (this.places.run) this.places.run.startOf = runId;
       else this.toast.startOf = runId;
@@ -214,10 +234,12 @@ export default {
       if (this.route.name === 'checklists') this.render();
       else this.go('#/checklists');
       // A start the phone couldn't keep is said where it was sent from (sendActs).
-      if (r.kept) this.say(`${st.template.title} starts as soon as Pocket reaches Vikunja.`, { place: 'checklists' });
+      if (r.kept) this.say(waitText(r), { place: 'checklists' });
     } else
       this.say(
-        r.error.code === 'unknown' ? notKnown(r.error.what) : 'Not started: ' + r.error.message + (r.kept ? KEPT : ''),
+        r.error.code === 'unknown'
+          ? notKnown(r.error.what)
+          : notSaved(r.error.what, r.error.message, { next: r.kept ? KEPT : '' }),
         { place: 'sheet:top', cls: 'failed', action: r.kept ? toOutbox(this) : null },
       );
   },
@@ -225,7 +247,7 @@ export default {
      date if the start moved it and nobody has moved it since. */
   unstart(f, id) {
     this.undoOps([f], false);
-    this.notify('Checklist removed');
+    this.notify(SAID.checklistRemoved);
     if (this.route.name === 'run' && this.route.id === id) this.leaveRun();
     else this.render();
   },
@@ -281,7 +303,7 @@ export default {
       return;
     }
     this.saveRun(false);
-    this.say('Renamed', { place: 'sheet:top' });
+    this.say(SAID.renamed, { place: 'sheet:top' });
   },
   /* Keep at least one assignee when changing who the run is for. The person is assigned or unassigned as an `assign`
      op, which changes the people Vikunja has by that one, so a step claimed meanwhile keeps its claim. Offline it
@@ -293,7 +315,7 @@ export default {
     const was = e.forIds,
       on = was.includes(u.id);
     if (on && was.length === 1) {
-      this.say('A checklist needs at least one person. Tap someone else first.', { place: 'sheet:top', cls: 'failed' });
+      this.say(SAID.onePerson, { place: 'sheet:top', cls: 'failed' });
       return;
     }
     e.forIds = on ? was.filter(id => id !== u.id) : [...was, u.id];
@@ -304,17 +326,12 @@ export default {
       return;
     }
     this.saveRun(false);
-    this.say(this.forText({ assignees: who }).replace(/^For/, 'Now for'), { place: 'sheet:top' });
+    this.say(nowFor(this.forText({ assignees: who })), { place: 'sheet:top' });
   },
   // Delete a checklist from its ⋯ menu or its sheet. Its steps are deleted too, so none is left as a separate task.
   async confirmDeleteRun(run, steps) {
     const n = steps.length;
-    if (
-      !confirm(
-        `Delete “${run.title}” and its ${n} step${n === 1 ? '' : 's'} for everyone? Their comments and photos are deleted too. This can't be undone.`,
-      )
-    )
-      return;
+    if (!confirm(deleteRunAsk(run.title, n))) return;
     this.closeSheet(true);
     await this.deleteRun(run.id, { deleted: true });
   },
@@ -325,12 +342,12 @@ export default {
     try {
       tree = await this.taskTree(id);
     } catch (e) {
-      this.say('Not removed: ' + e.message, { place: ['sheet:top', 'run'], cls: 'failed' });
+      this.say(notDone('removed', e.message), { place: ['sheet:top', 'run'], cls: 'failed' });
       return;
     }
     if ((await this.deleteNow([tree])).status === 'error') return;
     if (this.sheet.id === id) Object.assign(this.sheet, { editingDesc: false, commentDraft: '' });
-    this.notify(deleted ? 'Checklist deleted' : 'Checklist removed');
+    this.notify(deleted ? SAID.checklistDeleted : SAID.checklistRemoved);
     if (this.route.name === 'run' && this.route.id === id) this.leaveRun();
     else this.render();
   },
@@ -752,7 +769,7 @@ export default {
     );
     if (this.view.shownRun?.id === id) this.view.shownRun = null;
     this.leaveRun();
-    this.notify('That checklist no longer exists.');
+    this.notify(SAID.checklistGone);
   },
   // Where Back goes, by name: from a run, the screen before it; from a project, the list it was opened from.
   get backName() {
@@ -863,13 +880,7 @@ export default {
     if (op !== 'undone') this.unlockSound();
     // Vikunja lets each person remove only their own ✅, so another person's ✅ stays.
     const others = op === 'undone' ? (s.by || []).filter(u => u.id !== this.user?.id).map(u => this.nameOf(u)) : [];
-    if (
-      others.length &&
-      !confirm(
-        `${others.join(' and ')} marked “${s.title}” done. Only they can remove their ✅ in Vikunja, so it stays. Mark the step not done anyway?`,
-      )
-    )
-      return false;
+    if (others.length && !confirm(othersDoneAsk(others, s.title))) return false;
     const typed = op === 'undone' ? '' : (this.runDrafts[s.id] || '').trim();
     if (typed) this.runDrafts[s.id] = '';
     // Done also sends what is typed or picked in the step's fields, as its own comment, before the tick.
@@ -905,8 +916,8 @@ export default {
     const r = await this.act({ op: 'finish', task: run.id });
     if (r.status === 'error') return;
     // Show the message as a toast, because the previous screen that Back returns to has no place for it.
-    this.notify(r.status === 'offline' ? sentLater('Finished') : 'Finished ' + run.title, {
-      label: 'Undo',
+    this.notify(r.status === 'offline' ? finishedText('', true) : finishedText(run.title), {
+      label: UNDO,
       fn: () => this.reopenRun(run.id),
     });
     this.leaveRun();
@@ -965,9 +976,9 @@ export default {
     const s = this.runAim?.above;
     if (!s || s.pending) return;
     const id = uuid7();
-    this.say(`Repeated “${s.title}”`, {
+    this.say(repeatedStep(s.title), {
       place: 'cap',
-      action: { label: 'Undo', fn: () => this.undoAdded(id, s.title) },
+      action: { label: UNDO, fn: () => this.undoAdded(id, s.title) },
     });
     await this.repeatStep(s, id);
   },
@@ -989,7 +1000,7 @@ export default {
           true,
         );
     }
-    this.said = `Not repeated: ${title}`;
+    this.said = notRepeated(title);
   },
   /* Queue step progress like a tick. At 100%, mark it done with its completion reaction. Reopen a done step before
      lowering its progress. undoing restores the previous progress. */
@@ -997,12 +1008,12 @@ export default {
     if (s.done && pct < 100 && !undoing && (await this.tickStep(s, 'undone', true)) === false) return;
     if (pct >= 100 && !undoing) {
       await this.tickStep(s, 'done', true);
-      this.said = `Done: ${s.title}`;
+      this.said = tickSaid(true, s.title);
       return;
     } // a swipe leaves no focused box to announce it
     // Below 100%, show progress on the tick so a reverse swipe can undo it without a message covering the row.
     const r = await this.act({ op: 'progress', task: s.id, pct });
-    if (r.status !== 'error' && !undoing) this.said = `Progress of ${s.title} set to ${pct}%`;
+    if (r.status !== 'error' && !undoing) this.said = progressSaid(pct, s.title);
   },
   /* Add a step to the checklist on screen as an addStep op. It shows in place at once, and can be ticked while it
      waits to be sent. */
@@ -1031,11 +1042,7 @@ export default {
   },
   // Ask whether to delete a step added during a checklist. Used by the step's × and its row's Delete.
   askDeleteStep(s) {
-    return (
-      !!s?.added &&
-      !s.done &&
-      confirm(`Delete “${s.title}”? This step was added to this checklist only. The template doesn't change.`)
-    );
+    return !!s?.added && !s.done && confirm(deleteStepAsk(s.title));
   },
   /* Delete an open inserted or repeated step, as a delete op with no Restore, which writes the checklist's progress
      last. Template steps must be skipped instead. undo skips confirmation and messages for Repeat's Undo, and asked
@@ -1048,7 +1055,7 @@ export default {
       return true;
     }
     if ((await this.deleteNow([[s.id]])).status === 'error') return false;
-    if (!undo) this.say('Step deleted', { place: ['sheet:top', 'step'] });
+    if (!undo) this.say(SAID.stepDeleted, { place: ['sheet:top', 'step'] });
     this.render();
     return true;
   },

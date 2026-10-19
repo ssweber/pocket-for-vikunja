@@ -26,6 +26,24 @@ import {
 import { captureLines } from '../quickadd.js';
 import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
+import {
+  archiveAsk,
+  archivedText,
+  changedBut,
+  checklistsOn,
+  deletedProject,
+  deleteProjectAsk,
+  directFailed,
+  notDone,
+  removeStepAsk,
+  SAID,
+  setUpText,
+  templateCreated,
+  templateMade,
+  templateNotSaved,
+  templateProblem,
+  waitText,
+} from '../messages.js';
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
 import { addLines, lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
@@ -204,53 +222,39 @@ export default {
     try {
       const got = (await api('/projects/' + p.id, { method: 'PATCH', body: { title } })) || { title };
       this.projectChanged({ ...p, ...got });
-      this.say('Renamed', { place: 'sheet:top' });
+      this.say(SAID.renamed, { place: 'sheet:top' });
     } catch (err) {
       e.name = p.title;
-      this.say('Not renamed: ' + err.message, { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'rename the project', 'renamed'), { place: 'sheet:top', cls: 'failed' });
     }
   },
   async archiveProject() {
     const p = this.sheet.project;
-    if (
-      !p ||
-      !confirm(
-        `Archive “${p.title}”? Pocket and Vikunja hide the project and its tasks until you unarchive it in Vikunja's web app.`,
-      )
-    )
-      return;
+    if (!p || !confirm(archiveAsk(p.title))) return;
     try {
       await api('/projects/' + p.id, { method: 'PATCH', body: { is_archived: true } });
       this.setProjects(this.projects.filter(x => x.id !== p.id));
       saved.set('projects', this.projects);
       this.closeSheet(true);
       this.go('#/projects');
-      this.say('Archived ' + p.title, { place: 'projects' });
+      this.say(archivedText(p.title), { place: 'projects' });
     } catch (err) {
-      this.say('Not archived: ' + err.message, { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'archive the project', 'archived'), { place: 'sheet:top', cls: 'failed' });
     }
   },
   async deleteProject() {
     const p = this.sheet.project,
       e = this.sheet.projEdit;
     if (!p) return;
-    const n = e?.tasks,
-      k = e?.kids || 0;
-    const what = [
-      n !== null && n !== undefined ? `${n} task${n === 1 ? '' : 's'}` : 'its tasks',
-      k && `${k} project${k === 1 ? '' : 's'} inside it`,
-    ]
-      .filter(Boolean)
-      .join(' and ');
-    if (!confirm(`Delete “${p.title}” and its ${what}? This can't be undone.`)) return;
+    if (!confirm(deleteProjectAsk(p.title, e?.tasks, e?.kids || 0))) return;
     try {
       await api('/projects/' + p.id, { method: 'DELETE' });
       await this.loadProjects();
       this.closeSheet(true);
       this.go('#/projects');
-      this.say('Deleted ' + p.title, { place: 'projects' });
+      this.say(deletedProject(p.title), { place: 'projects' });
     } catch (err) {
-      this.say('Not deleted: ' + err.message, { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'delete the project', 'deleted'), { place: 'sheet:top', cls: 'failed' });
     }
   },
   // Mark a project for checklists, or unmark it. The mark is a paragraph "pocket:checklists" in the project's
@@ -276,14 +280,12 @@ export default {
       saved.set('projects', this.projects);
       if (this.view.project?.id === p.id) this.view.project = next;
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
-      this.say(
-        on
-          ? 'This project is now used for checklists. Its templates and checklists are under Checklists.'
-          : 'This project is no longer used for checklists.',
-        { place: 'sheet:top' },
-      );
+      this.say(checklistsOn(on), { place: 'sheet:top' });
     } catch (e) {
-      this.say('Not changed: ' + e.message, { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(e, `turn checklists ${on ? 'on' : 'off'} for the project`, 'changed'), {
+        place: 'sheet:top',
+        cls: 'failed',
+      });
     } finally {
       this.sheet.checklistBusy = false;
     }
@@ -310,18 +312,9 @@ export default {
         refused = r.refused && r.refused.code !== 'unknown',
         waits = r.status !== 'sent' && !r.all.some(x => x.status === 'error');
       this.go('#/checklists');
-      this.say(
-        refused
-          ? "Created the Checklists project. The example template couldn't be created. Tap New template to add one."
-          : 'Created the Checklists project, with an example template to try.' +
-              (waits ? " Saved offline. It goes to Vikunja when you're back online." : ''),
-        { place: 'checklists', cls: refused ? 'failed' : '' },
-      );
+      this.say(setUpText(!refused, waits ? waitText(r) : ''), { place: 'checklists', cls: refused ? 'failed' : '' });
     } catch (e) {
-      this.say(
-        e instanceof NetError ? 'Setting up checklists needs a connection to Vikunja.' : 'Not set up: ' + e.message,
-        { place: 'setup', cls: 'failed' },
-      );
+      this.say(directFailed(e, 'set up checklists', 'set up'), { place: 'setup', cls: 'failed' });
     } finally {
       this.settingUp = false;
     }
@@ -560,15 +553,14 @@ export default {
     if (!t || this.sheet.checklistBusy) return;
     const problems = stepProblems(this.subtasks.map(s => s.title));
     if (problems.length) {
-      this.say('Template not created: ' + problemText(problems), { place: 'sheet:top', cls: 'failed' });
+      this.say(templateProblem(problemText(problems)), { place: 'sheet:top', cls: 'failed' });
       return;
     }
     this.sheet.checklistBusy = true;
     try {
       const steps = this.subtasks.filter(s => !s.done).map(s => s.id),
         r = await this.act({ op: 'makeTemplate', task: t.id, run: null, steps });
-      if (r.status === 'offline')
-        this.say("Saved offline. It goes to Vikunja when you're back online.", { place: 'sheet:top' });
+      if (r.status === 'offline') this.say(waitText(r), { place: 'sheet:top' });
       if (r.status !== 'sent') return;
       const full = await this.readCopy(t.id).catch(() => null);
       if (!full) return;
@@ -576,13 +568,9 @@ export default {
         this.showTask(full);
         this.sheet.dirty = true;
       }
-      this.say(
-        !comesRound(full)
-          ? 'Template created. Start it here or under Checklists.'
-          : `Template created. ${this.scheduleText(full)}. Starting it on or after the due day ` +
-              (repeats(full) ? 'moves it to its next date.' : "marks it done, because it doesn't repeat."),
-        { place: 'sheet:top' },
-      );
+      this.say(comesRound(full) ? templateMade(this.scheduleText(full), repeats(full)) : templateMade(), {
+        place: 'sheet:top',
+      });
     } finally {
       this.sheet.checklistBusy = false;
     }
@@ -784,7 +772,7 @@ export default {
     });
     if (r.refused && r.refused.code !== 'unknown') {
       nt.busy = false;
-      this.say('Not created: ' + why(r.refused), { place: 'sheet:top', cls: 'failed' });
+      this.say(templateNotSaved(why(r.refused)), { place: 'sheet:top', cls: 'failed' });
       return;
     }
     nt.made = true;
@@ -793,9 +781,8 @@ export default {
     if (this.route.name === 'checklists') this.render();
     else this.go('#/checklists');
     // A name whose answer is unknown waits in the Outbox, and the sender has said so.
-    if (r.status === 'sent') this.say(`Created ${shown}. Start it here.`, { place: 'checklists' });
-    else if (r.status === 'offline' && !r.refused)
-      this.say("Saved offline. It goes to Vikunja when you're back online.", { place: 'checklists' });
+    if (r.status === 'sent') this.say(templateCreated(shown), { place: 'checklists' });
+    else if (r.status === 'offline' && !r.refused) this.say(waitText(r), { place: 'checklists' });
   },
   /* Add the box's lines under the template as steps, a templateStep op each, which the sheet shows at once and which
      Vikunja makes done. A step a new line counts from gets the name the line gives it, as an edit, first. If the box is
@@ -832,10 +819,7 @@ export default {
       this.sheet.subAt = made;
       this.sheet.subAfter = null;
     }
-    if (r.status === 'offline')
-      this.say(`Saved offline. ${steps.length === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, {
-        place: 'sheet:subtasks',
-      });
+    if (r.status === 'offline') this.say(waitText(r, steps.length), { place: 'sheet:subtasks' });
     else if (r.status === 'sent') this.unsay('sheet:subtasks'); // clear the message from an earlier failed try
   },
   // A row's time chip as a list for x-for: [d] when there is something to show, else [].
@@ -951,10 +935,7 @@ export default {
     // The user's access can arrive while the box is open, and it may not let them change this template.
     if (!this.canEdit) {
       this.sheet.stepEdit = null;
-      this.say('Not changed. Only the person who made this template or a project admin can change it.', {
-        place: 'sheet:subtasks',
-        cls: 'failed',
-      });
+      this.say(SAID.notYours, { place: 'sheet:subtasks', cls: 'failed' });
       return;
     }
     const d = this.stepEditDraft(i),
@@ -968,7 +949,7 @@ export default {
     }
     // The edit would create a new problem. Keep the text in the box so the user can fix it.
     if (d && stepProblems(d.titles).length > stepProblems(this.subtasks.map(s => s.title)).length) {
-      this.say('Not changed: ' + problemText(stepProblems(d.titles)), { place: 'sheet:subtasks', cls: 'failed' });
+      this.say(notDone('changed', problemText(stepProblems(d.titles))), { place: 'sheet:subtasks', cls: 'failed' });
       return;
     }
     this.sheet.stepEdit = null;
@@ -1024,8 +1005,7 @@ export default {
     ];
     await this.actAll(ops.map(f => ({ run: null, ...f })));
     this.sheet.dirty = true;
-    if (line?.problems.length)
-      this.say('Changed, but ' + line.problems.join('; '), { place: 'sheet:subtasks', cls: 'failed' });
+    if (line?.problems.length) this.say(changedBut(line.problems), { place: 'sheet:subtasks', cls: 'failed' });
   },
   // A step's new title as quick add makes it (lineOf). Without a connection, the @people stay in the title.
   async stepLine(p) {
@@ -1070,19 +1050,18 @@ export default {
       problems = stepProblems(rest);
     // Report problems using the step numbers on screen now, from before the removal.
     if (problems.length > stepProblems(this.subtasks.map(s => s.title)).length) {
-      this.say('Not removed: ' + problemText(problems.map(p => ({ ...p, i: p.i >= i ? p.i + 1 : p.i }))), {
+      this.say(notDone('removed', problemText(problems.map(p => ({ ...p, i: p.i >= i ? p.i + 1 : p.i })))), {
         place: 'sheet:subtasks',
         cls: 'failed',
       });
       return;
     }
-    if (!confirm(`Remove “${parseStep(st.title).title}” from the template? Checklists already started keep it.`))
-      return;
+    if (!confirm(removeStepAsk(parseStep(st.title).title))) return;
     // A delete op with no Restore. The step leaves the template's steps at once, and a refusal brings it back.
     if ((await this.deleteNow([[st.id]])).status === 'error') return;
     this.keepTemplate(t);
     this.sheet.dirty = true;
-    this.say('Step removed', { place: 'sheet:subtasks' });
+    this.say(SAID.stepRemoved, { place: 'sheet:subtasks' });
   },
   /* Move a template's step by `dir` places: -1 moves it up and 1 moves it down. With `dragged`, the step moves as far
      as it was dragged. The order line is rewritten with every step. Pocket refuses a move that would create a problem
@@ -1109,7 +1088,7 @@ export default {
     try {
       if (!movedSteps(this.subtasks, m)) return;
     } catch (e) {
-      this.say('Not moved: ' + e.message, { place: 'sheet:subtasks', cls: 'failed' });
+      this.say(notDone('moved', e.message), { place: 'sheet:subtasks', cls: 'failed' });
       return;
     }
     const box = document.getElementById('step-edit-' + st.id);

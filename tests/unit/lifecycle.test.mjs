@@ -80,7 +80,9 @@ const A = await tab('a'),
   B = await tab('b'),
   R = await tab('r');
 const { cancelOf, OPS, opOf, refusalOf } = A.ops;
-const { dayWord, UNSURE } = A.messages;
+const { dayWord } = A.messages;
+// What Cancel says may still be in Vikunja after an unknown answer, as in “Mop” may still be done in Vikunja.
+const MAYBE = / may (?:still|already|no longer) .* in Vikunja./;
 const { dayName, isSet } = A.dates;
 const { PRIOS } = A.util;
 const named = title => A.checklists.parseStep(title).title;
@@ -488,7 +490,7 @@ const RULES = [
     x => x.cancelled && !same(x.end, x.cancelled) && `Vikunja has ${diff(x.cancelled, x.end)}`,
   ],
   /* x.ref.nothingKept is what Cancel says of the op before anything is sent. Cancel may say it only when Vikunja has
-     none of the change, and must say it then, unless it says that Vikunja may or may not have the change. */
+     none of the change, and must say it then, unless it says what may still be in Vikunja. */
   [
     'Cancel leaves Vikunja as it was before the op, unless its words say what Vikunja keeps',
     x =>
@@ -501,7 +503,7 @@ const RULES = [
     x =>
       x.cancelWords &&
       x.cancelWords !== x.ref.nothingKept &&
-      !x.cancelWords.includes(UNSURE) &&
+      !MAYBE.test(x.cancelWords) &&
       same(x.end, x.before) &&
       `Cancel said “${x.cancelWords}”, and Vikunja has none of the change`,
   ],

@@ -25,7 +25,7 @@ import {
   viewKey,
 } from '../lists.js';
 import { cardGroup, countdown, openSubs, todayItems } from '../cards.js';
-import { headText, moreDone } from '../messages.js';
+import { couldnt, createdProject, headText, moreDone, offlineFor, projectNotSaved, SAID } from '../messages.js';
 import { listViewOf } from '../order.js';
 import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
@@ -517,13 +517,13 @@ export default {
       if (r.name === 'project' && e instanceof ApiError && e.status === 404) {
         await this.loadProjects().catch(() => {});
         this.go('#/projects');
-        this.notify('That project no longer exists.');
+        this.notify(SAID.projectGone);
         return;
       }
       // Show a failed refresh as a message, unless it would replace a message still being read. The rows on screen stay.
       if (!this.view.loading) {
         if (!(this.toast.show && this.toast.until - Date.now() > 1500))
-          this.notify((r.name === 'search' ? "Couldn't search: " : "Couldn't refresh: ") + e.message);
+          this.notify(couldnt(r.name === 'search' ? 'search' : 'refresh', e.message));
         return;
       }
       Object.assign(this.view, { loading: false, error: errText(e) });
@@ -1045,7 +1045,7 @@ export default {
       this.saveProject();
     } catch (e) {
       g.open = false;
-      this.say("Couldn't load the done tasks: " + why(e), { place: 'done', cls: 'failed' });
+      this.say(couldnt('load the done tasks', why(e)), { place: 'done', cls: 'failed' });
     } finally {
       g.loading = false;
     }
@@ -1083,7 +1083,7 @@ export default {
           document.querySelector(`#view .row[data-id="${add[0].id}"] > button.body`)?.focus({ preventScroll: true }),
         );
     } catch (e) {
-      this.say("Couldn't load the done tasks: " + why(e), { place: 'more', cls: 'failed' });
+      this.say(couldnt('load the done tasks', why(e)), { place: 'more', cls: 'failed' });
     } finally {
       this.showingMore = null;
     }
@@ -1272,16 +1272,14 @@ export default {
       // Open the new project, which shows it was created. A checklists project opens Checklists, where Getting started
       // says what to do next.
       this.go(np.checklists ? '#/checklists' : '#/project/' + p.id);
-      if (np.checklists) this.say(`Created ${p.title}, for checklists.`, { place: 'checklists' });
-      else this.said = `Created ${p.title}`;
+      if (np.checklists) this.say(createdProject(p.title, true), { place: 'checklists' });
+      else this.said = createdProject(p.title);
     } catch (e) {
       np.busy = false;
-      this.say(
-        e instanceof NetError
-          ? "Offline. You can create a project once you're back online."
-          : 'Not created: ' + e.message,
-        { place: 'sheet:top', cls: 'failed' },
-      );
+      this.say(e instanceof NetError ? offlineFor('create the project') : projectNotSaved(e), {
+        place: 'sheet:top',
+        cls: 'failed',
+      });
     }
   },
   async createProject(name) {
@@ -1292,12 +1290,10 @@ export default {
       this.setProjects([...this.projects, p]);
       saved.set('projects', this.projects);
     } catch (e) {
-      this.say(
-        e instanceof NetError
-          ? "Offline — you can create the project once you're back online"
-          : 'Project not created: ' + e.message,
-        { place: 'cap', cls: 'failed' },
-      );
+      this.say(e instanceof NetError ? offlineFor('create the project') : projectNotSaved(e), {
+        place: 'cap',
+        cls: 'failed',
+      });
     } finally {
       this.creatingProject = false;
     }

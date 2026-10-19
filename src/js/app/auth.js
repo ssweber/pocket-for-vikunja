@@ -18,6 +18,7 @@ import { saved } from '../lists.js';
 import { dropCopies } from './tasks.js';
 import { dropLoads } from './views.js';
 import { cancelOf, opOf } from '../ops/index.js';
+import { signOutAsk } from '../messages.js';
 
 let confirming = null; // app.confirmAccount() while it runs
 
@@ -173,26 +174,14 @@ export default {
     // A sign-out the user chose (no `msg`) drops the saved lists and what is waiting to be sent, after asking.
     if (!msg) {
       const mine = sync.all(me);
-      // A line not yet made counts as a task, by its waiting row. One whose task is made counts as neither.
+      // A line not yet made counts as a task, by its waiting row. One whose task is made counts as neither. Every other
+      // waiting op counts as a change.
       const row = e => opOf(e).row(e),
-        tasks = mine.filter(row),
-        files = mine.flatMap(e => (e.files || []).filter(f => !f.sent));
-      const count = (n, word) => (n === 1 ? 'a ' + word : `${n} ${word}s`);
-      const runs = mine.filter(e => e.kind === 'act' && cancelOf(e) !== 'made' && !row(e)).length,
-        n = tasks.length + files.length + runs;
-      const what = [
-        tasks.length && count(tasks.length, 'task'),
-        files.length && count(files.length, files.every(f => /^image\//.test(f.type)) ? 'photo' : 'file'),
-        runs && (runs === 1 ? 'a change to a checklist' : runs + ' changes to checklists'),
-      ]
-        .filter(Boolean)
-        .join(' and ');
-      if (
-        n &&
-        !confirm(
-          `${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? "hasn't" : "haven't"} reached Vikunja yet. Sign out anyway and discard ${n === 1 ? 'it' : 'them'}?`,
-        )
-      )
+        tasks = mine.filter(row).length,
+        files = mine.flatMap(e => (e.files || []).filter(f => !f.sent)),
+        changes = mine.filter(e => e.kind === 'act' && cancelOf(e) !== 'made' && !row(e)).length,
+        photos = files.every(f => /^image\//.test(f.type));
+      if (tasks + files.length + changes && !confirm(signOutAsk({ tasks, files: files.length, photos, changes })))
         return;
       sync.drop(e => e.user === me);
       this.pending = [];

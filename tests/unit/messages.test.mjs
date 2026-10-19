@@ -3,30 +3,102 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  addedPart,
+  addedStopped,
+  addedSubs,
   addedWhere,
+  archiveAsk,
+  archivedText,
+  besideIt,
+  cancelled,
   cancelName,
+  changedBut,
+  changedSince,
+  checklistsOn,
   completeAsk,
   COPIED,
+  couldnt,
+  createdProject,
   dayWord,
+  deleteAsk,
+  deletedProject,
+  deletedSaid,
+  deletedSteps,
+  deletedText,
+  deleteProjectAsk,
+  deleteRunAsk,
+  deleteStepAsk,
+  deleteTemplateAsk,
+  directFailed,
+  doneLater,
   doneLine,
+  doneRepeats,
   doneText,
+  dueNow,
+  dueSaid,
+  fileLost,
+  fileNotKnown,
+  finishedText,
   headText,
+  KEPT,
+  lineCancelled,
+  lineNotSaved,
   moreDone,
+  movedBack,
   movedText,
   movedTo,
   movedToProject,
   namesText,
+  noLongerSub,
+  NOT_KEPT,
+  notDone,
   notKnown,
-  notReordered,
   notMovedBack,
+  notRepeated,
+  notReordered,
   notSaved,
+  notStopped,
+  notUploaded,
+  noUser,
+  nowFor,
+  offlineFor,
   OP_WORDS,
+  othersDoneAsk,
+  OUTBOX,
+  photosLater,
+  placeSaid,
+  progressSaid,
+  projectNotSaved,
+  readOnly,
+  refusedEarlier,
+  refusedNote,
+  removeStepAsk,
+  repeatDate,
+  repeatedStep,
+  repeatsNext,
+  SAID,
+  savedOffline,
+  SENT_FIRST,
+  sentBut,
   sentLater,
+  setUpText,
+  signOutAsk,
   startedText,
+  STILL_OFFLINE,
+  subsNotUnder,
+  templateCreated,
+  templateMade,
+  templateNotSaved,
+  templateProblem,
+  textBack,
+  tickSaid,
   toOutbox,
+  tooBigText,
+  UNDO,
   UNKNOWN,
+  waitText,
 } from '../../src/js/messages.js';
-import { KEPT } from '../../src/js/sync.js';
+import { ZERO as ZERO_DATE } from '../../src/js/util.js';
 import { NetError } from '../../src/js/api.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -62,32 +134,359 @@ test('the row for more done tasks names what a tap shows and how many tasks are 
   );
 });
 
-test('a message for a change that was not saved gives the reason in a few words', () => {
-  assert.equal(notSaved(new NetError('Failed to fetch')), 'Not saved: no connection');
-  assert.equal(notSaved(new Error('Forbidden')), 'Not saved: Forbidden');
+/* A change that waits while Pocket is offline ends with when it goes to Vikunja. "Saved offline" is said only while
+   Pocket is offline. A busy Vikunja and a lost reply have their own words (waitText). */
+test('a change that waits offline says it goes to Vikunja when you are back online, for one change or several', () => {
+  assert.equal(savedOffline(), "Saved offline. It goes to Vikunja when you're back online.");
+  assert.equal(savedOffline(3), "Saved offline. They go to Vikunja when you're back online.");
+  assert.equal(savedOffline(1, 2), "Saved offline, with 2 photos. They go to Vikunja when you're back online.");
+  assert.equal(savedOffline(1, 1), "Saved offline, with the photo. They go to Vikunja when you're back online.");
+  assert.equal(
+    sentLater(finishedText('Wipe the counter')),
+    "Finished Wipe the counter. It goes to Vikunja when you're back online.",
+  );
+  assert.equal(finishedText('', true), "Finished. It goes to Vikunja when you're back online.");
+  assert.equal(finishedText('Closing', true), "Finished Closing. It goes to Vikunja when you're back online.");
+  assert.equal(doneLater(), "Done. It goes to Vikunja when you're back online.");
+  assert.equal(doneLater('Mop'), "Done: Mop. It goes to Vikunja when you're back online.");
+  assert.equal(OUTBOX.offline, "No connection. These go to Vikunja when you're back online.");
+  assert.equal(STILL_OFFLINE, "Still offline. These go to Vikunja when you're back online.");
+  assert.equal(photosLater('Orders', 1), "Added to Orders. The photo goes to Vikunja when you're back online.");
+  assert.equal(photosLater(undefined, 2), "Added to its project. The photos go to Vikunja when you're back online.");
 });
 
-test('a rejected reorder gives the reason', () => {
-  assert.equal(notReordered(Object.assign(new Error('Forbidden'), { status: 403 })), 'Not reordered: Forbidden');
+test('a change that waits says why: offline, a busy Vikunja, or a reply that was lost', () => {
+  assert.equal(waitText({}, 2), "Saved offline. They go to Vikunja when you're back online.");
+  assert.equal(waitText({ reached: true }), 'Waiting for Vikunja. Pocket tries again every 30 seconds.');
+  assert.equal(waitText({ reached: true }), OUTBOX.busy, 'the busy words are the Outbox’s');
+  assert.equal(
+    waitText({ lost: 'Adding “Opening up”' }),
+    "Adding “Opening up” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+  );
+});
+
+test('an action that needs Vikunja at once says what to do once back online, or why Vikunja refused it', () => {
+  assert.equal(offlineFor('create the project'), "Offline. You can create the project once you're back online.");
+  assert.equal(
+    directFailed(new NetError('Failed to fetch'), 'rename the project', 'renamed'),
+    "Offline. You can rename the project once you're back online.",
+  );
+  assert.equal(directFailed(new Error('Forbidden'), 'rename the project', 'renamed'), 'Not renamed: Forbidden');
+  assert.equal(
+    notDone('started', 'step 2, “Mop”: no step is named “x”'),
+    'Not started: step 2, “Mop”: no step is named “x”',
+  );
+  assert.equal(templateProblem('step 1, “Mop”: x'), 'Template not created: step 1, “Mop”: x');
+});
+
+/* Vikunja refused a change: what couldn't be saved, Vikunja's reason, then what happens next. */
+test('a refused change names it, gives Vikunja’s reason, and says what happens next', () => {
+  assert.equal(
+    notSaved('“Buy milk”', 'Forbidden', { next: KEPT }),
+    "“Buy milk” couldn't be saved: Forbidden. It's kept to try again.",
+  );
+  assert.equal(
+    notSaved('A tick on “Mop”', 'Forbidden.'),
+    "A tick on “Mop” couldn't be saved: Forbidden.",
+    'one full stop',
+  );
+  assert.equal(
+    notSaved('Moving “Mop”', 'Gone', { saved: "it's moved" }),
+    "Moving “Mop” couldn't be saved in full (it's moved): Gone.",
+  );
+  assert.equal(notSaved('', 'Forbidden'), "It couldn't be saved: Forbidden.");
+  assert.equal(
+    notSaved('A comment on “Mop”', 'Forbidden', { next: textBack({ back: true }) }),
+    "A comment on “Mop” couldn't be saved: Forbidden. Its text is back in the box.",
+  );
+  assert.equal(textBack({ words: 'Wiped' }), ' It said: “Wiped”');
+  assert.equal(textBack({}), '');
+  assert.equal(
+    notReordered(Object.assign(new Error('Forbidden'), { status: 403 })),
+    "The new order couldn't be saved: Forbidden.",
+  );
+  assert.equal(notReordered(null), "The new order couldn't be saved: Vikunja refused it.");
+  assert.equal(projectNotSaved(new Error('Forbidden')), "The new project couldn't be saved: Forbidden.");
+  assert.equal(templateNotSaved('Forbidden'), "The new template couldn't be saved: Forbidden.");
+  assert.equal(
+    lineNotSaved(false, 'Forbidden.'),
+    "A task you added offline couldn't be saved: Forbidden. Its text is back in the add box.",
+  );
+  assert.equal(
+    lineNotSaved(true, 'Forbidden'),
+    "A subtask you added offline couldn't be saved: Forbidden. Its text is back in the add box.",
+  );
+  assert.equal(refusedEarlier('Mop'), 'Not sent. Vikunja refused an earlier change to “Mop”.');
+  assert.equal(refusedNote('Forbidden'), 'Vikunja refused it: Forbidden');
+  assert.equal(refusedNote(UNKNOWN), UNKNOWN);
+  assert.equal(OUTBOX.refused, 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Cancel.');
 });
 
 /* A message about a change kept in the Outbox names the change and has an Outbox button. The button opens the Outbox
-   and sends nothing. Only the Outbox's own row tells the user to check, then tap Try again. */
-test('a change with an unknown answer, or kept to try again, points to the Outbox', () => {
+   and sends nothing. The message and the Outbox's row both tell the user to check, then tap Try again. */
+test('a change with an unknown answer says to check Vikunja, and its button opens the Outbox', () => {
   assert.equal(
     notKnown(OP_WORDS.done.refused({ op: 'done' }, 'Buy milk')),
-    'A tick on “Buy milk” may not have reached Vikunja.',
+    "A tick on “Buy milk” may not have reached Vikunja. Check, then tap Try again if it's missing.",
   );
   assert.equal(
     notKnown(OP_WORDS.add.refused({ op: 'add' }, 'Buy milk')),
-    'Adding “Buy milk” may not have reached Vikunja.',
+    "Adding “Buy milk” may not have reached Vikunja. Check, then tap Try again if it's missing.",
   );
-  assert.equal(KEPT, " It's kept to try again.");
-  assert.equal(UNKNOWN, "Vikunja may or may not have this change. Check, then tap Try again if it's missing.");
+  assert.equal(UNKNOWN, "May not have reached Vikunja. Check, then tap Try again if it's missing.");
+  assert.equal(fileNotKnown('a.jpg'), 'a.jpg may not have reached Vikunja', 'a clause, with nothing to tap');
+  assert.equal(notUploaded('a.jpg', 'Too big'), "a.jpg didn't upload: Too big");
+  assert.equal(fileLost('a.jpg'), 'a.jpg was lost on this device before it uploaded');
   let opened = 0;
   const b = toOutbox({ openOutbox: () => opened++ });
   b.fn();
   assert.deepEqual([b.label, opened], ['Outbox', 1]);
+});
+
+/* After an unknown answer, Cancel says what may still be in Vikunja, unless its stages take the change back. */
+test('Cancel after an unknown answer says what may still be in Vikunja, or only Cancelled where it takes the change back', () => {
+  const failed = { message: UNKNOWN },
+    words = (op, a, title = 'Mop the floor') =>
+      cancelled(OP_WORDS[op].dropped({ op, task: 7, user: 1, failed, ...a }, title));
+  assert.deepEqual(
+    [
+      words('edit', { set: { priority: 3 } }),
+      words('edit', { set: { priority: 0 } }),
+      words('edit', { set: { title: 'Mop' } }),
+      words('edit', { rebase: 'notes', set: {} }),
+      words('done', {}),
+      words('undone', {}),
+      words('progress', { pct: 40 }),
+      words('delete', { ids: [7] }),
+      words('due', { due: ZERO_DATE }),
+      words('assign', { add: true, person: { id: 2, username: 'sam' } }),
+      words('assign', { add: false, person: { id: 1, username: 'me' } }),
+      words('label', { add: true, tag: { title: 'floor' } }),
+      words('project', { into: 'Errands' }),
+      words('unlink', { over: 'Closing' }),
+      words('makeTemplate', {}),
+      words('templateStep', { p: { title: 'Wipe the till' } }, 'Closing'),
+      words('templateStep', { p: { title: 'Wipe the till' }, taskId: 9 }, 'Closing'),
+      words('addStep', { title: 'Sweep up', runTitle: 'Closing' }),
+      words('startRun', { template: { title: 'Closing' } }),
+    ],
+    [
+      'Cancelled. “Mop the floor” may still have priority High in Vikunja.',
+      'Cancelled. “Mop the floor” may still have no priority in Vikunja.',
+      'Cancelled. “Mop the floor” may still have the title “Mop” in Vikunja.',
+      'Cancelled. “Mop the floor” may still have your new notes in Vikunja.',
+      'Cancelled. “Mop the floor” may still be done in Vikunja.',
+      'Cancelled. “Mop the floor” may still be not done in Vikunja.',
+      'Cancelled. “Mop the floor” may still have progress 40% in Vikunja.',
+      'Cancelled. “Mop the floor” may already be deleted in Vikunja.',
+      'Cancelled. “Mop the floor” may still be without a date in Vikunja.',
+      'Cancelled. “Mop the floor” may still be assigned to sam in Vikunja.',
+      'Cancelled. You may still be unassigned from “Mop the floor” in Vikunja.',
+      'Cancelled. “Mop the floor” may still have label floor in Vikunja.',
+      'Cancelled. “Mop the floor” may still be in Errands in Vikunja.',
+      'Cancelled. “Mop the floor” may no longer be a subtask of “Closing” in Vikunja.',
+      'Cancelled.',
+      'Cancelled. “Wipe the till” may still be in “Closing” in Vikunja.',
+      'Cancelled.',
+      'Cancelled. “Sweep up” may still be in Closing in Vikunja.',
+      'Cancelled. The checklist started from “Closing”, or one of its steps, may still be in Vikunja.',
+    ],
+  );
+});
+
+test('an Undo that finds a task changed since names it, or counts the tasks, and says where they stay', () => {
+  assert.equal(changedSince('Mop'), 'Not undone: “Mop” has changed since then.');
+  assert.equal(notMovedBack(3, 'today'), 'Not undone: 3 tasks have changed since then. They stay due today.');
+  assert.equal(notMovedBack(3, null), 'Not undone: 3 tasks have changed since then. They stay without a date.');
+  assert.equal(notMovedBack(1, 'today'), 'Not undone: 1 task has changed since then. It stays due today.');
+  assert.equal(notMovedBack(1, 'Friday', 'Mop'), 'Not undone: “Mop” has changed since then. It stays due Friday.');
+  assert.equal(notMovedBack(1, null, 'Mop'), 'Not undone: “Mop” has changed since then. It stays without a date.');
+});
+
+test('signing out names what hasn’t reached Vikunja, counting every waiting op that isn’t a line or a file as a change', () => {
+  assert.equal(
+    signOutAsk({ tasks: 2, changes: 3 }),
+    "2 tasks and 3 changes haven't reached Vikunja yet. Sign out anyway and discard them?",
+  );
+  assert.equal(signOutAsk({ changes: 1 }), "A change hasn't reached Vikunja yet. Sign out anyway and discard it?");
+  assert.equal(
+    signOutAsk({ tasks: 1, files: 2, photos: true }),
+    "A task and 2 photos haven't reached Vikunja yet. Sign out anyway and discard them?",
+  );
+  assert.equal(signOutAsk({ files: 1 }), "A file hasn't reached Vikunja yet. Sign out anyway and discard it?");
+});
+
+test('a change the phone had no room for says so in one sentence', () => {
+  assert.equal(NOT_KEPT, "Pocket couldn't save this on the phone. Keep Pocket open until it's sent.");
+});
+
+test('a screen reader hears what a tick, a progress, a move or a delete did, and what is beside a message', () => {
+  assert.equal(besideIt('Moved 6 to today', { label: UNDO }), 'Moved 6 to today. Undo is beside it.');
+  assert.equal(besideIt('Renamed', null), 'Renamed');
+  assert.deepEqual([tickSaid(true, 'Mop'), tickSaid(false, 'Mop')], ['Done: Mop', 'Not done: Mop']);
+  assert.equal(doneRepeats('Water the plants'), 'Done: Water the plants. It repeats');
+  assert.equal(doneRepeats('Water the plants', 'next Tue'), 'Done: Water the plants. It repeats, next Tue');
+  assert.deepEqual([repeatsNext('next Tue'), repeatsNext('')], ['Repeats · next Tue', 'Done — repeats']);
+  assert.deepEqual([finishedText(), finishedText('Closing')], ['Finished', 'Finished Closing']);
+  assert.deepEqual([progressSaid(40, 'Mop'), progressSaid(40)], ['Progress of Mop set to 40%', 'Progress set to 40%']);
+  assert.equal(placeSaid('Mop', 2, 5), 'Mop is now 2 of 5');
+  assert.deepEqual([movedBack('Home'), movedBack()], ['Moved back to Home', 'Moved back to its project']);
+  assert.deepEqual(
+    [noLongerSub(1, 'Closing'), noLongerSub(2, 'Closing')],
+    ['No longer a subtask of “Closing”', 'No longer a subtask of 2 tasks'],
+  );
+  assert.equal(deletedSaid('Mop'), 'Deleted Mop. Restore is where the row was.');
+  assert.deepEqual(
+    [deletedText('Mop'), deletedText('Mop', 1), deletedText('Mop', 3), deletedText('x'.repeat(50))],
+    ['Deleted “Mop”', 'Deleted “Mop” + 1 subtask', 'Deleted “Mop” + 3 subtasks', `Deleted “${'x'.repeat(38)}…”`],
+  );
+  assert.deepEqual(
+    [deletedSteps(0), deletedSteps(1), deletedSteps(4)],
+    ['Deleted', 'Deleted, with 1 step', 'Deleted, with 4 steps'],
+  );
+  assert.deepEqual([notRepeated('Mop'), repeatedStep('Mop')], ['Not repeated: Mop', 'Repeated “Mop”']);
+  assert.deepEqual(
+    [createdProject('Home'), createdProject('Cafe', true)],
+    ['Created Home', 'Created Cafe, for checklists.'],
+  );
+  assert.equal(nowFor('For Sam and you'), 'Now for Sam and you');
+});
+
+test('a task coming due is announced by name, alone, or counted with the others', () => {
+  assert.equal(dueNow('Mop'), '“Mop” is due now');
+  assert.equal(dueSaid(['Mop'], true, false), '“Mop” is due now');
+  assert.equal(dueSaid(['Mop'], false, true), 'Reminder: “Mop”');
+  assert.equal(dueSaid(['Mop', 'Sweep', 'Lock'], true, false), '3 tasks are due now: “Mop” and 2 more');
+  assert.equal(dueSaid(['Mop', 'Sweep'], true, true), '2 tasks are due or have a reminder now: “Mop” and 1 more');
+});
+
+test('the add boxes say what part of a list was added, and what a cancelled line left behind', () => {
+  assert.equal(addedPart(1, 3), 'Added 1 of 3.');
+  assert.equal(
+    addedStopped(2, 3, ", but @sam can't see Orders", 'Forbidden'),
+    "Added 2 of 3, but @sam can't see Orders. Stopped: Forbidden",
+  );
+  assert.deepEqual([addedSubs(1), addedSubs(3, ', but x')], ['Added 1 subtask', 'Added 3 subtasks, but x']);
+  assert.equal(notDone('added', 'Forbidden'), 'Not added: Forbidden');
+  assert.equal(
+    subsNotUnder('Pack', 'Forbidden', ['Rope'], []),
+    "Subtasks of “Pack” added offline couldn't be added under it: Forbidden. “Rope” is now its own task.",
+  );
+  assert.equal(
+    subsNotUnder('Pack', 'Forbidden', ['Rope', 'Tape'], ['Straps']),
+    "Subtasks of “Pack” added offline couldn't be added under it: Forbidden. “Rope”, “Tape” are now their own tasks. Not added: Straps.",
+  );
+  assert.equal(sentBut(['a', 'b']), 'Sent what was waiting, but a; b');
+  assert.equal(lineCancelled('Rope', 0, ''), 'Cancelled. “Rope” is back where you typed it.');
+  assert.equal(lineCancelled('', 1, ''), 'Cancelled. The 1 line under it is now its own task.');
+  assert.equal(
+    lineCancelled('Rope', 2, 'Pack'),
+    'Cancelled. “Rope” is back where you typed it. The 2 lines under it are now under “Pack”.',
+  );
+  assert.equal(lineCancelled('', 2, ''), 'Cancelled. The 2 lines under it are now their own tasks.');
+  assert.deepEqual(
+    [cancelled(''), cancelled('“Mop” stays done.'), cancelled('', 'lines'), cancelled('x.', 'text')],
+    [
+      'Cancelled.',
+      'Cancelled. “Mop” stays done.',
+      'Cancelled. The lines under it are back where you typed them.',
+      'Cancelled. x. Its text is back where you typed it.',
+    ],
+  );
+  assert.deepEqual(
+    [notStopped(true), notStopped(false), SENT_FIRST],
+    [
+      'It was sent before it could be stopped.',
+      "It is being sent and can't be stopped now.",
+      'It was sent before it could be cancelled.',
+    ],
+  );
+});
+
+test('the sheets and checklists say what was made, changed or found wrong', () => {
+  assert.equal(readOnly('Home'), 'Home is read only. Type +project to pick another project.');
+  assert.equal(readOnly(), 'That project is read only. Type +project to pick another project.');
+  assert.equal(noUser('sam'), 'No user @sam');
+  assert.equal(
+    repeatDate('Tomorrow 9:00 AM'),
+    "Pocket set the due date to Tomorrow 9:00 AM, because a repeat needs one. Change the date above if that's wrong.",
+  );
+  assert.equal(tooBigText(['a.jpg (9 MB)'], '5 MB'), 'a.jpg (9 MB) is too big. Your Vikunja accepts files up to 5 MB.');
+  assert.equal(tooBigText(['a', 'b'], '5 MB'), 'a, b are too big. Your Vikunja accepts files up to 5 MB.');
+  assert.equal(changedBut(['x', 'y']), 'Changed, but x; y');
+  assert.equal(templateMade(), 'Template created. Start it here or under Checklists.');
+  assert.equal(
+    templateMade('Due daily at 8:00 AM', true),
+    'Template created. Due daily at 8:00 AM. Starting it on or after the due day moves it to its next date.',
+  );
+  assert.equal(
+    templateMade('Due Fri', false),
+    "Template created. Due Fri. Starting it on or after the due day marks it done, because it doesn't repeat.",
+  );
+  assert.equal(templateCreated('Closing'), 'Created Closing. Start it here.');
+  assert.equal(setUpText(true), 'Created the Checklists project, with an example template to try.');
+  assert.equal(
+    setUpText(true, savedOffline()),
+    "Created the Checklists project, with an example template to try. Saved offline. It goes to Vikunja when you're back online.",
+  );
+  assert.equal(
+    setUpText(false),
+    "Created the Checklists project. The example template couldn't be created. Tap New template to add one.",
+  );
+  assert.deepEqual(
+    [checklistsOn(true), checklistsOn(false)],
+    [
+      'This project is now used for checklists. Its templates and checklists are under Checklists.',
+      'This project is no longer used for checklists.',
+    ],
+  );
+  assert.deepEqual([archivedText('Home'), deletedProject('Home')], ['Archived Home', 'Deleted Home']);
+  assert.equal(
+    couldnt('load the done tasks', 'no connection to Vikunja'),
+    "Couldn't load the done tasks: no connection to Vikunja",
+  );
+  assert.equal(SAID.onePerson, 'A checklist needs at least one person. Tap someone else first.');
+});
+
+test('a question before a change Pocket cannot undo counts what goes with it', () => {
+  assert.equal(deleteAsk('Pack', 1), 'Delete “Pack” and its 1 subtask?');
+  assert.equal(deleteAsk('Pack', 2, 3), 'Delete “Pack” and its 2 subtasks, 3 more under them?');
+  assert.equal(deleteAsk('Pack', 1, 1), 'Delete “Pack” and its 1 subtask, 1 more under it?');
+  assert.equal(deleteTemplateAsk('Closing', 0), "Delete the template “Closing”? This can't be undone in Pocket.");
+  assert.equal(
+    deleteTemplateAsk('Closing', 1),
+    "Delete the template “Closing” and its 1 step? Checklists already started keep their steps. This can't be undone in Pocket.",
+  );
+  assert.equal(
+    deleteRunAsk('Closing', 3),
+    "Delete “Closing” and its 3 steps for everyone? Their comments and photos are deleted too. This can't be undone.",
+  );
+  assert.equal(
+    deleteRunAsk('Closing', 1),
+    "Delete “Closing” and its 1 step for everyone? Their comments and photos are deleted too. This can't be undone.",
+  );
+  assert.equal(
+    deleteStepAsk('Mop'),
+    "Delete “Mop”? This step was added to this checklist only. The template doesn't change.",
+  );
+  assert.equal(removeStepAsk('Mop'), 'Remove “Mop” from the template? Checklists already started keep it.');
+  assert.equal(
+    othersDoneAsk(['Sam', 'Ana'], 'Mop'),
+    'Sam and Ana marked “Mop” done. Only they can remove their ✅ in Vikunja, so it stays. Mark the step not done anyway?',
+  );
+  assert.equal(
+    archiveAsk('Home'),
+    "Archive “Home”? Pocket and Vikunja hide the project and its tasks until you unarchive it in Vikunja's web app.",
+  );
+  assert.equal(deleteProjectAsk('Home', 1, 0), "Delete “Home” and its 1 task? This can't be undone.");
+  assert.equal(
+    deleteProjectAsk('Home', 4, 2),
+    "Delete “Home” and its 4 tasks and 2 projects inside it? This can't be undone.",
+  );
+  assert.equal(
+    deleteProjectAsk('Home', null, 1),
+    "Delete “Home” and its tasks and 1 project inside it? This can't be undone.",
+  );
 });
 
 test('a tick message says "Closed" with a count when a parent closed its open subtasks, and "Done:" otherwise', () => {
@@ -140,7 +539,6 @@ test('Move all to today reports how many tasks moved and which tasks stayed', ()
   assert.equal(movedText(6, ''), 'Moved 6 to today');
   assert.equal(movedText(2, '1 repeating task stays: tick it.'), 'Moved 2 to today. 1 repeating task stays: tick it.');
   assert.equal(movedText(0, '1 repeating task stays: tick it.'), 'Nothing moved. 1 repeating task stays: tick it.');
-  assert.equal(sentLater('Done'), "Done. It's sent once Pocket reaches Vikunja.");
 });
 
 // A fake component with the methods from lines.js and leaving.js, a screen (route) and a sheet. Messages appear at a `place` on the screen or in the sheet.
@@ -414,15 +812,11 @@ test('moving a task to another project names the project and counts the subtasks
   );
 });
 
-test('moving a task held on Today names where it went, explains a card kept by its subtask, and reports what an Undo could not move back', () => {
+test('moving a task held on Today names where it went, and explains a card kept by its subtask', () => {
   assert.equal(movedTo('Friday'), 'Moved to Friday');
   assert.equal(movedTo('Today'), 'Moved to today');
   assert.equal(movedTo('Mon 12'), 'Moved to Mon 12');
   assert.equal(movedTo(null), 'Removed its due date');
-  assert.equal(
-    notMovedBack(1, null),
-    "1 task couldn't be moved back (changed since, or not saved) and is still without a date.",
-  );
   assert.equal(
     movedTo('Tomorrow', 'Buy paint'),
     'Moved to tomorrow. Its subtask “Buy paint” is due sooner, so it stays here.',
@@ -432,14 +826,6 @@ test('moving a task held on Today names where it went, explains a card kept by i
     'Removed its due date. Its subtask “Buy paint” has a date, so it stays here.',
   );
   assert.equal(dayWord('Friday'), 'Friday');
-  assert.equal(
-    notMovedBack(1, 'today'),
-    "1 task couldn't be moved back (changed since, or not saved) and is still due today.",
-  );
-  assert.equal(
-    notMovedBack(2, 'Friday'),
-    "2 tasks couldn't be moved back (changed since, or not saved) and are still due Friday.",
-  );
 });
 
 // Who started a checklist, shown in its history. The summary shows only the time when the checklist started today. The

@@ -822,7 +822,7 @@ test('an Undo leaves a progress a teammate changed since, and says so on the row
   );
   assert.deepEqual(
     [lastSaid(app).msg, lastSaid(app).row.id, lastSaid(app).cls],
-    ['Not undone: “Paint the fence” has changed since then', 1, 'failed'],
+    ['Not undone: “Paint the fence” has changed since then.', 1, 'failed'],
   );
   assert.equal(sync.all(1).length, 0, 'the Undo leaves the outbox');
 });
@@ -865,7 +865,7 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
   assert.equal(await app.undoOps([f], false).left, 1);
   assert.deepEqual(
     [v.task(1).due_date, lastSaid(app).msg],
-    ['2026-10-20T09:00:00Z', 'Not undone: “Water the plants” has changed since then'],
+    ['2026-10-20T09:00:00Z', 'Not undone: “Water the plants” has changed since then.'],
   );
 });
 test("the Undo of a repeating task's tick whose reply was lost unticks it, when Vikunja marked it done", async t => {

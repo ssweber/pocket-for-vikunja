@@ -2,8 +2,36 @@
 import { raw, userCache } from '../util.js';
 import { api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, upload } from '../api.js';
 import { isSet, startOfDay } from '../dates.js';
-import { addedWhere, cancelName, doneText, notKnown, toOutbox } from '../messages.js';
-import { fileEntry, held, itemsOf, KEPT, NO_ROOM, NOT_KEPT, older, slowness, sync, uuid7 } from '../sync.js';
+import {
+  addedPart,
+  addedStopped,
+  addedWhere,
+  cancelName,
+  doneRepeats,
+  doneText,
+  fileLost,
+  fileNotKnown,
+  KEPT,
+  lineCancelled,
+  lineNotSaved,
+  NOT_KEPT,
+  notDone,
+  notKnown,
+  notSaved,
+  notUploaded,
+  OPEN,
+  photosLater,
+  readOnly,
+  SAID,
+  SENT_FIRST,
+  sentBut,
+  subsNotUnder,
+  textBack,
+  toOutbox,
+  UNDO,
+  waitText,
+} from '../messages.js';
+import { fileEntry, held, itemsOf, older, slowness, sync, uuid7 } from '../sync.js';
 import {
   dayGroup,
   intoGroup,
@@ -81,10 +109,10 @@ export default {
     });
   },
   // Queue the lines typed in an add box, each as an add op (addLines), with the photos on the first, and send them.
-  // Returns what became of them (batchOf), and whether they were kept on the phone (`kept`, `full`, as queue gives).
+  // Returns what became of them (batchOf), and whether they were kept on the phone (`kept`, as queue gives).
   async sendLines(entries, photos = []) {
-    const { kept, full } = await this.queue(entries, photos);
-    return { ...batchOf(await this.sendActs(entries.at(-1).id), entries), kept, full };
+    const { kept } = await this.queue(entries, photos);
+    return { ...batchOf(await this.sendActs(entries.at(-1).id), entries), kept };
   },
   /* Everything typed in quick add goes through the outbox: online it is sent straight away, offline it waits. */
   async submitCapture() {
@@ -95,14 +123,11 @@ export default {
     const pid = lines.length === 1 ? this.boxPid('cap') : this.defaultProjectId();
     const first = parsed.project?.id || pid;
     if (!first) {
-      this.say('Create a project in Vikunja first', { place: 'cap', cls: 'failed' });
+      this.say(SAID.noProject, { place: 'cap', cls: 'failed' });
       return;
     }
     if (!this.canWrite(first)) {
-      this.say(
-        `${this.projById.get(first)?.title || 'That project'} is read only. Type +project to pick another project.`,
-        { place: 'cap', cls: 'failed' },
-      );
+      this.say(readOnly(this.projById.get(first)?.title), { place: 'cap', cls: 'failed' });
       return;
     }
     // Parse every line now, so dates mean what they meant when typed. Each line records which line it is under. Lines
@@ -133,7 +158,7 @@ export default {
     try {
       // Save it first, with its photos, and show it at once where it will land. It looks waiting only if sending takes a while.
       const r = await this.sendLines(entries, photos),
-        { kept, full } = r;
+        { kept } = r;
       if (r.ids?.length) this.flash(r.ids);
       this.refreshPending(); // swap the waiting row for the sent one at once
       this.placeSent(r.tasks || []);
@@ -145,44 +170,34 @@ export default {
         cap = { place: 'cap' },
         err = { place: 'cap', cls: 'failed' };
       const but = r.problems?.length ? `, but ${r.problems.join('; ')}` : '';
-      const open = { label: 'Open', fn: () => this.openTask(r.ids[0]) };
+      const open = { label: OPEN, fn: () => this.openTask(r.ids[0]) };
       if (r.status === 'offline') {
         // The task shows in the list as waiting, unless this list wouldn't include it (such as a task due next month on
         // Today).
         this.refreshPending();
         sync.keep();
-        if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, err);
+        if (!kept) this.say(NOT_KEPT, err);
         else if (np && r.ids.length === n)
           // the task was added, and its photos are still waiting
-          this.say(
-            `Added to ${this.projById.get(r.projectId)?.title || 'its project'}. ${np === 1 ? 'The photo uploads' : 'The photos upload'} when the connection's back.`,
-            { ...cap, action: open },
-          );
-        else if (np)
-          this.say(
-            `Saved offline, with ${np === 1 ? 'the photo' : np + ' photos'}. ${n === 1 && np === 1 ? 'Both go' : 'They all go'} to Vikunja when you're back online.`,
-            cap,
-          );
-        else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.pendingPlace(t)))
-          this.say(`Saved offline. ${n === 1 ? 'It goes' : 'They go'} to Vikunja when you're back online.`, cap);
+          this.say(photosLater(this.projById.get(r.projectId)?.title, np), { ...cap, action: open });
+        else if (np) this.say(waitText(r, n, np), cap);
+        else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.pendingPlace(t))) this.say(waitText(r, n), cap);
       } else if (r.status === 'error') {
         // A line whose answer is unknown stays in the Outbox, so only the refused lines come back.
         if (r.unsent.length) this.cap.text = r.unsent.join('\n'); // keep what wasn't added
         this.capPhotos = r.photos;
         // Undo deletes the tasks just added, each with no Restore, the last added first.
-        const undo = r.ids.length ? { label: 'Undo', fn: () => this.deleteNow(r.ids.map(id => [id]).reverse()) } : null;
+        const undo = r.ids.length ? { label: UNDO, fn: () => this.deleteNow(r.ids.map(id => [id]).reverse()) } : null;
         // A message has one button. After some lines were added, Undo keeps it, because the header's button still
         // opens the Outbox.
         if (r.error.code === 'unknown')
-          this.say((undo ? `Added ${r.ids.length} of ${n}${but}. ` : '') + notKnown(r.error.what), {
+          this.say((undo ? addedPart(r.ids.length, n, but) + ' ' : '') + notKnown(r.error.what), {
             ...err,
             action: undo || toOutbox(this),
           });
         else
           this.say(
-            r.ids.length
-              ? `Added ${r.ids.length} of ${n}${but}. Stopped: ${r.error.message}`
-              : 'Not added: ' + r.error.message,
+            r.ids.length ? addedStopped(r.ids.length, n, but, r.error.message) : notDone('added', r.error.message),
             { ...err, action: undo },
           );
       } else if (r.status === 'sent') {
@@ -199,7 +214,7 @@ export default {
             }),
             {
               ...(but ? err : cap),
-              action: away.length ? { label: 'Open', fn: () => this.openTask(away[0].id) } : null,
+              action: away.length ? { label: OPEN, fn: () => this.openTask(away[0].id) } : null,
             },
           );
       } // status 'gone': another tab sent it and its rows already show
@@ -270,7 +285,7 @@ export default {
     let ok = false;
     try {
       const file = await sync.file(f.key);
-      if (!file) problems.push(`${f.name} was lost on this device before it uploaded`);
+      if (!file) problems.push(fileLost(f.name));
       else {
         if (!f.upload) {
           f.upload = uuid7();
@@ -278,7 +293,7 @@ export default {
         }
         const r = await upload(taskId, file, f.name, f.upload);
         // Vikunja answers OK even when it rejects a file, and puts the reasons in `errors`.
-        if (r?.errors?.length) problems.push(`${f.name} didn't upload: ${r.errors.map(e => e.message).join('; ')}`);
+        if (r?.errors?.length) problems.push(notUploaded(f.name, r.errors.map(e => e.message).join('; ')));
         else ok = true;
       }
     } catch (e) {
@@ -289,9 +304,7 @@ export default {
       }
       if (passing(e) || e.again || e.status === 401) throw e;
       // The relay can't tell whether Vikunja has the file, and only the user can check.
-      problems.push(
-        e.code === 'unknown' ? notKnown(f.name).replace(/\.$/, '') : `${f.name} didn't upload: ${e.message}`,
-      );
+      problems.push(e.code === 'unknown' ? fileNotKnown(f.name) : notUploaded(f.name, e.message));
     }
     f.sent = true;
     await sync.save(entry, [f.key]);
@@ -368,7 +381,7 @@ export default {
         kind: 'done',
         out: () => (beyond() ? [t.id] : []),
         undo: () => this.undoTicks([tick]),
-        said: said + '. It repeats',
+        said: doneRepeats(t.title),
         gone: () => {
           if (beyond()) this.removeRow(t.id);
           else if (this.route.name === 'today') this.regroupToday();
@@ -467,21 +480,21 @@ export default {
       this.capPhotos = [...this.capPhotos, ...back.flatMap(f => f.photos)];
     }
     if (lost.length) {
-      const f = lost[0],
-        loose = (f.tasks || []).map(t => `“${t.title}”`);
+      const f = lost[0];
       this.notify(
-        `Subtasks of “${f.parent.title}” added offline couldn't be added under it: ${f.error.message}.` +
-          (loose.length
-            ? ` ${loose.join(', ')} ${loose.length === 1 ? 'is now its own task' : 'are now their own tasks'}.`
-            : '') +
-          (f.unsent.length ? ` Not added: ${f.unsent.join('; ')}.` : ''),
+        subsNotUnder(
+          f.parent.title,
+          f.error.message,
+          (f.tasks || []).map(t => t.title),
+          f.unsent,
+        ),
       );
     } else if (failed.length) {
       // The message shows in the box the text went back to: quick add, or the subtask box in the task's sheet.
-      this.say(
-        `${subs.length ? 'A subtask' : 'A task'} you added offline couldn't be saved: ${failed[0].error.message.replace(/\.$/, '')}. Its text is back in the add box.`,
-        { place: back.length ? 'cap' : 'sheet:subtasks', cls: 'failed' },
-      );
+      this.say(lineNotSaved(subs.length > 0, failed[0].error.message), {
+        place: back.length ? 'cap' : 'sheet:subtasks',
+        cls: 'failed',
+      });
     } else if (other.length) {
       const e = other[0].error,
         what = e.what || 'A change made offline';
@@ -489,11 +502,10 @@ export default {
         e.said ||
           (e.code === 'unknown'
             ? notKnown(what)
-            : `${what} couldn't be sent: ${e.message.replace(/\.$/, '')}.` +
-              (other[0].kept ? KEPT : this.wordsBack(e))),
+            : notSaved(what, e.message, { next: other[0].kept ? KEPT : textBack(e) })),
         other[0].kept ? toOutbox(this) : null,
       );
-    } else if (problems.length) this.notify('Sent what was waiting, but ' + problems.join('; '));
+    } else if (problems.length) this.notify(sentBut(problems));
     if (sent || errors.length) this.render();
   },
 
@@ -714,23 +726,13 @@ export default {
     // The message shows in the box the text went back to: quick add, or the subtask box in the parent's sheet.
     const place = !parent ? 'cap' : this.sheet.id === parent.id ? 'sheet:subtasks' : null;
     if (sent) {
-      this.say('It was sent before it could be cancelled.', { place });
+      this.say(SENT_FIRST, { place });
       this.render();
       return;
     }
     const box = parent ? (this.sheet.id === parent.id ? this.sheet.sub : null) : this.cap;
     if (raw && box) box.text = [box.text.trim(), raw].filter(Boolean).join('\n');
-    const lines = `The ${rest} line${rest === 1 ? '' : 's'} under it ${rest === 1 ? 'is' : 'are'} now `;
-    this.say(
-      [
-        'Cancelled.',
-        raw && box && `“${title}” is back where you typed it.`,
-        rest && lines + (over ? `under “${over}”.` : `${rest === 1 ? 'its own task' : 'their own tasks'}.`),
-      ]
-        .filter(Boolean)
-        .join(' '),
-      { place },
-    );
+    this.say(lineCancelled(raw && box ? title : '', rest, over), { place });
   },
   // Cancel the upload of a waiting photo or file. Its row disappears at once, but an upload already running finishes
   // first.

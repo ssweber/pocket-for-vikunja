@@ -6,7 +6,7 @@ import { plainReminders, reminderKey } from '../dates.js';
 import { htmlToText, textToHtml } from '../html.js';
 import { notesOnly, problemText, stepProblems, stepsOf, withLinesOf, withOrder } from '../checklists.js';
 import { withAskLines } from '../asks.js';
-import { OP_WORDS } from '../messages.js';
+import { notDone, OP_WORDS } from '../messages.js';
 import { backOf, changed, patch } from './stages.js';
 
 // The notes as the sheet edits them, without Pocket's own lines, and the description that holds `text` in their place.
@@ -108,7 +108,7 @@ const REBASES = {
         const d = orderOf(t, a.moves);
         return d === null ? null : { description: d };
       } catch (e) {
-        throw Object.assign(new ApiError(409, e.message), { drop: true, said: () => 'Not moved: ' + e.message });
+        throw Object.assign(new ApiError(409, e.message), { drop: true, said: () => notDone('moved', e.message) });
       }
     },
     merge: (older, newer) => ({ ...newer, moves: [...older.moves, ...newer.moves] }),

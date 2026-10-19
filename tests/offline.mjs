@@ -256,7 +256,7 @@ try {
       `${NO_DATE} ${pendingRow(T('F'))} .title .sr:has-text("Attachments, 1 waiting to upload")`,
       { state: 'attached' },
     );
-    await placeSays(page, 'cap', 'Saved offline, with the photo. Both go to Vikunja'); // the message appears by the add box
+    await placeSays(page, 'cap', 'Saved offline, with the photo. They go to Vikunja'); // the message appears by the add box
   });
 
   await step('still-waiting-after-reopening', async () => {
@@ -318,7 +318,7 @@ try {
     await page.route(lists, cutOff);
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
-    await placeSays(page, 'cap', 'The photo uploads when the connection');
+    await placeSays(page, 'cap', 'The photo goes to Vikunja when you');
     // The task is in Vikunja, so it is a normal row. Its photo is still waiting, and Today's single-line row announces that.
     await page.waitForSelector(
       `${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`,
@@ -562,7 +562,7 @@ try {
     await page.route('**/v2/tasks/*/attachments', cutOff);
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
-    await placeSays(page, 'cap', "storage is full, so Pocket can't save this for later. Keep Pocket open");
+    await placeSays(page, 'cap', "Pocket couldn't save this on the phone. Keep Pocket open");
     await page.waitForSelector(
       `.row:has(.title:has-text("${T('S')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`,
       { state: 'attached' },

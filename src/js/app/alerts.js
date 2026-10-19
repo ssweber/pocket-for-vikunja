@@ -7,6 +7,7 @@ import { serverTime } from '../api.js';
 import { isLate, isSet, startOfDay } from '../dates.js';
 import { dayGroup, todayAt, todayOrder } from '../lists.js';
 import { runShows } from '../checklists.js';
+import { dueNow, dueSaid } from '../messages.js';
 
 let sound = null; // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null,
@@ -58,19 +59,17 @@ export default {
       else if ((t.reminders || []).some(r => isSet(r.reminder) && passed(+new Date(r.reminder)))) reminded.push(t);
     }
     // Flash their rows where they are now, and announce them to a screen reader.
-    const name = t => `“${this.rowTitle(t)}”`,
-      list = [...due, ...reminded];
+    const list = [...due, ...reminded];
     if (!list.length) return;
     this.flash(
       list.map(t => t.id),
       'due',
     );
-    this.said =
-      list.length === 1
-        ? due.length
-          ? `${name(list[0])} is due now`
-          : `Reminder: ${name(list[0])}`
-        : `${list.length} tasks are due ${reminded.length ? 'or have a reminder ' : ''}now: ${name(list[0])} and ${list.length - 1} more`;
+    this.said = dueSaid(
+      list.map(t => this.rowTitle(t)),
+      due.length > 0,
+      reminded.length > 0,
+    );
   },
   // Regroup Today's dated tasks for the time now, without asking Vikunja. Returns them.
   regroupToday() {
@@ -118,7 +117,7 @@ export default {
       alerted.add(k);
       this.chime();
       navigator.vibrate?.([200, 100, 200]);
-      this.notify(`“${s.title}” is due now`);
+      this.notify(dueNow(s.title));
     }
   },
   /* Browsers only play sound after a tap, so the tap that starts a checklist or ticks a step plays a moment of silence.

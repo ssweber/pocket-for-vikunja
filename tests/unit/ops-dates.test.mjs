@@ -212,7 +212,7 @@ test('an Undo puts the date back after a change to another field, and leaves a d
   await app.flush();
   assert.deepEqual(
     [v.task(7).due_date, app.toasts.at(-1).msg],
-    [D(15), 'Not undone: “Call the plumber today” has changed since then'],
+    [D(15), 'Not undone: “Call the plumber today” has changed since then.'],
     "the title is Vikunja's, as the Undo read it",
   );
 });
@@ -534,22 +534,22 @@ test("a date or a repeat that Vikunja refuses, or may not have, says so under th
   app.sheet.id = 8;
   await app.setRepeat('week');
   assert.deepEqual(said(), [
-    'Changing how “Feed the cat” repeats may not have reached Vikunja.',
+    "Changing how “Feed the cat” repeats may not have reached Vikunja. Check, then tap Try again if it's missing.",
     'sheet:due',
     null,
     'Outbox',
   ]);
 });
-test("Cancel of a change whose answer is unknown doesn't say what Vikunja has, and a move names both dates", async t => {
+test('Cancel of a change whose answer is unknown says what may still be in Vikunja', async t => {
   const { v, app } = offlineSender(t);
   app.offline = false;
   v.trouble = r => (r.method === 'PATCH' ? 'unknown' : null);
   await app.act({ op: 'due', task: 8, was: v.task(8).due_date, due: ZERO, run: null, label: 'Pay the rent' });
   await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
   await app.dropAct(app.failed.find(e => e.op === 'due').id);
-  assert.equal(lastSaid(app).msg, 'Cancelled. Vikunja may have “Pay the rent” due today or without a date.');
+  assert.equal(lastSaid(app).msg, 'Cancelled. “Pay the rent” may still be without a date in Vikunja.');
   await app.dropAct(app.failed.find(e => e.op === 'done').id);
-  assert.equal(lastSaid(app).msg, 'Cancelled. Vikunja may or may not have this change.');
+  assert.equal(lastSaid(app).msg, 'Cancelled. “Wipe the till” may still be done in Vikunja.');
 });
 test("Cancel of a template's date taken off partway says its repeat is gone", async t => {
   const { v, app } = sheeted(

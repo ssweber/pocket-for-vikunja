@@ -114,7 +114,7 @@ test("an Undo takes off only what the op put on, and leaves a teammate's change"
   await app.act(off);
   v.tasks.delete(2);
   assert.equal(await app.undoOps([off], false).left, 1);
-  assert.equal(lastSaid(app).msg, 'Not undone: “Mop the floor” has changed since then');
+  assert.equal(lastSaid(app).msg, 'Not undone: “Mop the floor” has changed since then.');
 });
 
 test('a person or a label on a task deleted in Vikunja since is dropped, and the sender says why', async t => {

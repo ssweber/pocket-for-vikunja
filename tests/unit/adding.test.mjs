@@ -705,7 +705,7 @@ test('cancelling a line whose answer is unknown sends the line under it back to 
     [
       [],
       'Stack them',
-      'Cancelled. Vikunja may or may not have this change. The lines under it are back where you typed them.',
+      'Cancelled. “Load chairs” may already be added in Vikunja. The lines under it are back where you typed them.',
     ],
   );
   assert.equal(app.toast.action, null);
@@ -906,7 +906,11 @@ test("a line sent later whose answer is unknown is named in the message, and the
   app.toast.action.fn();
   assert.deepEqual(
     [app.toast.msg, app.toast.action.label, opened],
-    ['Adding “Load chairs” may not have reached Vikunja.', 'Outbox', 'outbox'],
+    [
+      "Adding “Load chairs” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+      'Outbox',
+      'outbox',
+    ],
   );
 });
 
@@ -983,7 +987,7 @@ test('a line refused after its task was made gives nothing back, and is kept in 
   await app.flush();
   assert.deepEqual(
     [app.cap.text, app.toast.msg, app.toast.action?.label],
-    ['', "Adding “Load chairs” couldn't be sent: HTTP 403 from the fake. It's kept to try again.", 'Outbox'],
+    ['', "Adding “Load chairs” couldn't be saved: HTTP 403 from the fake. It's kept to try again.", 'Outbox'],
   );
   assert.deepEqual(
     app.outboxRows.map(x => [x.text, x.retry]),
@@ -1345,8 +1349,11 @@ test('offline, an added subtask waits highlighted, and is still highlighted once
 });
 
 for (const [text, said] of [
-  ['Straps', 'Adding “Straps” may not have reached Vikunja.'],
-  ['Rope\nStraps', 'Added 1 of 2. Adding “Straps” may not have reached Vikunja.'],
+  ['Straps', "Adding “Straps” may not have reached Vikunja. Check, then tap Try again if it's missing."],
+  [
+    'Rope\nStraps',
+    "Added 1 of 2. Adding “Straps” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+  ],
 ])
   test(`a subtask whose answer is unknown is named in the add box, with a button that opens the Outbox (${text.split('\n').length} lines)`, async t => {
     t.after(clear);
@@ -1358,8 +1365,12 @@ for (const [text, said] of [
   });
 
 for (const [text, said, button] of [
-  ['Straps', 'Adding “Straps” may not have reached Vikunja.', 'Outbox'],
-  ['Rope\nStraps', 'Added 1 of 2. Adding “Straps” may not have reached Vikunja.', 'Undo'],
+  ['Straps', "Adding “Straps” may not have reached Vikunja. Check, then tap Try again if it's missing.", 'Outbox'],
+  [
+    'Rope\nStraps',
+    "Added 1 of 2. Adding “Straps” may not have reached Vikunja. Check, then tap Try again if it's missing.",
+    'Undo',
+  ],
 ])
   test(`a quick-add line whose answer is unknown is named in the add box (${text.split('\n').length} lines, ${button})`, async t => {
     t.after(clear);

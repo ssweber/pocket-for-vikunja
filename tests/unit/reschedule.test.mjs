@@ -94,7 +94,7 @@ test('Move all made offline shows its message at once, and moves each task once 
   );
   assert.deepEqual(
     [app.toast.msg, app.toast.action?.label, app.failed.map(e => e.task)],
-    ["Moving “Evening one” couldn't be sent: HTTP 403 from the fake. It's kept to try again.", 'Outbox', [2]],
+    ["Moving “Evening one” couldn't be saved: HTTP 403 from the fake. It's kept to try again.", 'Outbox', [2]],
   );
   assert.deepEqual(
     patches(v).map(([id]) => id),
@@ -111,7 +111,7 @@ test('Move all made offline shows its message at once, and moves each task once 
   );
   assert.deepEqual(
     [app.toast.msg, app.toast.place, app.toast.cls],
-    ["1 task couldn't be moved back (changed since, or not saved) and is still due today.", 'overdue', 'failed'],
+    ['Not undone: 1 task has changed since then. It stays due today.', 'overdue', 'failed'],
   );
 });
 /* Holding a row or card on Today and moving it to a new date (app/throw.js). Each move is a `due` op sent through the
@@ -321,7 +321,7 @@ test('every date changed by a hold has an Undo that restores the date and time t
   );
   assert.deepEqual(
     [app.toast.msg, app.toast.place, app.toast.cls],
-    ["1 task couldn't be moved back (changed since, or not saved) and is still due Fri 9.", 'cap', 'failed'],
+    ['Not undone: “Call the plumber about the boiler” has changed since then. It stays due Fri 9.', 'cap', 'failed'],
   );
 });
 test('a move made offline shows at once and waits, Undo takes it back without sending, and a later move replaces it', async c => {
@@ -369,7 +369,7 @@ test('a move Vikunja refuses goes back and shows a message with Try again, and i
   );
   assert.deepEqual(
     [app.toast.msg, app.toast.action.label, app.toast.cls],
-    ['Not saved: HTTP 403 from the fake', 'Try again', 'failed'],
+    ["Moving a task couldn't be saved: HTTP 403 from the fake.", 'Try again', 'failed'],
   );
   const sent = v.requests.length;
   await app.toasts.at(-2).action.fn();
@@ -503,7 +503,7 @@ test('a task moved again after Move all keeps its new date when Move all is undo
   );
   assert.deepEqual(
     [app.toast.msg, app.toast.place],
-    ["1 task couldn't be moved back (changed since, or not saved) and is still due today.", 'overdue'],
+    ['Not undone: 1 task has changed since then. It stays due today.', 'overdue'],
   );
 });
 test('Undo of Move all shows the old dates at once, while the moves are still being sent', async t => {

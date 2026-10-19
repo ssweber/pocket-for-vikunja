@@ -3,6 +3,7 @@
    A field with no draft shows the answer that counts. */
 import { answerHtml, askLines, askRows, fieldValue, rangeText, stepAsks } from '../asks.js';
 import { fmtTime } from '../dates.js';
+import { SAID } from '../messages.js';
 
 let rowKey = 0; // keys the editor's rows, so a removed row takes its fields with it
 
@@ -127,6 +128,6 @@ export default {
     if (this.sheet.id !== t.id || r.status === 'error') return;
     this.sheet.asksEdit = null;
     this.initAskRows();
-    if (r.status === 'sent') this.say('Asks saved. Checklists started from now on ask them.', { place: 'sheet:asks' });
+    if (r.status === 'sent') this.say(SAID.asksSaved, { place: 'sheet:asks' });
   },
 };

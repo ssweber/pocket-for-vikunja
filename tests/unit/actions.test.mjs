@@ -230,7 +230,7 @@ test('the Undo of a subtask taken out leaves it alone once a teammate gave it an
   await undo();
   assert.deepEqual(
     [parents(), app.toasts.find(m => /^Not undone/.test(m.msg))?.msg],
-    [[11], 'Not undone: “Kid 12” has changed since then'],
+    [[11], 'Not undone: “Kid 12” has changed since then.'],
   );
 });
 test('taking a subtask out and putting it back, both made offline, cancel out, and a link to another parent stays', async c => {
@@ -394,7 +394,7 @@ test('the Undo of a move leaves a task a teammate moved since, and says so', asy
   await undo();
   assert.deepEqual(
     [where(), app.toasts.find(m => /^Not undone/.test(m.msg))?.msg],
-    [[5, 7, 6, 5], 'Not undone: “Task 10” has changed since then'],
+    [[5, 7, 6, 5], 'Not undone: “Task 10” has changed since then.'],
   );
 });
 test('a template, a checklist and their steps cannot move to another project, and a read-only task cannot either', async c => {

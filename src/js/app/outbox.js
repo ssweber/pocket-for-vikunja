@@ -3,7 +3,7 @@ import { fmtSize, taskDrafts } from '../util.js';
 import { addedText, parseStep } from '../checklists.js';
 import { older, sendState, sync, uuid7 } from '../sync.js';
 import { cancelling, cancelOf, dropUnder, opOf, passUps, photosOf } from '../ops/index.js';
-import { UNKNOWN } from '../messages.js';
+import { cancelled, notStopped, OUTBOX, refusedNote, STILL_OFFLINE, UNDO } from '../messages.js';
 import { copyOf } from './tasks.js';
 
 const whenText = at => {
@@ -27,7 +27,7 @@ export default {
         // A change the relay can't vouch for wasn't refused, so its reason stands alone. A line is cancelled as its
         // waiting row's Cancel does it, until its first request is sent.
         const why = e.failed?.message,
-          failed = !why ? '' : why === UNKNOWN ? why : 'Vikunja refused it: ' + why,
+          failed = why ? refusedNote(why) : '',
           op = opOf(e);
         rows.push({
           key: e.id,
@@ -69,14 +69,10 @@ export default {
     );
   },
   get outboxStatus() {
-    if (this.flushing) return 'Sending…';
-    if (this.pending.length)
-      return this.offline
-        ? 'No connection. Pocket sends these when it reaches Vikunja.'
-        : 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
-    if (this.failed.length)
-      return 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Cancel.';
-    return 'Everything has reached Vikunja.';
+    if (this.flushing) return OUTBOX.sending;
+    if (this.pending.length) return this.offline ? OUTBOX.offline : OUTBOX.busy;
+    if (this.failed.length) return OUTBOX.refused;
+    return OUTBOX.sent;
   },
   // Tells tests whether Pocket is sending, waiting or idle. A busy add box counts as sending before its entry is
   // queued.
@@ -97,10 +93,7 @@ export default {
   async tryNow() {
     await this.flush();
     if (this.pending.length && this.offline) {
-      this.say("Still offline. Your changes are saved and go to Vikunja when you're back online.", {
-        place: 'sheet:top',
-        cls: 'failed',
-      });
+      this.say(STILL_OFFLINE, { place: 'sheet:top', cls: 'failed' });
       return;
     }
     this.refresh();
@@ -187,9 +180,7 @@ export default {
     });
     this.refreshPending();
     if (gone || started) {
-      this.say(gone ? 'It was sent before it could be stopped.' : "It is being sent and can't be stopped now.", {
-        place: 'sheet:top',
-      });
+      this.say(notStopped(gone), { place: 'sheet:top' });
       return;
     }
     const said = {};
@@ -197,20 +188,16 @@ export default {
     if (how === 'lines') this.linesBack(under, said);
     else if (how === 'text' || how === 'back') this.giveBack(a, said);
     if (a.stage > 0 && this.view.shownRun?.id === a.run) this.refreshRunTask(a.task);
-    // The op's words say what Vikunja keeps, from Pocket's copies, or that it may or may not have a change whose answer
-    // is unknown.
-    const words = [opOf(a).dropped(a, a.label || this.actTitle(a.task), copyOf)];
-    const back =
-      said.back &&
-      how !== 'back' &&
-      (how === 'lines' ? 'The lines under it are back where you typed them.' : 'Its text is back where you typed it.');
+    // The op's words say what Vikunja keeps, from Pocket's copies, or what may still be there after an unknown answer.
+    const words = opOf(a).dropped(a, a.label || this.actTitle(a.task), copyOf),
+      back = said.back && how !== 'back' ? (how === 'lines' ? 'lines' : 'text') : '';
     // Undo puts the entry back as it was, so it keeps its key and its place in the order. A refused one waits for Try
     // again, as before.
     const undo =
       said.back || ['lines', 'back', 'made'].includes(how)
         ? null
         : {
-            label: 'Undo',
+            label: UNDO,
             fn: async () => {
               const e = kept;
               kept = null;
@@ -220,7 +207,7 @@ export default {
               else await this.sendActs(e.id);
             },
           };
-    this.say(['Cancelled.', ...words, back].filter(Boolean).join(' '), {
+    this.say(cancelled(words, back), {
       place: 'sheet:top',
       action: undo,
       gone: () => {
@@ -244,12 +231,9 @@ export default {
     if (was?.sent) await sync.lock(() => this.sendEntry(id));
     this.refreshPending();
     if (!quiet)
-      this.say(
-        !was
-          ? (a && opOf(a).gone) || 'It was sent before it could be stopped.'
-          : ['Cancelled.', opOf(was).dropped(was, '', copyOf)].filter(Boolean).join(' '),
-        { place: ['sheet:top', 'checklists', 'step'] },
-      );
+      this.say(!was ? (a && opOf(a).gone) || notStopped(true) : cancelled(opOf(was).dropped(was, '', copyOf)), {
+        place: ['sheet:top', 'checklists', 'step'],
+      });
     this.render();
     this.flush(); // sends the ops that waited behind it
     return !was;

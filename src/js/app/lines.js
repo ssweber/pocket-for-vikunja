@@ -4,6 +4,7 @@
    announces each message to screen readers. */
 import { collapse, motion } from '../util.js';
 import { UNDO_MS } from './toast.js';
+import { besideIt } from '../messages.js';
 
 export const SAY_MS = 4000; // how long a message with nothing to tap shows
 const timers = new Map();
@@ -149,7 +150,7 @@ export default {
     store[key] = { action: null, ...line, place, key, n: (old?.n || 0) + 1 };
     // Read back Alpine's proxy so endPlace compares the same object when the timer expires.
     const l = store[key];
-    this.said = l.text + (l.action ? `. ${l.action.label} is beside it.` : '');
+    this.said = besideIt(l.text, l.action);
     const ms = 'ms' in line ? line.ms : line.action ? UNDO_MS : SAY_MS;
     if (ms !== null) setTimeout(() => this.endPlace(key, l, true, store), ms);
     return true;

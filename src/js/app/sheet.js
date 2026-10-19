@@ -7,7 +7,8 @@ import { notesOnly, stepInfos, stepsOf, templateName, templateTitle } from '../c
 import { listViewOf, positionOrder } from '../order.js';
 import { atTime } from '../quickadd.js';
 import { inTextField, slideStarts, typedIn } from '../progress.js';
-import { fileEntry, NO_ROOM, NOT_KEPT, randomId, sync } from '../sync.js';
+import { fileEntry, randomId, sync } from '../sync.js';
+import { couldnt, NOT_KEPT, notDone, noUser, OPEN, repeatDate, SAID, tooBigText, waitText } from '../messages.js';
 import { blankSheet, shared } from './core.js';
 import { sliding } from './progress.js';
 import { seats, seatUnder } from './seat.js';
@@ -115,7 +116,7 @@ export default {
       // the phone (notesRefused).
       taskDrafts.delete('desc:' + t.id);
       this.act({ op: 'edit', task: t.id, run: null, rebase: 'notes', text: v, base }).then(r => {
-        if (r.status === 'sent') this.say('Notes saved', { row: { id: t.id, stays: true } });
+        if (r.status === 'sent') this.say(SAID.notesSaved, { row: { id: t.id, stays: true } });
       });
     } else if (!sh.editingDesc) taskDrafts.delete('desc:' + t.id);
     for (const [k, v] of [
@@ -300,10 +301,7 @@ export default {
       // set in Vikunja.
       const label = dueInfo(set.due_date).label,
         when = /\d:\d\d/.test(label) ? label : label + ' ' + fmtTime(new Date(set.due_date));
-      this.say(
-        `Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`,
-        { place: 'sheet:due', ms: 8000 },
-      );
+      this.say(repeatDate(when), { place: 'sheet:due', ms: 8000 });
     }
     this.sheet.dirty = true;
     return this.act({
@@ -478,18 +476,12 @@ export default {
         descUnsaved: true,
         descConflict: e.notes,
       });
-      this.say(
-        'Not saved. Someone changed the notes while you were writing. Both versions are shown. Save again to replace theirs with yours.',
-        { place: 'sheet:notes', cls: 'failed', ms: null },
-      );
+      this.say(SAID.notesConflict, { place: 'sheet:notes', cls: 'failed', ms: null });
     } else
-      this.say(
-        'Notes not saved. Someone changed them while you were writing. Your version is kept. Open the task to see both.',
-        {
-          row: { id: a.task, stays: true, cls: 'failed' },
-          action: { label: 'Open', fn: () => this.openTask(a.task) },
-        },
-      );
+      this.say(SAID.notesConflictRow, {
+        row: { id: a.task, stays: true, cls: 'failed' },
+        action: { label: OPEN, fn: () => this.openTask(a.task) },
+      });
   },
 
   /* ---------- reminders ---------- */
@@ -660,7 +652,7 @@ export default {
     try {
       const u = pick || (await this.findUser(name));
       if (!u) {
-        this.say(`No user @${name}`, { place: 'sheet:props', cls: 'failed' });
+        this.say(noUser(name), { place: 'sheet:props', cls: 'failed' });
         return;
       }
       await this.addAssignee(t, u);
@@ -669,7 +661,7 @@ export default {
         document.getElementById('d-assign-in')?.focus();
       }
     } catch (e) {
-      this.say('Not assigned: ' + e.message, { place: 'sheet:props', cls: 'failed' });
+      this.say(notDone('assigned', e.message), { place: 'sheet:props', cls: 'failed' });
     }
   },
   unassign(uid) {
@@ -713,13 +705,7 @@ export default {
     this.sheet.commentDraft = '';
     taskDrafts.delete('comment:' + id);
     const r = await this.act({ op: 'note', task: id, html: textToHtml(v), run: null });
-    if (r.status === 'offline')
-      this.say(
-        r.reached
-          ? 'Vikunja had a problem with the comment. Pocket tries again shortly.'
-          : "Saved offline. The comment is posted when you're back online.",
-        { place: 'sheet:comments' },
-      );
+    if (r.status === 'offline') this.say(waitText(r), { place: 'sheet:comments' });
     if (r.status === 'error' && this.sheet.id === id) this.sheet.commentDraft = v;
   },
   // Comments on the open task still waiting to be posted.
@@ -735,7 +721,10 @@ export default {
     const max = sizeLimit(this.info?.max_file_size),
       big = max ? files.filter(f => f.size > max) : [];
     return big.length
-      ? `${big.map(f => `${f.name} (${fmtSize(f.size)})`).join(', ')} ${big.length === 1 ? 'is' : 'are'} too big. Your Vikunja accepts files up to ${this.info.max_file_size}.`
+      ? tooBigText(
+          big.map(f => `${f.name} (${fmtSize(f.size)})`),
+          this.info.max_file_size,
+        )
       : '';
   },
   // Handles the sheet's "Add a photo or file". The files go through the outbox, so without a connection they wait on
@@ -756,13 +745,13 @@ export default {
       taskId: t.id,
       files: files.map(fileEntry),
     };
-    const { kept, full } = await sync.add(entry, files);
+    const { kept } = await sync.add(entry, files);
     this.refreshPending();
     const r = await sync.lock(() => this.sendEntry(entry.id));
     this.refreshPending();
     if (r.status === 'offline') {
       sync.keep();
-      if (!kept) this.say(full ? NO_ROOM : NOT_KEPT, { place: at, cls: 'failed' });
+      if (!kept) this.say(NOT_KEPT, { place: at, cls: 'failed' });
     }
     if (r.problems?.length) this.say(r.problems.join('; '), { place: at, cls: 'failed' });
   },
@@ -797,7 +786,7 @@ export default {
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
       w?.close();
-      this.say("Couldn't open: " + e.message, { place: ['sheet:files', 'step'], cls: 'failed' });
+      this.say(couldnt('open', e.message), { place: ['sheet:files', 'step'], cls: 'failed' });
     }
   },
   /* ---------- the sheet's list, and its box under a row ---------- */

@@ -1780,7 +1780,7 @@ try {
     await openStart();
     await context.setOffline(true);
     await page.click('#start-go');
-    await said('checklists', 'starts as soon as Pocket reaches Vikunja');
+    await said('checklists', "Saved offline. It goes to Vikunja when you're back online.");
     await page.waitForSelector(
       `.cl .row.pending:has-text("Starting ${TEMPLATE}"):has-text("Waiting for a connection")`,
     );
@@ -1796,7 +1796,7 @@ try {
     await page.fill('#start-name', 'Never');
     await context.setOffline(true);
     await page.click('#start-go');
-    await said('checklists', 'starts as soon as Pocket reaches Vikunja');
+    await said('checklists', "Saved offline. It goes to Vikunja when you're back online.");
     const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} ·"):has-text("· Never")`; // "Starting Startup · Oct 12 · Never"
     await page.waitForSelector(`${waiting}:has-text("For you")`);
     await page.click(`${waiting} button[aria-label^="Don't start"]`);
@@ -1828,7 +1828,7 @@ try {
     await openStart();
     await page.fill('#start-name', 'Called off');
     await page.click('#start-go');
-    await said('checklists', 'starts as soon as Pocket reaches Vikunja');
+    await said('checklists', 'may not have reached Vikunja');
     await until('the copy never reached Vikunja', async () => (await copies()) === before + 1);
     await context.setOffline(true);
     const waiting = `.cl .row.pending:has-text("Starting ${TEMPLATE} ·"):has-text("· Called off")`;
@@ -1861,7 +1861,7 @@ try {
     await toastGone();
     await openStart();
     await page.click('#start-go');
-    await said('checklists', 'starts as soon as Pocket reaches Vikunja');
+    await said('checklists', 'may not have reached Vikunja');
     await online();
     await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
     await page.unroute('**/api/v1/plugins/pocket/v2/tasks/*/duplicate', lose);
@@ -3136,7 +3136,7 @@ try {
     await page.click(`${dailyRow} .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     await page.click('#start-go');
-    await said('checklists', 'starts as soon as Pocket reaches Vikunja');
+    await said('checklists', 'may not have reached Vikunja');
     await page.unroute(`**/v2/tasks/${daily.id}`, lose);
     if (!lost) throw new Error('the tick was never sent');
     await online();

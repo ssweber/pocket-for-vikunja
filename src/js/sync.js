@@ -125,8 +125,7 @@ export const sync = {
     return [...this.entries.values()].filter(e => e.user === user).sort(older);
   },
 
-  // Save a new entry and its files together. Returns {kept, full}. `kept` says whether it reached the database, and
-  // `full` whether the phone is out of space.
+  // Save a new entry and its files together. Returns {kept}, whether it reached the database.
   add(entry, files) {
     const saving = this.put(entry, files).finally(() => this.adding.delete(entry.id));
     this.adding.set(entry.id, saving);
@@ -145,10 +144,10 @@ export const sync = {
       });
       this.changed();
       return { kept: true };
-    } catch (e) {
+    } catch {
       this.volatile.add(entry.id);
       files.forEach((f, i) => this.bytes.set(entry.files[i].key, f));
-      return { kept: false, full: e?.name === 'QuotaExceededError' };
+      return { kept: false };
     }
   },
   // Save an entry's progress and any new entries it made (`more`), and delete the bytes of files it has finished with
@@ -267,10 +266,6 @@ function named(e, name, id) {
 export const older = (a, b) => a.at.localeCompare(b.at) || (a.n || 0) - (b.n || 0);
 // What an op's merge returns when the new op cancels the earlier one, as an untick cancels a tick. Both leave the outbox.
 export const CANCEL = 'cancel';
-export const NO_ROOM =
-  "This phone's storage is full, so Pocket can't save this for later. Keep Pocket open until it is sent.";
-export const KEPT = " It's kept to try again.";
-export const NOT_KEPT = "This couldn't be saved on the phone. Keep Pocket open until it's sent.";
 export const packParsed = p => ({
   title: p.title,
   due: p.due ? p.due.toISOString() : null,

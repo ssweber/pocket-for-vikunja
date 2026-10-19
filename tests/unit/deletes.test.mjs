@@ -245,7 +245,7 @@ const deleting = t => {
     tasks,
     actions,
     pick(sending.default ?? sending, 'refreshPending', 'keyWaiting', 'markSlow', 'sendEntry'),
-    pick(acts, 'actEntry', 'sendActs', 'sendAct', 'wordsBack', 'giveBack'),
+    pick(acts, 'actEntry', 'sendActs', 'sendAct', 'giveBack'),
     pick(outbox, 'actTitle'),
     pick(runs, 'refreshRunTask'),
   );
