@@ -14,7 +14,19 @@ is a new 0.x.y.
 
 ## Unreleased (0.2.0)
 
+### Before you update
+
+- Send or cancel everything in the Outbox on each phone first. Changes saved by Pocket 0.1.0 and not yet sent are
+  dropped.
+- Signing in with an API token is gone. Pocket signs in with Vikunja's own session, by password or single sign-on.
+- Each screen saved on the phone shows "Loading" once after the update.
+
 ### Added
+
+- Every change works offline and waits in the Outbox, not only new tasks, comments and checklists. A change Vikunja
+  refuses also waits there, with Try again and Cancel, and Cancel says what Vikunja still has.
+- The plugin passes Pocket's changes to Vikunja with a key, so a change whose reply was lost is never made twice.
+- Coming back to Pocket, or getting a connection back, shows what others changed or deleted since.
 
 - A template step can ask for a number, yes or no, a choice or a line of text, and each checklist's card records the
   answers ([guide](docs/guide.md#asks)).
@@ -26,6 +38,10 @@ is a new 0.x.y.
 
 ### Changed
 
+- Undo puts back only what nobody has changed since, and says so when something has.
+- Pocket says one thing for each situation: "Saved offline", "Waiting for Vikunja", "… couldn't be saved: <reason>",
+  or "… may not have reached Vikunja".
+- Offline, Pocket opens Today, Checklists, the last 5 projects and the last 8 checklists from the phone.
 - Reordering in a task's menu says "Up one place" and "Down one place", because "move" in Vikunja means moving to
   another project.
 - The ⋯ menu item that opens the phone's share sheet says "Share as text".
@@ -52,6 +68,8 @@ is a new 0.x.y.
 
 ### What Pocket writes into Vikunja
 
+- The plugin adds a table, `pocket_relay`, to Vikunja's database. It keeps each change's key and Vikunja's answer for
+  31 days, so a change sent again gets the same answer.
 - Each ask is a `pocket:ask` line in a step's notes.
 - Each answer comment has a `Label: value` line for each answer, then the line `pocket:answer`.
 - Ticking a task in a shared project, finishing a checklist, or adding a task already done adds the user's ✅
