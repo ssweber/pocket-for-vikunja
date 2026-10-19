@@ -98,12 +98,19 @@ try {
   );
   check('the same key makes no second task', (await titled(me, title1)).length === 1);
 
-  // Five at once with one key: one makes the task, and the others are told to wait (409) or get its answer.
+  // Five at once with one key: one makes the task, and the others are told to wait (409) or get its answer. On SQLite,
+  // Vikunja now and then answers 500 "database is locked" while the relay writes, and the relay passes that on. Pocket
+  // sends such a request again with its key, and so does each of the five.
   const k2 = newKey(),
     title2 = `Relay race ${run}`;
-  const race = await Promise.all(
-    Array.from({ length: 5 }, () => relay('POST', `/projects/${team.id}/tasks`, me, { title: title2 }, k2)),
-  );
+  const busyAgain = async () => {
+    for (let i = 0; ; i++) {
+      const r = await relay('POST', `/projects/${team.id}/tasks`, me, { title: title2 }, k2);
+      if (r.status < 500 || i >= 4) return r;
+      await new Promise(ok => setTimeout(ok, 300 * (i + 1)));
+    }
+  };
+  const race = await Promise.all(Array.from({ length: 5 }, busyAgain));
   race.forEach(keep);
   check(
     'five requests at once with one key make one task',
