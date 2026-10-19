@@ -13,7 +13,7 @@ export const saved = {
     }
   },
   set(k, v) {
-    store.set('saved.' + k, JSON.stringify(v));
+    return store.set('saved.' + k, JSON.stringify(v));
   },
   clear() {
     try {
@@ -34,6 +34,15 @@ export const keptScreens = () => [
   ...(saved.get('projects.recent') || []).map(projectKey),
   ...(saved.get('runs.recent') || []).map(runKey),
 ];
+/* Delete the saved screens of the projects and checklists no longer kept, and `project.last`, which nothing reads. A
+   screen saved before it fell out of the kept lists, or saved under an older key, would stay on the phone for good. */
+export const dropUnkept = () => {
+  const kept = new Set(keptScreens().map(k => 'pocket.saved.' + k));
+  try {
+    for (const k of Object.keys(localStorage))
+      if (/^pocket\.saved\.(project\.(\d+\..+|last)|run\.\d+)$/.test(k) && !kept.has(k)) localStorage.removeItem(k);
+  } catch {}
+};
 // Put project or checklist `id` first among those last opened, and forget the saved screens of those no longer kept.
 export const opened = (kind, id) => {
   const [list, n, key] =

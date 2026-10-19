@@ -1668,3 +1668,45 @@ test("a read after a page whose clock ran ahead takes a teammate's change to a f
   assert.equal(copyOf(1).percent_done, 0.75);
   localStorage.clear();
 });
+
+/* Screens fall out of the kept lists as others are opened. A sweep deletes any left on the phone, as one saved under
+   an older key, and `project.last`, which nothing reads. */
+test('a sweep deletes the saved screens no longer kept, and leaves the kept ones', async () => {
+  await sync.ready;
+  const app = component(tasks);
+  app.user = { id: 1 };
+  opened('project', 7);
+  opened('run', 20);
+  const keys = ['today', 'project.7.open', 'run.20', 'project.3.open', 'project.7.done', 'project.last', 'run.4'];
+  for (const k of keys) saved.set(k, { groups: [] });
+  saved.set('projects', [{ id: 7 }]);
+  app.sweep();
+  assert.deepEqual(
+    keys.filter(k => saved.get(k)),
+    ['today', 'project.7.open', 'run.20'],
+  );
+  assert.deepEqual(saved.get('projects'), [{ id: 7 }]);
+  localStorage.clear();
+});
+
+// A copy the phone has no room for isn't listed among the phone's copies, and the next save tries it again.
+test('a copy the phone had no room for is saved the next time, and listed only once it is', async () => {
+  await sync.ready;
+  const app = component(tasks);
+  app.user = { id: 1 };
+  read([{ id: 1, title: 'Wipe the menus' }]);
+  const set = localStorage.setItem;
+  localStorage.setItem = (k, v) => {
+    if (k === 'pocket.saved.task.1') throw new Error('The quota has been exceeded.');
+    set(k, v);
+  };
+  try {
+    app.keepScreen('today', { groups: [{ key: 'today', tasks: [app.row(copyOf(1))] }] });
+  } finally {
+    localStorage.setItem = set;
+  }
+  assert.deepEqual([saved.get('task.1'), saved.get('tasks')], [null, []]);
+  app.keepChanged();
+  assert.deepEqual([saved.get('task.1')?.title, saved.get('tasks')], ['Wipe the menus', [1]]);
+  localStorage.clear();
+});

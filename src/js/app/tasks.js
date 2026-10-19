@@ -12,7 +12,7 @@
    and in what order (subRow). */
 import { app, raw, store } from '../util.js';
 import { allPages, api, serverTime } from '../api.js';
-import { intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
+import { dropUnkept, intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
 import { sync } from '../sync.js';
 import { opOf, OPS } from '../ops/index.js';
 import { repeats } from '../dates.js';
@@ -638,9 +638,17 @@ function keepCopies(c, ids) {
   const was = new Set(saved.get('tasks') || []),
     kept = [...ids].filter(id => keptCopy(id) || (was.has(id) && !forgotten.has(id)));
   for (const id of was) if (!ids.has(id)) store.del('saved.task.' + id);
-  for (const id of kept) if (keptCopy(id) && (unsaved.has(id) || !was.has(id))) saved.set('task.' + id, keptCopy(id));
+  /* A copy the phone has no room for stays unsaved, so the next save tries it again. It stays out of the list unless an
+     older copy of it is on the phone. */
+  const failed = new Set(
+    kept.filter(id => keptCopy(id) && (unsaved.has(id) || !was.has(id)) && !saved.set('task.' + id, keptCopy(id))),
+  );
   unsaved.clear();
-  saved.set('tasks', kept);
+  for (const id of failed) unsaved.add(id);
+  saved.set(
+    'tasks',
+    kept.filter(id => was.has(id) || !failed.has(id)),
+  );
 }
 // A sweep waits until the outbox is read, or it would drop the copies of the tasks its entries change.
 let outboxRead = false;
@@ -768,10 +776,11 @@ export default {
     return r ? this.tasks[r.id] || null : null;
   },
   /* Drop the copies and rows that no kept screen, outbox entry or open screen needs (keptIds), and keep on the phone
-     the copies of the kept screens' tasks and the outbox's. Runs when a load replaces a screen's ids (keepScreen), and
-     once as Pocket opens. */
+     the copies of the kept screens' tasks and the outbox's, and no other saved screens (dropUnkept). Runs when a load
+     replaces a screen's ids (keepScreen), and once as Pocket opens. */
   sweep() {
     if (!this.user || !outboxRead) return;
+    dropUnkept();
     restore(this);
     this.change(w => {
       w.forgetLost();

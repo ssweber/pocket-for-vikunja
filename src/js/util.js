@@ -8,10 +8,14 @@ export const store = {
       return null;
     }
   },
+  // Returns whether the value was kept, which it isn't when localStorage is full.
   set(k, v) {
     try {
       localStorage.setItem('pocket.' + k, v);
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   },
   del(k) {
     try {

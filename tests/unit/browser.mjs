@@ -17,15 +17,23 @@ globalThis.document = {
   implementation: { createHTMLDocument: () => doc },
 };
 
-// localStorage in memory. Pocket keeps its drafts, saved lists and settings there.
+// localStorage in memory. Pocket keeps its drafts, saved lists and settings there. Object.keys lists the keys kept, as
+// in a browser.
 const kept = new Map();
-globalThis.localStorage = {
-  getItem: k => (kept.has(k) ? kept.get(k) : null),
-  setItem: (k, v) => {
-    kept.set(k, String(v));
+globalThis.localStorage = new Proxy(
+  {
+    getItem: k => (kept.has(k) ? kept.get(k) : null),
+    setItem: (k, v) => {
+      kept.set(k, String(v));
+    },
+    removeItem: k => {
+      kept.delete(k);
+    },
+    clear: () => kept.clear(),
   },
-  removeItem: k => {
-    kept.delete(k);
+  {
+    ownKeys: () => [...kept.keys()],
+    getOwnPropertyDescriptor: (_, k) =>
+      kept.has(k) ? { value: kept.get(k), enumerable: true, configurable: true } : undefined,
   },
-  clear: () => kept.clear(),
-};
+);

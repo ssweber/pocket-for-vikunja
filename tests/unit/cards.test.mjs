@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo, shortTime } from '../../src/js/dates.js';
-import { listItems, nestSubtasks, rowGestures, RUN_ROW, saved } from '../../src/js/lists.js';
+import { listItems, nestSubtasks, opened, rowGestures, RUN_ROW, saved } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
@@ -1170,6 +1170,7 @@ const stepsOn = app => app.view.shownRun.steps.map(id => app.tasks[id]);
 test("a checklist's screen reads its steps by id, so a step ticked in a list shows on it at once", () => {
   const app = runScreen();
   assert.deepEqual([Object.keys(app.view.shownRun), app.runTask], [['id', 'steps', 'at', 'last'], app.tasks[50]]);
+  opened('run', 50); // as its load does
   app.saveRun();
   const kept = saved.get('run.50');
   assert.deepEqual([kept.shownRun.steps, kept.tasks], [[51, 52, 53, 54], undefined], 'the saved screen is its ids');
