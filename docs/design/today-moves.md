@@ -77,17 +77,17 @@ Add the moved gap to the specimen page (`scripts/specimen/`), which shows every 
 
 ### When
 
-After phase 6 (Dates) of `single-code-paths.md`. That phase turns `reschedule`'s save and Undo into the `due` op and its
-`invert`. Building the gap first would mean writing its Undo twice. The gap uses the op's Undo as it is.
+It can be built now. `reschedule`'s save and Undo are the `due` op and its `invert`, and the gap uses the op's Undo as
+it is.
 
 ## What else came up, and where it went
 
 | Question | Where it is handled |
 |---|---|
-| Does the outbox prune a quick tick and untick? Are reschedules batched? | `single-code-paths.md` part 1: pruning. Move all stays one op per task. |
-| Does adding a task with `x` add the ✅? | `single-code-paths.md` part 1: one tick op, used by quick add too |
-| Move all is unreliable | `movedDue` (dates.js) gives a task whose time has passed today no time, and `single-code-paths.md` part 1 (dates go through the outbox) |
+| Does the outbox prune a quick tick and untick? Are reschedules batched? | The outbox folds an op into the one before it (`fold`, acts.js). Move all stays one op per task. |
+| Does adding a task with `x` add the ✅? | Yes. Quick add uses the same tick op. |
+| Move all is unreliable | `movedDue` (dates.js) gives a task whose time has passed today no time, and dates go through the outbox |
 | The Undo shows at the destination | This file |
-| Lost replies, and searching after the fact | `single-code-paths.md` part 0, the keyed relay, and `upstream-idempotency-key.md` |
-| Inconsistent Undo, task kinds, Today's groups, inline messages | `single-code-paths.md` parts 2 to 5 |
-| API-token sign-in, and outbox entries from an older Pocket | Deleted, `single-code-paths.md` part 6 and part 1 |
+| Lost replies, and searching after the fact | The plugin's keyed relay (`pocket/relay.go`), and `upstream-idempotency-key.md` |
+| Inconsistent Undo, task kinds, Today's groups, inline messages | An Undo is an op (`invert`), `roleOf`, `dayGroup` and `messages.js` |
+| API-token sign-in, and outbox entries from an older Pocket | Deleted |

@@ -1214,10 +1214,10 @@ function like(k, v, vikunja = null) {
 
 /* ---------- the bugs not yet fixed ---------- */
 
-/* Bugs the user hasn't decided on yet, as docs/design/single-code-paths.md numbers them under "Open bugs". Each entry
-   says what is wrong, and `meets(ev, w)` says whether a write (ev, from judge) is that bug, and which fields of which
-   tasks it may leave wrong ([[id, fields]]). Meeting it excuses the write, and the checks skip those fields for the
-   rest of the sequence. An entry no sequence meets in a run of 1,000 fails the test, so a fixed bug's entry goes. */
+/* Bugs the user hasn't decided on yet, each also listed under Known gaps in docs/roadmap.md. Each entry says what is
+   wrong, and `meets(ev, w)` says whether a write (ev, from judge) is that bug, and which fields of which tasks it may
+   leave wrong ([[id, fields]]). Meeting it excuses the write, and the checks skip those fields for the rest of the
+   sequence. An entry no sequence meets in a run of 1,000 fails the test, so a fixed bug's entry goes. */
 const KNOWN = [];
 
 /* ---------- the commands ---------- */
