@@ -27,7 +27,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 | `@user` | Assignee, by username |
 | `!1` to `!5` | Priority |
 | `today`, `tomorrow`, `fri`, `next monday`, `in 3 days`, `end of month`, `Oct 12`, `2026-10-12`, `10/12` | Due date. Numeric dates are read only at the start or end of the text, so "Table 4/5 wobbles" is left alone. |
-| `at 5`, `at 5pm`, `at 17:30` | Due time. A bare hour from 1 to 7 means afternoon or evening. Without a time, the task uses your default due time from Vikunja's settings. |
+| `at 5`, `at 5pm`, `at 17:30` | Due time. A bare hour from 1 to 7 means afternoon or evening, except after a part of the day (see below). Without a time, the task uses your default due time from Vikunja's settings. |
 | `every day`, `every other week`, `every month`, `weekly` | Repeat. Vikunja can't repeat on weekdays only or on specific days, so `every weekday` stays in the title and a chip says so. |
 | `(50%)` or `50%` at the end | Progress. `100%` is done. Pocket only. |
 | `x ` or `[x] ` at the start | Done already. Pocket only. A capital `X` works too. |
@@ -40,6 +40,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 
 - `at 5` is 5 PM. Vikunja reads it as 5 AM.
 - A part of the day after a day sets the time: `tomorrow morning` is 9 AM, `fri afternoon` 3 PM, `Oct 24 evening` 6 PM and `tomorrow night` 8 PM. `this morning` and `tonight` are today, even once that time has passed. `morning` on its own stays in the title. Vikunja reads `tonight` as 9 PM.
+- A bare hour after a morning is read as written: `tomorrow morning at 6` is 6 AM. After an evening or a night, a bare hour up to 11 is PM. After a night, `at 12` and `at midnight` are the midnight that ends the day, and `at 1` to `at 4` the small hours after it: `tonight at 1` is 1 AM tomorrow.
 - `every month` repeats on the same day each month. Vikunja uses every 30 days.
 - A date means its next occurrence. In June, `2nd March` is next March.
 - `10/12` follows your phone's locale. Vikunja always reads it as US format.

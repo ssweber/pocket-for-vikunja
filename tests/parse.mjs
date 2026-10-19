@@ -218,6 +218,55 @@ add({
   pocket: true,
   why: 'tonight is 8 PM, the time "tomorrow night" gets. Vikunja reads it as 9 PM',
 });
+// A part of the day with its day sets the time. Vikunja reads none of them but "tonight", so the rest stay in its title.
+add({
+  text: 'Lorem Ipsum tomorrow morning at 6',
+  title: 'Lorem Ipsum',
+  date: plus(1),
+  time: '6:0',
+  pocket: true,
+  why: 'a bare hour after a morning is read as written, 6 AM',
+});
+add({
+  text: 'Lorem Ipsum this morning at 5',
+  title: 'Lorem Ipsum',
+  date: ymd(REF),
+  time: '5:0',
+  pocket: true,
+  why: '"this morning" is today, even once its time has passed',
+});
+add({
+  text: 'Lorem Ipsum tonight at 1',
+  title: 'Lorem Ipsum',
+  date: plus(1),
+  time: '1:0',
+  pocket: true,
+  why: '1 to 4 after "tonight" are the small hours after it',
+});
+add({
+  text: 'Lorem Ipsum tonight at 12',
+  title: 'Lorem Ipsum',
+  date: plus(1),
+  time: '0:0',
+  pocket: true,
+  why: '12 after "tonight" is the midnight that ends the day',
+});
+add({
+  text: 'Lorem Ipsum tonight at midnight',
+  title: 'Lorem Ipsum',
+  date: plus(1),
+  time: '0:0',
+  pocket: true,
+  why: 'midnight after "tonight" ends the day, and the whole phrase leaves the title',
+});
+add({
+  text: 'Lorem Ipsum tomorrow night at 2',
+  title: 'Lorem Ipsum',
+  date: plus(2),
+  time: '2:0',
+  pocket: true,
+  why: '1 to 4 after "tomorrow night" are the small hours after it',
+});
 for (const [t, hm] of Object.entries({
   'at 15:00': '15:0',
   '@ 15:00': '15:0',

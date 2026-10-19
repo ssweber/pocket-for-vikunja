@@ -398,19 +398,16 @@ export function parseCapture(
         !r.start.isCertain('month');
       /* A bare hour from 1 to 7 is read as afternoon or evening, as people mean it: "at 5" is 5 PM. Vikunja's own quick
          add reads it as 5 AM. After an evening or a night, any bare hour up to 11 is PM: "tonight at 10" is 10 PM.
-         "5am", "5pm", "17:00" and "05:00" are read as written. */
-      const late = time === PARTS.evening || time === PARTS.night;
+         After a morning, a bare hour is read as written: "tomorrow morning at 6" is 6 AM. After a night, 12 is
+         midnight and 1 to 4 are the small hours after it. "5am", "5pm", "17:00" and "05:00" are read as written. */
+      const late = time === PARTS.evening || time === PARTS.night,
+        night = time === PARTS.night;
       const daytime = r => {
         const d = r.start.date(),
-          h = d.getHours();
-        if (
-          r.start.isCertain('hour') &&
-          !r.start.isCertain('meridiem') &&
-          h >= 1 &&
-          h <= (late ? 11 : 7) &&
-          !/(^|\D)0\d/.test(r.text)
-        )
-          d.setHours(h + 12);
+          h = d.getHours(),
+          bare = r.start.isCertain('hour') && !r.start.isCertain('meridiem') && !/(^|\D)0\d/.test(r.text);
+        if (bare && night && (h === 12 || h <= 4)) d.setHours(h % 12);
+        else if (bare && time !== PARTS.morning && h >= 1 && h <= (late ? 11 : 7)) d.setHours(h + 12);
         return d;
       };
       const dated = !day && results.find(r => !timeOnly(r));
@@ -434,8 +431,11 @@ export function parseCapture(
       }
       const clock = !(time instanceof Date) && results.find(r => r !== dated && timeOnly(r));
       if (clock) {
-        if (day) time = daytime(clock);
-        else {
+        if (day) {
+          time = daytime(clock);
+          // The hours after midnight belong to the night before: "tonight at 1" is 1 AM tomorrow.
+          if (night && time.getHours() < 5) day = dayFrom(day, 1);
+        } else {
           // a time with no date means its next occurrence
           const t = daytime(clock);
           day = new Date(now);
@@ -444,9 +444,12 @@ export function parseCapture(
           time = day;
         }
       }
-      // Remove the phrases that were read, the later one first so the earlier position stays valid.
-      for (const r of [dated, clock].filter(Boolean).sort((a, b) => b.index - a.index))
-        dropDate(r.index, r.index + r.text.length);
+      // Remove the phrases that were read, the later one first so the earlier position stays valid. chrono leaves the
+      // "at" out of "at midnight" and "at noon", though it takes it into "at 5".
+      for (const r of [dated, clock].filter(Boolean).sort((a, b) => b.index - a.index)) {
+        const at = r === clock ? out.title.slice(0, r.index).match(/(?:^|\s)at\s+$/i) : null;
+        dropDate(r.index - (at ? at[0].trimStart().length : 0), r.index + r.text.length);
+      }
     }
     if (day) {
       const d = new Date(day);

@@ -90,6 +90,30 @@ test('a bare hour after an evening or a night is PM, and one written with am sta
   });
 });
 
+test('a bare hour after a morning is read as written', () => {
+  for (const [phrase, due] of [
+    ['tomorrow morning at 6', '10/20 6:00'],
+    ['this morning at 5', '10/19 5:00'],
+    ['tomorrow morning at 7pm', '10/20 19:00'],
+  ])
+    sameAtEveryHour('Call mom ' + phrase, { title: 'Call mom', due, marked: [phrase] });
+});
+
+test('after tonight or a night, 12 and midnight end that day, and a bare 1 to 4 is in the small hours after it', () => {
+  for (const [phrase, due] of [
+    ['tonight at 12', '10/20 0:00'],
+    ['tonight at midnight', '10/20 0:00'],
+    ['tonight at 12:30', '10/20 0:30'],
+    ['tonight at 1', '10/20 1:00'],
+    ['tonight at 4', '10/20 4:00'],
+    ['tonight at 5', '10/19 17:00'],
+    ['tomorrow night at 2', '10/21 2:00'],
+    ['tonight at 12pm', '10/19 12:00'],
+  ])
+    sameAtEveryHour('Call mom ' + phrase, { title: 'Call mom', due, marked: [phrase] });
+  sameAtEveryHour('Call mom at midnight', { title: 'Call mom', due: '10/20 0:00', marked: ['at midnight'] });
+});
+
 test('a part of the day with no day sets nothing, and stays in the title', () => {
   for (const part of ['morning', 'afternoon', 'evening', 'night'])
     sameAtEveryHour('Call mom ' + part, { title: 'Call mom ' + part, due: null, marked: [] });
