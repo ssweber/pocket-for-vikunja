@@ -134,3 +134,48 @@ test('a weekday or a date with a part of the day is that day at that time', () =
     marked: ['tomorrow evening at 7'],
   });
 });
+
+test('a part of the day after a repeat sets the time it repeats at, and leaves the title with it', () => {
+  for (const [phrase, due] of [
+    ['every monday evening', '10/19 18:00'],
+    ['every monday night', '10/19 20:00'],
+    ['every friday afternoon', '10/23 15:00'],
+    ['every monday evening at 9', '10/19 21:00'],
+  ])
+    sameAtEveryHour('Call mom ' + phrase, { title: 'Call mom', due, marked: phrase.endsWith('9') ? ['at 9'] : [] });
+  for (const [region, parse] of Object.entries(REGIONS))
+    for (const h of HOURS) {
+      const p = parse('Call mom every monday evening', [], { now: new Date(2026, 9, 19, h) });
+      assert.deepEqual(
+        [p.repeat.label, p.marks.map(m => m.kind + ':' + 'Call mom every monday evening'.slice(m.start, m.end))],
+        ['Every Monday', ['repeat:every monday evening']],
+        `typed at ${h}:00, ${region}`,
+      );
+    }
+});
+
+test('a repeat with a part of the day and no day starts at the next time of that part', () => {
+  for (const [phrase, label] of [
+    ['every day morning', 'Every day'],
+    ['every 2 days evening', 'Every 2 days'],
+  ])
+    for (const [region, parse] of Object.entries(REGIONS))
+      for (const h of HOURS) {
+        const text = 'Water plants ' + phrase,
+          p = parse(text, [], { now: new Date(2026, 9, 19, h) }),
+          at = phrase.endsWith('morning') ? 9 : 18;
+        assert.deepEqual(
+          [p.title, p.repeat.label, p.due.getDate(), p.due.getHours(), p.dueFromRepeat, p.timeRead, p.marks.length],
+          ['Water plants', label, h < at ? 19 : 20, at, true, true, 1],
+          `${text}, typed at ${h}:00, ${region}`,
+        );
+      }
+});
+
+test('with dates tapped off, a part of the day after a repeat stays in the title', () => {
+  const p = parseCapture('Call mom every monday evening', [], {
+    now: new Date(2026, 9, 19, 10),
+    ignore: { due: true },
+  });
+  assert.deepEqual([p.title, p.repeat.label, p.due], ['Call mom evening', 'Every Monday', null]);
+});

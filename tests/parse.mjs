@@ -638,6 +638,32 @@ add({
   ...extra('"every monday" is a weekly repeat starting on the next Monday'),
 });
 add({
+  text: 'Team sync every monday evening',
+  title: 'Team sync',
+  repeat: { after: W, mode: 0 },
+  date: plus(4),
+  time: '18:0',
+  marked: ['repeat:every monday evening'],
+  ...extra('a part of the day after a repeat sets its time, and leaves the title with it'),
+});
+add({
+  text: 'Water plants every day morning',
+  title: 'Water plants',
+  repeat: { after: D, mode: 0 },
+  date: plus(1),
+  time: '9:0',
+  marked: ['repeat:every day morning'],
+  ...extra('a repeat with a part of the day and no day starts at the next time of that part'),
+});
+add({
+  text: 'Water plants every day evening',
+  title: 'Water plants',
+  repeat: { after: D, mode: 0 },
+  date: ymd(REF),
+  time: '18:0',
+  ...extra('a repeat with a part of the day and no day starts at the next time of that part'),
+});
+add({
   text: 'Water plants every 3 days',
   title: 'Water plants',
   repeat: { after: 3 * D, mode: 0 },

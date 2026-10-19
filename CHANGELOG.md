@@ -39,6 +39,8 @@ is a new 0.x.y.
   evening" 6pm and "tonight" 8pm ([guide](docs/guide.md#quick-add)). "morning" on its own stays in the title. A bare
   hour after a morning is read as written, and after an evening or a night is PM: "tonight at 10" is 10pm. After a
   night, 12 and midnight end the day, and 1 to 4 are the small hours after it: "tonight at 1" is 1am tomorrow.
+- Quick add reads a part of the day after a repeat: "every monday evening" repeats weekly from Monday at 6pm, and
+  "every day morning" daily at 9am.
 
 ### Changed
 

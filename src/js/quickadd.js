@@ -59,9 +59,11 @@ const dayFrom = (now, n) => {
   return d;
 };
 const laterThisWeek = now => ([5, 6, 0].includes(now.getDay()) ? 0 : 2); // from Friday to Sunday it is today, otherwise in two days
-// The time each part of the day sets. Only Pocket reads them, and only with a day: "friday evening" is Friday at 6 PM.
+// The time each part of the day sets. Only Pocket reads them, and only with a day or a repeat: "friday evening" is
+// Friday at 6 PM.
 const PARTS = { morning: '09:00', afternoon: '15:00', evening: '18:00', night: '20:00' },
-  PART_RE = Object.keys(PARTS).join('|');
+  PART_RE = Object.keys(PARTS).join('|'),
+  PART_AFTER = new RegExp(`^\\s+(${PART_RE})${END}`, 'i');
 /* Day phrases, with Vikunja's meanings. Longer phrases come first ("later next week" before "next week"). "this" before
    a part of the day is today, even once that time has passed, and the part sets the time (dropDay). */
 const DAY_WORDS = [
@@ -259,7 +261,8 @@ export function parseCapture(
   }
 
   // repeat: "every day", "every 3 days", "each two weeks", "every monday", "daily", "biannually", ...
-  let repeatDay = null;
+  let repeatDay = null,
+    repeatTime = null;
   if (!ignore.repeat) {
     m = out.title.match(
       new RegExp(
@@ -302,7 +305,6 @@ export function parseCapture(
               mode: 0,
               label: n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`,
             };
-      cut(m.index + m[1].length, m.index + m[0].length, 'repeat');
     } else if ((m = out.title.match(new RegExp(`(^|\\s)(?:every|each)\\s+(${WEEKDAY_RE})${END}`, 'i')))) {
       repeatDay = weekdayIndex(m[2]); // only Pocket reads "every monday"
       out.repeat = {
@@ -310,7 +312,13 @@ export function parseCapture(
         mode: 0,
         label: 'Every ' + WEEKDAYS[repeatDay][0].toUpperCase() + WEEKDAYS[repeatDay].slice(1),
       };
-      cut(m.index + m[1].length, m.index + m[0].length, 'repeat');
+    }
+    if (out.repeat) {
+      // A part of the day after a repeat sets its time, as after a day: "every monday evening" is Mondays at 6 PM.
+      // It is a due time, so with dates tapped off it stays in the title.
+      const p = !ignore.due && out.title.slice(m.index + m[0].length).match(PART_AFTER);
+      if (p) repeatTime = PARTS[p[1].toLowerCase()];
+      cut(m.index + m[1].length, m.index + m[0].length + (p ? p[0].length : 0), 'repeat');
     }
   }
 
@@ -318,18 +326,18 @@ export function parseCapture(
   if (!ignore.due) {
     const dropDate = (start, end) => cut(start - out.title.slice(0, start).match(DROP_LEAD)[0].length, end, 'due');
     let day = null,
-      time = null,
+      time = repeatTime,
       m; // day is a date at midnight. time is "HH:MM", or a full date from chrono
     // A part of the day right after a day sets the time, and is removed with the day: "tomorrow morning".
     const dropDay = (start, end) => {
-      const p = out.title.slice(end).match(new RegExp(`^\\s+(${PART_RE})${END}`, 'i'));
+      const p = out.title.slice(end).match(PART_AFTER);
       if (p) time = PARTS[p[1].toLowerCase()];
       dropDate(start, end + (p ? p[0].length : 0));
     };
     for (const w of DAY_WORDS)
       if ((m = out.title.match(w.re))) {
         day = w.day(now);
-        time = w.time || null;
+        time = w.time || time;
         dropDay(m.index + m[1].length, m.index + m[0].length);
         break;
       }
@@ -380,7 +388,7 @@ export function parseCapture(
           out.title[r.index - 1] !== P.assignee && // inside an @username
           !/^for\b/i.test(r.text) && // "for 2 hours" is a duration, not a date
           !/^now$/i.test(r.text) && // "Now what" isn't due this minute
-          !new RegExp(`^\\s*(?:${PART_RE})$`, 'i').test(r.text) && // a part of the day sets a time only with a day
+          !new RegExp(`^\\s*(?:${PART_RE})$`, 'i').test(r.text) && // a part of the day sets a time only with a day or a repeat
           !/^\d{1,4}[/.-]\d/.test(r.text) && // numeric dates are read above, at the start or end only
           // A month name on its own ("March madness") is read as a date only after in/by/on/before/until, as in "call Bob
           // in May".
@@ -459,11 +467,14 @@ export function parseCapture(
       out.timeRead = !!time;
     }
   }
-  // A repeating task needs a date to repeat from. It gets the next default due time.
+  // A repeating task needs a date to repeat from. It gets the next default due time, or the next time of its part of
+  // the day: "every day morning" typed at 10 AM starts tomorrow at 9 AM.
   if (out.repeat && !out.due && !ignore.due) {
-    const d = atTime(dayFrom(now, 0), dueTime);
-    out.due = d < now ? atTime(dayFrom(now, 1), dueTime) : d;
+    const at = repeatTime || dueTime,
+      d = atTime(dayFrom(now, 0), at);
+    out.due = d < now ? atTime(dayFrom(now, 1), at) : d;
     out.dueFromRepeat = true;
+    out.timeRead = !!repeatTime;
   }
   if (out.due) out.dueLabel = dueInfo(out.due.toISOString()).label;
   if (out.due && out.timeRead && !/\d:\d\d/.test(out.dueLabel)) out.dueLabel += ' ' + fmtTime(out.due); // for example "Oct 12 3:30 PM"
