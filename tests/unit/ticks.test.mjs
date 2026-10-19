@@ -803,15 +803,29 @@ test('Done today holds what the user ticked, what is assigned to them, what is i
     cases.map(([, want]) => want),
   );
 });
-test('on Today, a done row whose reactions Pocket has not read counts as ticked here, and one with only a teammate’s ✅ does not', () => {
-  const app = component(views, sending);
-  Object.assign(app, { user: { id: 1 }, seenBy: { 7: 2 }, route: { name: 'today' } });
-  app.view = { groups: todayGroups(), cards: {} };
-  const done = { id: 9, done: true, done_at: new Date().toISOString(), project_id: 7 };
-  assert.deepEqual(
-    [app.belongsIn(done, 'today'), app.belongsIn({ ...done, reactions: { '✅': [{ id: 2 }] } }, 'today')],
-    ['donetoday', null],
+test('on Today, Done today takes a task ticked here, sent or waiting, and not a teammate’s tick read without its ✅', async t => {
+  const now = new Date().toISOString(),
+    { v, app } = listed(
+      t,
+      [1, 2, 3].map(id => ({ id, title: 'Task ' + id, project_id: 7 })),
+      views,
+    );
+  Object.assign(app, { seenBy: { 7: 2 }, route: { name: 'today' } });
+  Object.assign(app.view, { groups: todayGroups(), cards: {} });
+  const place = id => app.belongsIn(app.tasks[id], 'today');
+  await app.act({ id: uuid7(), op: 'done', task: 1, run: null });
+  assert.deepEqual([app.pending.length, place(1)], [0, 'donetoday'], 'a tick Vikunja has answered');
+  Object.assign(v.task(2), { done: true, done_at: now }); // a teammate ticks it in the web app
+  await app.readCopy(2);
+  assert.deepEqual([app.tasks[2].done, place(2)], [true, null], 'a teammate’s tick, read without reactions');
+  assert.equal(
+    app.belongsIn({ ...app.tasks[2], reactions: { '✅': [{ id: 2 }] } }, 'today'),
+    null,
+    'a teammate’s tick, read with their ✅',
   );
+  noConnection(app, v);
+  await app.act({ id: uuid7(), op: 'done', task: 3, run: null });
+  assert.deepEqual([app.pending.length, place(3)], [1, 'donetoday'], 'a tick waiting to be sent');
 });
 test('Done today keeps only what was done today, also in a copy of Today saved on an earlier day', () => {
   const app = component(tasks, actions, cards, alerts, sending),

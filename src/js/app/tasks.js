@@ -73,6 +73,8 @@ const copies = new Map(); // task id -> Vikunja's last copy, holding only fields
 const bases = new Map(); // task id -> what a row was made from while Vikunja's copy of it is unknown
 // Outbox entries that no row shows any more, though they may still be in the outbox: answered, or a held delete undone.
 const settled = new Set();
+// Tasks the user marked done by an op Vikunja answered on this page, and didn't untick after (tickedByMe).
+const ticked = new Set();
 
 /* Vikunja's copy of a task only moves forward. Vikunja gives no version number, so Pocket orders what it learns by
    when it started each request, on `clock`. A field of a reply is taken only if its request started after the request
@@ -498,6 +500,9 @@ function answered(a, w, reply = null, posted = null) {
   // because Vikunja seemed to have its change already.
   const guessed = new Set(op.replyOnly(a));
   for (const id of ids) {
+    const done = typeof id === 'number' && op.apply({ id }, a).done;
+    if (done === true) ticked.add(id);
+    else if (done === false) ticked.delete(id);
     const had = copies.get(id) ?? bases.get(id);
     if (!had) continue;
     const now = real(op.apply(had, a)),
@@ -759,6 +764,12 @@ export default {
   // The ops waiting in the outbox that change task `id`, in the order they will be sent.
   opsOf(id) {
     return this.opsOn[id] || [];
+  },
+  /* Whether the user marked task `id` done: an op of theirs that does waits in the outbox, or Vikunja answered one on
+     this page. Done today tells the user's tick from a teammate's this way where it never read the task's ✅
+     (belongsIn). */
+  tickedByMe(id) {
+    return ticked.has(id) || this.opsOf(id).some(a => opOf(a).apply({ id }, a).done === true);
   },
   // The row for task `t` as a read gave it: the row already on screen, or a new one. Call it outside a change, since
   // a new row is made when the change ends.

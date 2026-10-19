@@ -402,6 +402,7 @@ export function component(...parts) {
     subRow: byId.subRow,
     withOps: byId.withOps,
     opsOf: byId.opsOf,
+    tickedByMe: byId.tickedByMe,
     beingDeleted: byId.beingDeleted,
     change: byId.change,
     shownAs: byId.shownAs,

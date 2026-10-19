@@ -610,11 +610,10 @@ export default {
     const t0 = startOfDay(),
       me = this.user?.id,
       mine = us => (us || []).some(u => u.id === me);
-    // Today's lists are read without reactions, and Pocket adds its ✅ only where they were read (marked, ops/shown.js).
-    // So a done row with none known counts as the user's, as a tick here is. A teammate's tick seen in a sheet's read
-    // counts too, until the next load.
+    // Today's open lists are read without reactions, and Pocket adds its ✅ only where they were read (marked,
+    // ops/shown.js). So a task the user ticked counts as theirs too.
     if (t.done)
-      return (this.doneByMe(t) || !('reactions' in t)) &&
+      return (this.doneByMe(t) || this.tickedByMe(t.id)) &&
         !this.stepRun(t) &&
         (!isSet(t.done_at) || new Date(t.done_at) >= t0)
         ? 'donetoday'
