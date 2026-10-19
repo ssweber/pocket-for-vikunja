@@ -678,7 +678,7 @@ test("a line whose answer the relay can't vouch for waits in the Outbox with Try
   );
   assert.equal(
     app.outboxLabel,
-    "Outbox, 1 couldn't be sent, 1 waiting to send",
+    "Outbox, 1 couldn't be saved, 1 waiting to send",
     "the header's button names the Outbox",
   );
   // A tick on another task goes out while the line waits, and flush leaves the line under it waiting too.

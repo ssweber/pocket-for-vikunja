@@ -355,14 +355,14 @@ test('beside each label is who recorded the answer that counts, or that a done s
 });
 
 // An answer still in the outbox shows its time, as a comment does, and sending words only once it has waited WAIT_MS
-// (waitText), on the same clock as a comment's test in cards.test.mjs.
+// (waitNote), on the same clock as a comment's test in cards.test.mjs.
 test('an answer still in the outbox shows its time, and sending words only after 2.5 seconds, or at once offline', c => {
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const { app, s } = cardStep();
   Object.defineProperties(
     app,
     Object.fromEntries(
-      ['markSlow', 'waitText', 'keyWaiting'].map(n => [n, Object.getOwnPropertyDescriptor(sending, n)]),
+      ['markSlow', 'waitNote', 'keyWaiting'].map(n => [n, Object.getOwnPropertyDescriptor(sending, n)]),
     ),
   );
   const at = new Date().toISOString(),

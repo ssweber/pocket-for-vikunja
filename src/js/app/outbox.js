@@ -3,7 +3,7 @@ import { fmtSize, taskDrafts } from '../util.js';
 import { addedText, parseStep } from '../checklists.js';
 import { older, sendState, sync, uuid7 } from '../sync.js';
 import { cancelling, cancelOf, dropUnder, opOf, passUps, photosOf } from '../ops/index.js';
-import { cancelled, notStopped, OUTBOX, refusedNote, STILL_OFFLINE, UNDO } from '../messages.js';
+import { cancelled, notStopped, OUTBOX, outboxLabel, refusedNote, STILL_OFFLINE, UNDO } from '../messages.js';
 import { copyOf } from './tasks.js';
 
 const whenText = at => {
@@ -62,11 +62,7 @@ export default {
   get outboxLabel() {
     const failed = this.outboxRows.filter(r => r.failed).length,
       waiting = this.outboxRows.length - failed;
-    return (
-      'Outbox, ' +
-      ([failed && `${failed} couldn't be sent`, waiting && `${waiting} waiting to send`].filter(Boolean).join(', ') ||
-        'nothing waiting to send')
-    );
+    return outboxLabel(failed, waiting);
   },
   get outboxStatus() {
     if (this.flushing) return OUTBOX.sending;

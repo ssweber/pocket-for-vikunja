@@ -25,7 +25,16 @@ import {
   viewKey,
 } from '../lists.js';
 import { cardGroup, countdown, openSubs, todayItems } from '../cards.js';
-import { couldnt, createdProject, headText, moreDone, offlineFor, projectNotSaved, SAID } from '../messages.js';
+import {
+  couldnt,
+  createdProject,
+  dueRowSaid,
+  headText,
+  moreDone,
+  offlineFor,
+  projectNotSaved,
+  SAID,
+} from '../messages.js';
 import { listViewOf } from '../order.js';
 import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
@@ -240,9 +249,7 @@ export default {
       : shortDue(t.due_date, new Date(this.rowNow()), { underToday: g?.key === 'today' });
     const said = meta
       .filter(m => !m.extra)
-      .map(m =>
-        m.key === 'due' ? m.label || (m.cls.includes('overdue') ? 'Late: ' : 'Due ') + m.text : m.label || m.text,
-      )
+      .map(m => (m.key === 'due' ? m.label || dueRowSaid(m.cls.includes('overdue'), m.text) : m.label || m.text))
       .filter(Boolean);
     return {
       prio: t.priority || 0,

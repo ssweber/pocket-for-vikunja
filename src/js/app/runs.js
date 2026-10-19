@@ -54,6 +54,8 @@ import {
   tickSaid,
   toOutbox,
   UNDO,
+  ringSaid,
+  startMarksDone,
   waitText,
 } from '../messages.js';
 import { newBox } from './core.js';
@@ -167,8 +169,7 @@ export default {
     if (!this.tickOf(t)) return `${t.title} is next due ${at(due)}. Starting this checklist doesn't change that date.`;
     const one = today ? `at ${due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : at(due);
     const next = vikunjaNext(t);
-    if (next === null)
-      return `This is the checklist due ${one}. Starting it marks ${t.title} done. ${t.title} doesn't repeat.`;
+    if (next === null) return `This is the checklist due ${one}. ${startMarksDone(t.title)}`;
     return `This is the checklist due ${one}. Starting it moves ${t.title} to ${at(new Date(nextAfter(t, next)))}.`;
   },
   get startProgress() {
@@ -467,7 +468,7 @@ export default {
       run = this.runTask;
     if (!r || !run) return null;
     const me = this.user,
-      note = c => noteOf(c, this.waitText(c.id));
+      note = c => noteOf(c, this.waitNote(c.id));
     // Place pending inserted or repeated steps before their original successor, or after their predecessor if that
     // successor is gone. Omit cancelled steps, and steps a waiting delete deletes. A step being inserted has no row, so
     // its ops are applied here.
@@ -715,7 +716,7 @@ export default {
     return {
       ...v.ring,
       open,
-      said: `${v.ring.done} of ${v.total} ${v.total === 1 ? 'step' : 'steps'} done, ${v.ring.pct}%`,
+      said: ringSaid(v.ring.done, v.total, 'step', v.ring.pct),
       tap: () => this.runRingTap(),
       label: v.finished
         ? 'Reopen ' + run.title

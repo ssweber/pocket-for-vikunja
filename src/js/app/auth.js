@@ -18,7 +18,7 @@ import { saved } from '../lists.js';
 import { dropCopies } from './tasks.js';
 import { dropLoads } from './views.js';
 import { cancelOf, opOf } from '../ops/index.js';
-import { signOutAsk } from '../messages.js';
+import { notExpected, SIGNED_OUT, signOutAsk, TOTP_NEEDED } from '../messages.js';
 
 let confirming = null; // app.confirmAccount() while it runs
 
@@ -46,7 +46,7 @@ export default {
       // Vikunja can clear the token for a moment while it renews it, so only a sign-out that lasts counts.
       clearTimeout(this.signOutCheck);
       this.signOutCheck = setTimeout(() => {
-        if (!sharedToken.get() && this.signedIn) this.signOut('You signed out in Vikunja.', { tellServer: false });
+        if (!sharedToken.get() && this.signedIn) this.signOut(SIGNED_OUT.there, { tellServer: false });
       }, 2000);
     } else if (t && t !== seenToken && this.signedIn && this.user) {
       // A new token is usually Vikunja renewing the session. It can also be someone else signing in on Vikunja's web
@@ -226,7 +226,7 @@ export default {
         this.login.showTotp = !!this.info.totp_enabled;
         if (this.passwordAllowed) this.$nextTick(() => this.$refs.inUser?.focus());
       } catch (err) {
-        this.login.err = err instanceof NetError ? netHelp() : `Vikunja didn't answer as expected (${errText(err)}).`;
+        this.login.err = err instanceof NetError ? netHelp() : notExpected(errText(err));
       }
     });
   },
@@ -246,7 +246,7 @@ export default {
           this.login.showTotp = true;
           this.$nextTick(() => this.$refs.inTotp.focus());
         }
-        this.login.err = err.code === 1017 ? 'Enter your two-factor code.' : errText(err);
+        this.login.err = err.code === 1017 ? TOTP_NEEDED : errText(err);
       }
     });
   },

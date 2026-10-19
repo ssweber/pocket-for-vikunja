@@ -28,6 +28,7 @@ import {
   textBack,
   toOutbox,
   UNDO,
+  waitingWords,
   waitText,
 } from '../messages.js';
 import { fileEntry, held, itemsOf, older, slowness, sync, uuid7 } from '../sync.js';
@@ -560,8 +561,8 @@ export default {
   },
   // The words under a change still on its way, by its entry's id. A change answered within WAIT_MS shows none, so
   // the words don't flash up on every quick add or comment.
-  waitText(id) {
-    return !this.slow.includes(id) ? '' : this.offline ? 'Waiting for a connection' : 'Sending…';
+  waitNote(id) {
+    return this.slow.includes(id) ? waitingWords(this.offline) : '';
   },
   // The label of a waiting row's Cancel, which says what becomes of the lines waiting under it.
   cancelLabel(t) {

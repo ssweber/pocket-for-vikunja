@@ -617,7 +617,7 @@ const fmtWhen = d => new Date(d).toLocaleString([], { dateStyle: 'medium', timeS
 // A comment as shown. An answer comment's last line, pocket:answer, is Pocket's and is left out.
 export const isAnswer = html => /pocket:answer/i.test(html || '');
 export const commentShown = html => (isAnswer(html) ? notesOnly(html) : html);
-// A comment as a note. `wait` is the words a comment still being sent shows in place of its time (waitText).
+// A comment as a note. `wait` is the words a comment still being sent shows in place of its time (waitNote).
 export const noteOf = (c, wait = '') => ({
   id: c.id,
   comment: commentShown(c.comment),

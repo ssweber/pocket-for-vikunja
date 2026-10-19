@@ -1291,13 +1291,13 @@ test("time passing recalculates a checklist only when a countdown's text changes
 
 /* A change shows sending words only once it has waited WAIT_MS without an answer (markSlow), or at once offline, so a
    quick answer shows none. A subtask added in a sheet, a comment in a sheet and a comment on a checklist all read the
-   words from waitText. Until then the comment on the checklist shows its time. */
+   words from waitNote. Until then the comment on the checklist shows its time. */
 test('a subtask or a comment added in a sheet or on a checklist shows sending words only after 2.5 seconds, or at once offline', c => {
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const app = Object.defineProperties(
     runScreen(),
     Object.fromEntries(
-      ['markSlow', 'waitText', 'keyWaiting', 'pendingTasks', 'pendingSubtasks', 'pendingComments'].map(n => [
+      ['markSlow', 'waitNote', 'keyWaiting', 'pendingTasks', 'pendingSubtasks', 'pendingComments'].map(n => [
         n,
         Object.getOwnPropertyDescriptor(sending, n) || Object.getOwnPropertyDescriptor(sheetPart, n),
       ]),
@@ -1317,8 +1317,8 @@ test('a subtask or a comment added in a sheet or on a checklist shows sending wo
     return new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   };
   const words = () => [
-    app.waitText(app.pendingSubtasks[0].entry),
-    app.waitText(app.pendingComments[0].id),
+    app.waitNote(app.pendingSubtasks[0].entry),
+    app.waitNote(app.pendingComments[0].id),
     app.runView.notes[0].when,
   ];
   const when = queue();

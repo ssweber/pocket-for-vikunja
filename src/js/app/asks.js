@@ -44,11 +44,11 @@ export default {
     return range ? { text: 'Expected ' + range, cls: '' } : null;
   },
   // Beside an ask's label: who recorded the answer that counts and when, or that a done step has none. An answer still
-  // in the outbox shows its time until it has waited a while (waitText).
+  // in the outbox shows its time until it has waited a while (waitNote).
   askBy(s, a) {
     const ans = s.answers?.[a.key];
     if (!ans) return s.done ? 'Not recorded' : '';
-    const wait = ans.waiting && this.waitText(ans.waiting);
+    const wait = ans.waiting && this.waitNote(ans.waiting);
     if (wait) return wait;
     const at = new Date(ans.created),
       today = new Date().toDateString() === at.toDateString();

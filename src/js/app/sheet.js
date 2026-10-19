@@ -8,7 +8,18 @@ import { listViewOf, positionOrder } from '../order.js';
 import { atTime } from '../quickadd.js';
 import { inTextField, slideStarts, typedIn } from '../progress.js';
 import { fileEntry, randomId, sync } from '../sync.js';
-import { couldnt, NOT_KEPT, notDone, noUser, OPEN, repeatDate, SAID, tooBigText, waitText } from '../messages.js';
+import {
+  COMMENTS_OFFLINE,
+  couldnt,
+  NOT_KEPT,
+  notDone,
+  noUser,
+  OPEN,
+  repeatDate,
+  SAID,
+  tooBigText,
+  waitText,
+} from '../messages.js';
 import { blankSheet, shared } from './core.js';
 import { sliding } from './progress.js';
 import { seats, seatUnder } from './seat.js';
@@ -692,8 +703,7 @@ export default {
       if (this.sheet.id !== id) return;
       if (e instanceof NetError) {
         this.sheet.comments ||= [];
-        this.sheet.commentsNote =
-          'Offline. Comments load when Pocket reaches Vikunja. A comment you write now is posted then.';
+        this.sheet.commentsNote = COMMENTS_OFFLINE;
       } else this.sheet.commentsNote = errText(e);
     }
   },

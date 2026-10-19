@@ -11,7 +11,7 @@ import { parseStep, runWithoutDay, stepsOf, whereNext } from '../checklists.js';
 import { pctOf, workedOut } from '../progress.js';
 import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js';
 import { listViewOf, positionOrder } from '../order.js';
-import { completeAsk } from '../messages.js';
+import { completeAsk, ringSaid } from '../messages.js';
 import { started, TASK_COUNT } from './tasks.js';
 
 const shownStep = new Map(); // card id -> the step last on its top row, to tell when a new one arrives
@@ -185,7 +185,7 @@ export default {
           : repeats(t)
             ? 'Mark done: ' + t.title
             : `Complete ${title} and its ${n(open, 'open subtask')}`;
-    return { ...w, open, run, said: `${w.done} of ${n(w.total, what)} done, ${w.pct}%`, label };
+    return { ...w, open, run, said: ringSaid(w.done, w.total, what, w.pct), label };
   },
   // A row shows a ring instead of its tick for a checklist, done or not, and for an open task with subtasks. Rows in a
   // sheet and a checklist's steps have no ring. A checklist's own row at the top of its screen gets that screen's ring

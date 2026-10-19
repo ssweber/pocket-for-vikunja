@@ -14,6 +14,7 @@ import {
   changedBut,
   changedSince,
   checklistsOn,
+  COMMENTS_OFFLINE,
   completeAsk,
   COPIED,
   couldnt,
@@ -34,6 +35,7 @@ import {
   doneRepeats,
   doneText,
   dueNow,
+  dueRowSaid,
   dueSaid,
   fileLost,
   fileNotKnown,
@@ -52,10 +54,11 @@ import {
   noLongerSub,
   NOT_KEPT,
   notDone,
+  notExpected,
   notKnown,
   notMovedBack,
-  notRepeated,
   notReordered,
+  notRepeated,
   notSaved,
   notStopped,
   notUploaded,
@@ -65,6 +68,7 @@ import {
   OP_WORDS,
   othersDoneAsk,
   OUTBOX,
+  outboxLabel,
   photosLater,
   placeSaid,
   progressSaid,
@@ -76,14 +80,17 @@ import {
   repeatDate,
   repeatedStep,
   repeatsNext,
+  ringSaid,
   SAID,
   savedOffline,
   SENT_FIRST,
   sentBut,
   sentLater,
   setUpText,
+  SIGNED_OUT,
   signOutAsk,
   startedText,
+  startMarksDone,
   STILL_OFFLINE,
   subsNotUnder,
   templateCreated,
@@ -92,10 +99,12 @@ import {
   templateProblem,
   textBack,
   tickSaid,
-  toOutbox,
   tooBigText,
+  toOutbox,
+  TOTP_NEEDED,
   UNDO,
   UNKNOWN,
+  waitingWords,
   waitText,
 } from '../../src/js/messages.js';
 import { ZERO as ZERO_DATE } from '../../src/js/util.js';
@@ -334,8 +343,45 @@ test('signing out names what hasn’t reached Vikunja, counting every waiting op
   );
 });
 
+test('the Outbox button, a waiting change and comments that load later say why in words of their own', () => {
+  assert.deepEqual(
+    [outboxLabel(1, 2), outboxLabel(0, 1), outboxLabel(2, 0), outboxLabel(0, 0)],
+    [
+      "Outbox, 1 couldn't be saved, 2 waiting to send",
+      'Outbox, 1 waiting to send',
+      "Outbox, 2 couldn't be saved",
+      'Outbox, nothing waiting to send',
+    ],
+  );
+  assert.deepEqual([waitingWords(true), waitingWords(false)], ['Waiting for a connection', 'Sending…']);
+  assert.equal(
+    COMMENTS_OFFLINE,
+    "Offline. Comments load once you're back online. A comment you write now goes to Vikunja then.",
+  );
+});
+
+test('the sign-in screen says why Pocket signed out, and what Vikunja asked for', () => {
+  assert.deepEqual(
+    [SIGNED_OUT.ended, SIGNED_OUT.there, TOTP_NEEDED, notExpected('Bad Gateway')],
+    [
+      'Your session ended. Sign in again.',
+      'You signed out in Vikunja.',
+      'Enter your two-factor code.',
+      "Vikunja didn't answer as expected (Bad Gateway).",
+    ],
+  );
+});
+
 test('a change the phone had no room for says so in one sentence', () => {
   assert.equal(NOT_KEPT, "Pocket couldn't save this on the phone. Keep Pocket open until it's sent.");
+});
+
+test("a screen reader hears a ring's progress and a row's due date", () => {
+  assert.deepEqual(
+    [ringSaid(1, 1, 'step', 100), ringSaid(2, 5, 'subtask', 40)],
+    ['1 of 1 step done, 100%', '2 of 5 subtasks done, 40%'],
+  );
+  assert.deepEqual([dueRowSaid(true, 'Mon'), dueRowSaid(false, '9:00 AM')], ['Late: Mon', 'Due 9:00 AM']);
 });
 
 test('a screen reader hears what a tick, a progress, a move or a delete did, and what is beside a message', () => {
@@ -438,9 +484,10 @@ test('the sheets and checklists say what was made, changed or found wrong', () =
     'Template created. Due daily at 8:00 AM. Starting it on or after the due day moves it to its next date.',
   );
   assert.equal(
-    templateMade('Due Fri', false),
-    "Template created. Due Fri. Starting it on or after the due day marks it done, because it doesn't repeat.",
+    templateMade('Due Fri', false, 'Closing'),
+    "Template created. Due Fri. Starting a checklist marks “Closing” done, because it doesn't repeat.",
   );
+  assert.equal(startMarksDone('Closing'), "Starting a checklist marks “Closing” done, because it doesn't repeat.");
   assert.equal(templateCreated('Closing'), 'Created Closing. Start it here.');
   assert.equal(setUpText(true), 'Created the Checklists project, with an example template to try.');
   assert.equal(
