@@ -290,12 +290,12 @@ class Model {
     const b = this.copies.get(id) ?? this.bases.get(id);
     return b ? this.waitingOn(id).reduce((t, a) => opOf(a).apply(t, a), b) : null;
   }
-  /* The ids the outbox's entries point to, a waiting step's as its id once it is made. An entry counts from when the
-     outbox holds it in memory, as it does while the database saves it. */
+  /* The ids the outbox's entries point to, a waiting step's as its id once it is made. They are read from the outbox's
+     memory, which holds an entry before the database has saved it and drops it before the database has deleted it. */
   pointed() {
     const out = new Set(),
       real = id => (typeof id === 'string' ? (sync.taskOf(id.replace(/^pending-/, '')) ?? id) : id);
-    for (const e of [...stores.get('outbox').values(), ...sync.entries.values()])
+    for (const e of sync.entries.values())
       if (e.user === ME.id)
         for (const id of [...(e.kind === 'act' && OPS[e.op] ? opOf(e).on(e) : []), e.task, e.taskId])
           if (id != null) out.add(String(real(id)));
@@ -2120,8 +2120,8 @@ test("a read that runs while the relay answers an op's request as unknown is lef
 });
 
 /* A tick on step 3 is on its way when the user deletes checklist 1, and a teammate deletes step 3. The tick's 404 has
-   the store read step 3 again, which finds it gone while the delete, held in memory as the outbox saves it, still
-   points to it. So step 3 stays until the delete is answered. */
+   the store read step 3 again, which finds it gone while the delete, in the outbox's memory as the database saves it,
+   still points to it. So step 3 stays until the delete is answered. */
 test('a task found gone stays while an entry the outbox is still saving points to it', async t => {
   const w = await open(t.mock.timers);
   try {
@@ -2131,6 +2131,28 @@ test('a task found gone stays while an entry the outbox is still saving points t
       new Queue('delete, with no Restore', 1),
       new TeammateDeletes(3),
       new Sweep([]),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* Make template on step 2 is on its way when a teammate deletes step 2, and the user deletes it too. The template's
+   404 has the store read step 2 again, which finds it gone, and step 2 is forgotten once the failed Make template
+   leaves the outbox's memory, before the database has deleted it. */
+test('a task found gone is forgotten once the entry pointing to it leaves the outbox', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('makeTemplate', 2),
+      new Send(false),
+      new TeammateDeletes(2),
+      new StepMade(),
+      new Queue('delete, with no Restore', 2),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
