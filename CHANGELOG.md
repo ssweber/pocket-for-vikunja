@@ -58,6 +58,8 @@ is a new 0.x.y.
 - The start of a project's name, as in `+gar`, picks a project only when no other project's name starts the same way.
   Otherwise the add box offers to create the project.
 - A label's chip says "new label" when sending the task will create that label.
+- Rows that belong somewhere else now, such as a task unticked in Done today, a checklist finished or reopened, or a
+  task moved to another project, move there as ticked rows leave, and never while you touch the screen.
 
 ### Fixed
 

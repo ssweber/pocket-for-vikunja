@@ -64,11 +64,10 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Finish what is being built.** Rows move where they belong when the batch clears (`docs/design/regroup.md`).
-2. **Release 0.2.0.** Condense `CHANGELOG.md`'s Unreleased, merge `dev` into `main` by pull request, and publish
+1. **Release 0.2.0.** Condense `CHANGELOG.md`'s Unreleased, merge `dev` into `main` by pull request, and publish
    `v0.2.0`. Delete the `v0.1.0-rc.1` pre-release and its tag.
-3. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
-4. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
+2. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
+3. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
 
 The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
 send whenever the user chooses.
