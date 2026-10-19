@@ -40,6 +40,8 @@ Built on `dev`, and described by the code and its comments:
 - every write through the outbox, except what stays direct (below), with lint holding it: the writes allowlist and
   the keys rule;
 - one answer each for a task's role (`roleOf`) and Today's groups (`dayGroup`);
+- every sentence Pocket shows, asks or announces from `messages.js`, one wording for each situation, with lint holding
+  it;
 - sign-in with Vikunja's session only;
 - screens saved on the phone as the ids of their tasks, with the store's copies kept beside them, swept to what the
   kept screens and the outbox need, and kept on the phone as Pocket is hidden too;
@@ -121,15 +123,6 @@ project with links, and people and labels. These are left:
   it, has no dates to check against. It counts any date other than the one before as changed since.
 - No screen offers an Undo for a person or a label, though their ops have an `invert`.
 
-### 12. Messages
-
-Every user-facing string comes from a function in `messages.js`: messages, Undo and Try again labels, confirms, and
-what is announced to screen readers (`this.said`). One wording per situation: a lost connection, "changed since then",
-a refusal with Vikunja's reason. Text from Vikunja stays escaped (`errText`). Tests in `messages.test.mjs` for each
-new function, singular and plural. Turn on the messages rule. From the Veyrn comparison: the sign-out confirm calls
-every waiting op that isn't a line "a change to a checklist". Make template's Cancel after an unknown answer says
-"Vikunja may or may not have this change", though it now takes the change back.
-
 ### 13. Clean up
 
 Update `development.md`. Rule 1 becomes "A task is Vikunja's copy with the outbox's ops applied, read from the store by
@@ -147,15 +140,6 @@ table. Delete this file.
 
 Point `api()`'s `key` option at `/api/v2`, delete `relay.go`, and add a migration that drops `pocket_relay`. Raise
 the minimum Vikunja version. `docs/design/upstream-idempotency-key.md` asks for it.
-
-## Lint rules still to turn on
-
-They join the one `no-restricted-syntax` array in `eslint.config.js`, because a second entry for the rule replaces the
-first.
-
-| Phase | Rule                                                                                                                 | Allowed in           |
-| ----- | -------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 12    | Messages: a string or template literal as the first argument of `say`, `notify` or `confirm`, or assigned to `said`. | `src/js/messages.js` |
 
 ## After the major work
 
