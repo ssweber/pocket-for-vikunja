@@ -1234,6 +1234,9 @@ try {
       await ctx.setOffline(true);
       await throwAt('tomorrow');
       await later(5100); // the gap it left leaves with the batch
+      // The gap collapses on real frames, and the page's clock makes the next hold shorter than that. Removing the gap
+      // shortens the page, and when the page is scrolled to its bottom, that scroll closes the next hold's chips.
+      await expect(p.locator('#view .moved-gap')).toHaveCount(0);
       await throwAt('none');
       const undo = p
         .locator('#view .moved-gap')
