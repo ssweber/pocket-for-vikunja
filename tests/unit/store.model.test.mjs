@@ -1630,16 +1630,21 @@ class Sweep extends Command {
     return `Sweep(${this.ts})`;
   }
 }
-// Pocket comes back to the screen and catches up: it reads the tasks changed since, and forgets those deleted.
+/* Pocket comes back to the screen, or the connection comes back, and catches up: it reads the tasks changed since,
+   and forgets those deleted. Coming back to the screen catches up at most once a minute. */
 class CatchUp extends Command {
+  constructor(reconnected) {
+    super();
+    this.reconnected = reconnected;
+  }
   can() {
     return true;
   }
   async act(w) {
-    w.bg(w.app.catchUp());
+    w.bg(w.app.catchUp(this.reconnected));
   }
   toString() {
-    return 'CatchUp';
+    return `CatchUp(${this.reconnected ? 'reconnected' : 'back'})`;
   }
 }
 // Pocket reloads, between any two requests of an op, with the connection cut first or not (World.reload).
@@ -1718,7 +1723,7 @@ const COMMANDS = [
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
   fc.uniqueArray(target, { maxLength: 3 }).map(ts => new Sweep(ts)),
   fc.boolean().map(cut => new Reload(cut)),
-  fc.constant(new CatchUp()),
+  fc.boolean().map(r => new CatchUp(r)),
 ];
 
 /* Send and answer everything still waiting: make the step, cancel what Vikunja refused, send what

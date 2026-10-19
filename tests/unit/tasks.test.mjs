@@ -1549,7 +1549,8 @@ test('catching up asks about a long list of tasks a part at a time', async t => 
 });
 
 /* Vikunja's /tasks leaves out an archived project's tasks. A task in a project Pocket doesn't list isn't asked about,
-   and one whose project was archived after Pocket listed it is read alone, which finds it. */
+   and one whose project was archived after Pocket listed it is read alone, which finds it. The next catch-up on the
+   page doesn't ask about it again. */
 test('catching up keeps the tasks of an archived project', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { v, app, gets } = caught({ id: 4, title: 'Count the float', project_id: 6, updated: '2020-01-01T00:00:00Z' });
@@ -1570,6 +1571,30 @@ test('catching up keeps the tasks of an archived project', async t => {
       .map(r => r.path),
     ['/tasks/1', '/tasks/2', '/tasks/3'],
   );
+  const asked = gets().length;
+  await app.catchUp(true);
+  assert.deepEqual(
+    gets()
+      .slice(asked)
+      .map(r => r.query.get('filter').split(' ')[0]),
+    ['updated'],
+    'only the changed tasks are read',
+  );
+});
+
+// A user may switch apps often. Coming back to the screen catches up at most once a minute, and a reconnect always.
+test('coming back to the screen catches up at most once a minute, and the connection coming back always', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-18T09:00:00Z') });
+  const { app, gets } = caught(),
+    catchUps = () => gets().filter(r => /^updated > /.test(r.query.get('filter'))).length;
+  await app.catchUp();
+  await app.catchUp();
+  assert.equal(catchUps(), 1);
+  await app.catchUp(true);
+  assert.equal(catchUps(), 2, 'the connection came back');
+  t.mock.timers.setTime(Date.now() + 61000);
+  await app.catchUp();
+  assert.equal(catchUps(), 3);
 });
 
 // Pocket keeps the copies that changed on the phone as it is hidden, so an offline open shows the newest copy it had.

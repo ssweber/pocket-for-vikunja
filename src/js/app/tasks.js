@@ -600,6 +600,8 @@ export const dropCopies = () => {
   unread = null;
   caughtAt = null;
   shownFrom = Date.now();
+  lastTried = 0;
+  alone.clear();
 };
 
 /* Vikunja's copies are kept on the phone, each under its own key, with the list of their ids. So a screen saved as
@@ -694,7 +696,13 @@ const missing = new Set();
    read (restore). */
 let caughtAt = null,
   shownFrom = Date.now(),
-  catching = false;
+  catching = false,
+  lastTried = 0; // when the last catch-up started, on the phone's clock
+// A user may switch apps often, so coming back to the screen catches up at most this often. A reconnect always does.
+const CATCH_UP_MS = 60e3;
+// The tasks /tasks leaves out that a read of the task alone found, as one whose project was archived since Pocket
+// listed it. /tasks would leave them out on every catch-up, so this page doesn't ask about them again.
+const alone = new Set();
 // How many ids one request names. Some proxies refuse a URL over about 8 KB, and an id takes up to about 12 bytes.
 export const ID_CHUNK = 300;
 
@@ -803,10 +811,15 @@ export default {
   /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
      keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
      while a write to its task was in flight is thrown away. `updated` misses labels, people, reactions, positions and
-     subtasks ticked, so each screen's own load still runs. A catch-up that fails is tried again the next time. */
-  async catchUp() {
+     subtasks ticked, so each screen's own load still runs. A catch-up that fails is tried again the next time.
+     `reconnected` says the connection came back. Otherwise the catch-up waits for CATCH_UP_MS since the last, unless
+     the phone's clock went back meanwhile. */
+  async catchUp(reconnected = false) {
+    const now = Date.now();
     if (!this.user || this.offline || !outboxRead || catching) return;
+    if (!reconnected && now >= lastTried && now - lastTried < CATCH_UP_MS) return;
     catching = true;
+    lastTried = now;
     const from = serverTime(Date.now()),
       was = shownFrom,
       since = Math.min(caughtAt ?? Infinity, was === null ? Infinity : serverTime(was));
@@ -842,8 +855,8 @@ export default {
      since only Vikunja's 404 for the task itself says it was deleted. Vikunja's /tasks leaves out the tasks of an
      archived project, so only the tasks of the projects Pocket lists are asked about. */
   async findRemoved() {
-    const ids = [...new Set([...copies.keys(), ...bases.keys()])].filter(id =>
-      this.projById?.has(keptCopy(id)?.project_id),
+    const ids = [...new Set([...copies.keys(), ...bases.keys()])].filter(
+      id => !alone.has(id) && this.projById?.has(keptCopy(id)?.project_id),
     );
     for (let i = 0; i < ids.length; i += ID_CHUNK) {
       const part = ids.slice(i, i + ID_CHUNK),
@@ -854,7 +867,11 @@ export default {
       await inBatches(
         part.filter(id => !found.has(id)),
         6,
-        id => this.readCopy(id).catch(() => null),
+        id =>
+          this.readCopy(id).then(
+            () => alone.add(id),
+            () => null,
+          ),
       );
     }
   },

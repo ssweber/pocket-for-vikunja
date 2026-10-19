@@ -232,7 +232,7 @@ export default () => ({
     // Show pending entries as waiting immediately when the connection is lost, and catch up once it is back.
     this.$watch('offline', v => {
       this.markSlow();
-      if (!v) this.catchUp();
+      if (!v) this.catchUp(true);
     });
     // Expose sending state on the page so tests can wait until all changes reach Vikunja.
     Alpine.effect(() => {
