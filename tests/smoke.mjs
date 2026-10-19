@@ -6035,16 +6035,17 @@ ${footName('Hooks')}`);
   const ringPct = sel =>
     page.locator(sel).evaluate(el => Math.round(parseFloat(getComputedStyle(el).getPropertyValue('--ring')) * 100));
   await step('a-task-with-subtasks-is-a-stacked-card-on-today', async () => {
+    // Due in the last minute of today, so the card is under Today whenever the test runs.
     const P = await make(`Review the deliveries and restock the café before opening ${stamp}`, {
-      due_date: todayAt(23),
+      due_date: todayAt(23, 59),
       priority: 3,
     });
     const [A, B, C] = [
       await make(`Pocket smoke card A ${stamp}`),
       await make(`Pocket smoke card B ${stamp}`),
-      await make(`Pocket smoke card C ${stamp}`, { due_date: todayAt(23) }), // due later today, at any hour before 11pm
+      await make(`Pocket smoke card C ${stamp}`, { due_date: todayAt(23, 59) }),
     ];
-    const Q = await make(`Pocket smoke card's neighbour ${stamp}`, { due_date: todayAt(23) }); // a plain row next to the card on Today
+    const Q = await make(`Pocket smoke card's neighbour ${stamp}`, { due_date: todayAt(23, 59) }); // a plain row next to the card on Today
     await under(P, [A, B, C]);
     await placeIn(await listView(home2), [
       [B, 100],
@@ -6091,21 +6092,21 @@ ${footName('Hooks')}`);
       await expect(card.locator('.card-open > .dot')).toHaveCount(1);
       await expect(line.locator('.dot')).toHaveCount(0);
       await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .dot`)).toHaveCount(1);
-      // Due times are written short, "11p" where the phone writes "11:00 PM". This applies to the card's header, its
-      // row and a plain row. A screen reader announces the time in full.
-      const clock = (p, h) =>
-        p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), todayAt(h));
-      const [at23, at22] = [await clock(page, 23), await clock(page, 22)];
-      if (/PM$/.test(at23) && (shortTime(at23) !== '11p' || shortTime(at22) !== '10p'))
-        throw new Error(`${at23} and ${at22} shorten to ${shortTime(at23)} and ${shortTime(at22)}`);
-      await expect(card.locator('.card-head .due')).toHaveText(shortTime(at23));
-      await expect(line.locator('.when .due')).toHaveText(shortTime(at23));
+      // Due times are written short, "11p" where the phone writes "11:00 PM", and "11:59p" for "11:59 PM". This applies
+      // to the card's header, its row and a plain row. A screen reader announces the time in full.
+      const clock = (p, h, m) =>
+        p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), todayAt(h, m));
+      const [at23, at2359] = [await clock(page, 23), await clock(page, 23, 59)];
+      if (/PM$/.test(at23) && (shortTime(at23) !== '11p' || shortTime(at2359) !== '11:59p'))
+        throw new Error(`${at23} and ${at2359} shorten to ${shortTime(at23)} and ${shortTime(at2359)}`);
+      await expect(card.locator('.card-head .due')).toHaveText(shortTime(at2359));
+      await expect(line.locator('.when .due')).toHaveText(shortTime(at2359));
       await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .due`)).toHaveText(
-        shortTime(at23),
+        shortTime(at2359),
       );
-      await expect(card.locator('.card-head .sr')).toContainText('Today ' + at23);
-      await expect(line.locator('.title')).toContainText('Today ' + at23);
-      // On a phone with a 24-hour clock, the time is written the way that phone writes it, such as "23:00".
+      await expect(card.locator('.card-head .sr')).toContainText('Today ' + at2359);
+      await expect(line.locator('.title')).toContainText('Today ' + at2359);
+      // On a phone with a 24-hour clock, the time is written the way that phone writes it, such as "23:59".
       const other = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB' }),
         p24 = await other.newPage();
       try {
@@ -6115,8 +6116,8 @@ ${footName('Hooks')}`);
         await p24.evaluate(() => {
           location.hash = '#/today';
         });
-        const theirs = await clock(p24, 23);
-        if (!/^23[:.]00$/.test(theirs)) throw new Error('a browser set to en-GB writes 11 PM as ' + theirs);
+        const theirs = await clock(p24, 23, 59);
+        if (!/^23[:.]59$/.test(theirs)) throw new Error('a browser set to en-GB writes 11:59 PM as ' + theirs);
         await expect(p24.locator(`${cardOf(P.title)} .card-head .due`)).toHaveText(theirs, { timeout: 15000 });
         await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(theirs);
       } finally {
@@ -6588,7 +6589,7 @@ ${footName('Hooks')}`);
 
   await step('a-subtask-due-today-brings-its-undated-task-and-today-opens-with-it-at-once', async () => {
     const P = await make(`Pocket smoke undated card ${stamp}`),
-      X = await make(`Pocket smoke due kid ${stamp}`, { due_date: todayAt(23) }),
+      X = await make(`Pocket smoke due kid ${stamp}`, { due_date: todayAt(23, 59) }), // due today at any hour
       Y = await make(`Pocket smoke undated kid ${stamp}`);
     await under(P, [X, Y]);
     await placeIn(await listView(home2), [
