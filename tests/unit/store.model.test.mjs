@@ -290,11 +290,12 @@ class Model {
     const b = this.copies.get(id) ?? this.bases.get(id);
     return b ? this.waitingOn(id).reduce((t, a) => opOf(a).apply(t, a), b) : null;
   }
-  // The ids the outbox's entries point to, from the outbox's database, a waiting step's as its id once it is made.
+  /* The ids the outbox's entries point to, a waiting step's as its id once it is made. An entry counts from when the
+     outbox holds it in memory, as it does while the database saves it. */
   pointed() {
     const out = new Set(),
       real = id => (typeof id === 'string' ? (sync.taskOf(id.replace(/^pending-/, '')) ?? id) : id);
-    for (const e of stores.get('outbox').values())
+    for (const e of [...stores.get('outbox').values(), ...sync.entries.values()])
       if (e.user === ME.id)
         for (const id of [...(e.kind === 'act' && OPS[e.op] ? opOf(e).on(e) : []), e.task, e.taskId])
           if (id != null) out.add(String(real(id)));
@@ -2108,6 +2109,28 @@ test("a read that runs while the relay answers an op's request as unknown is lef
       new Drop(0),
       new Answer('lost', 0),
       new Answer('unknown', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* A tick on step 3 is on its way when the user deletes checklist 1, and a teammate deletes step 3. The tick's 404 has
+   the store read step 3 again, which finds it gone while the delete, held in memory as the outbox saves it, still
+   points to it. So step 3 stays until the delete is answered. */
+test('a task found gone stays while an entry the outbox is still saving points to it', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('done', 3),
+      new Send(false),
+      new Queue('delete, with no Restore', 1),
+      new TeammateDeletes(3),
+      new Sweep([]),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);
