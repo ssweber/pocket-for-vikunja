@@ -2191,3 +2191,25 @@ test('a replayed reply older than what Pocket read before a sweep leaves the cop
     await w.close();
   }
 });
+
+test("a read's comments are taken after a sweep, though a catch-up that started later brought none", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('answer', 1),
+      new Send(false),
+      new Answer('arrives', 0),
+      new StartRead([1], false),
+      new StartRead([1], true),
+      new CatchUp(false),
+      new Sweep([]),
+      new StartRead([1], false),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
