@@ -1,11 +1,11 @@
 // How quick add reads dates and parts of the day (src/js/quickadd.js), with the page's chrono, in a region that writes
-// the month first and in one that writes the day first. tests/parse.mjs holds the other phrases. The clock is Monday
-// 19 October 2026.
+// the month first and in one that writes the day first, and what a @user, *label or +project leaves in the title.
+// tests/parse.mjs holds the other phrases. The clock is Monday 19 October 2026.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { parseCapture } from '../../src/js/quickadd.js';
+import { parseCapture, removeAssignee } from '../../src/js/quickadd.js';
 
 globalThis.chrono = await import(
   '../../pocket/app/' + readdirSync(new URL('../../pocket/app/', import.meta.url)).find(f => /^chrono-.*\.js$/.test(f))
@@ -178,4 +178,76 @@ test('with dates tapped off, a part of the day after a repeat stays in the title
     ignore: { due: true },
   });
   assert.deepEqual([p.title, p.repeat.label, p.due], ['Call mom evening', 'Every Monday', null]);
+});
+
+// What a line's task is called once it is added, by a user whose @people can all see the project: the add op removes
+// each @username left in the title (prepare, ops/add.js).
+const PROJECTS = [{ id: 1, title: 'home' }];
+const added = (text, opts = {}) => {
+  const p = parseCapture(text, PROJECTS, { now: new Date(2026, 9, 19, 10), ...opts });
+  return {
+    title: p.assignees.reduce((t, n) => removeAssignee(t, '@', n), p.title),
+    assignees: p.assignees,
+    labels: p.labels,
+    project: p.project?.title ?? p.projectMiss,
+  };
+};
+
+test('a @user, *label or +project in the middle of the title leaves its word there, and one at the end is removed', () => {
+  for (const [text, title, assignees, labels, project] of [
+    ['Ask @bob about the invoice', 'Ask bob about the invoice', ['bob'], [], null],
+    ['Fix the *urgent leak in the sink', 'Fix the urgent leak in the sink', [], ['urgent'], null],
+    ['Pack for the +home move', 'Pack for the home move', [], [], 'home'],
+    ['Call the plumber @bob *home', 'Call the plumber', ['bob'], ['home'], null],
+    ['@bob call the plumber', 'call the plumber', ['bob'], [], null],
+  ])
+    assert.deepEqual(added(text), { title, assignees, labels, project }, text);
+});
+
+test('a @user, *label or +project is removed at the start or the end, and before a date at the end', () => {
+  for (const [sign, read] of [
+    ['@', p => p.assignees],
+    ['*', p => p.labels],
+    ['+', p => [p.project]],
+  ])
+    for (const [text, title] of [
+      [`Fix the ${sign}home leak`, 'Fix the home leak'],
+      [`${sign}home fix the leak`, 'fix the leak'],
+      [`Fix the leak ${sign}home`, 'Fix the leak'],
+      [`Fix the leak ${sign}home tomorrow`, 'Fix the leak'],
+      [`Fix the leak ${sign}home !2 50%`, 'Fix the leak'],
+    ]) {
+      const p = added(text);
+      assert.deepEqual([p.title, read(p)], [title, ['home']], text);
+    }
+});
+
+test('a quoted label or project in the middle of the title leaves its words without the quotes', () => {
+  assert.equal(added('Fix the *"burst pipe" leak').title, 'Fix the burst pipe leak');
+  assert.equal(added("Pack for the +'home' move").title, 'Pack for the home move');
+  assert.equal(added('Ask @"bob" about it').title, 'Ask bob about it');
+});
+
+test('a word whose chip is tapped off stays as typed, and still counts as one at the end for the others', () => {
+  assert.equal(added('Fix the *urgent leak', { ignore: { labels: true } }).title, 'Fix the *urgent leak');
+  assert.equal(added('Call the plumber @bob *home', { ignore: { labels: true } }).title, 'Call the plumber *home');
+  assert.equal(added('Call the plumber *home @bob', { ignore: { assignees: true } }).title, 'Call the plumber @bob');
+});
+
+test('the mark on a word in the middle of the title says what it leaves there', () => {
+  const text = 'Ask @bob to fix the *"burst pipe" *now at +home first tomorrow *later',
+    p = parseCapture(text, PROJECTS, { now: new Date(2026, 9, 19, 10) });
+  assert.deepEqual(
+    [p.title, p.marks.map(m => [text.slice(m.start, m.end), m.kept])],
+    [
+      'Ask bob to fix the burst pipe now at home first',
+      [
+        ['@bob', 'bob'],
+        ['*"burst pipe" *now', 'burst pipe now'],
+        ['+home', 'home'],
+        ['tomorrow', undefined],
+        ['*later', undefined],
+      ],
+    ],
+  );
 });

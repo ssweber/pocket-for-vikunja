@@ -129,8 +129,8 @@ function endFigure(title, tail = '') {
 }
 /* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat, pct, marks}.
    `pct` is the task's own progress, read from a percentage at the end, and 0 for none. `marks` are the phrases that
-   were read, as [{start, end, kind, name}] positions in `text`, one per phrase. `kind` is one of the `ignore` keys,
-   and `name` is the user for @username.
+   were read, as [{start, end, kind, name, kept}] positions in `text`, one per phrase. `kind` is one of the `ignore`
+   keys, `name` is the user for @username, and `kept` is the text a phrase in the middle of the title leaves there.
 
    `opts`: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off, whose text stays in the
    title: project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
@@ -215,6 +215,7 @@ export function parseCapture(
   };
   const cut = (start, end, kind) => edit(start, end, ' ', kind);
   const drop = (m, kind) => edit(m.index + m[1].length, m.index + m[0].length, '', kind); // remove a token and keep the space before it
+  const signs = []; // each +project and *label read: {at (its index in `text`), word, kind}
   let m;
   // "@ 3pm" is a time, as in Vikunja. The last match is edited first, so earlier positions stay valid.
   for (const x of [...out.title.matchAll(/(^|\s)@\s+(?=\d)/g)].reverse())
@@ -229,6 +230,7 @@ export function parseCapture(
     const hit = projects.find(p => p.title.toLowerCase() === name) || (starts.length === 1 ? starts[0] : null);
     if (hit) out.project = hit;
     else out.projectMiss = typed;
+    signs.push({ at: from[m.index + m[1].length], word: m[2] || m[3] || m[4], kind: 'project' });
     drop(m, 'project');
   }
   // labels *name
@@ -237,11 +239,13 @@ export function parseCapture(
     for (const x of found) {
       const l = unhide(x[2] || x[3] || x[4]);
       if (!out.labels.includes(l)) out.labels.push(l);
+      signs.push({ at: from[x.index + x[1].length], word: x[2] || x[3] || x[4], kind: 'labels' });
     }
     for (const x of found.reverse()) drop(x, 'labels');
   }
   // @username stays in the title for now. An add op removes each @username that gets assigned (prepare, ops/add.js),
-  // as Vikunja does. A space is needed before the @, so email addresses are left alone.
+  // as Vikunja does. One in the middle of the title loses its @ below instead. A space is needed before the @, so
+  // email addresses are left alone.
   const people = [];
   if (!ignore.assignees)
     for (const x of out.title.matchAll(tokenRe(P.assignee))) {
@@ -486,6 +490,31 @@ export function parseCapture(
     out.pct = figure.pct;
     cut(figure.start, figure.end, 'progress');
   }
+  /* A @user, *label or +project in the middle of the title leaves its word there, without its sign: "Ask @user about
+     the invoice" becomes "Ask user about the invoice". One at the start or the end, with only other such words between
+     it and that end, is removed as usual. Every other phrase is out of the title by now, so a date doesn't count. */
+  const bare = s =>
+    !Object.values(P)
+      .reduce((t, c) => t.replace(tokenRe(c), ' '), s)
+      .trim();
+  // A step's hidden T#20m after a word doesn't stop the word being at the end, as with a date.
+  const inside = (s, e) => !bare(out.title.slice(0, s)) && !bare(out.title.slice(e).replace(/[\uE000-\uF8FF]+/g, ' '));
+  const keep = [];
+  for (const g of signs) {
+    const i = from.findIndex(f => f > g.at),
+      at = i < 0 ? out.title.length : i;
+    if (inside(at, at)) keep.push({ start: at, end: at, word: ` ${g.word} `, g });
+  }
+  if (!ignore.assignees)
+    for (const x of out.title.matchAll(tokenRe(P.assignee))) {
+      const s = x.index + x[1].length,
+        e = x.index + x[0].length;
+      if (inside(s, e))
+        keep.push({ start: s, end: e, word: x[2] || x[3] || x[4], g: { at: from[s], kind: 'assignees' } });
+    }
+  // The later word first, so the earlier positions stay valid. Two words removed side by side share a position.
+  for (const k of keep.sort((a, b) => b.start - a.start || b.g.at - a.g.at))
+    out.title = out.title.slice(0, k.start) + k.word + out.title.slice(k.end);
 
   out.title = unhide(out.title.replace(/\s{2,}/g, ' ').trim());
   // One mark per phrase. Neighbouring characters read as the same kind are joined, across the spaces between them.
@@ -496,6 +525,15 @@ export function parseCapture(
     else out.marks.push({ start: i, end: i + 1, kind });
   }
   out.marks = [...out.marks, ...people].sort((a, b) => a.start - b.start);
+  const prefix = { project: P.project, labels: P.label, assignees: P.assignee };
+  for (const { g } of keep) {
+    const k = out.marks.find(x => x.kind === g.kind && x.start <= g.at && g.at < x.end);
+    if (k)
+      k.kept = unhide(text.slice(k.start, k.end)).replace(
+        tokenRe(prefix[g.kind]),
+        (_, sp, a, b, c) => sp + (a ?? b ?? c),
+      );
+  }
   return out;
 }
 /* Pasted lists: one task per line. Pocket removes what email and notes apps put in front of an item: "> " quote

@@ -487,8 +487,20 @@ for (const [text, dt, pocket] of [
 add({ text: 'Lorem Ipsum *label1 *label2', title: 'Lorem Ipsum', labels: ['label1', 'label2'] });
 add({ text: '*label1 Lorem Ipsum *label2', title: 'Lorem Ipsum', labels: ['label1', 'label2'] });
 add({ text: 'Lorem Ipsum *label1 *label1 *label2', title: 'Lorem Ipsum', labels: ['label1', 'label2'] });
-add({ text: "Lorem *'label with space' Ipsum", title: 'Lorem Ipsum', labels: ['label with space'] });
-add({ text: 'Lorem *"label with space" Ipsum', title: 'Lorem Ipsum', labels: ['label with space'] });
+// Vikunja removes a label wherever it is. Pocket leaves the word of one in the middle of the title.
+const MIDDLE = { pocket: true, why: 'a @user, *label or +project in the middle of the title leaves its word there' };
+add({
+  text: "Lorem *'label with space' Ipsum",
+  title: 'Lorem label with space Ipsum',
+  labels: ['label with space'],
+  ...MIDDLE,
+});
+add({
+  text: 'Lorem *"label with space" Ipsum',
+  title: 'Lorem label with space Ipsum',
+  labels: ['label with space'],
+  ...MIDDLE,
+});
 add({ text: 'Lorem Ipsum *today', title: 'Lorem Ipsum', labels: ['today'], date: null });
 add({ text: 'a *"a (a)"', title: 'a', labels: ['a (a)'] });
 add({ text: '*"a (a)" a', title: 'a', labels: ['a (a)'] });
@@ -550,6 +562,79 @@ add({
   text: 'Lorem Ipsum @email@example.com',
   title: 'Lorem Ipsum @email@example.com',
   assignees: ['email@example.com'],
+});
+
+// ---------- a @user, *label or +project in the middle of the title ----------
+// Vikunja removes a label or a project wherever it is, and an assigned @user too. Pocket leaves the word of one in the
+// middle of the title, without its sign.
+add({
+  text: 'Ask @bob about the invoice',
+  title: 'Ask bob about the invoice',
+  assignees: ['bob'],
+  marked: ['assignees:@bob'],
+  ...MIDDLE,
+});
+add({
+  text: 'Fix the *urgent leak in the sink',
+  title: 'Fix the urgent leak in the sink',
+  labels: ['urgent'],
+  marked: ['labels:*urgent'],
+  ...MIDDLE,
+});
+add({ text: 'Pack for the +project move', title: 'Pack for the project move', project: 'project', ...MIDDLE });
+add({
+  text: 'Pack for the +"project with long name" move',
+  title: 'Pack for the project with long name move',
+  project: 'project with long name',
+  ...MIDDLE,
+});
+add({
+  text: 'Ask @"user with long name" about it',
+  title: 'Ask user with long name about it',
+  assignees: ['user with long name'],
+  ...MIDDLE,
+});
+add({ text: 'Fix *a *b leak', title: 'Fix a b leak', labels: ['a', 'b'], marked: ['labels:*a *b'], ...MIDDLE });
+add({
+  text: 'Call @bob tomorrow about it !2',
+  title: 'Call bob about it',
+  assignees: ['bob'],
+  date: plus(1),
+  priority: 2,
+  ...MIDDLE,
+});
+add({
+  text: 'Fix the #home leak @urgent +bob',
+  mode: 'todoist',
+  title: 'Fix the home leak +bob',
+  project: 'home',
+  labels: ['urgent'],
+  assignees: ['bob'],
+  ...MIDDLE,
+});
+// At the start or the end, with only other such words or dates between it and that end, it is removed as in Vikunja.
+add({
+  text: 'Call the plumber @bob *home',
+  title: 'Call the plumber @bob',
+  assignees: ['bob'],
+  labels: ['home'],
+});
+add({ text: '@bob call the plumber', title: '@bob call the plumber', assignees: ['bob'] });
+add({
+  text: '*home +project Call the plumber @bob tomorrow',
+  title: 'Call the plumber @bob',
+  labels: ['home'],
+  project: 'project',
+  assignees: ['bob'],
+  date: plus(1),
+});
+add({
+  text: 'Fix the *urgent leak',
+  ignore: { labels: true },
+  title: 'Fix the *urgent leak',
+  labels: [],
+  pocket: true,
+  why: 'a word whose chip is tapped off stays in the title as typed',
 });
 
 // ---------- repeating ----------
@@ -1741,12 +1826,13 @@ cases.forEach((c, i) => {
     if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
-  // The marks cover what was parsed. Removing them from the text leaves the title, apart from spaces. (@username stays.)
-  // Quotes around a title at the start of the text are removed too.
+  // The marks cover what was parsed. Replacing each with the text it leaves in the title (`kept`, or nothing) leaves
+  // the title, apart from spaces. @username stays unless it is in the middle. Quotes around a title at the start of the
+  // text are removed too.
   if (c.mode !== 'disabled') {
     let rest = c.text;
     for (const m of [...r.marks].reverse())
-      if (m.kind !== 'assignees') rest = rest.slice(0, m.start) + ' ' + rest.slice(m.end);
+      if (m.kind !== 'assignees' || m.kept) rest = rest.slice(0, m.start) + ` ${m.kept ?? ''} ` + rest.slice(m.end);
     const hold = rest.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
     if (hold) rest = hold[1] + hold[3] + rest.slice(hold[0].length);
     if (rest.replace(/\s+/g, '') !== r.title.replace(/\s+/g, ''))
