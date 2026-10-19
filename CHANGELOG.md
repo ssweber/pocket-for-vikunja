@@ -23,11 +23,10 @@ is a new 0.x.y.
 
 ### Added
 
-- Every change works offline and waits in the Outbox, not only new tasks, comments and checklists. A change Vikunja
-  refuses also waits there, with Try again and Cancel, and Cancel says what Vikunja still has.
+- Every change works offline and waits in the Outbox, and a change Vikunja refuses waits there too, with Try again
+  and a Cancel that says what Vikunja still has.
 - The plugin passes Pocket's changes to Vikunja with a key, so a change whose reply was lost is never made twice.
 - Coming back to Pocket, or getting a connection back, shows what others changed or deleted since.
-
 - A template step can ask for a number, yes or no, a choice or a line of text, and each checklist's card records the
   answers ([guide](docs/guide.md#asks)).
 - A task can move to another project from its ⋯ menu, taking its subtasks along, with Undo.
@@ -35,54 +34,54 @@ is a new 0.x.y.
 - Today has a folded Done today group with what you finished today, and its Copy gives it as text
   ([guide](docs/guide.md#tasks)).
 - Typing `+` in an add box suggests your projects, as `@` and `*` suggest people and labels.
-- Quick add reads a part of the day with its day: "this morning" is today at 9am, "tomorrow afternoon" 3pm, "friday
-  evening" 6pm and "tonight" 8pm ([guide](docs/guide.md#quick-add)). "morning" on its own stays in the title. A bare
-  hour after a morning is read as written, and after an evening or a night is PM: "tonight at 10" is 10pm. After a
-  night, 12 and midnight end the day, and 1 to 4 are the small hours after it: "tonight at 1" is 1am tomorrow.
-- Quick add reads a part of the day after a repeat: "every monday evening" repeats weekly from Monday at 6pm, and
-  "every day morning" daily at 9am.
+- Quick add reads "morning", "afternoon", "evening" and "night" after a day or a repeat as 9am, 3pm, 6pm and 8pm,
+  so "friday evening" is Friday at 6pm, "tonight" is today at 8pm and "every day morning" repeats daily at 9am
+  ([guide](docs/guide.md#quick-add)).
+- Quick add reads a bare hour after a part of the day as people mean it, so "tomorrow morning at 6" is 6am, "tonight
+  at 10" is 10pm and "tonight at 1" is 1am tomorrow.
 
 ### Changed
 
 - Undo puts back only what nobody has changed since, and says so when something has.
 - A task held on Today and moved to another date leaves a gap with Undo where its row was, such as "Moved to
   Tomorrow", and its row shows plainly where it went.
+- Rows that belong somewhere else now, such as a task unticked in Done today, a checklist finished or reopened, or a
+  task moved to another project, move there as ticked rows leave, and never while you touch the screen.
 - Pocket says one thing for each situation: "Saved offline", "Waiting for Vikunja", "… couldn't be saved: <reason>",
   or "… may not have reached Vikunja".
 - Offline, Pocket opens Today, Checklists, the last 5 projects and the last 8 checklists from the phone.
-- Reordering in a task's menu says "Up one place" and "Down one place", because "move" in Vikunja means moving to
-  another project.
-- The ⋯ menu item that opens the phone's share sheet says "Share as text".
+- In the ⋯ menu, reordering says "Up one place" and "Down one place", and the item that opens the phone's share
+  sheet says "Share as text".
 - A checklist's step shows its latest comment, cut to one line, and how many files are attached, in place of a comment
   count.
 - Checklists lists every checklist finished in the last 7 days, with its ring, its skipped steps and its comments, in
   place of the last few.
 - In Pocket, only a template's maker or a project admin can change it, and someone with read access sees why they
   can't start a checklist from it ([guide](docs/guide.md#checklists)).
-- The start of a project's name, as in `+gar`, picks a project only when no other project's name starts the same way.
-  Otherwise the add box offers to create the project.
+- When a `@user`, `*label` or `+project` is typed mid-sentence, quick add keeps its word in the title, without the
+  sign.
+- The start of a project's name, as in `+gar`, picks a project only when no other project's name starts the same way,
+  and otherwise the add box offers to create the project.
 - A label's chip says "new label" when sending the task will create that label.
-- Quick add leaves the word of a `@user`, `*label` or `+project` typed in the middle of a sentence in the title,
-  without its sign: "Fix the *urgent leak" is "Fix the urgent leak", with the label urgent.
-- Rows that belong somewhere else now, such as a task unticked in Done today, a checklist finished or reopened, or a
-  task moved to another project, move there as ticked rows leave, and never while you touch the screen.
 
 ### Fixed
 
-- A `pocket:` line that Vikunja's web app partly formats, such as one with a link in it, is now hidden and kept whole.
-- A change waiting to be sent redraws only the rings it changes, not every checklist's ring.
+- On Today, a done task with a subtask still open, such as one that repeats, stays a card over that subtask, marked
+  done. Before, the task went to Done today and its subtask showed nowhere.
 - Ticking a shared task again soon after unticking it keeps your ✅, so the task stays in Done today after a reload.
 - Done today's Copy leaves out yesterday's tasks, as the screen does, in a copy of Today saved yesterday.
 - A finished checklist's ring counts a step undone on another phone, and its comment count includes comments past
   the first 50.
 - Dropping a finish or a reopen that only partly reached Vikunja says what Vikunja now has.
-- A template step being edited isn't saved if the user's access arrives and doesn't let them change the template.
 - Claiming a step and unassigning yourself before either is sent leaves nothing in the Outbox, whether you used the
   claim slot, a slide, the sheet or a step's edit box.
-- Adding `@user` in a template step's edit box no longer also queues a rename of the step.
+- In a template step's edit box, adding `@user` no longer also queues a rename of the step, and an edit isn't saved
+  once the user's access arrives and doesn't let them change the template.
+- A `pocket:` line that Vikunja's web app partly formats, such as one with a link in it, is now hidden and kept whole.
+- A change waiting to be sent redraws only the rings it changes, not every checklist's ring.
 - On a phone set to a region that writes the day first, quick add reads "Oct 24" as 24 October, not October 2024.
-- On Today, a done task with a subtask still open, such as one that repeats, stays that subtask's card, marked done,
-  instead of hiding the subtask under Done today.
+- A weekly repeat typed on its own weekday, such as "every monday morning" on a Monday afternoon, starts next week
+  instead of being overdue at once.
 
 ### What Pocket writes into Vikunja
 
