@@ -861,11 +861,12 @@ test("the Undo of a repeating task's tick puts back its dates, also after a lost
   // A date changed in Vikunja since stays, and Undo says so.
   f = tick();
   await app.act(f);
-  v.task(1).due_date = '2026-10-20T09:00:00Z';
+  // Off the 9:00 times the repeat moves it to, so the date differs from Vikunja's whatever day the test runs.
+  v.task(1).due_date = '2026-10-20T21:00:00Z';
   assert.equal(await app.undoOps([f], false).left, 1);
   assert.deepEqual(
     [v.task(1).due_date, lastSaid(app).msg],
-    ['2026-10-20T09:00:00Z', 'Not undone: “Water the plants” has changed since then.'],
+    ['2026-10-20T21:00:00Z', 'Not undone: “Water the plants” has changed since then.'],
   );
 });
 test("the Undo of a repeating task's tick whose reply was lost unticks it, when Vikunja marked it done", async t => {
