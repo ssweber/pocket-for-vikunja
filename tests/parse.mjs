@@ -566,13 +566,12 @@ add({
 
 // ---------- a @user, *label or +project in the middle of the title ----------
 // Vikunja removes a label or a project wherever it is, and an assigned @user too. Pocket leaves the word of one in the
-// middle of the title, without its sign.
+// middle of the title, without its sign. A @user stays in the title as typed until the add op assigns it.
 add({
   text: 'Ask @bob about the invoice',
-  title: 'Ask bob about the invoice',
+  title: 'Ask @bob about the invoice',
   assignees: ['bob'],
   marked: ['assignees:@bob'],
-  ...MIDDLE,
 });
 add({
   text: 'Fix the *urgent leak in the sink',
@@ -590,18 +589,16 @@ add({
 });
 add({
   text: 'Ask @"user with long name" about it',
-  title: 'Ask user with long name about it',
+  title: 'Ask @"user with long name" about it',
   assignees: ['user with long name'],
-  ...MIDDLE,
 });
 add({ text: 'Fix *a *b leak', title: 'Fix a b leak', labels: ['a', 'b'], marked: ['labels:*a *b'], ...MIDDLE });
 add({
   text: 'Call @bob tomorrow about it !2',
-  title: 'Call bob about it',
+  title: 'Call @bob about it',
   assignees: ['bob'],
   date: plus(1),
   priority: 2,
-  ...MIDDLE,
 });
 add({
   text: 'Fix the #home leak @urgent +bob',
@@ -1836,12 +1833,12 @@ cases.forEach((c, i) => {
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
   // The marks cover what was parsed. Replacing each with the text it leaves in the title (`kept`, or nothing) leaves
-  // the title, apart from spaces. @username stays unless it is in the middle. Quotes around a title at the start of the
+  // the title, apart from spaces. @username stays. Quotes around a title at the start of the
   // text are removed too.
   if (c.mode !== 'disabled') {
     let rest = c.text;
     for (const m of [...r.marks].reverse())
-      if (m.kind !== 'assignees' || m.kept) rest = rest.slice(0, m.start) + ` ${m.kept ?? ''} ` + rest.slice(m.end);
+      if (m.kind !== 'assignees') rest = rest.slice(0, m.start) + ` ${m.kept ?? ''} ` + rest.slice(m.end);
     const hold = rest.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
     if (hold) rest = hold[1] + hold[3] + rest.slice(hold[0].length);
     if (rest.replace(/\s+/g, '') !== r.title.replace(/\s+/g, ''))

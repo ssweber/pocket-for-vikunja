@@ -273,6 +273,7 @@ export const packParsed = p => ({
   repeat: p.repeat,
   labels: p.labels,
   assignees: p.assignees,
+  ...(p.mid?.length && { mid: p.mid }),
   project: p.project ? { id: p.project.id, title: p.project.title } : null,
   remind: !!p.remind,
   done: !!p.done,

@@ -16,7 +16,7 @@ import {
   repeatPhrase,
   shareText,
 } from '../../src/js/share.js';
-import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee } from '../../src/js/quickadd.js';
+import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignees } from '../../src/js/quickadd.js';
 import { component, outboxOf } from './fake.mjs';
 import sharing from '../../src/js/app/sharing.js';
 import cards from '../../src/js/app/cards.js';
@@ -418,7 +418,7 @@ function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}) {
     const p = parseCapture(l.text, [], { mode, dueTime, now: NOW });
     // Assigning a person removes their name from the title, as an add op does (prepare, ops/add.js).
     return {
-      title: p.assignees.reduce((t, n) => removeAssignee(t, P.assignee, n), p.title),
+      title: removeAssignees(p.title, P.assignee, p.assignees, p.mid),
       done: l.done,
       pct: p.pct,
       due: p.due ? p.due.toISOString() : null,

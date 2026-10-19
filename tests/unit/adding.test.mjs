@@ -19,7 +19,8 @@ import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
 import { photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
-import { sync } from '../../src/js/sync.js';
+import { packParsed, sync } from '../../src/js/sync.js';
+import { parseCapture } from '../../src/js/quickadd.js';
 
 const DAY = 86400;
 // The parts that queue and send a line, and put the result on the screen. The fake's own flush and render stay.
@@ -388,6 +389,22 @@ test('a person with no account is reported as the line is first sent, and their 
   Object.assign(app, { canSee: async () => false, userExists: async () => false });
   const r = await send(app, entry([line('Chairs @nobody', { assignees: ['nobody'] })]));
   assert.deepEqual([r.status, r.problems, v.task(101).title], ['sent', ['no user @nobody'], 'Chairs @nobody']);
+});
+
+test('a @user in the middle of the title loses only its @ once assigned, and stays as typed when there is no such user', async t => {
+  const v = fakeVikunja(),
+    app = adding(t),
+    typed = text => ({ raw: text, p: packParsed(parseCapture(text, [])), under: null });
+  Object.assign(app, {
+    canSee: async (pid, name) => name === 'bob',
+    userExists: async name => name === 'bob',
+    findUser: async name => (name === 'bob' ? { id: 7, username: name } : null),
+  });
+  const r = await send(app, entry([typed('Ask @bob about it @bob'), typed('Ask @nobody about it')]));
+  assert.deepEqual(
+    [r.status, r.problems, v.task(101).title, v.task(101).assignees.map(u => u.id), v.task(102).title],
+    ['sent', ['no user @nobody'], 'Ask bob about it', [7], 'Ask @nobody about it'],
+  );
 });
 
 test('a repeating task that arrives done shows ticked with its given date, then opens at its next date', async t => {

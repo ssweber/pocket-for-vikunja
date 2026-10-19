@@ -11,7 +11,7 @@
    - `items` are the subtasks or steps under it.
    - `subs` is {done, total}, for when `items` leaves out the done ones.
    - `ring` is a parent's calculated progress, {pct, done, total}. */
-import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignee } from './quickadd.js';
+import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignees } from './quickadd.js';
 
 // The text names a person by the first word of their name, or by their username if they have no name.
 export const firstName = u =>
@@ -248,7 +248,7 @@ function quickLine(it, lead, { mode, dueTime }, head = false) {
       !!p &&
       want ===
         said(
-          people.reduce((t, n) => removeAssignee(t, P.assignee, n), p.title),
+          removeAssignees(p.title, P.assignee, people, p.mid),
           l.done,
           p.pct,
           p.assignees,

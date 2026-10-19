@@ -5,7 +5,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { parseCapture, removeAssignee } from '../../src/js/quickadd.js';
+import { parseCapture, removeAssignees } from '../../src/js/quickadd.js';
 
 globalThis.chrono = await import(
   '../../pocket/app/' + readdirSync(new URL('../../pocket/app/', import.meta.url)).find(f => /^chrono-.*\.js$/.test(f))
@@ -186,7 +186,7 @@ const PROJECTS = [{ id: 1, title: 'home' }];
 const added = (text, opts = {}) => {
   const p = parseCapture(text, PROJECTS, { now: new Date(2026, 9, 19, 10), ...opts });
   return {
-    title: p.assignees.reduce((t, n) => removeAssignee(t, '@', n), p.title),
+    title: removeAssignees(p.title, '@', p.assignees, p.mid),
     assignees: p.assignees,
     labels: p.labels,
     project: p.project?.title ?? p.projectMiss,
@@ -254,15 +254,24 @@ test('with people tapped off, a @user keeps its @ in the middle and still counts
   );
 });
 
+test('a @user in the middle of the title keeps its @ until it is assigned, and only the @ goes then', () => {
+  const p = parseCapture('Ask @nobody about it @bob then @bob again', PROJECTS, { now: new Date(2026, 9, 19, 10) });
+  assert.deepEqual([p.title, p.mid], ['Ask @nobody about it @bob then @bob again', [4, 21, 31]]);
+  assert.equal(removeAssignees(p.title, '@', [], p.mid), p.title, 'nobody is assigned');
+  assert.equal(removeAssignees(p.title, '@', ['bob'], p.mid), 'Ask @nobody about it bob then bob again');
+  const q = parseCapture('Ask @bob about it @bob', PROJECTS);
+  assert.equal(removeAssignees(q.title, '@', ['BOB'], q.mid), 'Ask bob about it', 'the same name at the end goes');
+});
+
 test('the mark on a word in the middle of the title says what it leaves there', () => {
   const text = 'Ask @bob to fix the *"burst pipe" *now at +home first tomorrow *later',
     p = parseCapture(text, PROJECTS, { now: new Date(2026, 9, 19, 10) });
   assert.deepEqual(
     [p.title, p.marks.map(m => [text.slice(m.start, m.end), m.kept])],
     [
-      'Ask bob to fix the burst pipe now at home first',
+      'Ask @bob to fix the burst pipe now at home first',
       [
-        ['@bob', 'bob'],
+        ['@bob', undefined],
         ['*"burst pipe" *now', 'burst pipe now'],
         ['+home', 'home'],
         ['tomorrow', undefined],

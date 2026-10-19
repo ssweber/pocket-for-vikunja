@@ -37,11 +37,14 @@ export const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
 function tokenRe(prefix, flags = 'g') {
   return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags);
 }
-// Remove one @username from a title, quoted or not, once that user is assigned. Vikunja does the same.
-export function removeAssignee(title, prefix, name) {
-  const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/* Remove the @usernames of `names`, quoted or not, from a title once those users are assigned, as Vikunja does. One
+   in the middle of the title, whose sign is at an index in `mid` (parseCapture), keeps its word without the sign. */
+export function removeAssignees(title, prefix, names, mid = []) {
+  const gone = new Set(names.map(n => n.toLowerCase()));
   return title
-    .replace(new RegExp(`(^|\\s)\\${prefix}(?:"${n}"|'${n}'|${n})(?=\\s|$)`, 'gi'), '$1')
+    .replace(tokenRe(prefix), (all, sp, a, b, c, at) =>
+      !gone.has((a ?? b ?? c).toLowerCase()) ? all : mid.includes(at + sp.length) ? sp + (a ?? b ?? c) : sp,
+    )
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -127,10 +130,11 @@ function endFigure(title, tail = '') {
     ? { start: m.index + 1, end: m.index + m[0].length, pct }
     : null;
 }
-/* Returns {title, project, projectMiss, labels, assignees, priority, due, dueLabel, dueFromRepeat, repeat, pct, marks}.
-   `pct` is the task's own progress, read from a percentage at the end, and 0 for none. `marks` are the phrases that
-   were read, as [{start, end, kind, name, kept}] positions in `text`, one per phrase. `kind` is one of the `ignore`
-   keys, `name` is the user for @username, and `kept` is the text a phrase in the middle of the title leaves there.
+/* Returns {title, project, projectMiss, labels, assignees, mid, priority, due, dueLabel, dueFromRepeat, repeat, pct,
+   marks}. `mid` is the index in `title` of the sign of each @username in the middle of it (removeAssignees). `pct` is
+   the task's own progress, read from a percentage at the end, and 0 for none. `marks` are the phrases that were read,
+   as [{start, end, kind, name, kept}] positions in `text`, one per phrase. `kind` is one of the `ignore` keys, `name`
+   is the user for @username, and `kept` is the text a label or project in the middle of the title leaves there.
 
    `opts`: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off, whose text stays in the
    title: project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
@@ -145,6 +149,7 @@ export function parseCapture(
     projectMiss: null,
     labels: [],
     assignees: [],
+    mid: [],
     priority: 0,
     due: null,
     dueLabel: '',
@@ -245,8 +250,8 @@ export function parseCapture(
     for (const x of found.reverse()) drop(x, 'labels');
   }
   // @username stays in the title for now. An add op removes each @username that gets assigned (prepare, ops/add.js),
-  // as Vikunja does. One in the middle of the title loses its @ below instead. A space is needed before the @, so
-  // email addresses are left alone.
+  // as Vikunja does, and takes only the @ off one in the middle of the title (`mid`). A space is needed before the @,
+  // so email addresses are left alone.
   const people = [];
   if (!ignore.assignees)
     for (const x of out.title.matchAll(tokenRe(P.assignee))) {
@@ -491,9 +496,9 @@ export function parseCapture(
     out.pct = figure.pct;
     cut(figure.start, figure.end, 'progress');
   }
-  /* A @user, *label or +project in the middle of the title leaves its word there, without its sign: "Ask @user about
-     the invoice" becomes "Ask user about the invoice". One at the start or the end, with only other such words between
-     it and that end, or other phrases, is removed as usual. */
+  /* A @user, *label or +project in the middle of the title leaves its word there, without its sign: "Fix the *urgent
+     leak" becomes "Fix the urgent leak". One at the start or the end, with only other such words or phrases between it
+     and that end, is removed as usual. A @user keeps its sign until it is assigned (`mid`). */
   const bare = s =>
     !Object.values(P)
       .reduce((t, c) => t.replace(tokenRe(c), ' '), s)
@@ -521,20 +526,23 @@ export function parseCapture(
   for (const g of signs) {
     const i = from.findIndex(f => f > g.at),
       at = i < 0 ? out.title.length : i;
-    if (inside(at, at)) keep.push({ start: at, end: at, word: ` ${g.word} `, g });
+    if (inside(at, at)) keep.push({ start: at, word: ` ${g.word} `, g });
   }
-  if (!ignore.assignees)
-    for (const x of out.title.matchAll(tokenRe(P.assignee))) {
-      const s = x.index + x[1].length,
-        e = x.index + x[0].length;
-      if (inside(s, e))
-        keep.push({ start: s, end: e, word: x[2] || x[3] || x[4], g: { at: from[s], kind: 'assignees' } });
-    }
+  // The @ of a @user in the middle becomes a placeholder until the title is final, to find where it ends up.
+  const SIGN = '\uFFFF',
+    mid = ignore.assignees
+      ? []
+      : [...out.title.matchAll(tokenRe(P.assignee))]
+          .map(x => [x.index + x[1].length, x.index + x[0].length])
+          .filter(([s, e]) => inside(s, e));
+  for (const [s] of mid) out.title = out.title.slice(0, s) + SIGN + out.title.slice(s + 1);
   // The later word first, so the earlier positions stay valid. Two words removed side by side share a position.
   for (const k of keep.sort((a, b) => b.start - a.start || b.g.at - a.g.at))
-    out.title = out.title.slice(0, k.start) + k.word + out.title.slice(k.end);
+    out.title = out.title.slice(0, k.start) + k.word + out.title.slice(k.start);
 
   out.title = unhide(out.title.replace(/\s{2,}/g, ' ').trim());
+  for (let i = out.title.indexOf(SIGN); i >= 0; i = out.title.indexOf(SIGN, i + 1)) out.mid.push(i);
+  out.title = out.title.replaceAll(SIGN, P.assignee);
   // One mark per phrase. Neighbouring characters read as the same kind are joined, across the spaces between them.
   for (const i of [...read.keys()].sort((a, b) => a - b)) {
     const kind = read.get(i),
@@ -543,7 +551,7 @@ export function parseCapture(
     else out.marks.push({ start: i, end: i + 1, kind });
   }
   out.marks = [...out.marks, ...people].sort((a, b) => a.start - b.start);
-  const prefix = { project: P.project, labels: P.label, assignees: P.assignee };
+  const prefix = { project: P.project, labels: P.label };
   for (const { g } of keep) {
     const k = out.marks.find(x => x.kind === g.kind && x.start <= g.at && g.at < x.end);
     if (k)

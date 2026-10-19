@@ -12,7 +12,7 @@
 import { passing } from '../api.js';
 import { DONE_MARK, patiently } from '../checklists.js';
 import { OP_WORDS } from '../messages.js';
-import { removeAssignee } from '../quickadd.js';
+import { removeAssignees } from '../quickadd.js';
 import { ALREADY, sync, unpackParsed, uuid7 } from '../sync.js';
 import { ZERO } from '../util.js';
 import { opsId } from '../app/tasks.js';
@@ -28,9 +28,9 @@ const problems = a => (a.problems ||= []);
 const real = id => (typeof id === 'string' ? sync.taskOf(id.replace(/^pending-/, '')) : id);
 
 /* Work out the task's body once, and keep it. A user who can see the project is assigned, and their @username is
-   removed from the title, as in Vikunja. A user who can't see it stays in the title and is reported. If Vikunja refuses
-   the search, Pocket assigns the user anyway, and Vikunja decides. Each person's id is looked up here, so a retry never
-   reads it again. */
+   removed from the title, as in Vikunja. One in the middle of the title loses only its @. A user who can't see the
+   project stays in the title as typed and is reported. If Vikunja refuses the search, Pocket assigns the user anyway,
+   and Vikunja decides. Each person's id is looked up here, so a retry never reads it again. */
 async function prepare(a, c) {
   if (a.body) return;
   const app = c.app,
@@ -38,10 +38,11 @@ async function prepare(a, c) {
     to = parsed.project?.id || a.pid,
     body = { title: parsed.title },
     people = [],
+    seen = [],
     says = [];
   for (const name of parsed.assignees) {
-    const seen = await app.canSee(to, name);
-    if (seen === false)
+    const sees = await app.canSee(to, name);
+    if (sees === false)
       says.push(
         (await app.userExists(name).catch(() => true))
           ? `@${name} can't see ${app.projById.get(to)?.title || 'that project'}`
@@ -57,8 +58,9 @@ async function prepare(a, c) {
       }
       if (u) people.push({ name, id: u.id });
     }
-    if (seen === true) body.title = removeAssignee(body.title, app.prefixes.assignee, name);
+    if (sees === true) seen.push(name);
   }
+  if (seen.length) body.title = removeAssignees(body.title, app.prefixes.assignee, seen, parsed.mid);
   if (parsed.due) body.due_date = parsed.due.toISOString();
   if (parsed.due && parsed.remind) body.reminders = [{ relative_to: 'due_date', relative_period: 0 }]; // the 🔔 chip sets a reminder at the due time
   if (parsed.priority) body.priority = parsed.priority;
