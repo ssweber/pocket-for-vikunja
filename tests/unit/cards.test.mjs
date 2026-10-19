@@ -1375,7 +1375,8 @@ test('the step card shows who is doing the step, as its row does, until the step
    them. Tapping the ring, or a full swipe, asks to finish the checklist there, because the user is already on it and
    has no way to open it. Its slot shows who it is for. Who started it is in the summary, which the screen shows once
    the checklist is finished or every step is done, and in its ⋯ sheet. */
-test('a checklist’s own row asks to finish it from its ring, shows who it is for in its slot, and shows who started it in the summary', async () => {
+test('a checklist’s own row asks to finish it from its ring, shows who it is for in its slot, and shows who started it in the summary', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) }); // so an hour ago is today
   const app = runScreen(),
     made = new Date(Date.now() - 36e5).toISOString(),
     calls = [];
