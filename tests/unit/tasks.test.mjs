@@ -1643,3 +1643,28 @@ test('a catch-up after an offline open finds a change made before the page loade
   assert.equal(app.tasks[1].title, 'Mop the floor twice');
   localStorage.clear();
 });
+
+/* The page before ran with the phone's clock an hour ahead, and sent a progress whose reply was lost. This page opens
+   on the copy the phone kept from before, and sends the progress again, which the relay replays. Once the outbox is
+   read, the store's clock moves past the first send's time. So a read on this page counts as newer than the progress,
+   and takes a teammate's change made after it. */
+test("a read after a page whose clock ran ahead takes a teammate's change to a field that page's op set", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const v = fakeVikunja([{ id: 1, title: 'Mop the floor', percent_done: 0 }]),
+    app = sender(),
+    id = uuid7(),
+    key = id + ':0:0',
+    sentAt = { [key]: (Date.now() + 3600000) * 1000 };
+  keptOnPhone(structuredClone(v.task(1)));
+  app.rowsOf([1]);
+  await api('/tasks/1', { method: 'PATCH', body: { percent_done: 0.4 }, key });
+  const e = { id, kind: 'act', op: 'progress', task: 1, pct: 40, run: null, sent: true, sentAt, stage: 0, fails: 0 };
+  await sync.add({ ...e, user: 1, at: QUEUED, n: 0, files: [] }, []);
+  app.keyOutbox();
+  await app.sendActs(id);
+  await settled();
+  v.task(1).percent_done = 0.75; // a teammate's change
+  read([structuredClone(v.task(1))]);
+  assert.equal(copyOf(1).percent_done, 0.75);
+  localStorage.clear();
+});

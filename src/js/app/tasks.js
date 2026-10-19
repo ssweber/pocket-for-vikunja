@@ -411,6 +411,9 @@ function keyOps() {
     ids = list => list.map(e => e.id + (e.cancelled ? ':cancelled' : '')).join(),
     listed = c.user ? sync.all(c.user.id) : [],
     all = listed.filter(e => !e.failed);
+  /* An entry keeps when a page before this one sent each request, on the phone's clock then. If the phone's clock has
+     been set back since, those times are ahead of this page's, and a read here would count as older than the op. */
+  for (const e of listed) for (const t of Object.values(e.sentAt || {})) if (t > clock) clock = t;
   /* An op that stops waiting, refused or gone from the outbox, has no request left on its way. A refused op keeps its
      write's time for Try again. If this tab didn't see the op answered (settled), its tasks are read again: another
      tab may have sent it, a stage may have been made before a refusal, or the answer was unknown. */

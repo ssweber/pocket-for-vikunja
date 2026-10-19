@@ -49,7 +49,9 @@ Built on `dev`, and described by the code and its comments:
   phone's clock was set back between two pages, it can also miss a change made soon after that screen was loaded.
   Each screen's own load reads those. It doesn't ask about the tasks of a project Pocket doesn't list, as an archived
   one;
-- each request's time kept in its op's entry (`sentAt`), so an op sent before a reload counts from its own requests;
+- each request's time kept in its op's entry (`sentAt`), so an op sent before a reload counts from its own requests.
+  The store's clock moves past those times as the outbox is read, so the new page's reads count as newer even when
+  the phone's clock was set back between the two pages;
 - the lifecycle test and the randomized store test, which reloads between any two requests and catches up.
 
 The user's phone check covers everything up to phase 5. Phase 6 (dates) and what came after it haven't been checked
@@ -191,9 +193,6 @@ Before anyone else uses Pocket:
   or a template whose task Vikunja may or may not have made.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step that has sent a request
   and waits, as for any op, though the row's × still cancels a step.
-- The store's clock is the phone's time, and an op's entry keeps it across pages. If the phone's clock is set back
-  between two pages, an op from the page before counts as newer than the new page's reads, and can overwrite a
-  teammate's change they hold.
 - `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
   whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 
