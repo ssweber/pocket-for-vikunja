@@ -314,7 +314,7 @@ try {
     let cut = true;
     const cutOff = r => (cut ? r.abort('internetdisconnected') : r.fallback());
     const lists = url => url.pathname.endsWith('/api/v2/tasks');
-    await page.route('**/api/v2/tasks/*/attachments', cutOff);
+    await page.route('**/v2/tasks/*/attachments', cutOff);
     await page.route(lists, cutOff);
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
@@ -332,7 +332,7 @@ try {
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("glitch.png")');
     if ((await attached('G')).join() !== 'glitch.png') throw new Error('attachments: ' + (await attached('G')).join());
-    await page.unroute('**/api/v2/tasks/*/attachments', cutOff);
+    await page.unroute('**/v2/tasks/*/attachments', cutOff);
     await page.unroute(lists, cutOff);
   });
 
@@ -345,14 +345,14 @@ try {
       await r.fetch();
       return r.abort('internetdisconnected');
     };
-    await page.route('**/api/v2/tasks/*/attachments', lose);
+    await page.route('**/v2/tasks/*/attachments', lose);
     await page.setInputFiles('#d-file', photo('once.png'));
     await page.waitForSelector('#d-attachments .att.uploading:has-text("once.png")');
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("once.png")');
     const names = await attached('G');
     if (names.filter(n => n === 'once.png').length !== 1) throw new Error('attachments: ' + names.join());
-    await page.unroute('**/api/v2/tasks/*/attachments', lose);
+    await page.unroute('**/v2/tasks/*/attachments', lose);
   });
 
   await step('server-error-keeps-the-photo', async () => {
@@ -368,7 +368,7 @@ try {
         body: '{"title":"Internal Server Error","status":500,"detail":"Internal Server Error"}',
       });
     };
-    await page.route('**/api/v2/tasks/*/attachments', answer);
+    await page.route('**/v2/tasks/*/attachments', answer);
     await page.setInputFiles('#d-file', photo('busy.png'));
     await page.waitForSelector(
       '#d-attachments .att.uploading:has-text("busy.png"):has-text("Vikunja had a problem with it. Trying again.")',
@@ -377,7 +377,7 @@ try {
       throw new Error('unexpected toast: ' + (await page.textContent('#toast-msg')));
     await online();
     await page.waitForSelector('#d-attachments button.att:has-text("busy.png")');
-    await page.unroute('**/api/v2/tasks/*/attachments', answer);
+    await page.unroute('**/v2/tasks/*/attachments', answer);
   });
 
   await step('sheet-photos-wait-offline-and-can-be-cancelled', async () => {
@@ -559,7 +559,7 @@ try {
     });
     let cut = true;
     const cutOff = r => (cut ? r.abort('internetdisconnected') : r.fallback());
-    await page.route('**/api/v2/tasks/*/attachments', cutOff);
+    await page.route('**/v2/tasks/*/attachments', cutOff);
     await page.setInputFiles('#in-photo', photo('full.png'));
     await capture(T('S'));
     await placeSays(page, 'cap', "storage is full, so Pocket can't save this for later. Keep Pocket open");
@@ -572,7 +572,7 @@ try {
     await synced(page);
     if ((await attached('S')).join() !== 'full.png') throw new Error('the photo never reached the task');
     if ((await byTitle(T('S'))).length !== 1) throw new Error((await byTitle(T('S'))).length + ' copies');
-    await page.unroute('**/api/v2/tasks/*/attachments', cutOff);
+    await page.unroute('**/v2/tasks/*/attachments', cutOff);
     await page.evaluate(() => {
       IDBObjectStore.prototype.put = window.realPut;
     });
@@ -975,11 +975,9 @@ try {
       await expect
         .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pocket.saved.today')).at))
         .not.toBe(at);
+      // A saved screen holds its tasks' ids, and each task's copy is kept under a key of its own.
       const kept = () =>
-        page.evaluate(id => {
-          const s = JSON.parse(localStorage.getItem('pocket.saved.today'));
-          return [...s.steps, ...s.groups.flatMap(g => g.tasks)].find(t => t.id === id)?.done;
-        }, steps[0].id);
+        page.evaluate(id => JSON.parse(localStorage.getItem('pocket.saved.task.' + id))?.done, steps[0].id);
       if ((await kept()) !== false) throw new Error('the saved Today has the step as ' + (await kept()));
       await context.setOffline(true);
       await page.reload();
