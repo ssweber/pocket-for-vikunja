@@ -47,9 +47,11 @@ test('a move sets the date, its Undo goes back to the date before, and a later m
     { op: 'due', task: 7, due: D(5), was: D(9), check: D(9) },
     'before Vikunja answers, the Undo checks for the date sent',
   );
+  // Vikunja writes the same moment without milliseconds.
+  const stored = D(9).replace('.000Z', 'Z');
   assert.equal(
-    OPS.due.invert({ ...a, got: { task: { due_date: '2026-10-09T13:00:00Z' } } }).check,
-    '2026-10-09T13:00:00Z',
+    OPS.due.invert({ ...a, got: { task: { due_date: stored } } }).check,
+    stored,
     'once it answers, for the date Vikunja stored',
   );
   assert.deepEqual(
