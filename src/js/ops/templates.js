@@ -1,0 +1,250 @@
+/* Making a task a template (makeTemplate), and adding a step to a template (templateStep). A template is a task with
+   the "template" label, done unless it has a due date, whose subtasks are its steps. The steps are done, so none of
+   them is a to-do anywhere. Every request has a key. Cancel takes back what the op made, with the same op marked
+   `cancelled`, in stages that come after the ones it sent (cancelledStages). */
+import { allPages } from '../api.js';
+import { isSet, repeats } from '../dates.js';
+import { OP_WORDS } from '../messages.js';
+import { ALREADY } from '../sync.js';
+import { ZERO } from '../util.js';
+import { isTemplateLabel, templateTitle } from '../checklists.js';
+import { opsId, MOVED, TASK } from '../app/tasks.js';
+import { LINE } from './add.js';
+import { movedFrom } from './ticks.js';
+import { backOf, cancelledStages, notFound, now, patch, place, unadd, unplace } from './stages.js';
+
+/* Change task `id`'s fields (`body`), and put Vikunja's answer into its copy. Returns Vikunja's reply. Vikunja moves a
+   repeating task marked done on to its next date instead, and Pocket's copy may not know that it repeats, so only the
+   reply says what a tick left. A task deleted in the meantime is skipped. */
+async function setTask(c, id, body) {
+  const sure = body.done === true ? {} : body,
+    t = await c.send('/tasks/' + id, { method: 'PATCH', body, on: { [id]: sure } }).catch(e => {
+      notFound(e);
+      return false;
+    });
+  if (t !== false)
+    c.app.change(w => {
+      w.made(id, c.from(t), sure);
+      if (t) w.answer([t], TASK, c.from(t));
+    });
+  return t || null;
+}
+
+/* ---------- making a task a template ---------- */
+
+/* The "template" label Vikunja has, read once: the user's own, or else anyone's. If Vikunja has none, one is made, with
+   a key, so it is made once. */
+async function find(a, c) {
+  if (a.labelId) return;
+  const found = await c.once('found', async () => {
+    const all = (await allPages('/labels?' + new URLSearchParams({ s: 'template' }))).filter(isTemplateLabel);
+    return (all.find(l => l.created_by?.id === a.user) ?? all[0])?.id ?? null;
+  });
+  if (found) a.labelId = found;
+  else {
+    const made = await c.send('/labels', { method: 'POST', body: { title: 'template' } });
+    if (c.app.labels && !c.app.labels.some(l => l.id === made.id)) c.app.labels.push(made);
+    a.labelId = made.id;
+  }
+}
+// The label goes on first. Until the task is marked done last, it is a template Make template didn't finish, which
+// Checklists doesn't list (readyTemplate). Whether this op put the label on is read once, for Cancel.
+async function label(a, c) {
+  const adds = await c.once(
+    'labeled',
+    async () => !((await c.read('/tasks/' + a.task)).labels || []).some(l => l.id === a.labelId),
+  );
+  if (adds)
+    await c.send(`/tasks/${a.task}/labels`, { method: 'POST', body: { label_id: a.labelId } }).catch(e => {
+      if (e.code !== ALREADY.label) throw e;
+    });
+}
+/* Each step the sheet showed open (`steps`) is marked done, one stage each, so Cancel knows which it reached. A step
+   Vikunja has done already, as when a teammate ticked it, is left alone. Each tick keeps what the step had before and
+   what the tick left in those fields (`tickedSteps`), so Cancel puts back only a step nobody has changed since. */
+const tickStep = i => async (a, c) => {
+  const id = a.steps[i],
+    was = await c.once('step' + i, async () => {
+      const t = await now({ task: id }, c);
+      return t && !t.done ? { done: false, ...(repeats(t) && movedFrom(t)) } : null;
+    });
+  if (!was) return;
+  (a.tickedSteps ||= [])[i] = { was };
+  await c.save();
+  const t = await setTask(c, id, { done: true });
+  if (t) a.tickedSteps[i].left = Object.fromEntries(Object.keys(was).map(k => [k, t[k]]));
+};
+/* A "copied from" link, made when the task was duplicated in the web app, would make the template look like a
+   checklist being set up, so it is deleted. The links are read once. Each is recorded before its request
+   (`uncopied`), so Cancel puts back every link this op may have deleted, also after a refusal partway. */
+async function uncopy(a, c) {
+  const ids = await c.once('copies', async () =>
+    ((await c.read('/tasks/' + a.task)).related_tasks?.copiedfrom || []).map(x => x.id),
+  );
+  for (const id of ids) {
+    if (!(a.uncopied ||= []).includes(id)) {
+      a.uncopied.push(id);
+      await c.save();
+    }
+    await c.send(`/tasks/${a.task}/relations/copiedfrom/${id}`, { method: 'DELETE', on: { [id]: {} } }).catch(notFound);
+  }
+}
+/* Last, the task is marked done, unless it has a due date, so a template with a date stays due. Its title gets the
+   "TEMPLATE: " prefix. Both come from Vikunja's copy, read once, with what the task had before, for Cancel. */
+async function finish(a, c) {
+  const { body } = await c.once('finishing', async () => {
+    const t = await c.read('/tasks/' + a.task);
+    return { body: { done: !isSet(t.due_date), title: templateTitle(t.title) }, was: { done: t.done, title: t.title } };
+  });
+  await patch(a, c, body);
+}
+const MAKES = a => [find, label, ...(a.steps || []).map((_, i) => tickStep(i)), uncopy, finish];
+
+// What Cancel takes back, each part only once the stage that made it is done (`cut`).
+const unlabel = (a, c) =>
+  c.send(`/tasks/${a.task}/labels/${a.labelId}`, { method: 'DELETE', on: { [a.task]: {} } }).catch(notFound);
+// A step goes back to what it had before its tick, only in the fields Vikunja still has as the tick left them. Without
+// the tick's answer, the step counts as left as the tick asked: done, and with its dates unknown.
+const untickStep = i => async (a, c) => {
+  const s = a.tickedSteps?.[i];
+  if (!s) return;
+  const id = a.steps[i],
+    { body } = await backOf(a, c, s.was, s.left ?? { done: true }, { id, name: 'back' + i });
+  if (Object.keys(body).length) await setTask(c, id, body);
+};
+// The task's done and title go back, only where Vikunja has them as `finish` left them.
+async function unfinish(a, c) {
+  const f = a.fixed?.finishing;
+  if (!f) return;
+  const { body } = await backOf(a, c, f.was, f.body);
+  if (Object.keys(body).length) await patch(a, c, body);
+}
+// A link that is there again, as one whose delete Vikunja refused, is no error.
+async function recopy(a, c) {
+  for (const id of a.uncopied)
+    await c
+      .send(`/tasks/${a.task}/relations`, {
+        method: 'POST',
+        body: { other_task_id: id, relation_kind: 'copiedfrom' },
+        on: { [id]: {} },
+      })
+      .catch(e => {
+        if (e.code !== ALREADY.link) throw e;
+      });
+}
+/* A stage whose answer was unknown (`unsure`) may or may not have been made, so Cancel takes it back too. Each part
+   checks Vikunja's copy first, or changes nothing where the stage wasn't made. */
+const UNMAKES = a => {
+  const done = k => (a.cut || 0) > k || (!!a.unsure && a.cut === k),
+    n = (a.steps || []).length;
+  return [
+    ...(done(1) && a.fixed?.labeled ? [unlabel] : []),
+    ...(a.steps || []).flatMap((_, i) => (done(2 + i) ? [untickStep(i)] : [])),
+    ...(a.uncopied?.length ? [recopy] : []),
+    ...(done(3 + n) ? [unfinish] : []),
+  ];
+};
+
+/* The template as it will be: labelled, done unless it has a due date, and named with the prefix. The label is known
+   by its title, as a label op shows one not yet made, because which label the op finds is only known once it is sent. */
+const asTemplate = t => ({
+  ...t,
+  labels: (t.labels || []).some(isTemplateLabel)
+    ? t.labels
+    : [...(t.labels || []), { id: 'new:template', title: 'template' }],
+  done: !isSet(t.due_date),
+  title: templateTitle(t.title),
+});
+
+/* Task `task` becomes a template, and the open steps its sheet showed (`steps`) are marked done. New template makes the
+   task and its steps first, with an add op and templateStep ops, and this op waits for those steps (`lines`). It is
+   all or nothing: a refused op waits in the Outbox for Try again or Cancel, and Cancel takes back what it made. The
+   task shows as a template while it waits. Vikunja's copy takes what its reply says, since it is built from the copy
+   Vikunja has as it is sent. */
+export const makeTemplate = {
+  apply: (t, a) => (a.cancelled ? { ...t } : asTemplate(t)),
+  stages: cancelledStages(MAKES, UNMAKES),
+  // A refusal at `finish` is tried again with the title Vikunja has then, so a rename made since stays.
+  keepReads: ['labeled', 'copies'],
+  refusal: a => (a.cancelled ? 'dropped' : 'kept'),
+  cancel: a => (a.cancelled ? 'undo' : 'unmade'),
+  sheetPlace: 'sheet:top',
+  waitsOn: a => [a.task, ...(a.lines || [])],
+  replyOnly: () => ['labels', 'title', 'related_tasks', ...MOVED],
+  ...OP_WORDS.makeTemplate,
+  asks: ['steps', 'lines', 'cancelled'],
+  saw: ['label'],
+  on: null,
+  invert: null,
+  merge: null,
+  waiting: null,
+  answered: null,
+  putBack: null,
+  holds: null,
+  row: null,
+  files: null,
+  deletes: null,
+};
+
+/* ---------- adding a step to a template ---------- */
+
+const [prepare, made, labels, people, link] = LINE;
+// A step is made under its template as an add box's line is made (LINE), then marked done.
+const tick = (a, c) => setTask(c, a.taskId, { done: true });
+const ADDS = a => [prepare, made, labels, people, link, tick, ...(a.after != null ? [place] : [])];
+
+/* A step added to template `task`: a line typed in the box under the template's steps, or in New template, as quick
+   add parsed it (`p`). It is made under the template (`under`), in its project (`pid`). In New template the template is
+   still being made, and both name it by its waiting id. A step goes after step `after`, which may be a step still
+   being added ('pending-<entry>'), or last when that is null.
+
+   A refused step waits in the Outbox for Try again or Cancel, and Cancel deletes the part that reached Vikunja, as for
+   a step added to a checklist (addStep). It waits as a row in the template's sheet until it is made. The template shows
+   it while it waits, since its order line and its subtasks change, which only Vikunja's reply can say. A cancelled one
+   shows on the step too, which hides the step until it is deleted. */
+export const templateStep = {
+  apply: t => ({ ...t }),
+  on: a => [opsId(a.task), ...templateStep.deletes(a)],
+  stages: cancelledStages(ADDS, [unadd, unplace]),
+  refusal: a => (a.cancelled ? 'dropped' : 'kept'),
+  cancel: a => (a.cancelled ? 'undo' : 'unmade'),
+  holds: a => ['pending-' + a.id, ...(a.taskId ? [a.taskId] : [])],
+  waitsOn: a => [a.task, ...(typeof a.after === 'string' ? [a.after] : [])],
+  // The step's waiting row has no project, so it shows only in its template's sheet, never in a project's list.
+  row: a =>
+    a.taskId || a.cancelled
+      ? null
+      : {
+          id: 'pending-' + a.id,
+          pending: true,
+          entry: a.id,
+          sent: !!a.sent,
+          child: true,
+          parent: opsId(a.task),
+          title: a.p.title,
+          done: true,
+          percent_done: 0,
+          priority: 0,
+          position: 0,
+          due_date: ZERO,
+          project_id: null,
+          labels: [],
+          assignees: [],
+          repeat_after: 0,
+          repeat_mode: 0,
+          waiting: 0,
+        },
+  deletes: a => (a.cancelled && a.taskId ? [a.taskId] : []),
+  replyOnly: () => ['related_tasks', 'description'],
+  ...OP_WORDS.templateStep,
+  asks: ['p', 'pid', 'under', 'after', 'cancelled'],
+  saw: ['label'],
+  keepReads: null,
+  invert: null,
+  merge: null,
+  waiting: null,
+  sheetPlace: null,
+  answered: null,
+  putBack: null,
+  files: null,
+};

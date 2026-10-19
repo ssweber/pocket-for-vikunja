@@ -4,7 +4,7 @@
       <!-- Share or copy the project's open tasks, or open its page in Vikunja. Anyone who can see the project can do
            this, offline too. -->
       <div class="card share-card" id="p-sharing">
-        <button type="button" id="p-share-text" @click="shareProgress('project')">Share progress as a text</button>
+        <button type="button" id="p-share-text" @click="shareProgress('project')">Share as text</button>
         <button type="button" id="p-copy-md" @click="copyMarkdown('project')">Copy as a Markdown list</button>
         <a id="p-open-vikunja" :href="vikunjaUrl('project')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
@@ -45,14 +45,14 @@
 
     <!-- A checklist's ⋯ sheet. It shows who started the checklist and when, its name and who it is for, and has
          buttons to open the checklist as a task and to delete it. -->
-    <template x-if="sheet.kind === 'runopts' && view.run"><div id="run-options">
+    <template x-if="sheet.kind === 'runopts' && runTask"><div id="run-options">
       <template x-if="runStarted"><p class="note run-started" id="r-started" x-text="runStarted"></p></template>
-      <div class="d-title"><h2 x-text="view.run.run.title"></h2></div>
+      <div class="d-title"><h2 x-text="runTask.title"></h2></div>
       <!-- Share the steps, who did each and who is on the rest, or open the checklist's page in Vikunja. There is no
            Markdown copy, because pasting a Markdown list creates tasks again, and a checklist's record of who did what
            would be lost that way. -->
       <div class="card share-card" id="r-sharing">
-        <button type="button" id="r-share-text" @click="shareProgress('run')">Share progress as a text</button>
+        <button type="button" id="r-share-text" @click="shareProgress('run')">Share as text</button>
         <a id="r-open-vikunja" :href="vikunjaUrl('run')" target="_blank" rel="noopener">Open in Vikunja ↗</a>
       </div>
       <template x-if="sheet.runEdit"><div>
@@ -65,11 +65,11 @@
             @click="setRunFor(u)" x-text="u.id === user?.id ? 'Me' : (u.name || u.username)"></button></template>
         </div>
       </div></template>
-      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.run.run.id)">Reopen checklist</button></template>
+      <template x-if="runView?.finished"><button class="btn block" id="r-reopen" style="margin-top:14px" @click="reopenRun(view.shownRun.id)">Reopen checklist</button></template>
       <div class="card cl-card" style="margin-top:14px">
         <p>The checklist is a task in Vikunja, with its steps as subtasks.</p>
-        <button class="btn ghost block" id="r-open-task" @click="openTask(view.run.run.id)">Open as a task</button>
+        <button class="btn ghost block" id="r-open-task" @click="openTask(view.shownRun.id)">Open as a task</button>
       </div>
-      <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(view.run.run)">Delete checklist</button>
-        <p class="note" x-text="'Deletes the checklist and its ' + view.run.run.steps.length + (view.run.run.steps.length === 1 ? ' step' : ' steps') + ', with their comments and photos, for everyone.'"></p></div>
+      <div class="danger-zone"><button class="btn danger block" id="r-delete" @click="confirmDeleteRun(runTask, view.shownRun.steps)">Delete checklist</button>
+        <p class="note" x-text="'Deletes the checklist and its ' + view.shownRun.steps.length + (view.shownRun.steps.length === 1 ? ' step' : ' steps') + ', with their comments and photos, for everyone.'"></p></div>
     </div></template>

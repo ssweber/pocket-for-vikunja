@@ -15,13 +15,18 @@ Pocket looks or responds to touch against `docs/design-rules.md`.
   comment says.
 - Content from Vikunja (descriptions, comments) goes through `sanitize` before it is shown. Pocket shares Vikunja's
   origin and sign-in, so a script in a description would run as the user.
-- Match the surrounding code's compact style.
+- Prettier formats the code (`npm run format`), and `npm run lint` checks it. Match the surrounding code's naming and
+  comment density.
 
 ## Checking a change
 
-- `npm run lint` and `npm run test:parse` need no server and take seconds.
-- `npm run test:local` starts a local Vikunja in Docker and runs every test. Run it before saying a change works.
-- A change in behaviour comes with a test, in the test file for that area.
+- `npm run lint`, `npm run test:unit` and `npm run test:parse` need no server and take seconds. Run them after each
+  change.
+- `npm run test:local` starts a local Vikunja in Docker and runs every test, which takes minutes. Run it once a piece
+  of work is finished, before it is checked on a phone or merged into `main`. Keep commits small, so a failure it
+  finds can be traced to one of them.
+- A change in behaviour comes with a test, in the test file for that area. Prefer a unit test, which finds the
+  problem in seconds.
 
 ## Writing
 

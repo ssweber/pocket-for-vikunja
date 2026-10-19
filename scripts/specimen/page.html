@@ -50,7 +50,7 @@
            (task-row.html, SHEET_ROW) and the sheet's notes and files. Above the card is the sheet's path (a copy of its
            markup). Below it is the rest of the sheet, all stand-ins except the subtasks' rows, which are the real row.
            Each is the sheet of a separate task, and `sheet` here is that sheet, as in the app. -->
-      <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet">
+      <template x-for="sheet in specimenSheets" :key="sheet.task.id"><div class="spec-task-sheet" x-data="{sheetTask: sheet.task}">
         <div class="sec" x-text="sheet.spec"></div>
         <div class="d-path">
           <i class="dot" x-style="{background: colorOf(projById.get(sheet.task.project_id)?.hex_color)}"></i><button class="linkish" x-text="projById.get(sheet.task.project_id)?.title || 'Project'"></button>
@@ -127,9 +127,9 @@
            then a footer that is a slim tab with ⌄. The cards shown are: a high-priority task, opened with its footer,
            which becomes a plain ⌃; a checklist with its next step counting down; a checklist due at 6 PM, whose heading
            reads like a task's without the day it was started; a task with one open subtask, so no footer; a low-priority
-           task with 14 subtasks; and an opened card whose rows have a priority and a time before "+ me", one of them in
-           another project with its own dot. -->
-      <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
+           task with 14 subtasks; a done task over its open repeating subtask; and an opened card whose rows have a
+           priority and a time before "+ me", one of them in another project with its own dot. -->
+      <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; a done task over its open repeating subtask, struck through over “Done, but 1 subtask is still open”; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
@@ -145,6 +145,14 @@
             <!-- include markup/list-item.html -->
           </template>
         </div></template>
+      </div></template>
+      <!-- A row moved to another date on Today leaves a gap where it was (list-item.html), until the batch clears. The
+           row shows plainly where it went. -->
+      <div class="sec">A row moved to another day: a gap where it was, naming the day, with Undo, until the batch clears</div>
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
+        <template x-for="t in specimenMoved" :key="t.id">
+          <!-- include markup/list-item.html -->
+        </template>
       </div></template>
       <!-- A parent's ring sits on a card's header in place of a tick. Its arc shows the percentage worked out from the
            subtasks, and how many of all the subtasks inside it are done. When every subtask is done the card shows "All
@@ -185,7 +193,7 @@
       </div></template>
       <!-- A checklist's step card (step-card.html). It shows the step's title, who is on it, when it is due, and Done
            and Skip. The steps listed under the card show where the checklist has got to. -->
-      <div class="sec">A run’s step card: on a step of yours, counting down, with a photo still uploading and its × not to upload it; one Jamie is on, half done; one done, tapped in the list</div>
+      <div class="sec">A run’s step card: on a step of yours, counting down, with a photo still uploading and its × not to upload it; one Jamie is on, half done; one done, tapped in the list; one that asks to record five things, two typed in and not yet sent, with Save, the temperature outside its range, five options in the phone’s picker; one done, its one answer sent, with who sent it</div>
       <template x-for="runView in specimenRunCards" :key="runView.step.id"><div style="margin-bottom:12px">
         <!-- include markup/step-card.html -->
       </div></template>

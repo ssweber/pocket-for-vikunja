@@ -33,7 +33,7 @@ JavaScript, minify it and the CSS, and paste them and the markup's pieces into t
 **One owner for each thing.**
 
 - Everything done to a task is a method in `app/actions.js`. The lists and the sheet call those methods.
-- Each task on screen is one object in `tasks`, by id. Some copies are not that object yet, listed below.
+- Each task on screen is one object in `tasks`, by id, made from Vikunja's copy and the ops waiting in the outbox.
 - A task's row is one piece of markup, `markup/task-row.html`, wherever it is shown.
 - Markup written twice or more is a piece under `src/markup/`, included where it is used. What every add box does
   is one directive, `x-box`.
@@ -56,28 +56,70 @@ template for every list, with the parts a given list does not show left in it.
 - A release is made on GitHub: **Releases → Draft a new release**, a new tag on `main` like `v0.1.0`, and
   **Publish**. The tag is the version. `.github/workflows/release.yml` writes it into `Version()` in `main.go` and
   attaches `pocket-v0.1.0.zip`, the folder to install. In the repo the version stays `0.0.0-dev`.
+- `CHANGELOG.md` gets a line under Unreleased for each change a user would notice, in the commit that makes it. A
+  change to what Pocket writes into Vikunja is listed on its own. At a release, Unreleased becomes the version and
+  the date, and the release notes start from it.
 - `.github/workflows/ci.yml` checks the build, runs ESLint and every test on each pull request to `main` and each
   push to it, not on every push to `dev`.
 
-## Copies of a task that are not the store's yet
+## Next, in order
 
-Rule 1 of `development.md` says every row is the one object in `tasks`. These are not, and may become it when a
-feature needs that:
+1. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
+2. **For 0.3.0: filtering by label.** Rows don't show their labels today, so that comes first. Then:
+   - Tapping a label on a row narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and
+     clearing it, or leaving Today, shows everything again. One label at a time.
+   - Typing `*errands` in search lists every open task with that label, wherever it is due, grouped by project.
+3. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
 
-- A task's sheet has its own copy (`sheet.task`). It shows a change at once, puts the change back if the save fails
-  (`save`), and hides the replies that arrive while saves are under way. The store's copy would show those replies
-  on the rows, so the changes waiting would first need keeping apart from Vikunja's copy.
-- The copies of each screen kept on the phone (`saved`), which a screen opens with before it has loaded. Once shown,
-  each task gives way to the store's copy where that is as new (`keptRows`).
-- The subtasks in a task's sheet are Vikunja's copies inside the task (`related_tasks.subtask`), without their people
-  or labels. Their row differs from a list's in its tick, title and meta, and has no progress line (`g.sheet` in
-  `task-row.html`).
-- A checklist's screen has its own checklist and steps (`view.run`), drawn by the task row (`g.run`). Checklists has
-  its templates and the checklists finished lately as summaries. The checklists in progress under Checklists are the
-  store's.
-- `cache` stays Vikunja's last copy of each task.
-- Projects (new, rename, archive, delete, use for checklists), templates (`app/checklists.js`) and checklists in
-  progress (`app/runs.js`, through the outbox) still call `api()` themselves.
+The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
+send whenever the user chooses.
+
+## Before anyone else uses Pocket
+
+- **Upgrading stored data.** Replace the upgrade that empties every IndexedDB store with one step per version that
+  never drops the outbox, and give each entry and saved screen a format version. Show an entry Pocket can't read in
+  the Outbox with Cancel. Today such an entry breaks the Outbox's list (`op.text`) and the sender (`stagesOf`), and a
+  start or a step that an older Pocket saved before they were ops is dropped unsent.
+- **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete the
+  oldest saved screen and try again.
+- **Deleted tasks.** In `docs/design/upstream-task-updated.md`, ask Vikunja for a way to learn which tasks were
+  deleted, such as the ids deleted since a time, a soft-delete flag a filter can see, or a table of deleted ids kept
+  for a set time. If Vikunja declines, build a change log in the plugin from Vikunja's task events. It can't replace
+  a checklist's reload, because Vikunja sends no events for labels or reactions.
+- **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too. Accept
+  `default_due_time` only as `HH:MM`.
+- **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers) after
+  opening the sheet and switching screens many times.
+- **To discuss with the user first.** Screen readers (`aria-live` off `#view`, group titles as headings, rows as
+  lists). Back restoring the scroll position. A step added under a template waits as a row at the end of its sheet,
+  not after the step the box was under, until Vikunja has made it.
+
+## Known gaps
+
+Each of these is rare, or its fix would change what the user sees and needs deciding first.
+
+- An op refused with 404, because its task was deleted in Vikunja, stays failed for good. A tick, an untick, a
+  progress, a finish, a reopen, an edit, a move, a link or unlink, an `assign` and a `label` leave the outbox instead
+  (`refusal`).
+- Dropping a failed add with no waiting neighbour leaves its parent's progress unwritten.
+- A move takes the subtasks Pocket knows of when it is queued (`subtaskTree`). Offline, a subtask Pocket never read
+  moves without its own subtasks.
+- The Undo of a repeating task's tick whose answer this tab never saw has no dates to check against. It counts any
+  date other than the one before as changed since.
+- No screen offers an Undo for a person or a label, though their ops have an `invert`.
+- An Undo of a cancelled refused change can land behind later changes.
+- A person or a label op reads the set Vikunja has once, before its first request (`c.once('set')`, `stages.js`). When
+  Vikunja answers that request with a 5xx, the retry sends the same set, so it removes a label a teammate added since.
+- `PUT /tasks/{id}/labels/bulk`, and a file's upload through the relay (`fileBody`), have only been sent to the fake
+  Vikunja. `test:local` should cover them.
+- When the relay can't say whether Vikunja made a start's copy of the template or of a step, the start's Cancel and
+  Undo can't find that copy, and leave it (`KNOWN` in `lifecycle.test.mjs`). For a done template, Checklists then
+  lists a second template with no steps. The same holds for a step added to a checklist or a template. The template's
+  `related_tasks.copiedto` lists the copy, but telling it from a teammate's start would be a guess.
+- The Outbox offers no Cancel for a start, an added step, Make template or a template's step once it has sent a
+  request and waits. The row's × still cancels a step.
+- `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
+  whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 
 ## Only if needed
 
@@ -90,5 +132,6 @@ feature needs that:
 - **TypeScript.** First, types in JSDoc comments, checked by `tsc --checkJs --noEmit` in CI, with no change to the
   build. Switch to TypeScript files only if that stops being enough.
 - **Vite.** When Pocket needs packages from npm beyond the two libraries it keeps in `pocket/app/`.
-- **A formatter (Prettier).** No. It would rewrite every line of the current compact style. ESLint checks for
-  mistakes only, none about style.
+- **Sending to `/api/v2` directly.** When Vikunja supports the `Idempotency-Key` header
+  (`docs/design/upstream-idempotency-key.md` asks for it), point `api()`'s `key` option at `/api/v2`, delete
+  `relay.go`, add a migration that drops `pocket_relay`, and raise the minimum Vikunja version.

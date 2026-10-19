@@ -3,19 +3,34 @@
    messages where the action happened. */
 
 let toastTimer;
-export const UNDO_MS = 5000;                            // how long a message with an Undo shows
+export const UNDO_MS = 5000; // how long a message with an Undo shows
 
 export default {
   /* Show a message with up to two actions: `action` (Undo, when there is one) and `more` (for example Open). It
      replaces the message before it, because one Undo for two different things could undo more than meant. An action's
      `gone` is called when its message disappears without being tapped. */
-  notify(msg, action, more){
+  notify(msg, action, more) {
     if (this.toast.show) this.toastGone(this.toast);
     const ms = action ? UNDO_MS : 2600;
-    this.toast = {show: true, msg, action: action || null, more: more || null, until: Date.now() + ms};
+    this.toast = { show: true, msg, action: action || null, more: more || null, until: Date.now() + ms };
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => this.toast.show = false, ms);
+    // A message that times out ends its Undo here, so the Undo's `gone` runs without relying on the watch on toast.show.
+    toastTimer = setTimeout(() => {
+      this.toastGone(this.toast);
+      this.toast.show = false;
+    }, ms);
   },
-  runToastAction(second){ const a = second ? this.toast.more : this.toast.action; if (a && !second) a.gone = null; this.toast.show = false; a?.fn(); },
-  toastGone(t){ const go = t.action?.gone; if (go) { t.action.gone = null; go(); } },
+  runToastAction(second) {
+    const a = second ? this.toast.more : this.toast.action;
+    if (a && !second) a.gone = null;
+    this.toast.show = false;
+    a?.fn();
+  },
+  toastGone(t) {
+    const go = t.action?.gone;
+    if (go) {
+      t.action.gone = null;
+      go();
+    }
+  },
 };

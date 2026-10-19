@@ -19,7 +19,7 @@
      every kind where that condition can be true. -->
 <!-- A collapsed card's top row (.step-line) doesn't fold with the batch. The next row slides up into its place
      (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits, fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits || !!waiting.dues[t.id], fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="tapGap(t, g, $event)" @contextmenu="rowMenu(t, $event)" @keydown.shift.f10="rowMenu(t, $event)"
@@ -98,7 +98,7 @@
   <template x-if="g.run && t.added && !t.done && t.i === g.at && !g.locked"><button class="icon-btn plain step-del" id="step-delete" :aria-label="'Delete this step: ' + t.title" @click="deleteAddedStep(t)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <!-- /only -->
   <!-- only top list card sheet own -->
-  <template x-if="!g.run && t.pending"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry, t.index)"><svg class="i"><use href="#i-close"/></svg></button></template>
+  <template x-if="!g.run && t.pending && !t.sent"><button class="icon-btn plain" :aria-label="cancelLabel(t)" @click="cancelPending(t.entry)"><svg class="i"><use href="#i-close"/></svg></button></template>
   <!-- /only -->
   <!-- only list card sheet -->
   <template x-for="line in !g.run && !g.own && !g.top && lines[t.id] ? [lines[t.id]] : []" :key="0">

@@ -14,8 +14,32 @@
   <template x-if="runView.step.added"><div class="step-added" id="step-added" x-text="runView.step.added + (runView.step.slowAdd ? ' · waiting to send' : '')"></div></template>
   <template x-if="runView.step.dueText"><div class="step-due num" :class="{late: runView.step.late}" x-text="runView.step.dueText"></div></template>
   <template x-if="runView.step.description"><div class="desc" x-html="sanitize(runView.step.description)"></div></template>
+  <!-- A field for each thing the step asks to record (app/asks.js). A step with one ask may leave out its label, and its
+       title is the label then. Yes or no and up to four options are buttons, more use the phone's picker. Each field
+       shows the answer that counts until something else is typed. Save sends what is typed without marking the step
+       done, and Done sends it too. A finished checklist, or one shared to read only, shows its fields disabled. -->
+  <template x-if="runView.step.asks.length"><div class="asks" id="step-asks">
+    <template x-for="a in runView.step.asks" :key="a.key"><div class="ask">
+      <template x-if="a.label || askBy(runView.step, a)"><div class="ask-label"><span x-text="a.label"></span><span class="by" x-text="askBy(runView.step, a)"></span></div></template>
+      <template x-if="a.type === 'number' || a.type === 'text'"><div class="answer-line">
+        <template x-if="askSigned(a)"><button type="button" class="btn ghost answer-sign" :disabled="askLocked" :aria-label="'Make ' + (a.label || runView.step.title) + ' negative or positive'" @click="flipAsk(runView.step, a)">±</button></template>
+        <input class="answer-in" :disabled="askLocked" :class="{text: a.type === 'text'}" :inputmode="a.type === 'number' ? 'decimal' : 'text'" enterkeyhint="done" :aria-label="a.label || runView.step.title"
+               :value="askDraft(runView.step, a)" @input="setAsk(runView.step, a, $event.target.value)" @keydown.enter.prevent="$el.blur()">
+        <template x-if="a.unit"><span class="answer-unit" x-text="a.unit"></span></template>
+      </div></template>
+      <template x-for="n in a.type === 'number' ? [askNote(runView.step, a)].filter(Boolean) : []" :key="0"><p class="answer-note" :class="n.cls" x-text="n.text"></p></template>
+      <template x-if="a.type === 'yes-no' || (a.type === 'choice' && a.options.length <= 4)"><div class="answer-opts" role="group" :aria-label="a.label || runView.step.title">
+        <template x-for="o in a.type === 'yes-no' ? ['Yes', 'No'] : a.options" :key="o"><button type="button" :disabled="askLocked" :aria-pressed="String(askDraft(runView.step, a) === o)" @click="pickAsk(runView.step, a, o)"><template x-if="askDraft(runView.step, a) === o"><svg class="i"><use href="#i-check"/></svg></template><span x-text="o"></span></button></template>
+      </div></template>
+      <template x-if="a.type === 'choice' && a.options.length > 4"><select class="answer-in answer-pick" :disabled="askLocked" :aria-label="a.label || runView.step.title" @change="setAsk(runView.step, a, $event.target.value)">
+        <option value="" :selected="!askDraft(runView.step, a)">Pick one</option>
+        <template x-for="o in a.options" :key="o"><option :value="o" :selected="askDraft(runView.step, a) === o" x-text="o"></option></template>
+      </select></template>
+    </div></template>
+    <template x-if="!askLocked && unsentAnswers(runView.step).size"><button class="btn ghost block asks-save" id="step-save-answers" @click="saveAnswers(runView.step)" x-text="saveLabel(runView.step)"></button></template>
+  </div></template>
   <template x-if="runView.step.done"><div class="step-who" id="step-who" :class="{waiting: runView.step.slow}" x-text="runView.step.whoText"></div></template>
-  <div class="step-acts" x-show="!runView.finished && canWrite(view.run.run.project_id)">
+  <div class="step-acts" x-show="!runView.finished && canWrite(runTask.project_id)">
     <!-- The buttons keep the same text while a comment is being written, so they don't change size under the user's
          thumb. A note under the comment says the comment is sent with them. -->
     <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" @click="tickStep(runView.step, 'done')"><svg class="i"><use href="#i-check"/></svg><span>Done</span></button></template>
@@ -39,7 +63,7 @@
     <template x-for="c in runView.step.notes" :key="c.id">
       <div class="comment"><div class="who"><b x-text="c.author"></b> · <span class="num" x-text="c.when"></span></div><div class="desc" style="padding:0" x-html="sanitize(c.comment)"></div></div>
     </template>
-    <form class="comment-form" id="step-note-form" x-show="canWrite(view.run.run.project_id)" @submit.prevent="addNote(runView.step.id)">
+    <form class="comment-form" id="step-note-form" x-show="canWrite(runTask.project_id)" @submit.prevent="addNote(runView.step.id)">
       <textarea id="step-note" rows="1" placeholder="Comment on this step" aria-label="Comment on this step" x-model="runDrafts[runView.step.id]" x-grow="runDrafts[runView.step.id]"></textarea>
       <button class="go btn" style="width:44px;padding:0" aria-label="Post comment" :disabled="!(runDrafts[runView.step.id] || '').trim()" @mousedown.prevent><svg class="i"><use href="#i-up"/></svg></button>
     </form>

@@ -15,8 +15,8 @@
       <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
-    <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens Waiting to send
-         instead (outbox.js). -->
+    <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens the Outbox instead
+         (outbox.js). -->
     <button id="btn-refresh" class="icon-btn" :class="{waits: outboxShown, trouble: failed.length}" :aria-label="outboxShown ? outboxLabel : 'Refresh'"
             :disabled="refreshing && !outboxShown" @click="tapRefresh()"><svg class="i"><use :href="failed.length ? '#i-alert' : outboxShown ? '#i-wait' : '#i-refresh'"/></svg>
       <template x-if="outboxShown"><span class="count num" id="outbox-count" aria-hidden="true" x-text="outboxRows.length"></span></template></button>
@@ -36,11 +36,16 @@
         <!-- include markup/task-row.html top -->
       </template></template></div></template>
       <template x-if="!runOwn"><div class="t"><template x-if="head.kicker"><div class="kicker" id="kicker" x-text="head.kicker"></div></template><h2 id="heading" x-text="head.title"></h2></div></template>
+      <!-- Copies the progress text that Share as text in the ⋯ menu sends -->
+      <template x-if="(route.name === 'project' && view.project) || (route.name === 'run' && view.shownRun)"><button id="btn-copy" class="icon-btn plain" aria-label="Copy progress" @click="route.name === 'run' ? copyProgress('run', 'run') : copyProgress('project', 'project')"><svg class="i"><use href="#i-copy"/></svg></button></template>
       <!-- Opens the project's sheet, where it is set up for checklists -->
       <template x-if="route.name === 'project' && view.project"><button id="btn-project" class="icon-btn plain" aria-label="Project options" @click="openProject()"><svg class="i"><use href="#i-more"/></svg></button></template>
-      <template x-if="route.name === 'run' && view.run"><button id="btn-run-more" class="icon-btn plain" aria-label="Checklist options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
+      <template x-if="route.name === 'run' && view.shownRun"><button id="btn-run-more" class="icon-btn plain" aria-label="Checklist options" @click="openRunOptions()"><svg class="i"><use href="#i-more"/></svg></button></template>
     </div></template>
-    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. Ticking off or changing tasks needs a connection, except on a checklist.'"></p></template>
+    <template x-for="line in placeLines('project')" :key="line.n">
+      <!-- include markup/place-line.html -->
+    </template>
+    <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. Changes wait in the Outbox.'"></p></template>
     <template x-if="view.loading"><div class="loading">Loading…</div></template>
 
     <template x-if="!view.loading && view.error"><div>
