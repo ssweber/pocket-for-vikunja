@@ -384,6 +384,9 @@ export function component(...parts) {
     role() {
       return null;
     },
+    inToday() {
+      return true;
+    },
     stepRun() {
       return null;
     },

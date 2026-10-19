@@ -24,7 +24,7 @@ import {
   todayGroups,
   viewKey,
 } from '../lists.js';
-import { cardGroup, countdown, openSubs, todayItems } from '../cards.js';
+import { cardGroup, countdown, openSubs } from '../cards.js';
 import {
   couldnt,
   createdProject,
@@ -857,8 +857,8 @@ export default {
     // A task back on a project's open list goes to its place in the List view, which a load reads.
     if (r.name === 'project' && plan.some(p => p.to?.key === 'open')) this.render();
   },
-  // Keep each card's date on Today as todayDates gives it, and make a card of a row that has open subtasks now. Returns
-  // whether anything changed.
+  // Keep each card's dates on Today as todayDates gives them, and make a card of a row that has open subtasks now.
+  // Returns whether anything changed.
   keepCards() {
     const cards = this.view.cards;
     let changed = false;
@@ -866,9 +866,11 @@ export default {
       for (const t of g.tasks) {
         const d = !t.done && this.todayDates(t);
         if (!d?.card) continue;
-        if (!cards[t.id]) cards[t.id] = { when: d.when ?? null, made: d.made ?? null, focus: null };
-        else if ((cards[t.id].when ?? null) === (d.when ?? null)) continue;
-        else cards[t.id].when = d.when ?? null;
+        const c = cards[t.id],
+          when = d.when ?? null;
+        if (c && (c.when ?? null) === when && (c.made || t.created) === d.made) continue;
+        if (c) Object.assign(c, { when, made: d.made ?? null });
+        else cards[t.id] = { when, made: d.made ?? null, focus: null };
         changed = true;
       }
     return changed;
@@ -944,12 +946,9 @@ export default {
         .then(putting(TASK_COUNT_REACTIONS))
         .catch(() => []),
     ]);
-    const tasks = all.filter(t => this.inToday(t, runs)),
-      added = allAdded.filter(t => this.inToday(t, runs));
-    const theirs = claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false);
-    const { rows, cards } = todayItems({ tasks, added, mine, claimed: theirs }, this.user, t => this.role(t));
+    const { rows, cards } = this.todayReasons({ due: all, added: allAdded, mine, claimed }, runs);
     const read = cards.size
-      ? await this.readCards(cards, [...tasks, ...added, ...mine, ...claimed, ...open])
+      ? await this.readCards(cards, [...all, ...allAdded, ...mine, ...claimed, ...open])
       : { parents: [], steps: [], positions: {} };
     return { rows, cards, done: this.withoutTemplates(doneAll, true).filter(t => this.doneByMe(t)), ...read };
   },

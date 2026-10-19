@@ -1859,3 +1859,112 @@ test('on Today, a subtask taken off its card gets a row of its own, and a task g
     'the subtask has its own row, and the task given a subtask is a card, by its own date',
   );
 });
+
+/* Today as its load lays it out from `list`, the tasks Vikunja has, at noon on 14 October. Vikunja answers Today's
+   requests (readToday) here, and the load's own steps follow. `runs` says which checklists are the user's. */
+const loadToday = (c, list, runIndex = {}) => {
+  c.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) });
+  const app = component(tasks, Object.defineProperties({}, SENDING), runs, checklists, cards, views, alerts, leaving);
+  Object.assign(app, {
+    user: me,
+    pending: [],
+    slow: [],
+    positions: {},
+    projById: new Map(),
+    checklistIds: new Set([7]),
+    route: { name: 'today' },
+    setBadge() {},
+  });
+  saved.set('runs', runIndex);
+  c.after(() => saved.set('runs', {}));
+  for (const t of list) app.row(t);
+  const t0 = new Date(2026, 9, 14),
+    end = new Date(2026, 9, 22),
+    open = list.filter(t => !t.done),
+    got = app.todayReasons(
+      {
+        due: open.filter(t => t.due_date !== NONE && new Date(t.due_date) < end),
+        added: open.filter(t => new Date(t.created) >= t0),
+        mine: open.filter(t => runIndex[t.id] && app.isRunTask(t)),
+        claimed: open.filter(t => t.assignees.some(u => u.id === me.id)),
+      },
+      runIndex,
+    ),
+    parents = [...got.cards.keys()].map(id => app.tasks[id]);
+  const { groups, cards: shown } = app.todayFrom(
+    {
+      ...got,
+      parents,
+      steps: parents.flatMap(p => p.related_tasks.subtask.map(s => app.tasks[s.id])),
+      positions: {},
+    },
+    t => app.row(t),
+  );
+  Object.assign(app.view, { groups, cards: shown, route: location.hash });
+  const shows = () => ({
+    groups: app.view.groups.map(g => [g.key, g.tasks.map(t => t.id)]).filter(([, ids]) => ids.length),
+    cards: structuredClone(app.view.cards),
+  });
+  return { app, shows };
+};
+const local = (d, h) => new Date(2026, 9, d, h).toISOString(); // 35 October is 4 November
+const step = (id, run, f = {}) =>
+  task(id, {
+    project_id: 7,
+    created_by: other,
+    related_tasks: { ...under(run, 7), copiedfrom: [{ id: id + 100 }] },
+    ...f,
+  });
+const run = (id, steps, f = {}) =>
+  task(id, {
+    project_id: 7,
+    created_by: other,
+    related_tasks: { subtask: steps.map(s => ({ id: s, done: false })), copiedfrom: [{ id: id + 100 }] },
+    ...f,
+  });
+
+test('a regroup right after Today loads leaves every card where the load put it', async c => {
+  for (const [kind, list, runIndex, want] of [
+    [
+      'an undated subtask of yours, made today, under a task due in three weeks',
+      [
+        task(10, { due_date: local(35, 9), created: local(1, 9), related_tasks: subs([11]) }),
+        task(11, { created: local(14, 9), created_by: other, assignees: [me], related_tasks: under(10) }),
+      ],
+      {},
+      [['nodate', [10]]],
+    ],
+    [
+      'a teammate’s checklist with your step due Friday and their step overdue',
+      [
+        run(30, [31, 32]),
+        step(31, 30, { due_date: local(16, 9), assignees: [me] }),
+        step(32, 30, { due_date: local(12, 9) }),
+      ],
+      { 30: false },
+      [['week', [30]]],
+    ],
+    [
+      'a task due Sunday with a subtask due today',
+      [
+        task(20, { due_date: local(18, 9), related_tasks: subs([21]) }),
+        task(21, { due_date: local(14, 15), related_tasks: under(20) }),
+      ],
+      {},
+      [['today', [20]]],
+    ],
+    [
+      'a teammate’s checklist with your undated step and their step due today',
+      [run(40, [41, 42]), step(41, 40, { assignees: [me] }), step(42, 40, { due_date: local(14, 15) })],
+      { 40: false },
+      [['runs', [40]]],
+    ],
+  ]) {
+    const { app, shows } = loadToday(c, list, runIndex),
+      loaded = shows();
+    assert.deepEqual(loaded.groups, want, kind + ': where the load puts it');
+    app.regroup();
+    assert.deepEqual(shows(), loaded, kind + ': nothing moves at the regroup');
+    c.mock.timers.reset();
+  }
+});

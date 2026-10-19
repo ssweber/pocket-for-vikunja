@@ -1,7 +1,7 @@
 // Send what was added through the outbox, and show the "Waiting to send" rows until it reaches Vikunja.
 import { raw, userCache } from '../util.js';
 import { api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIENT, upload } from '../api.js';
-import { isSet, startOfDay } from '../dates.js';
+import { addDays, isSet, startOfDay } from '../dates.js';
 import {
   addedPart,
   addedWhere,
@@ -43,12 +43,14 @@ import {
   sameGroup,
   saved,
   screenRows,
+  TODAY_DAYS,
   todayAt,
   todayGroups,
   todayOrder,
   viewKey,
 } from '../lists.js';
 import { positionOrder, SPACING } from '../order.js';
+import { todayItems } from '../cards.js';
 import { addLines, cancelOf, linesUnder, movedFrom, noneWaiting, opOf, passUps } from '../ops/index.js';
 import { heldTasks, hold, waits } from './acts.js';
 import { opsId } from './tasks.js';
@@ -629,17 +631,58 @@ export default {
         : null;
     return new Date(made) >= t0 && (card || !t.created_by || t.created_by.id === me) ? 'nodate' : null;
   },
-  /* The dates Today places task `t` by, as its load does (todayItems, cards.js). A card goes by the earliest date in the
-     next seven days among its task and its open subtasks, or by its own date when none is, and by when it was made
-     (`made`). `card` says whether `t` is a card or becomes one. */
+  /* The dates Today places task `t` by, as its load does. A card goes by the dates that put it on Today (todayCard),
+     and by when it was made (`made`). `card` says whether `t` is a card or becomes one. A task that was a card and has
+     nothing left to put it on Today goes by its own dates, as a row does. */
   todayDates(t) {
     const c = this.view.cards?.[t.id],
       subs = !t.done && this.role(t) !== 'template' ? this.cardSubs(t).filter(s => !s.done) : [];
-    if (!c && !subs.length) return { when: t.due_date, made: t.created, card: false };
-    const near = [t.due_date, ...subs.map(s => s.due_date)]
-      .filter(d => isSet(d) && dayGroup(d) !== null)
-      .reduce((a, b) => (!a || Date.parse(b) < Date.parse(a) ? b : a), null);
-    return { when: near ?? (isSet(t.due_date) ? t.due_date : null), made: c?.made || t.created, card: true };
+    const why = (c || subs.length) && this.todayCard(t, subs);
+    return why
+      ? { when: why.when, made: why.made || t.created, card: true }
+      : { when: t.due_date, made: t.created, card: false };
+  },
+  /* What puts each task on Today (todayItems), from what Today's requests return: `due`, open and due by the end of the
+     coming week; `added`, open and made today; `mine`, the user's checklists in progress; `claimed`, the open tasks
+     assigned to the user. `runs` says which checklists are the user's (loadRunIndex). */
+  todayReasons({ due = [], added = [], mine = [], claimed = [] }, runs) {
+    return todayItems(
+      {
+        tasks: due.filter(t => this.inToday(t, runs)),
+        added: added.filter(t => this.inToday(t, runs)),
+        mine,
+        claimed: claimed.filter(t => !isSet(t.due_date) && runs[this.stepRun(t)] === false),
+      },
+      this.user,
+      t => this.role(t),
+    );
+  },
+  /* What puts card `t` on Today, as {when, made}, from the store's copies of `t` and its open subtasks `subs`, or null
+     when nothing does. The filters stand in for Today's requests, and the rest is the load's own rule (todayReasons),
+     so a regroup dates a card as the next load will. A subtask's own copy says whether it is done, because its
+     parent's list of it may be older. */
+  todayCard(t, subs) {
+    const t0 = startOfDay(),
+      end = addDays(t0, TODAY_DAYS),
+      me = this.user?.id,
+      runs = saved.get('runs') || {},
+      up = [{ id: t.id, project_id: t.project_id }];
+    const all = [
+        { ...t, related_tasks: { ...t.related_tasks, subtask: subs } },
+        ...subs.map(s =>
+          s.related_tasks?.parenttask?.length ? s : { ...s, related_tasks: { ...s.related_tasks, parenttask: up } },
+        ),
+      ].filter(x => !x.done),
+      c = this.todayReasons(
+        {
+          due: all.filter(x => isSet(x.due_date) && new Date(x.due_date) < end),
+          added: all.filter(x => new Date(x.created) >= t0),
+          mine: all.filter(x => runs[x.id] && this.isRunTask(x)),
+          claimed: all.filter(x => (x.assignees || []).some(u => u.id === me)),
+        },
+        runs,
+      ).cards.get(t.id);
+    return c ? { when: c.when, made: c.made } : null;
   },
   // Whether task `t` is a step of a checklist that is finished.
   ofFinished(t) {
