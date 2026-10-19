@@ -227,10 +227,16 @@ console.log(`Pocket:        ${BASE}/api/v1/plugins/pocket/`);
 console.log(`Stop with:     docker rm -f ${NAME} ${SSO}${SQLITE ? '' : ' ' + DB}`);
 
 if (process.argv.includes('--test')) {
+  // The tests' own requests use an API token with every permission, as against a real server. The token /login gives
+  // expires after 10 minutes, and the whole run takes longer.
+  const routes = await call('GET', '/routes', undefined, token);
+  const permissions = Object.fromEntries(Object.entries(routes).map(([group, rs]) => [group, Object.keys(rs)]));
+  const expires_at = new Date(Date.now() + 7 * 864e5).toISOString();
+  const apiToken = (await call('POST', '/tokens', { title: 'Pocket tests', expires_at, permissions }, token)).token;
   const env = {
     ...process.env,
     VIKUNJA_URL: BASE,
-    VIKUNJA_TOKEN: token,
+    VIKUNJA_TOKEN: apiToken,
     ASSIGNEE: 'bob',
     ASSIGNEE_PROJECT: 'Team',
     VIKUNJA_USER: 'dev',
