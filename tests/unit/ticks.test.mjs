@@ -803,6 +803,16 @@ test('Done today holds what the user ticked, what is assigned to them, what is i
     cases.map(([, want]) => want),
   );
 });
+test('on Today, a done row whose reactions Pocket has not read counts as ticked here, and one with only a teammate’s ✅ does not', () => {
+  const app = component(views, sending);
+  Object.assign(app, { user: { id: 1 }, seenBy: { 7: 2 }, route: { name: 'today' } });
+  app.view = { groups: todayGroups(), cards: {} };
+  const done = { id: 9, done: true, done_at: new Date().toISOString(), project_id: 7 };
+  assert.deepEqual(
+    [app.belongsIn(done, 'today'), app.belongsIn({ ...done, reactions: { '✅': [{ id: 2 }] } }, 'today')],
+    ['donetoday', null],
+  );
+});
 test('Done today keeps only what was done today, also in a copy of Today saved on an earlier day', () => {
   const app = component(tasks, actions, cards, alerts, sending),
     now = new Date(),

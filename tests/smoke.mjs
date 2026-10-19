@@ -1840,7 +1840,10 @@ try {
       await expect.poll(reactions).toEqual([]);
       await page.click('#btn-copy-done');
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toContain(t.title);
-      // Reloaded, the task is back under its date.
+      // As the batch clears, the task moves back under its date, and stays there once Today is loaded again.
+      await later(3100);
+      await expect(page.locator(R)).toHaveCount(0);
+      await expect(page.locator(rowOf(t.title))).toHaveCount(1);
       await refreshToday();
       await expect(page.locator(R)).toHaveCount(0);
       await expect(page.locator(rowOf(t.title))).toHaveCount(1);
