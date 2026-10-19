@@ -1026,6 +1026,44 @@ test('a task moved to another project leaves the project’s list as the batch l
   );
 });
 
+test('a checklist’s step ticked on its project’s list leaves the list when rows regroup, and never joins Done', async t => {
+  const step = (id, title) => ({
+      id,
+      title,
+      project_id: 7,
+      related_tasks: { parenttask: [{ id: 30, project_id: 7 }], copiedfrom: [{ id: id + 100 }] },
+    }),
+    list = [
+      {
+        id: 30,
+        title: 'Opening up · Oct 19',
+        project_id: 7,
+        related_tasks: { subtask: [{ id: 31 }, { id: 32 }], copiedfrom: [{ id: 130 }] },
+      },
+      step(31, 'Lights'),
+      step(32, 'Chairs'),
+    ];
+  const { app } = sender(t, list, actions, leaving, views, cards, checklists);
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  Object.assign(app, { route: { name: 'project', id: 7 }, checklistIds: new Set([7]), render() {} });
+  app.change(w => w.read(structuredClone(list), TASK, started()));
+  app.view.groups = [
+    { key: 'open', cls: '', title: 'Open', heads: [], tasks: [30, 31, 32].map(id => app.row({ id })) },
+    { key: 'done', loaded: true, count: 0, tasks: [] },
+  ];
+  await app.act({ id: uuid7(), op: 'done', task: 31, run: 30 });
+  app.regroup();
+  assert.deepEqual(
+    app.view.groups.map(g => [g.key, ids(g.tasks), g.count]),
+    [
+      ['open', [30, 32], undefined],
+      ['done', [], 0],
+    ],
+    'the step leaves the open list, and Done, which leaves out steps when it loads, doesn’t take it',
+  );
+});
 test('a reload whose answer arrives while a finger is down changes the lists only once the finger lifts', async t => {
   doneVikunja(3);
   const app = doneApp({ name: 'search' });

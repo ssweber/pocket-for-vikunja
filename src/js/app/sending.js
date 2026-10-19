@@ -590,7 +590,8 @@ export default {
      sent is: search lists only what it found, and on Today a subtask waits on its card (cardRows, cards.js). Undefined
      on a screen whose rows don't move (regroup, views.js). A row is judged as it shows:
      - In a project, by its project and whether it is done. A done task stays on the open list while subtasks of it are
-       still open there (makeHead), and a step of a finished checklist leaves (onProjectList).
+       still open there (makeHead), and a step of a finished checklist leaves (onProjectList). Done leaves out a
+       checklist's steps and templates (doneTasks).
      - In search, by whether it is done.
      - On Today, by its date (dayGroup), or a card's (todayDates). A task with no date goes under "Added today, no date"
        when the user made it today, and a checklist or a step under Checklists when it is the user's or has a step of
@@ -603,7 +604,9 @@ export default {
         ? null
         : fresh || !t.done || (from === 'open' && this.keepsHead(t))
           ? 'open'
-          : 'done';
+          : this.withoutTemplates([t], true).length
+            ? 'done'
+            : null;
     if (r.name === 'search') return fresh ? null : t.done ? 'done' : 'open';
     if (r.name !== 'today') return fresh ? null : undefined;
     if (fresh) return t.child || t.parent ? null : dayGroup(t.due_date);

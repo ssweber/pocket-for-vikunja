@@ -387,6 +387,9 @@ export function component(...parts) {
     inToday() {
       return true;
     },
+    withoutTemplates(list) {
+      return list;
+    },
     stepRun() {
       return null;
     },
