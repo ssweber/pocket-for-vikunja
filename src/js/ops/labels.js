@@ -42,8 +42,8 @@ async function find(a, c) {
 
 /* `tag` is the label ({id, title, hex_color}, with no id for one Vikunja doesn't have yet), put on (`add`) or taken
    off, on the labels Vikunja has when it is sent (setOne). `was` is the labels the row showed, for Cancel's words when
-   Pocket has no copy. Putting a label on and taking it off cancel out while neither is sent. Each is the other's Undo.
-   A task deleted in Vikunja since drops the op. */
+   Pocket has no copy. Putting a label on and taking it off cancel out while neither is sent, and the same change twice
+   is sent once, as the newer op. Each is the other's Undo. A task deleted in Vikunja since drops the op. */
 export const label = {
   apply: (t, a) => ({ ...t, labels: withLabel(t.labels, a.tag, a.add) }),
   stages: [find, setOne('labels', idOf)],
@@ -54,8 +54,11 @@ export const label = {
     add: !a.add,
     was: a.got?.task?.labels ?? withLabel(a.was, a.tag, a.add),
   }),
-  merge: (older, newer) =>
-    older.op === 'label' && sameLabel(older.tag, newer.tag) && older.add !== newer.add ? CANCEL : null,
+  merge: (older, newer) => {
+    if (older.op !== 'label' || !sameLabel(older.tag, newer.tag)) return null;
+    if (older.add !== newer.add) return CANCEL;
+    return { ...newer, tag: { ...newer.tag, id: newer.tag.id ?? older.tag.id }, was: older.was };
+  },
   refusal: (a, e) => (e?.status === 404 ? 'dropped' : 'kept'),
   sheetPlace: 'sheet:props',
   replyOnly: () => ['labels'],

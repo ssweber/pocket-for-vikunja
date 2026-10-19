@@ -29,16 +29,35 @@ const letGo = (a, c) =>
     if (e.status !== 404) throw e;
   });
 
+const withPerson = (list, u, add) => [...(list || []).filter(x => x.id !== u.id), ...(add ? [u] : [])];
+// The person an assign, a claim or a letting go changes, and whether it puts them on. A claim is the user's own.
+const changeOf = a =>
+  a.op === 'assign'
+    ? { id: a.person.id, add: a.add }
+    : a.op === 'claim' || a.op === 'unclaim'
+      ? { id: a.user, add: a.op === 'claim' }
+      : null;
+/* Two unsent changes to one person on a task make one, whichever of these ops queued them, so claiming a step and
+   unassigning yourself in its edit box leave nothing to send. Opposite changes cancel out. The same change twice is
+   sent once, as the newer op, with the older one's `was`. */
+const joined = (older, newer) => {
+  const o = changeOf(older),
+    n = changeOf(newer);
+  if (!o || o.id !== n.id) return null;
+  if (o.add !== n.add) return CANCEL;
+  if (newer.op !== 'assign') return { ...newer };
+  return { ...newer, was: older.was ?? withPerson(newer.was, newer.person, !newer.add) };
+};
 export const claim = {
   apply: (t, a) => ({ ...t, assignees: [...(t.assignees || []).filter(u => u.id !== a.user), whoOf(a)] }),
   stages: [claimIt],
+  merge: joined,
   ...OP_WORDS.claim,
   asks: [],
   saw: ['label'],
   on: null,
   keepReads: null,
   invert: null,
-  merge: null,
   waiting: null,
   refusal: null,
   cancel: null,
@@ -55,13 +74,13 @@ export const claim = {
 export const unclaim = {
   apply: (t, a) => ({ ...t, assignees: (t.assignees || []).filter(u => u.id !== a.user) }),
   stages: [letGo],
+  merge: joined,
   ...OP_WORDS.unclaim,
   asks: [],
   saw: ['label'],
   on: null,
   keepReads: null,
   invert: null,
-  merge: null,
   waiting: null,
   refusal: null,
   cancel: null,
@@ -78,11 +97,10 @@ export const unclaim = {
 
 // The fields of a person that an entry keeps: what the op's words and the task's rows show of them.
 export const personOf = u => ({ id: u.id, username: u.username || '', name: u.name || '' });
-const withPerson = (list, u, add) => [...(list || []).filter(x => x.id !== u.id), ...(add ? [u] : [])];
 /* `person` is assigned (`add`) or unassigned, on the people Vikunja has when it is sent (setOne), so a person a teammate
    assigned since stays. `was` is the people the row showed, for Cancel's words when Pocket has no copy. A claim keeps
-   its own op, so two people claiming at once still settle on one. Assigning and unassigning one person cancel out
-   while neither is sent. Each is the other's Undo. A task deleted in Vikunja since drops the op. */
+   its own op, so two people claiming at once still settle on one. Each is the other's Undo. A task deleted in Vikunja
+   since drops the op. */
 export const assign = {
   apply: (t, a) => ({ ...t, assignees: withPerson(t.assignees, a.person, a.add) }),
   stages: [setOne('assignees', a => a.person.id)],
@@ -93,8 +111,7 @@ export const assign = {
     add: !a.add,
     was: a.got?.task?.assignees ?? withPerson(a.was, a.person, a.add),
   }),
-  merge: (older, newer) =>
-    older.op === 'assign' && older.person.id === newer.person.id && older.add !== newer.add ? CANCEL : null,
+  merge: joined,
   refusal: (a, e) => (e?.status === 404 ? 'dropped' : 'kept'),
   sheetPlace: 'sheet:props',
   replyOnly: () => ['assignees'],

@@ -794,8 +794,10 @@ export default {
       width: row.clientWidth,
       finish: pct => {
         if (pct === null) return;
-        this.claimOnSlide(sheet ? this.subSlot(t) : this.rowSlot(t, {}))(true);
+        // The claim is queued after the progress, so unassigning yourself next cancels it in the outbox (fold).
+        const claimed = this.claimOnSlide(sheet ? this.subSlot(t) : this.rowSlot(t, {}));
         const setting = this.setProgress(t, pct, sheet ? null : row, { sub: sheet || undefined });
+        claimed(true);
         if (pct >= 100) sweep(row, setting, { right: true }); // setProgress already holds the row in place
         if (sheet) this.sheet.dirty = true;
       },
@@ -1054,8 +1056,9 @@ export default {
       swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row), s.title) : null,
       finish: pct => {
         if (pct === null) return;
-        this.claimOnSlide(s.slot)(true);
+        const claimed = this.claimOnSlide(s.slot); // queued after the progress, as for a task
         const setting = this.stepProgress(s, pct);
+        claimed(true);
         if (pct >= 100) sweep(row, setting, { right: true });
       },
     };

@@ -1531,12 +1531,14 @@ class StepMade extends Command {
   }
 }
 /* The user adds or removes a person or a label in a task's sheet (actions.js), which queues an assign or label op. A new
-   label is made as its op is sent, once. */
+   label is made as its op is sent, once. Assigning the user meets the claim and unclaim samples, which fold with it. */
 const LABEL = { id: 600, title: 'floor' },
   MOP = { id: 601, title: 'mop' };
 const SHEET = {
   assign: (app, t) => app.addAssignee(t, { id: 7, username: 'bob' }),
   unassign: (app, t) => app.removeAssignee(t, 7),
+  'assign you': (app, t) => app.addAssignee(t, ME),
+  'unassign you': (app, t) => app.removeAssignee(t, ME.id),
   label: (app, t) => app.addLabelTo(t, LABEL),
   unlabel: (app, t) => app.removeLabelFrom(t, LABEL.id),
   'new label': (app, t) => app.addLabelTo(t, null, 'Urgent'),

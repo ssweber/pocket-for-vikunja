@@ -10,11 +10,14 @@ import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { addLines } from '../../src/js/ops/index.js';
 import actions from '../../src/js/app/actions.js';
+import claims from '../../src/js/app/claims.js';
+import progress from '../../src/js/app/progress.js';
 import { line } from './samples.mjs';
 
 const FLOOR = { id: 600, title: 'floor' },
   MOP = { id: 601, title: 'mop' },
-  BOB = { id: 7, username: 'bob', name: 'Bob' };
+  BOB = { id: 7, username: 'bob', name: 'Bob' },
+  ME = { id: 1, username: 'me', name: '' };
 // A sender whose tasks have rows and copies, and whose Vikunja has the labels floor and mop.
 const listed = (t, list, ...parts) => {
   const s = sender(t, list, actions, ...parts);
@@ -97,7 +100,15 @@ test('putting a person or a label on and taking it off cancel out while neither 
   await app.addAssignee(app.tasks[2], BOB);
   assert.deepEqual(sync.all(1), [], 'nothing is left to send');
   assert.equal(OPS.label.merge(label(2, FLOOR), label(2, MOP, false)), null, 'another label is its own change');
-  assert.equal(OPS.assign.merge(assign(2, BOB), assign(2, BOB)), null, 'the same change twice is sent twice');
+  assert.equal(OPS.assign.merge(assign(2, BOB), assign(2, ME, false)), null, 'another person is their own change');
+});
+
+test('the same person or label put on twice while neither is sent is sent once, with what the row showed first', () => {
+  const was = [{ id: 9, username: 'carol', name: '' }],
+    tags = [MOP];
+  assert.deepEqual(OPS.assign.merge({ ...assign(2, BOB), was }, assign(2, BOB)).was, was);
+  const m = OPS.label.merge({ ...label(2, FLOOR), was: tags }, label(2, { id: null, title: 'Floor' }));
+  assert.deepEqual([m.tag, m.was], [{ id: 600, title: 'Floor' }, tags], 'a label typed again keeps the id found');
 });
 
 test("an Undo takes off only what the op put on, and leaves a teammate's change", async t => {
@@ -161,6 +172,86 @@ test("a checklist's people change by the one tapped, and the person claimed mean
   assert.deepEqual(
     [ids(v.task(1).assignees), ids(copyOf(1).assignees), said],
     [[1, 9, 7], [1, 9, 7], ['Now for me and bob']],
+  );
+});
+
+// Checklist 1 and its step 2, on the checklist's screen with no connection. `slot` is the step's claim slot.
+const offlineStep = (t, more = {}) => {
+  const s = listed(t, [task(1, { title: 'Closing' }), task(2, more)], claims, progress);
+  Object.assign(s.app, { canWrite: () => true, view: { groups: [], shownRun: { id: 1 } } });
+  noConnection(s.app, s.v);
+  return { ...s, slot: () => s.app.claimSlot(s.app.tasks[2], s.app.tasks[2].assignees, false, 1) };
+};
+const queued = () => sync.all(1).map(e => e.op);
+
+test('claiming a step and letting it go cancel out while neither is sent, from its slot or its sheet', async t => {
+  const { app, slot } = offlineStep(t);
+  await app.toggleClaim(slot());
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [['claim'], [1]]);
+  await app.toggleClaim(slot());
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [[], []], 'tapping the slot again leaves nothing to send');
+  await app.toggleClaim(slot());
+  await app.removeAssignee(app.tasks[2], 1);
+  assert.deepEqual(queued(), [], 'unassigning yourself in the sheet cancels the claim');
+  await app.addAssignee(app.tasks[2], ME);
+  await app.toggleClaim(slot());
+  assert.deepEqual(queued(), [], 'letting the step go cancels assigning yourself');
+  await app.addAssignee(app.tasks[2], ME);
+  await app.addAssignee(app.tasks[2], ME);
+  await app.toggleClaim(slot());
+  assert.deepEqual(queued(), [], 'assigning yourself twice is one change, which letting go cancels');
+});
+
+test('letting a claimed step go and claiming it again cancel out while neither is sent', async t => {
+  const { app, slot } = offlineStep(t, { assignees: [ME] });
+  await app.toggleClaim(slot());
+  await app.toggleClaim(slot());
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [[], [1]]);
+});
+
+test('a slide that claims a step queues the claim after the progress, so letting the step go cancels the claim', async t => {
+  const { app, slot } = offlineStep(t);
+  const s = { id: 2, title: 'Mop the floor', pct: 0, done: false, slot: slot() };
+  Object.defineProperty(app, 'runView', { value: { steps: [s], finished: false } });
+  app.stepSlide({ dataset: { id: '2' }, clientWidth: 360 }, { closest: () => null }).finish(40);
+  await settle(t, () => queued().length === 2);
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [['progress', 'claim'], [1]]);
+  await app.toggleClaim(slot());
+  assert.deepEqual([queued(), ids(app.tasks[2].assignees)], [['progress'], []]);
+});
+
+test('a person put on a checklist and taken off cancel out while neither is sent', async t => {
+  const { v, app } = listed(t, [task(1, { title: 'Closing', assignees: [ME] })]);
+  Object.assign(app, {
+    view: { groups: [], shownRun: { id: 1 } },
+    sheet: { id: 1, sub: {}, runEdit: { forIds: [1], people: [ME, BOB] } },
+    saveRun() {},
+    forText: () => '',
+  });
+  noConnection(app, v);
+  await app.setRunFor(BOB);
+  await app.setRunFor(BOB);
+  assert.deepEqual([queued(), ids(app.tasks[1].assignees)], [[], [1]]);
+});
+
+test('a claim already sent is never folded, and only a change to the same person folds', async t => {
+  const { v, app, slot } = offlineStep(t);
+  v.trouble = () => null;
+  app.offline = false;
+  await app.toggleClaim(slot());
+  await app.toggleClaim(slot());
+  assert.deepEqual(
+    [reached(v, 'POST', /assignees$/).length, reached(v, 'DELETE', /assignees/).length, ids(v.task(2).assignees)],
+    [1, 1, []],
+    'a claim sent before the step was let go is taken back in Vikunja',
+  );
+  const claim = { id: uuid7(), op: 'claim', task: 2, user: 1, run: 1 };
+  assert.equal(OPS.unclaim.merge(assign(2, BOB), { ...claim, op: 'unclaim' }), null, 'another person');
+  assert.equal(OPS.claim.merge({ op: 'progress', task: 2, pct: 40 }, claim), null, 'another change');
+  assert.deepEqual(
+    OPS.assign.merge(claim, { ...assign(2, ME), was: [ME] }).was,
+    [],
+    'assigning yourself after a claim keeps what the row showed before the claim',
   );
 });
 
