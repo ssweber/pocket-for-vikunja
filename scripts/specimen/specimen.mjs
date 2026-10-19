@@ -165,6 +165,7 @@ function sections() {
   // - a checklist due at 6 PM, started from a template that was due again
   // - a task with one open subtask, so it has no footer
   // - a low-priority task with 14 subtasks, twelve done (its ring's "12/14" is set smaller to fit)
+  // - a done task with a repeating subtask still open, its title struck through over the line that says so
   // Plain rows sit between the cards, two after the opened card and one after the checklist's tab. Each group of rows is
   // its own block, with rounded corners where a card's gap or footer cuts the list. The cards' subtasks are in the store,
   // as Today keeps them. A checklist's heading reads like a task's. It shows the name without the day the checklist
@@ -209,6 +210,12 @@ function sections() {
     title: 'Stock the new shelves in the back room before the delivery comes',
     priority: 1,
     related_tasks: { subtask: Array.from({ length: 14 }, (_, i) => ({ id: 731 + i, done: i < 12 })) },
+  });
+  // A task closed over a subtask that repeats, which keeps it on Today as that subtask's card.
+  const fridges = task({
+    title: 'Clean the fridges',
+    done: true,
+    related_tasks: { subtask: [{ id: 1501, done: true }, { id: 1502 }] },
   });
   /* An opened card whose rows show the most at their right end: a priority and a time before "+ me" ("10:30a"), noon
      ("12p"), a whole hour ("3p"), and a subtask in another project. That subtask keeps its own project dot, while the
@@ -271,6 +278,8 @@ function sections() {
     ...Array.from({ length: 14 }, (_, i) =>
       kid(731 + i, { under: shelves.id, title: 'Shelf ' + (i + 1), done: i < 12 }),
     ),
+    kid(1501, { under: fridges.id, title: 'Empty the drinks fridge', done: true }),
+    kid(1502, { under: fridges.id, title: 'Wipe the seals', due_date: dayAt(1, 9), repeat_after: 7 * 86400 }),
   ];
   // Today's rows, each on one line. The title is cut short. At the right are small priority bars (from none to do now),
   // a short due time, and the project's dot. The due time is a time today ("10:30a" where the browser writes
@@ -660,6 +669,7 @@ function sections() {
       closing,
       sign,
       shelves,
+      fridges,
       tasting,
     ],
     cardSubs: [...cardSubs, ...ringSubs],

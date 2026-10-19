@@ -127,9 +127,9 @@
            then a footer that is a slim tab with ⌄. The cards shown are: a high-priority task, opened with its footer,
            which becomes a plain ⌃; a checklist with its next step counting down; a checklist due at 6 PM, whose heading
            reads like a task's without the day it was started; a task with one open subtask, so no footer; a low-priority
-           task with 14 subtasks; and an opened card whose rows have a priority and a time before "+ me", one of them in
-           another project with its own dot. -->
-      <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
+           task with 14 subtasks; a done task over its open repeating subtask; and an opened card whose rows have a
+           priority and a time before "+ me", one of them in another project with its own dot. -->
+      <div class="sec">Today’s stacked cards, each header with its project’s dot, which its rows leave out: a task’s, high priority, opened, its footer a plain ⌃; a run’s next step, counting down, its name without its day, its footer a tab with ⌄; a run due at 6 PM, as a task’s; one open subtask, no footer; one of 14, low priority; a done task over its open repeating subtask, struck through over “Done, but 1 subtask is still open”; one opened, its rows with a priority and a time before “+ me”, one of them in another project, with its own dot; plain rows after the opened card and after the tab, the list cut into rounded blocks</div>
       <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
         <template x-for="t in specimenCards" :key="t.id">
           <!-- include markup/list-item.html -->
