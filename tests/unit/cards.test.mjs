@@ -7,12 +7,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
 import { dueInfo, shortTime } from '../../src/js/dates.js';
-import { listItems, nestSubtasks, opened, rowGestures, RUN_ROW, saved } from '../../src/js/lists.js';
+import {
+  dayGroup,
+  listItems,
+  nestSubtasks,
+  opened,
+  rowGestures,
+  RUN_ROW,
+  saved,
+  todayGroups,
+} from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
 import views from '../../src/js/app/views.js';
 import alerts from '../../src/js/app/alerts.js';
-import tasks from '../../src/js/app/tasks.js';
+import tasks, { started, TASK } from '../../src/js/app/tasks.js';
 import leaving from '../../src/js/app/leaving.js';
 import progress from '../../src/js/app/progress.js';
 import runs from '../../src/js/app/runs.js';
@@ -26,6 +35,8 @@ import outbox from '../../src/js/app/outbox.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import { countText, runShows, whereNext } from '../../src/js/checklists.js';
 import { watching } from './reactive.mjs';
+import { noConnection, sender } from './ops-helpers.mjs';
+import { sync, uuid7 } from '../../src/js/sync.js';
 
 const NONE = '0001-01-01T00:00:00Z',
   me = { id: 1 },
@@ -1791,5 +1802,60 @@ test('a change waiting to be sent recalculates only the rings of the checklists 
     [worked, app.ringOf(finished[3]).done],
     [[4], 1],
     "a tick waiting to be sent recalculates its own checklist's ring",
+  );
+});
+
+test('on Today, a subtask taken off its card gets a row of its own, and a task given a subtask becomes a card', async t => {
+  const soon = new Date(Date.now() + 36e5).toISOString(),
+    later = new Date(Date.now() + 2 * 864e5).toISOString(),
+    list = [
+      task(10, { title: 'Paint the hall', due_date: soon, related_tasks: subs([11]) }),
+      task(11, { title: 'Buy paint', due_date: later, related_tasks: under(10) }),
+      task(20, { title: 'Fix the gate', due_date: soon }),
+      task(21, { title: 'Buy hinges', due_date: later }),
+    ];
+  const { v, app } = sender(t, list, actions, leaving, views, cards, alerts);
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => []; // the rows that move find no elements to fold here
+  t.after(async () => {
+    if (was) document.querySelectorAll = was;
+    else delete document.querySelectorAll;
+    app.clearNow();
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  Object.assign(app, { render() {} });
+  noConnection(app, v);
+  app.change(w => w.read(structuredClone(list), TASK, started()));
+  for (const x of list) app.row(structuredClone(x));
+  Object.assign(app.view, { groups: todayGroups(), cards: { 10: { when: soon, made: null, focus: null } } });
+  const rows = () => app.view.groups.flatMap(g => g.tasks.map(x => [g.key, x.id]));
+  app.view.groups.find(g => g.key === dayGroup(soon)).tasks.push(app.tasks[10], app.tasks[20]);
+  app.regroup(); // as Today's load does, this notes the subtasks on its cards
+  await app.act({ id: uuid7(), op: 'unlink', task: 11, up: 10, over: 'Paint the hall', was: [10], run: null });
+  await app.act({ id: uuid7(), op: 'link', task: 21, up: 20, over: 'Fix the gate', was: [], run: null });
+  assert.deepEqual(
+    [rows(), Object.keys(app.view.cards)],
+    [
+      [
+        [dayGroup(soon), 10],
+        [dayGroup(soon), 20],
+      ],
+      ['10'],
+    ],
+    'nothing moves while the sheet is open',
+  );
+  app.regroupSoon(); // the sheet closes
+  await new Promise(setImmediate);
+  assert.deepEqual(
+    [rows(), app.view.cards[20]],
+    [
+      [
+        [dayGroup(soon), 10],
+        [dayGroup(soon), 20],
+        [dayGroup(later), 11],
+      ],
+      { when: soon, made: list[2].created ?? null, focus: null },
+    ],
+    'the subtask has its own row, and the task given a subtask is a card, by its own date',
   );
 });

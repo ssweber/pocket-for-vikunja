@@ -23,7 +23,7 @@ export const sender = (t, list, ...parts) => {
     flushing: false,
     cap: {},
     sheet: { id: null, sub: {} },
-    view: { groups: [], shownRun: null },
+    view: { groups: [], shownRun: null, route: location.hash },
     places: {},
     endPlace() {},
     aimSent() {},

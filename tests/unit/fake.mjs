@@ -364,7 +364,23 @@ export function component(...parts) {
     },
     render() {},
     flush() {},
-    regroupToday() {},
+    // Where rows move as the batch clears (views.js), for tests without the screens.
+    regroupPlan() {
+      return [];
+    },
+    regroup() {},
+    regroupSoon() {},
+    listedIds() {
+      return new Set();
+    },
+    moves() {
+      return false;
+    },
+    flash() {},
+    setBadge() {},
+    untouched() {
+      return null;
+    },
     role() {
       return null;
     },
@@ -374,7 +390,6 @@ export function component(...parts) {
     isRunTask() {
       return false;
     },
-    bothWays: false,
   };
   const byId = Object.getOwnPropertyDescriptors(tasks);
   // What every part reads from the store, and change(), the one way to write it.

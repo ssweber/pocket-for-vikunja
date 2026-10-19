@@ -3,7 +3,7 @@
 // row's tick waits for the batch to clear (leaving.js).
 import './browser.mjs';
 import './outbox-db.mjs';
-import { collected, DAY, patches, opened } from './actions-helpers.mjs';
+import { collected, DAY, fingers, patches, opened } from './actions-helpers.mjs';
 import { component, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +16,7 @@ import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
-import { todayGroups } from '../../src/js/lists.js';
+import { dayGroup, todayGroups } from '../../src/js/lists.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { movedFrom, OPS } from '../../src/js/ops/index.js';
 import { figure } from '../../src/js/ops/stages.js';
@@ -44,6 +44,7 @@ const ROW = {};
    copies, as a screen's read gives them. */
 const listed = (t, list, ...more) => {
   const s = sender(t, list, actions, leaving, ...more);
+  s.app.render = () => {}; // no screen loads here, even with the screens' part (views.js)
   s.app.change(w =>
     w.read(
       list.map(x => structuredClone(x)),
@@ -57,6 +58,8 @@ const listed = (t, list, ...more) => {
   });
   return s;
 };
+// The ids on Today's group `k`.
+const onToday = (app, k) => app.view.groups.find(g => g.key === k).tasks.map(x => x.id);
 const settled = async () => {
   for (let i = 0; i < 5; i++) await new Promise(ok => setImmediate(ok));
 };
@@ -120,17 +123,18 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
     [false, true, false, false],
   );
 });
-test('when the batch clears, a parent completed on Today leaves with the subtasks closed with it', async t => {
-  const { v, app } = listed(t, family());
-  app.view.groups = [{ key: 'today', tasks: [10, 11, 13, 14].map(id => app.row(v.task(id))) }];
+test('when the batch clears, a parent completed on Today goes to Done today with the subtasks closed with it', async t => {
+  const { v, app } = listed(t, family(), views, cards);
+  Object.assign(app.view, { groups: todayGroups(), cards: {} });
+  app.view.groups[0].tasks.push(...[10, 11, 13, 14].map(id => app.row(v.task(id))));
   await app.toggleDone(app.tasks[10], ROW, { close: true });
-  assert.equal(app.view.groups[0].tasks.length, 4, 'the rows are still in place');
+  assert.equal(onToday(app, 'overdue').length, 4, 'the rows are still in place');
   t.mock.timers.tick(2999);
-  assert.equal(app.view.groups[0].tasks.length, 4, 'the batch does not clear before 3 seconds');
+  assert.equal(onToday(app, 'overdue').length, 4, 'the batch does not clear before 3 seconds');
   await app.clearBatch(true);
   assert.deepEqual(
-    app.view.groups[0].tasks.map(x => x.id),
-    [13],
+    [onToday(app, 'overdue'), onToday(app, 'donetoday')],
+    [[13], [14, 11, 10]],
     'the rows leave together, and the repeating subtask stays',
   );
   assert.deepEqual(app.leaving, {});
@@ -231,10 +235,10 @@ test("ticking a done parent that is above open subtasks on a project's list open
   );
 });
 test("a parent completed on a project's list stays above its open repeating subtask, marked done", async t => {
-  const list = family();
+  const list = family().map(x => ({ ...x, project_id: 1 }));
   for (const s of list.slice(1)) s.related_tasks = { parenttask: [{ id: 10 }] };
-  const { v, app } = listed(t, list);
-  Object.assign(app, { route: { name: 'project', id: 1 }, bothWays: true });
+  const { v, app } = listed(t, list, views, cards);
+  Object.assign(app, { route: { name: 'project', id: 1 } });
   const p = app.tasks[10];
   app.view.groups = [
     { key: 'open', tasks: [p, ...[11, 13, 14].map(id => app.tasks[id])] },
@@ -296,22 +300,31 @@ test('a repeating task whose tick lost its reply is ticked once, and tapping its
     [[{ done: true }, { due_date: due }], due, due, false],
   );
 });
-test('a repeating task ticked in a list returns open with its next date once the batch clears', async t => {
+test('a repeating task ticked on Today returns open with its next date once the batch clears, in that date’s group', async t => {
   const due = new Date(Date.now() + 36e5).toISOString();
-  const { v, app } = listed(t, [{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }]);
-  app.view.groups = [{ key: 'today', tasks: [app.tasks[1]] }];
+  const { v, app } = listed(
+    t,
+    [{ id: 1, title: 'Water the plants', done: false, due_date: due, repeat_after: DAY }],
+    views,
+    cards,
+  );
+  const shown = () => app.view.groups.flatMap(g => g.tasks.map(x => [g.key, x.id]));
+  Object.assign(app.view, { groups: todayGroups(), cards: {} });
+  app.view.groups.find(g => g.key === dayGroup(due)).tasks.push(app.tasks[1]);
   await app.toggleDone(app.tasks[1], ROW);
   await settled();
+  assert.deepEqual(shown(), [[dayGroup(due), 1]], 'the row stays where it is until the batch clears');
   await app.clearBatch(true);
-  const x = app.view.groups[0].tasks[0];
-  assert.deepEqual([x?.done, x?.due_date], [false, v.task(1).due_date], 'the task is still on the list');
+  const x = app.tasks[1];
+  assert.deepEqual([x.done, x.due_date], [false, v.task(1).due_date], 'the task is open at its next date');
   assert.equal(Date.parse(x.due_date) - Date.parse(due), DAY * 1000);
+  assert.deepEqual(shown(), [[dayGroup(x.due_date), 1]], 'and on Today, in the group for that date');
   // A task whose next date is past what Today shows leaves Today.
   v.task(1).repeat_after = 30 * DAY;
   app.change(w => w.read([structuredClone(v.task(1))], TASK, started()));
   await app.toggleDone(app.tasks[1], ROW);
   await app.clearBatch(true);
-  assert.deepEqual(app.view.groups[0].tasks, []);
+  assert.deepEqual(shown(), []);
 });
 test('setting progress to 100% marks the task done, and tapping its tick opens it at the progress it had', async t => {
   const { v, app } = listed(t, [{ id: 1, title: 'Paint the fence', done: false, percent_done: 0.4 }]);
@@ -345,12 +358,17 @@ test('a repeating task swiped to 100% starts its next date at 0%, and its Undo p
    shows as done in its place, never as a gap, with the same mark as a tick. Tapping its tick undoes it. The row
    leaves the list when the batch clears. In a sheet, a subtask's row stays in place as done, with nothing marked. */
 test('a full swipe marks the task done like a tick, in place and never as a gap, and tapping its tick undoes it', async t => {
-  const { v, app } = listed(t, [
-    { id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 },
-    { id: 2, title: 'Sand it', done: false },
-    { id: 3, title: 'Prime it', done: false },
-    { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } },
-  ]);
+  const { v, app } = listed(
+    t,
+    [
+      { id: 1, title: 'Paint the fence', done: false, percent_done: 0.5 },
+      { id: 2, title: 'Sand it', done: false },
+      { id: 3, title: 'Prime it', done: false },
+      { id: 4, title: 'Paint the shed', related_tasks: { subtask: [{ id: 3 }] } },
+    ],
+    views,
+    cards,
+  );
   app.view.groups = [{ key: 'today', tasks: [app.tasks[1], app.tasks[2]] }];
   await app.setProgress(app.tasks[1], 100, ROW);
   assert.deepEqual([app.leaving, app.isGap(app.tasks[1], { depth: {} }), v.task(1).done], [{ 1: 'done' }, false, true]);
@@ -680,11 +698,16 @@ test("a tick puts the user's ✅ on a task wherever it is, and an untick takes i
   assert.deepEqual([v.task(1).done, v.task(1).reactions['✅']], [false, []], 'unticking takes the ✅ off');
 });
 test("a task ticked on Today joins Done today when the batch clears, newest first, and a checklist's step does not", async t => {
-  const { app } = listed(t, [
-    { id: 1, title: 'Order the cups', done: false },
-    { id: 2, title: 'Fix the till', done: true },
-    { id: 3, title: 'Take the croissants out', done: true },
-  ]);
+  const { app } = listed(
+    t,
+    [
+      { id: 1, title: 'Order the cups', done: false },
+      { id: 2, title: 'Fix the till', done: true, assignees: [{ id: 1 }] },
+      { id: 3, title: 'Take the croissants out', done: true, assignees: [{ id: 1 }] },
+    ],
+    views,
+    cards,
+  );
   app.route = { name: 'today' };
   app.view.groups = [
     { key: 'today', tasks: [app.tasks[1]] },
@@ -702,11 +725,64 @@ test("a task ticked on Today joins Done today when the batch clears, newest firs
     [[], [1, 2]],
   );
   app.stepRun = x => (x.id === 3 ? 9 : null);
-  app.intoDoneToday([3]);
+  app.view.groups[0].tasks.push(app.tasks[3]);
+  app.regroup();
   assert.deepEqual(
-    app.view.groups[1].tasks.map(x => x.id),
-    [1, 2],
+    app.view.groups.map(g => g.tasks.map(x => x.id)),
+    [[], [1, 2]],
   );
+});
+test('an untick in Done today marks the row open, and it moves to its group on Today as the batch clears', async t => {
+  const due = new Date(Date.now() + 36e5).toISOString(),
+    { app } = listed(
+      t,
+      [{ id: 1, title: 'Order the cups', done: true, due_date: due, assignees: [{ id: 1 }] }],
+      views,
+      cards,
+    );
+  Object.assign(app.view, { groups: todayGroups(), cards: {} });
+  app.view.groups.find(g => g.key === 'donetoday').tasks.push(app.tasks[1]);
+  const finger = fingers(t, app);
+  await app.toggleDone(app.tasks[1], ROW);
+  assert.deepEqual(
+    [app.tasks[1].done, app.leaving, onToday(app, 'donetoday')],
+    [false, { 1: 'open' }, [1]],
+    'the row is open at once, marked, and still in Done today',
+  );
+  finger('pointerdown');
+  t.mock.timers.tick(5000);
+  await settled();
+  assert.deepEqual(onToday(app, 'donetoday'), [1], 'it stays while a finger is down');
+  finger('pointerup');
+  t.mock.timers.tick(2999);
+  await settled();
+  assert.deepEqual(onToday(app, 'donetoday'), [1], 'and for 3 seconds after');
+  t.mock.timers.tick(1);
+  await settled();
+  assert.deepEqual(
+    [onToday(app, 'donetoday'), onToday(app, dayGroup(due)), app.leaving],
+    [[], [1], {}],
+    'then it is in the group for its date',
+  );
+});
+test('on Checklists, a finished checklist moves to Finished and a reopened one to Open, each as the batch clears', async t => {
+  const { app } = listed(
+    t,
+    [
+      { id: 1, title: 'Opening up · Oct 19', done: false },
+      { id: 2, title: 'Closing up · Oct 18', done: true },
+    ],
+    views,
+  );
+  const cl = { project: { id: 5, title: 'Checklists' }, templates: [], runs: [app.tasks[1]], finished: [app.tasks[2]] };
+  app.route = { name: 'checklists' };
+  app.view.checklists = [cl];
+  const lists = () => [cl.runs.map(x => x.id), cl.finished.map(x => x.id)];
+  await app.tickRunTask(app.tasks[1], ROW);
+  await app.tickRunTask(app.tasks[2], ROW);
+  assert.deepEqual([lists(), app.leaving], [[[1], [2]], { 1: 'done', 2: 'open' }], 'both stay until the batch clears');
+  await app.clearBatch(true);
+  assert.deepEqual(lists(), [[2], [1]], 'then each is where it belongs');
 });
 test('Done today holds what the user ticked, what is assigned to them, what is in a project only they see, and checklists they started', () => {
   const app = component(views);

@@ -12,10 +12,12 @@ export function batchTimer(go, ms = BATCH_MS) {
   let waiting = false,
     scrolling = false,
     timer = null;
-  const fingers = new Set();
+  const fingers = new Set(),
+    idle = []; // what waits for the user to stop touching and scrolling (free)
   const arm = () => {
     clearTimeout(timer);
     timer = waiting && !fingers.size && !scrolling ? setTimeout(fire, ms) : null;
+    if (!fingers.size && !scrolling) idle.splice(0).forEach(ok => ok());
   };
   const fire = () => {
     timer = null;
@@ -25,6 +27,20 @@ export function batchTimer(go, ms = BATCH_MS) {
   return {
     get waiting() {
       return waiting;
+    },
+    // Whether rows must stay where they are now: something waits to leave, or the user is touching or scrolling.
+    get holding() {
+      return waiting || fingers.size > 0 || scrolling;
+    },
+    // Something waits for the batch without restarting the wait, as a mark would.
+    pend() {
+      if (waiting) return;
+      waiting = true;
+      arm();
+    },
+    // A promise that settles when the user stops touching the screen and scrolling, or null if they aren't.
+    free() {
+      return fingers.size || scrolling ? new Promise(ok => idle.push(ok)) : null;
     },
     // A row was marked. Everything waiting leaves `ms` from now, or from when the user stops touching the screen.
     mark() {
@@ -52,6 +68,7 @@ export function batchTimer(go, ms = BATCH_MS) {
       timer = null;
       fingers.clear();
       waiting = false;
+      idle.splice(0).forEach(ok => ok());
     },
     // Every mark was undone, so nothing is left to clear.
     stop() {

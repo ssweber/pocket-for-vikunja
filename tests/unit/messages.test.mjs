@@ -643,6 +643,9 @@ const app = (route = 'today', sheet = blankSheet('')) => {
     notify(msg, action) {
       this.toasts.push({ msg, action });
     },
+    // No rows move here (regroup, views.js).
+    regroupPlan: () => [],
+    regroup() {},
   };
   for (const part of [lines, leaving]) Object.defineProperties(a, Object.getOwnPropertyDescriptors(part));
   return a;

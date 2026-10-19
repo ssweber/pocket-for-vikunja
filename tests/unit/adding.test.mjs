@@ -13,6 +13,7 @@ import outbox from '../../src/js/app/outbox.js';
 import leaving from '../../src/js/app/leaving.js';
 import quickadd from '../../src/js/app/quickadd.js';
 import views from '../../src/js/app/views.js';
+import cards from '../../src/js/app/cards.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
@@ -29,8 +30,9 @@ const parts = Object.defineProperties({}, SENDING);
 // batch's timer, so the batch doesn't clear by itself.
 const adding = t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const app = component(tasks, actions, leaving, quickadd, parts);
+  const app = component(tasks, actions, leaving, quickadd, cards, views, parts);
   Object.assign(app, {
+    render() {},
     user: { id: 1 },
     pending: [],
     failed: [],

@@ -187,7 +187,7 @@ export default {
           // the task was added, and its photos are still waiting
           this.say(photosLater(this.projById.get(r.projectId)?.title, np, r.reached), { ...cap, action: open });
         else if (np) this.say(waitText(r, n, np), cap);
-        else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.pendingPlace(t))) this.say(waitText(r, n), cap);
+        else if (!this.pendingTasks.some(t => mine.has(t.entry) && this.belongsIn(t))) this.say(waitText(r, n), cap);
       } else if (r.status === 'error') {
         // A line whose answer is unknown stays in the Outbox, so only the refused lines come back.
         if (r.unsent.length) this.cap.text = r.unsent.join('\n'); // keep what wasn't added
@@ -203,7 +203,7 @@ export default {
           });
         else this.say(lineRefused(r.ids.length, n, but, r.title, r.error.message), { ...err, action: undo });
       } else if (r.status === 'sent') {
-        const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
+        const away = (r.tasks || []).filter(t => !this.belongsIn(t));
         if (away.length || but)
           this.say(
             addedWhere({
@@ -322,7 +322,7 @@ export default {
       // A subtask sent with a position among its siblings keeps that position, wherever it was added, including from
       // a card on Today.
       if (t.parent && place > 0) this.positions[t.id] = t.position > 0 ? t.position : place;
-      const key = this.pendingPlace({ ...t, child });
+      const key = this.belongsIn({ ...t, child });
       if (!key || this.view.groups.some(g => g.tasks.some(x => x.id === t.id))) continue;
       // A task marked done, or given a percentage, shows that on its row, from Vikunja's copy (`arrived.now`).
       const now = arrived?.now,
@@ -357,14 +357,13 @@ export default {
       s = saved.get(k);
     if (placed && s) this.keepScreen(k, { ...s, groups: keptGroups(this.view.groups) }, false);
   },
-  /* A task that arrived done (its line was marked done in quick add) is ticked on its row and leaves with the batch,
-     the same as a task the user ticks there (toggleDone, actions.js). It leaves Today, or moves to Done in a
-     project. Tapping its tick before then undoes the tick, as for a tick in the list (undoTicks).
+  /* A task that arrived done (its line was marked done in quick add) is ticked on its row and goes where it belongs
+     with the batch, the same as a task the user ticks there (toggleDone, actions.js). Tapping its tick before then
+     undoes the tick, as for a tick in the list (undoTicks).
 
      A repeating task is open again at its next date in `now`, Vikunja's copy. Its row shows it done, with the dates it
      was created with (`made`), until the batch clears, since placeSent made the row from those and marked it done.
-     Then it shows as open at its next date, or leaves Today if that date is 8 or more days from today. Tapping its
-     tick before then puts its dates back. */
+     Then it shows as open at its next date. Tapping its tick before then puts its dates back. */
   arrivedDone(t, now, made) {
     const said = doneText(0, 0, t.title),
       // The line's tick, as a done op that Vikunja has answered, for its Undo.
@@ -377,35 +376,10 @@ export default {
         ...(!now.done && { was: movedFrom(made) }),
         got: { task: now },
       };
-    if (!now.done) {
-      const beyond = () => this.route.name === 'today' && dayGroup(now.due_date) === null;
-      this.markRow(t.id, {
-        kind: 'done',
-        out: () => (beyond() ? [t.id] : []),
-        undo: () => this.undoTicks([tick]),
-        said: doneRepeats(t.title),
-        gone: () => {
-          if (beyond()) this.removeRow(t.id);
-          else if (this.route.name === 'today') this.regroupToday();
-        },
-      });
-      return;
-    }
-    const ids = [t.id],
-      moves = () => !!this.searchGroups(t);
     this.markRow(t.id, {
       kind: 'done',
-      ids,
-      said,
+      said: now.done ? said : doneRepeats(t.title),
       undo: () => this.undoTicks([tick]),
-      out: () => (this.bothWays && !moves() ? [] : ids),
-      gone: () => {
-        if (this.bothWays) this.moveInSearch(t, ids);
-        else if (t.done) {
-          this.removeRow(t.id);
-          this.intoDoneToday(ids);
-        }
-      },
     });
   },
   // Send whatever is waiting. Called when Pocket opens, comes back to the front, reconnects, and every 30 seconds.
@@ -609,13 +583,69 @@ export default {
     }
     return m;
   },
-  // Which group of the current list a waiting task belongs in, by the same rules as the lists from Vikunja; null if none.
-  pendingPlace(t) {
-    const r = this.route;
-    if (r.name === 'project') return t.project_id === r.id ? 'open' : null;
-    if (r.name !== 'today') return null;
-    // A subtask is never a separate row on Today. It waits on its task's card, where it was added (cardRows, cards.js).
-    return t.child || t.parent ? null : dayGroup(t.due_date);
+  /* The group of the screen on show that task `t` belongs in, by the rules its load follows, or null when it belongs
+     on none. `from` is the group its row is in now. Without it the task is new to the screen, as a task waiting to be
+     sent is: search lists only what it found, and on Today a subtask waits on its card (cardRows, cards.js). Undefined
+     on a screen whose rows don't move (regroup, views.js). A row is judged as it shows:
+     - In a project, by its project and whether it is done. A done task stays on the open list while subtasks of it are
+       still open there (makeHead), and a step of a finished checklist leaves (onProjectList).
+     - In search, by whether it is done.
+     - On Today, by its date (dayGroup), or a card's (todayDates). A task with no date goes under "Added today, no date"
+       when the user made it today, and a checklist or a step under Checklists when it is the user's or has a step of
+       theirs (todayItems, cards.js). A done task goes under Done today when the user did it (doneByMe). */
+  belongsIn(t, from = null) {
+    const r = this.route,
+      fresh = from === null;
+    if (r.name === 'project')
+      return t.project_id !== r.id || (!fresh && this.ofFinished(t))
+        ? null
+        : fresh || !t.done || (from === 'open' && this.keepsHead(t))
+          ? 'open'
+          : 'done';
+    if (r.name === 'search') return fresh ? null : t.done ? 'done' : 'open';
+    if (r.name !== 'today') return fresh ? null : undefined;
+    if (fresh) return t.child || t.parent ? null : dayGroup(t.due_date);
+    const t0 = startOfDay(),
+      me = this.user?.id,
+      mine = us => (us || []).some(u => u.id === me);
+    if (t.done)
+      return this.doneByMe(t) && !this.stepRun(t) && (!isSet(t.done_at) || new Date(t.done_at) >= t0)
+        ? 'donetoday'
+        : null;
+    if (this.ofFinished(t)) return null;
+    const { when, made, card } = this.todayDates(t);
+    if (isSet(when)) return dayGroup(when);
+    // A step shows as a row when its checklist can't be read (todayFrom).
+    if (this.isRunTask(t) || this.stepRun(t) != null)
+      return t.created_by?.id === me ||
+        mine(t.assignees) ||
+        this.cardSubs(t, true).some(s => !s.done && mine(s.assignees))
+        ? 'runs'
+        : null;
+    return new Date(made) >= t0 && (card || !t.created_by || t.created_by.id === me) ? 'nodate' : null;
+  },
+  /* The dates Today places task `t` by, as its load does (todayItems, cards.js). A card goes by the earliest date in the
+     next seven days among its task and its open subtasks, or by its own date when none is, and by when it was made
+     (`made`). `card` says whether `t` is a card or becomes one. */
+  todayDates(t) {
+    const c = this.view.cards?.[t.id],
+      subs = !t.done && this.role(t) !== 'template' ? this.cardSubs(t).filter(s => !s.done) : [];
+    if (!c && !subs.length) return { when: t.due_date, made: t.created, card: false };
+    const near = [t.due_date, ...subs.map(s => s.due_date)]
+      .filter(d => isSet(d) && dayGroup(d) !== null)
+      .reduce((a, b) => (!a || Date.parse(b) < Date.parse(a) ? b : a), null);
+    return { when: near ?? (isSet(t.due_date) ? t.due_date : null), made: c?.made || t.created, card: true };
+  },
+  // Whether task `t` is a step of a checklist that is finished.
+  ofFinished(t) {
+    const run = this.stepRun(t);
+    return run != null && !!this.tasks[run]?.done;
+  },
+  // Whether done task `t` stays on a project's open list, above its subtasks still open there (loadProject).
+  keepsHead(t) {
+    return (
+      !!this.view.groups.find(g => g.key === 'open')?.heads?.includes(t.id) && this.leftOpenUnder(this.tasks[t.id])
+    );
   },
   /* The current list's groups, with waiting tasks added where they belong and subtasks nested under their parents. A
      project's open tasks are in List view order. Each group carries the gestures its rows allow on this screen
@@ -666,7 +696,7 @@ export default {
     });
   },
   get listBase() {
-    const extra = this.pendingTasks.map(t => [this.pendingPlace(t), t]).filter(([k]) => k);
+    const extra = this.pendingTasks.map(t => [this.belongsIn(t), t]).filter(([k]) => k);
     let base = this.view.groups;
     if (this.route.name === 'today') {
       // Show every group, even in a list saved offline before the "Added today, no date" group existed. In a list

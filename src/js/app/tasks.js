@@ -864,6 +864,7 @@ export default {
       await this.findRemoved();
       caughtAt = from;
       if (shownFrom === was) shownFrom = null;
+      this.regroupSoon(); // what Vikunja changed may move rows
     } catch {
       /* tried again the next time */
     } finally {

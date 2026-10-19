@@ -81,6 +81,7 @@ export default {
     if (instant) done();
     else closeTimer = setTimeout(done, 260);
     if (dirty && !instant) this.render();
+    this.regroupSoon(); // what changed in the sheet may move its task's row
     lastFocus?.focus?.();
     // When the sheet is closed with ×, a swipe or Escape, its history entry is marked closed (see the popstate listener
     // in core.js). A screen opened from the sheet replaces the entry instead (go()).

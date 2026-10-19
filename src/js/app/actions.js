@@ -41,7 +41,7 @@ import {
   UNDO,
   waitText,
 } from '../messages.js';
-import { stepsOf, vikunjaNext } from '../checklists.js';
+import { vikunjaNext } from '../checklists.js';
 import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlocks } from '../order.js';
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, sync, uuid7 } from '../sync.js';
@@ -53,16 +53,6 @@ import { copyOf, opsId } from './tasks.js';
 const HELD_MS = 60e3;
 
 export default {
-  /* On Today, a task ticked there joins Done today when the batch clears, so Copy includes it at once. A checklist's
-     step doesn't, since its checklist stands for it. */
-  intoDoneToday(ids) {
-    const g = this.route.name === 'today' && this.view.groups.find(x => x.key === 'donetoday');
-    for (const id of g ? ids : []) {
-      const t = this.tasks[id];
-      if (t?.done && !this.stepRun(t) && !g.tasks.includes(t)) g.tasks.unshift(t);
-    }
-  },
-
   /* ---------- done, and not done again ---------- */
   /* Tick or untick a task from any row or sheet, as a `done` or `undone` op. The op shows on the task's rows at once
      and waits in the outbox while Pocket is offline. A checklist is finished or reopened instead (tickRunTask), and a
@@ -71,9 +61,10 @@ export default {
      exactly those ops.
 
      A ticked list row stays in place from the tap until its op is sent (holdRow). Then it is marked until the batch
-     clears, and tapping its tick undoes it. A repeating task shows as done until its next date appears. A tick in a
-     sheet shows Undo only when it closed subtasks or the task repeats. `extra.pct` is the progress the user set with
-     the tick or untick (setProgress). */
+     clears, and tapping its tick undoes it. Then it goes where it belongs (regroup, views.js). An untick marks the row
+     only when it moves. A repeating task shows as done until its next date appears. A tick in a sheet shows Undo only
+     when it closed subtasks or the task repeats. `extra.pct` is the progress the user set with the tick or untick
+     (setProgress). */
   async toggleDone(t, rowEl, extra = {}) {
     const run = this.stepRun(t);
     if (run) return this.tickRunStep(t, run, rowEl);
@@ -130,19 +121,8 @@ export default {
           this.say(repeatsNext(next), { place: 'sheet:top', action: { label: UNDO, fn: undo } });
           return;
         }
-        if (!inList) return;
-        // The completed row keeps its old date until the batch clears, then shows its next date or leaves Today.
-        const beyond = () => this.route.name === 'today' && dayGroup(due) === null;
-        this.markRow(t.id, {
-          kind: 'done',
-          out: () => (beyond() ? [t.id] : []),
-          undo,
-          said: doneRepeats(t.title, next),
-          gone: () => {
-            if (beyond()) this.removeRow(t.id);
-            else if (this.route.name === 'today') this.regroupToday();
-          },
-        });
+        // The completed row keeps its old date until the batch clears, then shows its next date where it belongs.
+        if (inList) this.markRow(t.id, { kind: 'done', undo, said: doneRepeats(t.title, next) });
         return;
       }
       if (head) return this.reopenedHead(t, !inList, ops);
@@ -158,28 +138,11 @@ export default {
         return;
       }
       if (!inList) return;
-      // After the batch clears, completed rows leave Today or Open. A completed parent stays above subtasks that are
-      // still open.
-      const moves = () => !!this.searchGroups(t);
-      if (was && !moves()) {
+      if (was && !this.moves(t)) {
         this.said = tickSaid(false, t.title);
         return;
       }
-      this.markRow(t.id, {
-        kind: was ? 'open' : 'done',
-        ids,
-        undo,
-        said: was ? tickSaid(false, t.title) : text,
-        out: () => (over ? closed : this.bothWays && !moves() ? [] : ids),
-        gone: () => {
-          if (over) this.moveInSearch(t, closed);
-          else if (this.bothWays) this.moveInSearch(t, ids);
-          else if (t.done) {
-            ids.forEach(id => this.removeRow(id));
-            this.intoDoneToday(ids);
-          }
-        },
-      });
+      this.markRow(t.id, { kind: was ? 'open' : 'done', ids, undo, said: was ? tickSaid(false, t.title) : text });
     } finally {
       letGo?.();
     }
@@ -246,7 +209,8 @@ export default {
     if ((i >= 0 || !g.loaded) && typeof g.count === 'number') g.count = Math.max(0, g.count - 1);
   },
   /* Finish or reopen a checklist through the outbox, leaving its steps as they are. The ring asks before finishing
-     a checklist that has open steps. A list row is marked until the batch clears, and tapping the ring undoes it. */
+     a checklist that has open steps. A list row is marked until the batch clears, and tapping the ring undoes it. A
+     reopened row is marked only when it moves. */
   async tickRunTask(t, rowEl) {
     const was = t.done,
       head = was && this.isHead(t),
@@ -265,25 +229,11 @@ export default {
         this.say(offline ? finishedText('', r) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
       return;
     }
-    const moves = () => !!this.searchGroups(t),
-      steps = () => stepsOf(t).map(s => s.id);
-    if (was && !moves()) {
+    if (was && !this.moves(t)) {
       this.said = said;
       return;
     }
-    this.markRow(t.id, {
-      kind: was ? 'open' : 'done',
-      undo,
-      said,
-      out: () => (this.bothWays && !moves() ? [] : [t.id]),
-      gone: () => {
-        if (this.bothWays) this.moveInSearch(t, [t.id]);
-        else if (t.done) {
-          [t.id, ...steps()].forEach(id => this.removeRow(id));
-          this.intoDoneToday([t.id]);
-        }
-      },
-    });
+    this.markRow(t.id, { kind: was ? 'open' : 'done', undo, said });
   },
   /* Tick a checklist step through the outbox, which records who did it and works offline. The op shows the tick on
      the step's row while it waits. A list row waits for the batch to clear. In a sheet the step stays visible as done. */
@@ -304,8 +254,7 @@ export default {
           this.say(later, { row: { id: t.id, text: doneLater('', r.reached), stays: true }, place: 'sheet:top' });
         return;
       }
-      const moves = () => !!this.searchGroups(t);
-      if (was && !moves()) {
+      if (was && !this.moves(t)) {
         this.said = tickSaid(false, t.title);
         return;
       }
@@ -313,39 +262,10 @@ export default {
         kind: was ? 'open' : 'done',
         said: later || tickSaid(!was, t.title),
         undo: () => this.undoTicks([f]),
-        out: () => (this.bothWays && !moves() ? [] : [t.id]),
-        gone: () => {
-          if (this.bothWays) this.moveInSearch(t, [t.id]);
-          else if (t.done) this.removeRow(t.id);
-        },
       });
     } finally {
       letGo?.();
     }
-  },
-  // In search and in a project, Open and Done show together. Returns the group a task is in and the group its tick
-  // moves it to, or null.
-  searchGroups(t) {
-    if (!this.bothWays) return null;
-    const from = this.view.groups.find(g => g.key === (t.done ? 'open' : 'done')),
-      to = this.view.groups.find(g => g.key === (t.done ? 'done' : 'open'));
-    return from && to && from.tasks.some(x => x.id === t.id) ? { from, to } : null;
-  },
-  /* Move completed tasks and closed subtasks to the top of Done, or reopened tasks back to Open. In a project,
-     reopened tasks go back to their List view positions. If Done has not loaded, only its count changes. Returns
-     whether a row moved. */
-  moveInSearch(t, ids) {
-    const g = this.searchGroups(t);
-    if (!g) return false;
-    for (const id of ids) {
-      const i = g.from.tasks.findIndex(x => x.id === id);
-      if (i < 0) continue;
-      const [x] = g.from.tasks.splice(i, 1);
-      if (g.to.loaded !== false && !g.to.tasks.includes(x)) g.to.tasks.unshift(x);
-      for (const k of ['from', 'to']) if (typeof g[k].count === 'number') g[k].count += k === 'to' ? 1 : -1;
-    }
-    if (this.route.name === 'project' && !t.done) this.render();
-    return true;
   },
   // Tick the sheet's task, the same as a row's tick, with the progress the user set (`pct`), if any.
   async sheetDone(pct) {
@@ -563,8 +483,7 @@ export default {
     const op = { id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: to.due, run: null },
       sending = this.act(op, true);
     this.placeOnToday(t, to.due);
-    // A task due on that date goes in the same group as a task waiting to be sent with that date (pendingPlace).
-    const want = this.pendingPlace({ due_date: to.due }),
+    const want = dayGroup(to.due),
       kept =
         c && this.todayKey(t) !== want && c.when !== t.due_date
           ? this.cardSubs(t, false)
@@ -643,26 +562,24 @@ export default {
   todayKey(t) {
     return this.view.groups.find(g => g.tasks.some(x => x.id === t.id))?.key ?? null;
   },
-  /* Put task `t`, whose row already has the date `due`, in the Today group for that date, or remove it from Today if
-     the date is beyond the next seven days. A card uses the earliest date of its parent and open subtasks. A task
-     without a date goes in the group `key`, which is the Added today, no date group by default. */
-  placeOnToday(t, due, key = 'nodate') {
-    const c = this.view.cards?.[t.id];
-    if (c)
-      c.when = [
-        due,
-        ...this.cardSubs(t, false)
-          .filter(s => !s.done)
-          .map(s => s.due_date),
-      ]
-        .filter(isSet)
-        .reduce((a, b) => (!a || Date.parse(b) < Date.parse(a) ? b : a), null);
-    const k = dayGroup(c ? c.when : due),
-      groups = this.view.groups,
-      into = k && groups.find(g => g.key === (k === 'nodate' ? key : k));
-    for (const g of groups) g.tasks = g.tasks.filter(x => x.id !== t.id);
+  /* Put task `t`, given the date `due`, in the Today group it belongs in now (belongsIn), or take it off Today, at once.
+     A card goes by its date with that of its open subtasks (todayDates). A task with no date goes in the group `key`
+     when one is given, as Undo puts it back where it was. Only that task moves, so no other row moves under a finger. */
+  placeOnToday(t, due, key) {
+    const groups = this.view.groups,
+      from = groups.find(g => g.tasks.some(x => x.id === t.id)),
+      as = { ...t, due_date: due },
+      c = this.view.cards?.[t.id];
+    if (c) c.when = this.todayDates(as).when ?? null;
+    const into = groups.find(g => g.key === (!isSet(due) && key ? key : this.belongsIn(as, from?.key ?? 'card')));
+    if (into === from) return;
+    if (from)
+      from.tasks.splice(
+        from.tasks.findIndex(x => x.id === t.id),
+        1,
+      );
     into?.tasks.push(t);
-    this.regroupToday();
+    this.setBadge(groups.find(g => g.key === 'overdue')?.tasks.length || 0);
   },
 
   /* ---------- reordering ---------- */

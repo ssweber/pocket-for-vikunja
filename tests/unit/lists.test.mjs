@@ -34,10 +34,15 @@ import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views, { renderSeq } from '../../src/js/app/views.js';
 import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
-import { sync } from '../../src/js/sync.js';
 import sending from '../../src/js/app/sending.js';
 import lines from '../../src/js/app/lines.js';
 import auth from '../../src/js/app/auth.js';
+import actions from '../../src/js/app/actions.js';
+import leaving from '../../src/js/app/leaving.js';
+import cards from '../../src/js/app/cards.js';
+import { fingers } from './actions-helpers.mjs';
+import { noConnection, sender } from './ops-helpers.mjs';
+import { sync, uuid7 } from '../../src/js/sync.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z'; // Vikunja's "no date"
@@ -961,4 +966,84 @@ test('on a day of 23 or 25 hours, Today and the 8th day start at midnight', () =
       'the 8th day after a 23-hour day',
     );
   });
+});
+
+test('a task moved to another project leaves the project’s list as the batch lets rows move, offline too', async t => {
+  const { v, app } = sender(
+    t,
+    [
+      { id: 1, title: 'Book the van', project_id: 5 },
+      { id: 2, title: 'Pack the boxes', project_id: 5 },
+    ],
+    actions,
+    leaving,
+    views,
+    cards,
+  );
+  t.after(async () => {
+    app.clearNow();
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  Object.assign(app, { route: { name: 'project', id: 5 }, render() {} });
+  noConnection(app, v);
+  app.change(w =>
+    w.read(
+      [1, 2].map(id => ({ id, title: 'Task ' + id, project_id: 5 })),
+      TASK,
+      started(),
+    ),
+  );
+  app.view.groups = [
+    { key: 'open', cls: '', title: 'Open', tasks: [app.row({ id: 1 }), app.row({ id: 2 })] },
+    { key: 'done', loaded: false, count: 0, tasks: [] },
+  ];
+  const finger = fingers(t, app);
+  await app.act({
+    id: uuid7(),
+    op: 'project',
+    task: 1,
+    pid: 6,
+    subs: {},
+    was: { 1: 5 },
+    into: 'B',
+    from: 'A',
+    run: null,
+  });
+  assert.deepEqual(ids(app.view.groups[0].tasks), [1, 2], 'the row stays while the sheet is open');
+  // The sheet closes (closeSheet) while a finger is still down.
+  finger('pointerdown');
+  app.regroupSoon();
+  t.mock.timers.tick(5000);
+  await new Promise(setImmediate);
+  assert.deepEqual(ids(app.view.groups[0].tasks), [1, 2], 'no row moves under a finger');
+  finger('pointerup');
+  t.mock.timers.tick(3000);
+  await new Promise(setImmediate);
+  assert.deepEqual(
+    [ids(app.view.groups[0].tasks), app.view.groups[1].count, sync.all(1).length],
+    [[2], 0, 1],
+    'the task leaves, though the move still waits to be sent',
+  );
+});
+
+test('a reload whose answer arrives while a finger is down changes the lists only once the finger lifts', async t => {
+  doneVikunja(3);
+  const app = doneApp({ name: 'search' });
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(leaving));
+  const finger = fingers(t, app),
+    before = app.view.groups;
+  finger('pointerdown');
+  const loading = app.loadSearch(renderSeq);
+  for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+  assert.equal(app.view.groups, before, 'the lists stay as they are under the finger');
+  finger('pointerup');
+  await loading;
+  assert.deepEqual(
+    app.view.groups.map(g => [g.key, g.tasks.length]),
+    [
+      ['open', 3],
+      ['done', 3],
+    ],
+    'then the reload shows what it read',
+  );
 });

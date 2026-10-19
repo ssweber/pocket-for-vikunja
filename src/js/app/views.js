@@ -50,7 +50,10 @@ let behindTimer,
   preloading = false,
   drawSeq = 0,
   nearEnd = null,
-  searched = '';
+  searched = '',
+  // The open subtasks on Today's cards when the screen last loaded or regrouped (cardKids), so one that leaves its card
+  // gets a row (regroupPlan). `at` is the screen they were on.
+  kids = { at: '', ids: new Set() };
 const PRELOAD_AGE = 60e3; // skip background reloads for copies newer than this
 // The projects whose Done section is open, remembered on this phone: project id -> true, and `today` for Done today.
 const doneOpen = {
@@ -121,10 +124,6 @@ export default {
     const d = this.user?.settings?.default_project_id;
     if (d && this.projById.has(d)) return d;
     return this.projects[0]?.id;
-  },
-  // Search and project Done sections move tasks between separate Open and Done groups after a tick.
-  get bothWays() {
-    return ['search', 'project'].includes(this.route.name);
   },
 
   /* ---------- views ---------- */
@@ -475,6 +474,7 @@ export default {
         shownRun: null,
         listView: null,
       });
+      this.view.route = location.hash; // the screen it shows, so its rows can move (regroup)
       if (s) this.showSaved(r, s);
       if (scrollY) scrollTo(0, 0); // a new screen starts at its top
       Object.assign(this.hint, { at: null, pick: true }); // show the hint, if not yet shown, on the first row (pickHint)
@@ -505,9 +505,9 @@ export default {
     } catch (e) {
       if (seq !== renderSeq || (e instanceof ApiError && e.status === 401)) return;
       if (e instanceof NetError) {
-        // Keep visible rows after a failed load and show the offline banner. Regroup Today for the current date.
+        // Keep visible rows after a failed load and show the offline banner. Move the rows that belong elsewhere now.
         if (!this.view.loading) {
-          if (r.name === 'today') this.regroupToday();
+          this.regroupSoon();
           return;
         }
         const s = this.keptScreen(viewKey(r)); // a checklist's saved copy is used only after a failed load
@@ -631,7 +631,7 @@ export default {
     });
     // Restore the tasks' positions in the project's List view, unless this session has newer ones from a move.
     for (const [id, pos] of Object.entries(s.positions || {})) if (!(id in this.positions)) this.positions[id] = pos;
-    if (r.name === 'today') this.regroupToday();
+    if (r.name === 'today') this.regroup();
   },
   /* ---------- the other tabs, loaded in the background ---------- */
   /* Refresh cached Today, the last project or first favourite, and Checklists in the background when the phone is
@@ -711,6 +711,10 @@ export default {
      Return whether this load is still current. */
   async settle(ids, seq) {
     if (this.view.loading) return seq === renderSeq;
+    // No row moves under a finger. The reload waits, as the batch does, until the user stops touching and scrolling.
+    const touched = this.untouched();
+    if (touched) await touched;
+    if (seq !== renderSeq) return false;
     const now = new Set(ids),
       shown = [
         ...this.view.groups.flatMap(g => g.tasks),
@@ -752,6 +756,131 @@ export default {
       });
     return groups;
   },
+  /* ---------- rows moving where they belong ---------- */
+  /* The rows on the screen's lists that belong in another group now (belongsIn), each {t, from, to}: the row, the group
+     it is in, and the group it belongs in, or null when it belongs on none. A row is judged as it will show once its
+     mark is gone (`going`, the ids whose marks are being cleared). Any other marked row stays where it is, and so does
+     a row being deleted, since Vikunja may refuse the delete. On Today, an open subtask that has left its card and
+     has no parent now gets a row of its own (`from` null). */
+  regroupPlan(going = new Set()) {
+    const out = [],
+      skip = t =>
+        (!!this.leaving[t.id] && !going.has(t.id)) || this.leaving[t.id] === 'deleted' || this.beingDeleted(t.id),
+      now = t => (going.has(t.id) && this.shownAs(t.id)) || t;
+    if (this.route.name === 'checklists') {
+      for (const cl of this.view.checklists || []) {
+        const runs = { key: 'runs', tasks: cl.runs },
+          finished = { key: 'finished', tasks: cl.finished };
+        for (const t of cl.runs) if (!skip(t) && now(t).done) out.push({ t, from: runs, to: finished });
+        for (const t of cl.finished) if (!skip(t) && !now(t).done) out.push({ t, from: finished, to: runs });
+      }
+      return out;
+    }
+    const groups = this.view.groups,
+      listed = new Set();
+    for (const g of groups)
+      for (const t of g.tasks) {
+        listed.add(t.id);
+        const k = skip(t) ? g.key : this.belongsIn(now(t), g.key);
+        if (k !== undefined && k !== g.key) out.push({ t, from: g, to: groups.find(x => x.key === k) || null });
+      }
+    if (this.route.name === 'today' && kids.at === this.view.route) {
+      const on = this.cardKids();
+      for (const id of kids.ids) {
+        const t = this.tasks[id],
+          loose = t && !on.has(id) && !listed.has(id) && !t.done && !skip(t) && !t.related_tasks?.parenttask?.length,
+          g = loose && groups.find(x => x.key === this.belongsIn(t, 'card'));
+        if (g) out.push({ t, from: null, to: g });
+      }
+    }
+    return out;
+  },
+  // Whether task `t`'s row moves or leaves once the batch clears.
+  moves(t) {
+    return this.regroupPlan().some(p => p.t.id === t.id);
+  },
+  // The ids of the tasks on the screen's lists.
+  listedIds() {
+    return new Set(
+      [
+        ...this.view.groups.flatMap(g => g.tasks),
+        ...(this.view.checklists || []).flatMap(cl => [...(cl.runs || []), ...(cl.finished || [])]),
+      ].map(t => t.id),
+    );
+  },
+  /* Move each row that belongs in another group now (regroupPlan) there, with the arrival flash, and save the screen as
+     it now shows. Only the moved tasks are spliced, so every other group stays the same object (sameGroup, lists.js).
+     Done goes newest first. On Today, the cards' dates and any new card are worked out first, because they place the
+     cards. */
+  regroup() {
+    if (this.view.route !== location.hash) return;
+    const r = this.route,
+      today = r.name === 'today',
+      cards = today && this.keepCards(),
+      plan = this.regroupPlan();
+    for (const { t, from, to } of plan) {
+      // A done task kept above its open subtasks was counted in Done as it was ticked (makeHead).
+      const head = !!from?.heads?.includes(t.id);
+      if (from) {
+        from.tasks.splice(from.tasks.indexOf(t), 1);
+        if (head) from.heads = from.heads.filter(id => id !== t.id);
+        if (typeof from.count === 'number') from.count = Math.max(0, from.count - 1);
+      }
+      if (!to) continue;
+      if (typeof to.count === 'number' && !head) to.count++;
+      if (to.loaded === false || to.tasks.includes(t)) continue;
+      if (['done', 'donetoday', 'finished'].includes(to.key) || r.name === 'search') to.tasks.unshift(t);
+      else to.tasks.push(t);
+    }
+    if (today) {
+      kids = { at: this.view.route, ids: this.cardKids() };
+      this.setBadge(this.view.groups.find(g => g.key === 'overdue')?.tasks.length || 0);
+    }
+    if (!plan.length && !cards) return;
+    // A row that has just come due keeps that highlight (tickToday).
+    const moved = plan.filter(p => p.to && !this.flashed?.due?.[p.t.id]).map(p => p.t.id);
+    if (moved.length) this.flash(moved, 'arrived');
+    const k = viewKey(r),
+      s = saved.get(k);
+    if (s)
+      this.keepScreen(
+        k,
+        {
+          ...s,
+          ...(r.name === 'checklists'
+            ? { checklists: this.view.checklists }
+            : { groups: keptGroups(this.view.groups) }),
+          ...(today && { cards: this.view.cards }),
+        },
+        false,
+      );
+    // A task back on a project's open list goes to its place in the List view, which a load reads.
+    if (r.name === 'project' && plan.some(p => p.to?.key === 'open')) this.render();
+  },
+  // Keep each card's date on Today as todayDates gives it, and make a card of a row that has open subtasks now. Returns
+  // whether anything changed.
+  keepCards() {
+    const cards = this.view.cards;
+    let changed = false;
+    for (const g of this.view.groups)
+      for (const t of g.tasks) {
+        const d = !t.done && this.todayDates(t);
+        if (!d?.card) continue;
+        if (!cards[t.id]) cards[t.id] = { when: d.when ?? null, made: d.made ?? null, focus: null };
+        else if ((cards[t.id].when ?? null) === (d.when ?? null)) continue;
+        else cards[t.id].when = d.when ?? null;
+        changed = true;
+      }
+    return changed;
+  },
+  // The ids of the open subtasks on Today's cards.
+  cardKids() {
+    const ids = new Set();
+    for (const g of this.view.groups)
+      for (const t of g.tasks)
+        if (this.view.cards?.[t.id]) for (const s of this.cardSubs(t)) if (!s.done) ids.add(s.id);
+    return ids;
+  },
   async loadToday(seq) {
     const got = await this.readToday();
     if (seq !== renderSeq) return;
@@ -766,6 +895,7 @@ export default {
     this.todayDay = +startOfDay();
     Object.assign(this.positions, positions);
     Object.assign(this.view, { cards, groups: this.keepMarked(groups) });
+    kids = { at: this.view.route, ids: this.cardKids() };
     this.keepScreen('today', { groups, cards, steps, positions, at: new Date().toISOString() });
   },
   /* Load Today's tasks and cards with their open subtasks before assigning date groups. */
@@ -1213,6 +1343,10 @@ export default {
     if (seq !== renderSeq) return;
     for (const t of read.steps) this.row(t);
     Object.assign(this.positions, read.positions);
+    // No row moves under a finger (settle).
+    const touched = this.untouched();
+    if (touched) await touched;
+    if (seq !== renderSeq) return;
     this.view.groups = this.keepMarked([
       { key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t)) },
       {

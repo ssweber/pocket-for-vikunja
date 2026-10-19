@@ -1,4 +1,4 @@
-/* Alerts while Pocket is on screen. Today regroups its tasks as time passes, and a countdown on a checklist chimes at
+/* Alerts while Pocket is on screen. Today moves its rows as time passes, and a countdown on a checklist chimes at
    zero. Pocket sends no system notifications. A task that becomes due is highlighted on Today, and a countdown at zero
    shows a toast with a chime. Vibration, keeping the screen on and the overdue count on the app icon are tried where
    the phone allows them. Reminders while Pocket is closed are Vikunja's emails. */
@@ -39,7 +39,8 @@ const alerted = {
 
 export default {
   /* Runs every minute while Today is on screen. Tasks move to Overdue as their time passes, without asking Vikunja
-     again. A new day reloads the screen. Pocket announces a task whose due time or reminder has just passed. */
+     again, once the batch lets rows move (regroupSoon). A new day reloads the screen. Pocket announces a task whose due
+     time or reminder has just passed. */
   tickToday() {
     const now = Date.now(),
       since = lastTick;
@@ -50,7 +51,9 @@ export default {
       this.render();
       return;
     }
-    const dated = this.regroupToday();
+    this.groupedAt = now;
+    this.regroupSoon();
+    const dated = this.view.groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
     const passed = at => at > since && at <= now;
     const due = [],
       reminded = [];
@@ -71,24 +74,23 @@ export default {
       reminded.length > 0,
     );
   },
-  // Regroup Today's dated tasks for the time now, without asking Vikunja. Returns them.
-  regroupToday() {
-    const groups = this.view.groups,
-      dated = groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
-    if (['overdue', 'today', 'week'].every(k => groups.some(g => g.key === k))) this.placeDated(groups, dated);
-    return dated;
-  },
-  /* Put each dated task in its group: Overdue once its time has passed (for a task due on a day with no time, once that
-     day is over), Today, or the next 7 days. A card goes by the earliest date among its task and its open subtasks
-     (`cards`). The app icon shows the overdue count. */
-  placeDated(groups, tasks, cards = this.view.cards || {}) {
-    const [overdue, today, week] = ['overdue', 'today', 'week'].map(k => groups.find(g => g.key === k)),
+  /* Put the dated tasks of Today's load in their groups: Overdue once its time has passed (for a task due on a day with
+     no time, once that day is over), Today, or the next 7 days. A card goes by the date that brought it (`cards`). A
+     row whose waiting change moves it 8 or more days ahead, or takes its date off, is left out, as the next load would
+     leave it out, unless it was made today. The app icon shows the overdue count. */
+  placeDated(groups, tasks, cards) {
+    const [overdue, today, week, nodate] = ['overdue', 'today', 'week', 'nodate'].map(k =>
+        groups.find(g => g.key === k),
+      ),
       now = new Date();
     const at = todayAt(cards),
-      order = todayOrder(at);
-    for (const g of [overdue, today, week]) g.tasks = [];
-    for (const t of tasks) (({ overdue, today })[dayGroup(at(t).due_date, now)] || week).tasks.push(t);
-    for (const g of [overdue, today, week]) g.tasks.sort(order[g.key]);
+      order = todayOrder(at),
+      into = { overdue, today, week, nodate };
+    for (const t of tasks) {
+      const k = dayGroup(at(t).due_date, now);
+      if (k !== 'nodate' || new Date(at(t).created) >= startOfDay(now)) into[k]?.tasks.push(t);
+    }
+    for (const g of [overdue, today, week, nodate]) g.tasks.sort(order[g.key]);
     this.groupedAt = +now;
     this.setBadge(overdue.tasks.length);
   },

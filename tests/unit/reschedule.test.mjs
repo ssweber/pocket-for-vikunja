@@ -15,7 +15,9 @@ import alerts from '../../src/js/app/alerts.js';
 import leaving from '../../src/js/app/leaving.js';
 import { isMovedGap, todayGroups } from '../../src/js/lists.js';
 import { movedDue } from '../../src/js/dates.js';
-import { sync } from '../../src/js/sync.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
+import views from '../../src/js/app/views.js';
+import { startOfDay } from '../../src/js/dates.js';
 
 test('Move all to today moves each overdue task to today at its time, or with no time if that time has passed', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
@@ -593,4 +595,58 @@ test('Pocket forgets what it kept to undo a move once its gap has gone, or its U
   app.clearNow();
   await collected();
   assert.equal(undosKept(), n, "one Undo has run, and the other's gap has gone");
+});
+
+/* A date changed in a task's sheet while offline waits in the outbox, and the row shows it at once, where it was. Today
+   then places the row as its load would: by the date the row shows. */
+const offlineDates = c => {
+  const made = (d, h) => new Date(2026, 9, d, h).toISOString(),
+    { app, at } = onToday(
+      c,
+      [
+        { id: 1, title: 'Call the plumber', due_date: made(9, 9), created: made(1, 9) },
+        { id: 2, title: 'Fix the gate', due_date: made(9, 10), created: made(7, 9) },
+        { id: 3, title: 'Order milk', due_date: made(9, 11), created: made(1, 9) },
+      ],
+      {},
+      ['Date', 'setTimeout'],
+    );
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(views));
+  Object.assign(app, { render() {}, todayDay: +startOfDay() });
+  app.view.route = location.hash;
+  app.offline = true;
+  const due = (id, to) =>
+    app.act({ id: uuid7(), op: 'due', task: id, was: app.tasks[id].due_date, due: to, run: null });
+  return { app, at, dates: () => Promise.all([due(1, at(17, 9)), due(2, ZERO), due(3, ZERO)]) };
+};
+test('a date moved offline 8 or more days ahead, or taken off, leaves Today at the minute’s tick, not for Next 7 days', async c => {
+  const { app, dates } = offlineDates(c),
+    week = () => app.view.groups.find(g => g.key === 'week').tasks.map(t => t.id);
+  app.view.groups.find(g => g.key === 'week').tasks.push(app.tasks[1], app.tasks[2], app.tasks[3]);
+  await dates();
+  assert.deepEqual(week(), [1, 2, 3], 'the rows stay where they are while the user works');
+  // The rows that leave find no elements to fold here.
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => [];
+  c.after(() => (was ? (document.querySelectorAll = was) : delete document.querySelectorAll));
+  app.tickToday();
+  await new Promise(setImmediate);
+  assert.deepEqual(
+    app.view.groups.map(g => [g.key, g.tasks.map(t => t.id)]).filter(([, ids]) => ids.length),
+    [['nodate', [2]]],
+    'only the task made today stays, under Added today, no date',
+  );
+});
+test('a load that lists tasks by Vikunja’s dates places them by the dates moved offline', async c => {
+  const { app, dates } = offlineDates(c);
+  await dates();
+  const { groups } = app.todayFrom(
+    { rows: [1, 2, 3].map(id => ({ t: app.tasks[id], key: 'dated' })), cards: new Map(), parents: [], steps: [] },
+    t => app.row(t),
+  );
+  assert.deepEqual(
+    groups.map(g => [g.key, g.tasks.map(t => t.id)]).filter(([, ids]) => ids.length),
+    [['nodate', [2]]],
+    'Next 7 days has none of them',
+  );
 });

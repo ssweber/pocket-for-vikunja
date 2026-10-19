@@ -176,16 +176,26 @@ export default {
     if (only !== undefined) m.ids = m.ids.filter(x => x !== only);
     if (!marks.size) batch.stop();
   },
-  /* Remove all marked rows together, then call each mark's `gone`. With `atOnce` there is no animation. That is
-     used when leaving the screen or hiding Pocket. */
+  /* Remove all marked rows together, call each mark's `gone`, and move every row on the screen's lists that belongs in
+     another group now (regroup, views.js). A row on those lists collapses only when it moves or leaves, or when it was
+     deleted. With `atOnce` there is no animation. That is used when leaving the screen or hiding Pocket. */
   async clearBatch(atOnce = false) {
-    const all = [...new Set(of(this).marks.values())].filter(m => !m.going);
-    if (!all.length) return;
+    const all = [...new Set(of(this).marks.values())].filter(m => !m.going),
+      going = new Set(all.flatMap(m => m.ids)),
+      moving = this.regroupPlan(going).map(p => p.t.id);
+    if (!all.length && !moving.length) return this.regroup();
     for (const m of all) m.going = true;
-    const out = all.flatMap(m => (typeof m.out === 'function' ? m.out() : m.out) ?? m.ids);
+    const listed = this.listedIds(),
+      marked = all.flatMap(m =>
+        ((typeof m.out === 'function' ? m.out() : m.out) ?? m.ids).filter(
+          id => m.kind === 'deleted' || !listed.has(id),
+        ),
+      ),
+      out = [...new Set([...marked, ...moving])];
     const anims = atOnce || !out.length ? [] : await exit(rowsOf(out));
     for (const m of all) this.dropMark(m);
     for (const m of all) m.gone?.();
+    this.regroup();
     // Cancel the animations after the render removes the rows, so a row that stayed becomes visible again.
     if (anims.length)
       setTimeout(() =>
@@ -205,6 +215,18 @@ export default {
       this.dropMark(m);
       m.gone?.();
     }
+  },
+  /* Move the rows that belong in another group now, as the batch clears. While the batch is holding the rows, they
+     move when it clears. A screen being left keeps its rows. */
+  regroupSoon() {
+    const { batch } = of(this);
+    if (this.view.route !== location.hash) return;
+    if (batch.holding) batch.pend();
+    else this.clearBatch();
+  },
+  // A promise that settles once no finger is down and nothing scrolls, or null when that is so now.
+  untouched() {
+    return of(this).batch.free();
   },
   // Clear the batch at once when leaving the screen or hiding Pocket.
   clearNow() {

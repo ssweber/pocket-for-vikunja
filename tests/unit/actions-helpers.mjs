@@ -1,5 +1,5 @@
 // Helpers that actions.test.mjs, ticks.test.mjs and reschedule.test.mjs share: a day in seconds, the patches that
-// reached the fake Vikunja, a task opened in the sheet, and garbage collection.
+// reached the fake Vikunja, a task opened in the sheet, fingers on the page, and garbage collection.
 import './browser.mjs';
 import v8 from 'node:v8';
 import vm from 'node:vm';
@@ -22,4 +22,21 @@ const gc = vm.runInNewContext('gc');
 export const collected = async () => {
   gc();
   for (let i = 0; i < 3; i++) await new Promise(ok => setImmediate(ok));
+};
+/* Fingers on the page, as the batch listens for them (initBatch). The returned function puts a finger down
+   ('pointerdown') or lifts it ('pointerup'). The rows that leave find no elements to fold here. */
+export const fingers = (t, app) => {
+  const on = {},
+    was = document.querySelectorAll;
+  document.addEventListener = (type, fn) => (on[type] ||= []).push(fn);
+  globalThis.addEventListener = (type, fn) => (on[type] ||= []).push(fn);
+  document.querySelectorAll = () => [];
+  t.after(() => {
+    delete document.addEventListener;
+    delete globalThis.addEventListener;
+    if (was) document.querySelectorAll = was;
+    else delete document.querySelectorAll;
+  });
+  app.initBatch();
+  return type => on[type].forEach(fn => fn({ pointerId: 1 }));
 };
