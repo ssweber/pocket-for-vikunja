@@ -387,7 +387,8 @@ export function parseCapture(
         dropDay(m.index + m[1].length, m.index + m[0].length);
       }
     }
-    if (!day && repeatDay !== null) day = dayFrom(now, (repeatDay - now.getDay() + 7) % 7); // "every monday at 10"
+    const weekly = !day && repeatDay !== null;
+    if (weekly) day = dayFrom(now, (repeatDay - now.getDay() + 7) % 7); // "every monday at 10"
 
     if (typeof chrono !== 'undefined') {
       /* chrono-node reads the other dates and times: "Oct 12", "21st June", "in 3 days", "in 2 hours", "at 3pm", ...
@@ -473,6 +474,8 @@ export function parseCapture(
       const d = new Date(day);
       if (time instanceof Date) d.setHours(time.getHours(), time.getMinutes(), 0, 0);
       else atTime(d, time || dueTime);
+      // "every monday morning" typed on a Monday after 9 AM starts next Monday, as "every day morning" starts tomorrow.
+      if (weekly && d < now) d.setDate(d.getDate() + 7);
       out.due = d;
       out.timeRead = !!time;
     }
