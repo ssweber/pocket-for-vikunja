@@ -2162,3 +2162,30 @@ test('a task found gone is forgotten once the entry pointing to it leaves the ou
     await w.close();
   }
 });
+
+/* A step's progress writes checklist 1's progress, whose reply is lost as Pocket reloads. The new page reads the
+   checklist, and a sweep drops its copy. A read of it that ran while the progress was sent again is thrown away, but
+   gives it a row. The relay then replays the progress's reply, which is older than the read before the sweep, so the
+   copy doesn't take it. */
+test('a replayed reply older than what Pocket read before a sweep leaves the copy to a read', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('progress', 2),
+      new Send(false),
+      new Answer('arrives', 0),
+      new Reload(false),
+      new Sweep([]),
+      new StartRead([1], false),
+      new Queue('done', 2),
+      new FinishRead(0),
+      new Answer('arrives', 0),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});

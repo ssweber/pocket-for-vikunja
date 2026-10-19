@@ -224,9 +224,14 @@ function reread(id) {
     },
   );
 }
+/* When the newest request behind what Pocket knew of a task started, kept when a row made after a sweep dropped its
+   copy starts its fields' times afresh (base). A read or a reply that started before then would move the task back. */
+const swept = new Map();
 // Whether a read that started at `at` is older than what Pocket knew of task `id` before a sweep dropped its copy
 // (prune). Taking it would move the task back.
-const older = (id, at) => !copies.has(id) && !bases.has(id) && [...(since.get(id)?.values() || [])].some(x => x > at);
+const older = (id, at) =>
+  !copies.has(id) &&
+  ((swept.get(id) ?? 0) > at || (!bases.has(id) && [...(since.get(id)?.values() || [])].some(x => x > at)));
 // Whether a read that started at `at` ran while a write to task `id` was in flight, other than `except`, the write of
 // the op the read is part of.
 export const overlaps = (id, at, except = null) =>
@@ -262,7 +267,7 @@ const idOf = k => (/^\d+$/.test(k) ? +k : k);
    time, because Undo holds the one it compared against. Nested lists and objects are shared with the reply. */
 function write(id, t, asked, at) {
   const s = since.get(id) || new Map(),
-    fresh = asked.filter(k => k in t && (!at || at >= (s.get(k) ?? -1)));
+    fresh = asked.filter(k => k in t && (!at || at >= (s.get(k) ?? swept.get(id) ?? -1)));
   touched.add(id);
   if (!copies.has(id) && !fresh.length) return;
   const c = { ...copies.get(id) };
@@ -346,7 +351,8 @@ function made(id, w, fields = w?.fields?.get(id) ?? {}) {
     if (bases.has(id)) {
       const s = since.get(id) || new Map(),
         known = Object.entries(fields).filter(([, v]) => v !== UNKNOWN);
-      for (const [k] of known) s.set(k, w.at);
+      // A change older than what Pocket knew before a sweep shows on the row, and a read decides the copy.
+      if (w.at >= (swept.get(id) ?? 0)) for (const [k] of known) s.set(k, w.at);
       bases.set(id, { ...bases.get(id), ...Object.fromEntries(known) });
       unsaved.add(id);
       since.set(id, s);
@@ -384,7 +390,10 @@ function base(t) {
   if (lastUser.has(t)) return;
   if (!copies.has(t.id)) {
     // A task a sweep dropped starts afresh from what its row is made from, until a read brings its copy.
-    if (!bases.has(t.id)) since.delete(t.id);
+    if (!bases.has(t.id) && since.has(t.id)) {
+      swept.set(t.id, Math.max(swept.get(t.id) ?? 0, ...since.get(t.id).values()));
+      since.delete(t.id);
+    }
     bases.set(t.id, own(t.related_tasks ? { ...t, related_tasks: unrelated(t.related_tasks) } : t));
     unsaved.add(t.id);
   }
@@ -585,6 +594,7 @@ export const dropCopies = () => {
     copies,
     bases,
     since,
+    swept,
     flying,
     landed,
     opWrites,
