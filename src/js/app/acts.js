@@ -367,15 +367,16 @@ export default {
       batch = all.find(e => e.id === id)?.batch;
       for (const e of all) {
         if (e.failed || waits(e, stopped)) {
-          // waits behind an earlier action Vikunja refused
+          /* Waits behind an earlier action Vikunja refused, until Try again or Cancel on that one. This says so, and
+             `behind` tells the caller to say nothing more, since it isn't retried every 30 seconds. */
           if (e.id !== id) continue;
-          if (!boxed(e))
+          last = { status: 'offline', reached: true, behind: !boxed(e) };
+          if (last.behind)
             this.say(refusedEarlier(parseStep(e.label || 'it').title), {
               place: 'step',
               cls: 'failed',
               action: toOutbox(this),
             });
-          last = { status: 'offline', reached: true };
           break;
         }
         last = await this.sendEntry(e.id);

@@ -235,7 +235,7 @@ export default {
       if (this.route.name === 'checklists') this.render();
       else this.go('#/checklists');
       // A start the phone couldn't keep is said where it was sent from (sendActs).
-      if (r.kept) this.say(waitText(r), { place: 'checklists' });
+      if (r.kept && !r.behind) this.say(waitText(r), { place: 'checklists' });
     } else
       this.say(
         r.error.code === 'unknown'
@@ -917,10 +917,11 @@ export default {
     const r = await this.act({ op: 'finish', task: run.id });
     if (r.status === 'error') return;
     // Show the message as a toast, because the previous screen that Back returns to has no place for it.
-    this.notify(r.status === 'offline' ? finishedText('', r) : finishedText(run.title), {
-      label: UNDO,
-      fn: () => this.reopenRun(run.id),
-    });
+    if (!r.behind)
+      this.notify(r.status === 'offline' ? finishedText('', r) : finishedText(run.title), {
+        label: UNDO,
+        fn: () => this.reopenRun(run.id),
+      });
     this.leaveRun();
   },
   // Reopen a finished checklist. Called from Undo after finishing, or from Reopen in the checklist's ⋯ menu.

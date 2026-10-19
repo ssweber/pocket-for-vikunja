@@ -571,7 +571,7 @@ export default {
     try {
       const steps = this.subtasks.filter(s => !s.done).map(s => s.id),
         r = await this.act({ op: 'makeTemplate', task: t.id, run: null, steps });
-      if (r.status === 'offline') this.say(waitText(r), { place: 'sheet:top' });
+      if (r.status === 'offline' && !r.behind) this.say(waitText(r), { place: 'sheet:top' });
       if (r.status !== 'sent') return;
       const full = await this.readCopy(t.id).catch(() => null);
       if (!full) return;
@@ -835,7 +835,7 @@ export default {
       this.sheet.subAt = made;
       this.sheet.subAfter = null;
     }
-    if (r.status === 'offline') this.say(waitText(r, steps.length), { place: 'sheet:subtasks' });
+    if (r.status === 'offline' && !r.behind) this.say(waitText(r, steps.length), { place: 'sheet:subtasks' });
     else if (r.status === 'sent') this.unsay('sheet:subtasks'); // clear the message from an earlier failed try
   },
   // A row's time chip as a list for x-for: [d] when there is something to show, else [].

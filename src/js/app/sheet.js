@@ -715,7 +715,7 @@ export default {
     this.sheet.commentDraft = '';
     taskDrafts.delete('comment:' + id);
     const r = await this.act({ op: 'note', task: id, html: textToHtml(v), run: null });
-    if (r.status === 'offline') this.say(waitText(r), { place: 'sheet:comments' });
+    if (r.status === 'offline' && !r.behind) this.say(waitText(r), { place: 'sheet:comments' });
     if (r.status === 'error' && this.sheet.id === id) this.sheet.commentDraft = v;
   },
   // Comments on the open task still waiting to be posted.

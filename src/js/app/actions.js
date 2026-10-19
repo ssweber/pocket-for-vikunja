@@ -254,12 +254,12 @@ export default {
     // A finished checklist shown above steps that are still open (isHead) stays in place when reopened. It only
     // leaves Done.
     if (head) return this.outOfDone(t.id);
-    const offline = r.status === 'offline',
+    const offline = r.status === 'offline' && !r.behind,
       said = was ? tickSaid(false, t.title) : finishedText(t.title, offline && r);
     const undo = () => this.undoTicks([f]);
     // Without a visible row, show Undo at the top of the sheet, or in a toast.
     if (!rowEl) {
-      if (!was)
+      if (!was && !r.behind)
         this.say(offline ? finishedText('', r) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
       return;
     }
@@ -295,7 +295,7 @@ export default {
     try {
       const r = await acting;
       if (r.status === 'error') return;
-      const later = !was && r.status === 'offline' ? doneLater(t.title, r.reached) : '';
+      const later = !was && r.status === 'offline' && !r.behind ? doneLater(t.title, r.reached) : '';
       // In a sheet, while the tick waits, the step's row says it will be sent later.
       if (!rowEl) {
         if (later)

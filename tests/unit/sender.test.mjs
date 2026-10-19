@@ -8,7 +8,8 @@ import { addLines, OPS } from '../../src/js/ops/index.js';
 import { copyOf, started, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
 import { CANCEL, sync } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
-import { UNKNOWN } from '../../src/js/messages.js';
+import { NOT_KEPT, UNKNOWN } from '../../src/js/messages.js';
+import sheet from '../../src/js/app/sheet.js';
 
 test("a tick on a repeating step whose reply is lost moves the step's date once when it is sent again", async t => {
   const step = {
@@ -114,6 +115,26 @@ test('a refused change kept to try again, and a change held behind it, each have
   assert.deepEqual(
     [held.msg, held.action?.label],
     ['Not sent. Vikunja refused an earlier change to “Wipe the till”.', 'Outbox'],
+  );
+});
+// A change held behind a refused one goes only after Try again or Cancel on the refused one, not every 30 seconds.
+test('a change held behind a refused one is said by the sender alone, and its caller says nothing more', async t => {
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }], sheet);
+  v.trouble = r => (r.method === 'PATCH' ? 403 : null);
+  await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  const before = app.toasts.length;
+  Object.assign(app.sheet, { id: 7, commentDraft: 'Counted twice' });
+  await app.postComment();
+  // The fake has no database for the outbox, so the sender also says the phone couldn't keep the comment.
+  assert.deepEqual(
+    app.toasts
+      .slice(before)
+      .map(x => x.msg)
+      .filter(m => m !== NOT_KEPT),
+    ['Not sent. Vikunja refused an earlier change to “Wipe the till”.'],
   );
 });
 /* A request that gets no answer may have reached Vikunja, and after it an act can't be dropped. So while Pocket knows
