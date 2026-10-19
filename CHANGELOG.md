@@ -35,6 +35,8 @@ is a new 0.x.y.
 - Today has a folded Done today group with what you finished today, and its Copy gives it as text
   ([guide](docs/guide.md#tasks)).
 - Typing `+` in an add box suggests your projects, as `@` and `*` suggest people and labels.
+- Quick add reads a part of the day with its day: "this morning" is today at 9am, "tomorrow afternoon" 3pm, "friday
+  evening" 6pm and "tonight" 8pm ([guide](docs/guide.md#quick-add)). "morning" on its own stays in the title.
 
 ### Changed
 
@@ -67,6 +69,10 @@ is a new 0.x.y.
   the first 50.
 - Dropping a finish or a reopen that only partly reached Vikunja says what Vikunja now has.
 - A template step being edited isn't saved if the user's access arrives and doesn't let them change the template.
+- Claiming a step and unassigning yourself before either is sent leaves nothing in the Outbox, whether you used the
+  claim slot, a slide, the sheet or a step's edit box.
+- Adding `@user` in a template step's edit box no longer also queues a rename of the step.
+- On a phone set to a region that writes the day first, quick add reads "Oct 24" as 24 October, not October 2024.
 
 ### What Pocket writes into Vikunja
 

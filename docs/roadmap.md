@@ -64,10 +64,7 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Finish what is being built.** An unsent claim of a checklist step and its let-go cancel each other, as an assign
-   and an unassign do. And quick add reads a part of the day: "this morning" is today at 9am, "afternoon" 3pm,
-   "evening" 6pm, "tonight" 8pm. Then rows move where they belong when the batch clears
-   (`docs/design/regroup.md`).
+1. **Finish what is being built.** Rows move where they belong when the batch clears (`docs/design/regroup.md`).
 2. **Release 0.2.0.** Condense `CHANGELOG.md`'s Unreleased, merge `dev` into `main` by pull request, and publish
    `v0.2.0`. Delete the `v0.1.0-rc.1` pre-release and its tag.
 3. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
