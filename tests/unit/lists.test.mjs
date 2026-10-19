@@ -9,7 +9,9 @@ import {
   drawnOf,
   FIRST_ROWS,
   FRAME_MS,
+  gapIndex,
   intoGroup,
+  isMovedGap,
   LATER_MS,
   NEAR_ROWS,
   keptGroups,
@@ -166,6 +168,14 @@ test("Today's groups sort their tasks, and a task waiting to be sent is already 
   );
 });
 
+test('the gap a moved row leaves goes under the row that was above it, or at its old index once that row has gone', () => {
+  const rows = [{ id: 1 }, { id: 'moved-a', gapOf: 2 }, { id: 3 }];
+  assert.deepEqual(rows.map(isMovedGap), [false, true, false]);
+  assert.equal(gapIndex(rows, { after: null, at: 2 }), 0, 'the first row has nothing above it');
+  assert.equal(gapIndex(rows, { after: 'moved-a', at: 0 }), 2, 'under another gap');
+  assert.equal(gapIndex(rows, { after: 9, at: 1 }), 1, 'the row above has gone');
+  assert.equal(gapIndex(rows, { after: 9, at: 7 }), 3, 'and the group is shorter now');
+});
 test('Today sorts a card by the subtask that put it there, and a row by its own dates', () => {
   const at = h => `2026-10-07T${String(h).padStart(2, '0')}:00:00Z`;
   const cards = { 8: { when: at(9), made: null }, 9: { when: null, made: at(12) } },

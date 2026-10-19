@@ -39,6 +39,8 @@ is a new 0.x.y.
 ### Changed
 
 - Undo puts back only what nobody has changed since, and says so when something has.
+- A task held on Today and moved to another date leaves a gap with Undo where its row was, such as "Moved to
+  Tomorrow", and its row shows plainly where it went.
 - Pocket says one thing for each situation: "Saved offline", "Waiting for Vikunja", "… couldn't be saved: <reason>",
   or "… may not have reached Vikunja".
 - Offline, Pocket opens Today, Checklists, the last 5 projects and the last 8 checklists from the phone.

@@ -265,6 +265,16 @@ export function intoGroup(to, from, raw = x => x) {
 }
 export const viewKey = r =>
   r.name === 'project' ? `project.${r.id}.${r.showDone ? 'done' : 'open'}` : r.name === 'run' ? 'run.' + r.id : r.name;
+/* A row moved to another date on Today leaves a gap where it was until the batch clears (leaveGap, app/actions.js).
+   The gap is a placeholder among the group's rows, not the task, because every row of a task reads the same marks
+   (`leaving`, `flashed`) by its id. Its id is its own, so its mark is too. */
+export const isMovedGap = t => t.gapOf !== undefined;
+/* The index of the gap a moved row left among its group's rows. The gap goes under the row that was above it
+   (`after`), or at its old index (`at`) once that row has gone too. */
+export const gapIndex = (tasks, { after, at }) => {
+  const i = after === null ? 0 : tasks.findIndex(t => t.id === after) + 1;
+  return i > 0 || after === null ? i : Math.min(at, tasks.length);
+};
 /* Sort comparisons for Today's groups. Overdue sorts by priority, then longest overdue first. Today and Next 7 days
    sort soonest first. "Added today, no date" sorts newest first, with tasks waiting to be sent (no `created`) before
    all the others. A task just added sorts where the next load will put it, not at the bottom. `at` returns the

@@ -10,9 +10,14 @@
      replaced by "All subtasks done" and Close, so a card never closes without the user asking. A card ticked done
      from its ring or Close stays until the batch clears, with its title struck through. Tapping its ring undoes it.
      A deleted card becomes a gap with Restore (gap.html), and a message about the task shows in its place, as a
-     row's does. -->
+     row's does.
+
+     A row or a card moved to another date on Today leaves a gap where it was, until the batch clears. The gap is a
+     placeholder with an id of its own (isMovedGap), so it reads none of its task's marks. It looks like a deleted
+     row's gap, and tapping anywhere on it undoes the move. -->
 <div class="item" :class="itemClass(t, g)" :data-id="t.id">
-  <template x-if="!cardOf(t, g)">
+  <template x-if="isMovedGap(t)"><div class="row moved-gap" :data-id="t.id" @click="unmark(t.id)"><div class="del-gap"><span class="what"><span x-text="t.text"></span><span class="sr" x-text="': ' + t.title"></span></span><button class="claim restore"><span class="me">Undo</span></button></div></div></template>
+  <template x-if="!isMovedGap(t) && !cardOf(t, g)">
     <!-- include markup/task-row.html list -->
   </template>
   <!-- cardHead is calculated once per card. A screen reader reads the count, the progress and the project after the

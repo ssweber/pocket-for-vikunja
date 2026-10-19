@@ -8,7 +8,7 @@ import { listItems, nestSubtasks } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import { revealOf, swipeOf } from '../../src/js/app/progress.js';
 import { swipeAt } from '../../src/js/progress.js';
-import { completeAsk, moreDone } from '../../src/js/messages.js';
+import { completeAsk, moreDone, movedGap } from '../../src/js/messages.js';
 import { throwLayout, throwTargets } from '../../src/js/throw.js';
 import { chipsEl, chipsLight, chipsOpen } from '../../src/js/app/throw.js';
 
@@ -1211,6 +1211,7 @@ document.addEventListener('alpine:init', () =>
     c.specimen = [];
     c.specimenCards = [];
     c.specimenEnds = [];
+    c.specimenMoved = [];
     c.specimenParents = [];
     c.specimenComplete = [];
     c.specimenProject = { items: [] };
@@ -1371,6 +1372,13 @@ document.addEventListener('alpine:init', () =>
       // opened card's ⌃, a card with no footer, or a row.
       const [van, , , opening, milk, , sign] = this.specimenCards;
       this.specimenEnds = [[milk, opening], [van], [sign], [milk], []];
+      // A row moved to tomorrow leaves a gap between the rows that were around it (leaveGap, actions.js).
+      const plumber = task({ title: 'Call the plumber' });
+      this.specimenMoved = [
+        this.row(task({ title: 'Order oat milk', due_date: at(2 * HOUR) })),
+        { id: 'moved-specimen', gapOf: plumber.id, title: plumber.title, text: movedGap('Tomorrow') },
+        this.row(task({ title: 'Light the heaters', due_date: at(3 * HOUR) })),
+      ];
       // The parents' rings on Today's cards, and the question the ring asks (sheet/complete.html), for a task and for a checklist.
       for (const x of s.parentSubs) this.row(x);
       this.specimenParents = s.parents.map(t => this.row(t));

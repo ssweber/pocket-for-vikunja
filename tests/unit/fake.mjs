@@ -332,6 +332,7 @@ export function component(...parts) {
     route: { name: 'today' },
     toasts: [],
     leaving: {},
+    movedGaps: {},
     waiting: noneWaiting(),
     opsOn: {},
     slideClaim: {},

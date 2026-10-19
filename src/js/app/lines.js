@@ -49,16 +49,6 @@ export default {
   rowEl(id) {
     return rowsOf(id)[0] || null;
   },
-  // Undo goes on the row only if the whole row is visible between the header and the add box, with no sheet over it.
-  rowSeen(id) {
-    if (this.sheet.open && this.sheet.show) return false;
-    const top = Math.max(0, document.querySelector('header.top')?.getBoundingClientRect().bottom || 0);
-    const bottom = document.getElementById('capture')?.getBoundingClientRect().top || innerHeight;
-    return rowsOf(id).some(el => {
-      const r = el.getBoundingClientRect();
-      return r.height > 0 && r.top >= top && r.bottom <= bottom;
-    });
-  },
 
   /* ---------- a message in place of a row ---------- */
   /* Replace task `id`'s rows with a message {text, title, more, action, ms, stays, gone}. The optional `title` is

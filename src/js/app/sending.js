@@ -34,6 +34,7 @@ import {
 import { fileEntry, held, itemsOf, older, slowness, sync, uuid7 } from '../sync.js';
 import {
   dayGroup,
+  gapIndex,
   intoGroup,
   intoKeys,
   keptGroups,
@@ -685,10 +686,15 @@ export default {
     if (!base.length && this.route.name === 'project' && this.view.project)
       base = [{ key: 'open', cls: '', title: 'Open', tasks: [] }];
     // Each of Today's groups has its own order. listGroups puts a project's tasks in List view order.
-    const order = this.route.name === 'today' ? todayOrder(todayAt(this.view.cards)) : {};
+    const today = this.route.name === 'today',
+      order = today ? todayOrder(todayAt(this.view.cards)) : {};
     return base.map(g => {
       const tasks = [...g.tasks, ...extra.filter(([k]) => k === g.key).map(([, t]) => t)];
-      return { ...g, tasks: order[g.key] ? tasks.sort(order[g.key]) : tasks };
+      if (order[g.key]) tasks.sort(order[g.key]);
+      // A row moved to another date leaves a gap where it was. The gaps are kept apart from view.groups, which is
+      // saved for opening offline.
+      for (const gap of (today && this.movedGaps[g.key]) || []) tasks.splice(gapIndex(tasks, gap), 0, gap);
+      return { ...g, tasks };
     });
   },
   /* Cancel one waiting line. Its text goes back into the box it was added from, to change or add again. The lines

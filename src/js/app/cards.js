@@ -11,6 +11,7 @@ import { parseStep, runWithoutDay, stepsOf, whereNext } from '../checklists.js';
 import { pctOf, workedOut } from '../progress.js';
 import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js';
 import { listViewOf, positionOrder } from '../order.js';
+import { isMovedGap } from '../lists.js';
 import { completeAsk, ringSaid } from '../messages.js';
 import { started, TASK_COUNT } from './tasks.js';
 
@@ -23,7 +24,7 @@ export default {
      On Today ('today') the cards are the tasks in view.cards. In search ('found') any open task with open subtasks or
      steps is a card. On a project's list ('list') listCard decides. On every list, an open task whose subtasks are all
      done is a card with no rows and a Close button (`closes`). A ticked subtask or step stays on its card until the
-     batch clears (leaving.js).
+     batch clears (leaving.js). The gap a moved row leaves on Today is never a card (isMovedGap).
 
      The card is {id, run, step, steps, rows, n, peek, more, open, folds, all, ring, closes, project, g}.
      `step` is the top row. `steps` is the open subtasks in the card's order, and `rows` is the ones shown.
@@ -33,7 +34,13 @@ export default {
   cardOf(t, g) {
     const kind = g?.cards;
     if (kind === 'list') return this.listCard(t, g);
-    if (!kind || t.pending || (t.done && !this.leaving[t.id] && !closing.has(t.id)) || this.role(t) === 'template')
+    if (
+      !kind ||
+      isMovedGap(t) ||
+      t.pending ||
+      (t.done && !this.leaving[t.id] && !closing.has(t.id)) ||
+      this.role(t) === 'template'
+    )
       return null;
     const run = this.isRunTask(t),
       all = this.cardSubs(t, run),

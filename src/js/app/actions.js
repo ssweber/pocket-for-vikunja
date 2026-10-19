@@ -20,6 +20,8 @@ import {
   finishedText,
   lineRefused,
   movedBack,
+  movedGap,
+  movedGapSaid,
   movedText,
   movedTo,
   movedToProject,
@@ -549,14 +551,15 @@ export default {
     await sending;
     this.movingOverdue = false;
   },
-  /* Move a held Today row to `to.due` at once, as a `due` op, and offer Undo. On a card, only the parent's date
-     changes. If an earlier subtask keeps the card where it is, a message beside the add box says why. Undo is shown
-     on the destination row, or beside the add box if the row left Today or is offscreen. Undo undoes the op, sent or
-     not. When Vikunja refuses the move, the op leaves the outbox, and the task goes back to its old group with Try
+  /* Move a held Today row to `to.due` at once, as a `due` op. The row shows at its new place, and leaves a gap with
+     Undo where it was (leaveGap). On a card, only the parent's date changes. If an earlier subtask keeps the card where
+     it is, there is no gap, and a message with Undo beside the add box says why. Undo undoes the op, sent or not. When
+     Vikunja refuses the move, the op leaves the outbox, the gap goes, and the task goes back to its old group with Try
      again. */
   async reschedule(t, to) {
     const c = this.view.cards?.[t.id],
-      key = isSet(t.due_date) ? undefined : this.todayKey(t);
+      key = isSet(t.due_date) ? undefined : this.todayKey(t),
+      from = this.gapPlace(t);
     const op = { id: uuid7(), op: 'due', task: t.id, was: t.due_date, due: to.due, run: null },
       sending = this.act(op, true);
     this.placeOnToday(t, to.due);
@@ -573,26 +576,19 @@ export default {
     const place = () => this.placeOnToday(t, t.due_date, key);
     let failed = false,
       undone = false;
-    const undo = {
-      label: UNDO,
-      fn: async () => {
-        if (failed) return;
-        undone = true;
-        const { left } = this.undoOps([op]);
-        place();
-        this.flash([t.id], 'arrived');
-        if (!(await left)) return;
-        place();
-        this.say(notMovedBack(1, to.label && dayWord(to.label), t.title), { place: 'cap', cls: 'failed' });
-      },
+    const undo = async () => {
+      if (failed) return;
+      undone = true;
+      const { left } = this.undoOps([op]);
+      place();
+      this.flash([t.id], 'arrived');
+      if (!(await left)) return;
+      place();
+      this.say(notMovedBack(1, to.label && dayWord(to.label), t.title), { place: 'cap', cls: 'failed' });
     };
-    await this.$nextTick(); // waits until the row has moved
-    const text = movedTo(to.label, kept?.title);
-    const where = this.say(text, {
-      row: !kept && this.rowSeen(t.id) ? { id: t.id, stays: true } : null,
-      place: 'cap',
-      action: undo,
-    });
+    const text = movedTo(to.label, kept?.title),
+      gap = !kept && from && this.leaveGap(t, from, to.label, undo),
+      where = !gap && this.say(text, { place: 'cap', action: { label: UNDO, fn: undo } });
     const r = await sending;
     // An Undo tapped while the move was being sent deals with a refusal itself.
     if (r.status !== 'error' || undone) return r.status !== 'error';
@@ -604,6 +600,7 @@ export default {
       await sync.lock(() => sync.remove(r.entry));
       this.refreshPending();
     }
+    if (gap) this.unmark(gap); // the move failed, so its gap goes, and its Undo does nothing
     place();
     if (where === 'place' && this.places.cap?.text === text) this.endPlace('cap', this.places.cap, false); // the move failed, so the Undo beside the add box has nothing to undo
     await this.$nextTick(); // waits until a task that left Today has its row back
@@ -613,6 +610,34 @@ export default {
       action: unknown ? toOutbox(this) : { label: TRY_AGAIN, fn: () => this.reschedule(t, to) },
     });
     return false;
+  },
+  // The group of task `t`'s row on Today, the row above it and its index, for the gap it leaves (leaveGap).
+  gapPlace(t) {
+    for (const g of this.listBase) {
+      const i = g.tasks.findIndex(x => x.id === t.id);
+      if (i >= 0) return { key: g.key, after: g.tasks[i - 1]?.id ?? null, at: i };
+    }
+    return null;
+  },
+  /* Leave a gap where task `t`'s row was on Today (`from`, gapPlace) until the batch clears. The gap names the day the
+     task moved to (`label`), and tapping it calls `undo`. Returns the gap's id. It starts with "moved-", so it never
+     equals a task's id, which keys the rows. */
+  leaveGap(t, { key, after, at }, label, undo) {
+    const gap = { id: 'moved-' + uuid7(), gapOf: t.id, title: t.title, text: movedGap(label), after, at },
+      drop = () => {
+        this.movedGaps[key] = (this.movedGaps[key] || []).filter(x => x.id !== gap.id);
+      };
+    this.movedGaps[key] = [...(this.movedGaps[key] || []), gap];
+    this.markRow(gap.id, {
+      kind: 'moved',
+      undo: () => {
+        drop();
+        return undo();
+      },
+      gone: drop,
+      said: movedGapSaid(label, t.title),
+    });
+    return gap.id;
   },
   // The key of the Today group that task `t` is in, or null.
   todayKey(t) {

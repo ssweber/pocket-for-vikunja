@@ -47,6 +47,8 @@ import {
   lineRefused,
   moreDone,
   movedBack,
+  movedGap,
+  movedGapSaid,
   movedText,
   movedTo,
   movedToProject,
@@ -912,6 +914,11 @@ test('moving a task held on Today names where it went, and explains a card kept 
     'Removed its due date. Its subtask “Buy paint” has a date, so it stays here.',
   );
   assert.equal(dayWord('Friday'), 'Friday');
+  // The gap the row leaves names the day as its chip does.
+  assert.equal(movedGap('Today'), 'Moved to Today');
+  assert.equal(movedGap('Fri 24'), 'Moved to Fri 24');
+  assert.equal(movedGap(null), 'Moved to No date');
+  assert.equal(movedGapSaid('Tomorrow', 'Buy paint'), 'Moved to Tomorrow: Buy paint');
 });
 
 // Who started a checklist, shown in its history. The summary shows only the time when the checklist started today. The

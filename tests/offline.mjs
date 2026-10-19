@@ -1233,13 +1233,16 @@ try {
       await expect(p.locator(R)).toBeVisible({ timeout: 15000 });
       await ctx.setOffline(true);
       await throwAt('tomorrow');
-      await later(5100); // the message with its Undo folds, and the row is back
+      await later(5100); // the gap it left leaves with the batch
       await throwAt('none');
       const undo = p
-        .locator('.row-line, .place-line[data-place="cap"]')
-        .filter({ hasText: 'Removed its due date' })
+        .locator('#view .moved-gap')
+        .filter({ hasText: 'Moved to No date' })
         .getByRole('button', { name: 'Undo' });
       await expect(undo).toBeVisible();
+      // A button held down holds the batch, so the gap and its Undo wait while the move is sent.
+      await p.mouse.move(195, 2);
+      await p.mouse.down();
       const moves = (await outboxOf(p)).filter(e => e.op === 'due' && e.task === t.id);
       if (moves.length !== 1 || !sameTime(moves[0].was, t.due_date) || !moves[0].due.startsWith('0001'))
         throw new Error('waiting: ' + JSON.stringify(moves));
@@ -1247,6 +1250,7 @@ try {
       await p.evaluate(() => window.dispatchEvent(new Event('online')));
       await synced(p);
       if (patched.length !== 1 || !patched[0].startsWith('0001')) throw new Error('sent: ' + JSON.stringify(patched));
+      await p.mouse.up();
       await undo.click();
       await synced(p);
       const now = (await (await api('/tasks/' + t.id)).json()).due_date;

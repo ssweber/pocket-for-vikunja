@@ -138,13 +138,18 @@ export const notMovedBack = (k, still, title = '') =>
     : `Not undone: ${plural(k, 'task')} ${k === 1 ? 'has' : 'have'} changed since then.`) +
   ` ${k === 1 ? 'It stays' : 'They stay'} ${still ? 'due ' + still : 'without a date'}.`;
 
-/* The message shown with Undo after the user holds a row or a card on Today and moves it to a new date (app/throw.js),
-   such as "Moved to tomorrow". `day` is the date's name as its chip shows it ("Today", "Tomorrow", "Mon 12"), or null
-   when the date was removed. If a card has a subtask (`kept`, its title) that is due sooner, the card stays where it
-   was and the message says so: "Moved to Friday. Its subtask “Buy paint” is due sooner, so it stays here." */
+/* What a move to a new date did, such as "Moved to tomorrow". `day` is the date's name as its chip shows it ("Today",
+   "Tomorrow", "Mon 12"), or null when the date was removed. A card held on Today shows it with Undo when a subtask
+   (`kept`, its title) is due sooner, so the card stays where it was: "Moved to Friday. Its subtask “Buy paint” is due
+   sooner, so it stays here." */
 export const movedTo = (day, kept = null) =>
   (day ? `Moved to ${dayWord(day)}` : 'Removed its due date') +
   (kept ? `. Its subtask “${kept}” ${day ? 'is due sooner' : 'has a date'}, so it stays here.` : '');
+// The gap a row leaves on Today when it moves to another date (reschedule), such as "Moved to Tomorrow". `day` is as
+// the chip shows it, or null for No date.
+export const movedGap = day => `Moved to ${day || 'No date'}`;
+// What a screen reader announces as the row leaves its gap: "Moved to Today: Call the plumber".
+export const movedGapSaid = (day, title) => `${movedGap(day)}: ${title}`;
 // The message shown with Undo after a task moves to another project (moveTask): "Moved to Errands, with its 3
 // subtasks". `n` counts the subtasks, at every level, that moved with it.
 export const movedToProject = (project, n = 0) =>

@@ -1,5 +1,6 @@
 /* Ticked and deleted rows stay in place until the batch clears, so rows don't move while the user is tapping.
-   Tapping the tick of a done row undoes it, and tapping a deleted row's gap restores it. A row is held from the
+   Tapping the tick of a done row undoes it, and tapping a deleted row's gap restores it. A row moved to another date
+   on Today leaves a gap, marked 'moved' under its own id, and tapping the gap undoes the move. A row is held from the
    gesture until the save answers (holdRow), then marked with an undo and a `gone` callback (markRow). When the
    batch clears, completed rows leave, repeating tasks show their next dates and held deletions are sent. A
    collapsed card moves on to its next top row sooner (clearTops). Leaving the screen or hiding Pocket clears the
@@ -129,8 +130,8 @@ export default {
       return false;
     }
     this.dropMark(m);
-    const title = this.tasks[id]?.title || '';
-    this.said = unmarkedSaid(m.kind, title);
+    // The gap a moved row leaves is not a task (isMovedGap), so there is no title to announce. The row flashes instead.
+    if (m.kind !== 'moved') this.said = unmarkedSaid(m.kind, this.tasks[id]?.title || '');
     return m.undo?.() || true;
   },
   /* A deleted list row shows as a gap until the batch clears. Sheet headings and checklist screens keep their own

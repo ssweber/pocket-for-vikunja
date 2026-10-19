@@ -147,7 +147,8 @@ export default () => ({
   showingMore: null, // key of the done list whose next batch is loading (showMore, views.js)
   pending: [], // this user's outbox entries, for the Outbox's rows
   failed: [], // outbox entries Vikunja refused, kept to retry or discard (outbox.js)
-  leaving: {}, // task id -> 'done', 'open' or 'deleted': marked, in place until the batch clears (leaving.js)
+  leaving: {}, // task id -> 'done', 'open' or 'deleted', or a gap's id -> 'moved': in place until the batch clears (leaving.js)
+  movedGaps: {}, // a Today group's key -> the gaps left there by rows moved to another date (leaveGap, actions.js)
   lines: {}, // task id -> the message in its row's place (lines.js)
   cardPage: {}, // a checklist card's id -> its pinned top step (pinCard, cards.js)
   cardAdded: {}, // task id -> subtasks added on Today this visit, as {id, after}, with null after for the top (cardRows)

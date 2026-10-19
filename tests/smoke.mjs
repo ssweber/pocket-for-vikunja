@@ -2935,8 +2935,8 @@ try {
   /* Holding a task on Today lifts its row in place and shows four date chips around the touch: Today at the left,
      Tomorrow at the right, Next week above and No date below. `holdOnToday(sel)` presses `sel` (`fx` of the way along
      it) until the hold registers and the chips are drawn. It returns where the touch is, still down. `datesSeen()`
-     returns what is drawn once the chips have finished animating in. `movedLine(text)` finds the message that says
-     where a task went, on its row or by the add box, with its Undo. */
+     returns what is drawn once the chips have finished animating in. `movedGap(text, t)` finds the gap a moved task
+     leaves where its row was, with its Undo. */
   const DATES = '.throw .throw-t[data-id]',
     dateChip = id => page.locator(`.throw .throw-t[data-id="${id}"]`);
   const dayAt = (days, h, m = 0) => {
@@ -2951,7 +2951,7 @@ try {
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }; // a day in the format a date picker uses
-  const movedLine = text => page.locator('.row-line, .place-line[data-place="cap"]').filter({ hasText: text });
+  const movedGap = (text, t) => page.locator('#view .moved-gap').filter({ hasText: text }).filter({ hasText: t.title });
   async function holdOnToday(sel, { fx = 0.5, scroll = true } = {}) {
     if (scroll) await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const box = await steady(page.locator(sel)),
@@ -3064,33 +3064,36 @@ try {
       await flickOnToday(A, -50, 0, null);
       await synced(page);
       if (!sameTime(await due(a), a.due_date)) throw new Error('the dimmed date moved the task to ' + (await due(a)));
-      // Right moves the task to tomorrow at the same time. A message with an Undo appears, and Undo moves it back.
+      // Right moves the task to tomorrow at the same time. Its row shows there plainly, and the gap it leaves where it
+      // was has an Undo, which moves it back.
       await flickOnToday(A, 50, 4, 'tomorrow');
-      await expect(movedLine('Moved to tomorrow')).toBeVisible();
-      await expect(page.locator('#said')).toContainText('Moved to tomorrow. Undo is');
+      await expect(movedGap('Moved to Tomorrow', a)).toBeVisible();
+      await expect(page.locator('#said')).toContainText('Moved to Tomorrow: ' + a.title);
+      await expect(page.locator(A)).toBeVisible();
+      await expect(page.locator(A)).not.toHaveClass(/\blined\b/);
       await synced(page);
       if (!sameTime(await due(a), dayAt(1, 23, 57))) throw new Error('after moving right: ' + (await due(a)));
-      await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
-      await expect(movedLine('Moved to tomorrow')).toHaveCount(0);
+      await movedGap('Moved to Tomorrow', a).getByRole('button', { name: 'Undo' }).click();
+      await expect(movedGap('Moved to Tomorrow', a)).toHaveCount(0);
       await synced(page);
       if (!sameTime(await due(a), a.due_date)) throw new Error('Undo left the task due ' + (await due(a)));
       await expect(page.locator(`.sec.today ~ .list ${A}`)).toBeVisible();
       // Up moves the task to next Monday at the same time.
       await flickOnToday(B, 6, -50, 'week');
-      await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
+      await expect(movedGap(/^\s*Moved to Mon \d+/, b)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(b), mondayAt(23, 58))) throw new Error('after moving up: ' + (await due(b)));
-      // Down, with the same short move, removes the due date. A message with an Undo appears, and Undo restores the date and time.
+      // Down, with the same short move, removes the due date. Its gap's Undo restores the date and time.
       await flickOnToday(C, -4, 50, 'none');
-      await expect(movedLine('Removed its due date')).toBeVisible();
+      await expect(movedGap('Moved to No date', c)).toBeVisible();
       await synced(page);
       if (!(await due(c)).startsWith('0001')) throw new Error('after moving down: ' + (await due(c)));
-      await movedLine('Removed its due date').getByRole('button', { name: 'Undo' }).click();
+      await movedGap('Moved to No date', c).getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(c), c.due_date)) throw new Error('Undo of No date left the task due ' + (await due(c)));
       // Left, on an overdue task, moves it to today at 9:00. If 9:00 has already passed today, it is due today with no time.
       await flickOnToday(L, -50, 2, 'today');
-      await expect(movedLine('Moved to today')).toBeVisible();
+      await expect(movedGap('Moved to Today', late)).toBeVisible();
       await synced(page);
       const moved = new Date(await due(late)),
         want = new Date(dayAt(0, 9));
@@ -3101,7 +3104,7 @@ try {
       await page.mouse.move(from.x + 18, from.y);
       if (await page.locator(DATES + '.on').count()) throw new Error('a date chip was highlighted under 24px');
       await page.mouse.up();
-      await expect(movedLine('Moved to tomorrow')).toBeVisible();
+      await expect(movedGap('Moved to Tomorrow', c)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(c), dayAt(1, 23, 59))) throw new Error('after a flick: ' + (await due(c)));
       // With a real touch, the page must not scroll once the row is held. Drag down to No date.
@@ -3118,13 +3121,13 @@ try {
       if ((await page.evaluate(() => scrollY)) !== scrolled)
         throw new Error('the page scrolled while the user was touching the row');
       await touch('touchEnd', fx, fy + 50);
-      await expect(movedLine('Removed its due date')).toBeVisible();
+      await expect(movedGap('Moved to No date', a)).toBeVisible();
       await synced(page);
       if (!(await due(a)).startsWith('0001')) throw new Error('after a touch drag down: ' + (await due(a)));
       await noToast(page);
-      // The Undo message stays for a few seconds and then disappears, whether it is on the row or by the add box.
+      // The gaps leave with the batch, 3 seconds after the last move.
       await later(5000);
-      await expect(movedLine('Removed its due date')).toHaveCount(0);
+      await expect(page.locator('#view .moved-gap')).toHaveCount(0);
     } finally {
       await page.mouse.up();
       for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' });
@@ -3212,36 +3215,35 @@ try {
       await openDates(A, a);
       await dateChip('tomorrow').click();
       await expect(page.locator('.throw')).toHaveCount(0);
-      await expect(movedLine('Moved to tomorrow')).toBeVisible();
+      await expect(movedGap('Moved to Tomorrow', a)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(a), dayAt(1, 23, 57))) throw new Error('after tapping Tomorrow: ' + (await due(a)));
-      await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
+      await movedGap('Moved to Tomorrow', a).getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(a), a.due_date)) throw new Error('Undo left the task due ' + (await due(a)));
       // then Next week,
       await openDates(B, b);
       await dateChip('week').click();
-      await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
+      await expect(movedGap(/^\s*Moved to Mon \d+/, b)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(b), mondayAt(23, 58))) throw new Error('after tapping Next week: ' + (await due(b)));
       // then No date,
       await openDates(C, c);
       await dateChip('none').click();
-      await expect(movedLine('Removed its due date')).toBeVisible();
+      await expect(movedGap('Moved to No date', c)).toBeVisible();
       await synced(page);
       if (!(await due(c)).startsWith('0001')) throw new Error('after tapping No date: ' + (await due(c)));
       // and last Today, on an overdue task.
       await openDates(L, late);
       await dateChip('today').click();
-      await expect(movedLine('Moved to today')).toBeVisible();
+      await expect(movedGap('Moved to Today', late)).toBeVisible();
       await synced(page);
       if (new Date(await due(late)).toDateString() !== new Date().toDateString())
         throw new Error('after tapping Today: ' + (await due(late)));
-      // A row that moved but stayed on screen is replaced by a message line for the few seconds its Undo lasts, and
-      // nothing holds it there. Then the line disappears and the row is back.
-      await later(5000);
-      await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
+      // A moved row shows no message where it went. Its gap leaves with the batch.
       await expect(page.locator(B)).not.toHaveClass(/\blined\b/);
+      await later(5000);
+      await expect(page.locator('#view .moved-gap')).toHaveCount(0);
       // Pick a date… sits in the middle of the four chips wherever the set is, and is at least 56px in both directions.
       // (This row may be near the bottom of the screen, so the set may be moved up from the touch.) Tapping it opens the
       // phone's own date picker straight from the tap. The test only records the call and restores it afterwards,
@@ -3292,10 +3294,10 @@ try {
           },
           dayAt(9, 23, 58),
         ));
-      await expect(movedLine(picked)).toBeVisible();
+      await expect(movedGap(picked, b)).toBeVisible();
       await synced(page);
       if (!sameTime(await due(b), dayAt(9, 23, 58))) throw new Error('after picking a day: ' + (await due(b)));
-      await movedLine(picked).getByRole('button', { name: 'Undo' }).click();
+      await movedGap(picked, b).getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(b), mondayAt(23, 58)))
         throw new Error('Undo of a picked day left the task due ' + (await due(b)));
@@ -3331,10 +3333,10 @@ try {
       await refreshToday();
       await expect(page.locator(R)).toBeVisible({ timeout: 15000 });
       await loaded(page);
-      // The previous test ends with a move whose Undo may still be by the add box. It disappears after a few seconds,
-      // so the check below sees only what this hold shows, which is nothing.
+      // The previous test ends with a move whose gap may still be on the screen. It leaves with the batch, so the
+      // check below sees only what this hold shows, which is nothing.
       await later(5000);
-      await expect(page.locator('.row-line, .place-line[data-place="cap"]')).toHaveCount(0);
+      await expect(page.locator('#view .moved-gap, .row-line, .place-line[data-place="cap"]')).toHaveCount(0);
       const at = await holdOnToday(R),
         seen = await datesSeen();
       if (!Object.values(seen.chips).every(k => k.dim))
@@ -3352,7 +3354,7 @@ try {
       await expect(page.locator('.throw')).toHaveCount(0);
       await synced(page);
       if (!sameTime((await get(r.id)).due_date, r.due_date)) throw new Error('a repeating task moved');
-      if (await page.locator('.row-line, .place-line[data-place="cap"]').count())
+      if (await page.locator('#view .moved-gap, .row-line, .place-line[data-place="cap"]').count())
         throw new Error('a message was shown');
       // Releasing without a move leaves the date chips open, as for any task, so the user can read why. They are still
       // dimmed, Pick a date… too, and tapping one does nothing.

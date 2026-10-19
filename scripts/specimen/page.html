@@ -146,6 +146,14 @@
           </template>
         </div></template>
       </div></template>
+      <!-- A row moved to another date on Today leaves a gap where it was (list-item.html), until the batch clears. The
+           row shows plainly where it went. -->
+      <div class="sec">A row moved to another day: a gap where it was, naming the day, with Undo, until the batch clears</div>
+      <template x-for="g in [{cards: 'today', line: true, depth: {}, delete: true}]" :key="0"><div class="list today">
+        <template x-for="t in specimenMoved" :key="t.id">
+          <!-- include markup/list-item.html -->
+        </template>
+      </div></template>
       <!-- A parent's ring sits on a card's header in place of a tick. Its arc shows the percentage worked out from the
            subtasks, and how many of all the subtasks inside it are done. When every subtask is done the card shows "All
            subtasks done" with Close. A closed card leaves a gap with Undo. The header can be swiped right part way (it

@@ -1403,7 +1403,8 @@ button.ring::after {
 /* A deleted row keeps its position and height until the batch clears (leaving.js), so nothing moves. The gap covers the
    row from its edge whatever its indent. It says "Deleted" and has a Restore button where the claim slot was, shaped
    like "+ me". A row still sliding off the screen (.sweeping, sweep in app/progress.js) keeps its normal look until it
-   is gone. The gap appears when the slide ends. */
+   is gone. The gap appears when the slide ends. A row moved to another date on Today leaves the same gap, with Undo,
+   in an empty row of its own (.moved-gap, list-item.html). */
 .row.deleted:not(.sweeping) > :not(.del-gap) {
   visibility: hidden;
 }
