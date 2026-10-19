@@ -31,9 +31,11 @@ import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 import { tickFeel } from '../progress.js';
 import { shared } from './core.js';
-import { putting, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
+import { droppedSince, putting, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
 
 export let renderSeq = 0;
+// Stop every screen load still on its way from showing or saving what it brings, as a user signs out.
+export const dropLoads = () => renderSeq++;
 let behindTimer,
   preloadTimer,
   preloading = false,
@@ -654,7 +656,10 @@ export default {
         if (location.hash === k.hash || (kept && Date.now() - Date.parse(kept.at) < PRELOAD_AGE)) continue;
         if (this.offline || saved.get('user')?.id !== this.user?.id) break;
         try {
-          this.keepScreen(k.key, { ...(await k.load()), at: new Date().toISOString() });
+          const at = started(),
+            s = await k.load();
+          if (droppedSince(at)) break;
+          this.keepScreen(k.key, { ...s, at: new Date().toISOString() });
         } catch {
           /* retried after the next screen loads */
         }

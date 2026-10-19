@@ -92,6 +92,10 @@ const before = w => {
   const at = typeof w === 'number' ? w : (w.start ?? w.at);
   return at > 0 && at <= dropped;
 };
+// The tasks such a request brought, so that a screen's load gives none of them a row either (base).
+const lastUser = new WeakSet();
+// Whether the copies were dropped, as a user signed out, after a request that started at `at`.
+export const droppedSince = at => before(at);
 const since = new Map(); // task id -> field -> when the request behind that field of its copy started
 const flying = new Map(); // task id -> the writes to it in flight (writes)
 const landed = new Map(); // task id -> when the last write to it ended
@@ -290,7 +294,10 @@ const unrelated = r =>
 function read(list, asked, at) {
   inChange();
   if (typeof at !== 'number') throw new Error('A read needs the time it started (started()).');
-  if (before(at)) return;
+  if (before(at)) {
+    for (const t of list) if (t && typeof t === 'object') lastUser.add(t);
+    return;
+  }
   for (const t of list) {
     const id = t?.id;
     if (!id || forgotten.has(id)) continue;
@@ -313,7 +320,10 @@ function read(list, asked, at) {
 function answer(list, asked, w) {
   inChange();
   if (typeof w?.at !== 'number') throw new Error('An answer needs the write it answers (writes()).');
-  if (before(w)) return;
+  if (before(w)) {
+    for (const t of list) if (t && typeof t === 'object') lastUser.add(t);
+    return;
+  }
   for (const t of list) {
     const id = t?.id;
     if (!id || forgotten.has(id)) continue;
@@ -370,6 +380,7 @@ function gone(id) {
 // the row is made from `t` until a read brings one, without the tasks deleted in this session among its related tasks.
 function base(t) {
   inChange();
+  if (lastUser.has(t)) return;
   if (!copies.has(t.id)) {
     // A task a sweep dropped starts afresh from what its row is made from, until a read brings its copy.
     if (!bases.has(t.id)) since.delete(t.id);
@@ -554,11 +565,13 @@ function show(c, id) {
   if (!held && all) for (const k of Object.keys(was)) if (SAVED.includes(k) && !(k in all)) delete had[k];
 }
 
-// read, for a read's promise: allPages(path).then(putting(TASK)). The read starts as putting is called. A task deleted
-// meanwhile is left out of the list, so the screen doesn't show it again.
+/* read, for a read's promise: allPages(path).then(putting(TASK)). The read starts as putting is called. A task deleted
+   meanwhile is left out of the list, so the screen doesn't show it again. A read that started before a user signed out
+   gives an empty list, so the screen shows and saves none of the last user's tasks. */
 export const putting =
   (asked, at = started()) =>
   list => {
+    if (before(at)) return [];
     app.change(w => w.read(list, asked, at));
     return list.filter(t => !forgotten.has(t?.id));
   };

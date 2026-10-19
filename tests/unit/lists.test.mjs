@@ -35,6 +35,7 @@ import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync } from '../../src/js/sync.js';
 import sending from '../../src/js/app/sending.js';
 import lines from '../../src/js/app/lines.js';
+import auth from '../../src/js/app/auth.js';
 
 const ids = list => list.map(t => t.id);
 const NONE = '0001-01-01T00:00:00Z'; // Vikunja's "no date"
@@ -636,6 +637,95 @@ test("reloading a project's Done keeps as many tasks as it showed, and a new vis
   await app.loadProject(renderSeq, { name: 'project', id: 5 });
   assert.equal(app.view.groups.find(x => x.key === 'done').tasks.length, 100, 'a new visit shows the latest 100');
   localStorage.removeItem('pocket.done.open');
+});
+
+/* A user signs out while a load is on its way, and the next user may sign in before it returns. What it brings is the
+   last user's tasks, and none of them reaches the store, the screen or the phone. Vikunja answers each request once
+   the test calls `go`, with task 1 open and task 2 done in project 5. */
+function signingOut() {
+  localStorage.clear();
+  const open = [{ id: 1, title: 'Order cups', done: false, project_id: 5 }],
+    done = [{ id: 2, title: 'Count the float', done: true, project_id: 5 }];
+  let go, came;
+  const gate = new Promise(ok => {
+      go = ok;
+    }),
+    arrived = new Promise(ok => {
+      came = ok;
+    });
+  globalThis.fetch = async url => {
+    came();
+    await gate;
+    const items = /done = true/.test(new URL(url).searchParams.get('filter')) ? done : open;
+    return new Response(JSON.stringify({ items, total: items.length }), { status: 200 });
+  };
+  const app = Object.assign(doneApp({ name: 'project', id: 5 }), {
+    user: { id: 1 },
+    pending: [],
+    onProjectList: l => l,
+    settle: async () => true,
+    keepMarked: g => g,
+    loadProjects: async () => {},
+    forgetPeople: auth.forgetPeople,
+  });
+  app.projById = new Map([[5, { id: 5, views: [] }]]);
+  app.view.groups = [];
+  return { app, go, arrived };
+}
+
+test("a project's load that started before sign-out shows and saves none of the last user's tasks", async () => {
+  await sync.ready;
+  const { app, go, arrived } = signingOut(),
+    loading = app.loadProject(renderSeq, { name: 'project', id: 5 });
+  await arrived;
+  app.forgetPeople();
+  app.user = { id: 2 }; // the next user signs in
+  go();
+  await loading;
+  assert.deepEqual(
+    [copyOf(1), app.tasks, app.view.groups, saved.get('project.5.open'), saved.get('task.1')],
+    [undefined, {}, [], null, null],
+  );
+  localStorage.clear();
+});
+
+test("a project's Done that loads across a sign-out gives none of the last user's tasks a row", async () => {
+  const { app, go, arrived } = signingOut(),
+    g = app.doneGroup(null, 1, true);
+  app.view.groups = [{ key: 'open', tasks: [] }, g];
+  const loading = app.loadDoneSection(g);
+  await arrived;
+  app.forgetPeople();
+  app.user = { id: 2 };
+  go();
+  await loading;
+  assert.deepEqual([copyOf(2), app.tasks], [undefined, {}]);
+  localStorage.clear();
+});
+
+test('a screen loaded in the background across a sign-out is not saved for the next user', async () => {
+  await sync.ready;
+  const { app, go, arrived } = signingOut();
+  saved.set('user', { id: 1 });
+  Object.assign(app, {
+    drawing: false,
+    refreshPeople: async () => {},
+    preloads: () => [
+      {
+        hash: '#/project/5',
+        key: 'project.5.open',
+        load: async () => ({ groups: [{ key: 'open', tasks: (await app.readProject({ id: 5 }, false)).list }] }),
+      },
+    ],
+  });
+  const loading = app.preload();
+  await arrived;
+  app.forgetPeople();
+  app.user = { id: 2 };
+  go();
+  await loading;
+  assert.equal(saved.get('project.5.open'), null);
+  localStorage.clear();
 });
 
 test('done matches in search show 50 tasks, count all of them, and have a row that loads 50 more', async () => {

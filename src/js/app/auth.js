@@ -16,6 +16,7 @@ import {
 import { sync } from '../sync.js';
 import { saved } from '../lists.js';
 import { dropCopies } from './tasks.js';
+import { dropLoads } from './views.js';
 import { cancelOf, opOf } from '../ops/index.js';
 
 let confirming = null; // app.confirmAccount() while it runs
@@ -134,6 +135,7 @@ export default {
       store.del('drafts.user');
     }
     dropCopies();
+    dropLoads();
     this.tasks = {};
     userCache.clear();
     this.access = {};
