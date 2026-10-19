@@ -1670,11 +1670,6 @@ try {
     madeFrom.push(ticked);
     const week = title => page.locator(`div:has(> .sec:has-text("Next 7 days")) ${rowOf(title)}`),
       due = title => page.locator(`${rowOf(title)} .when .due`).textContent();
-    const reload = async () => {
-      await page.evaluate(() => document.getElementById('btn-refresh').click());
-      await page.waitForSelector('#btn-refresh:not([disabled])');
-      await loaded(page);
-    };
     const shownDone = async (title, was) => {
       await expect(page.locator(rowOf(title))).toHaveClass(/\bdone\b/);
       await expect(page.locator(rowOf(title))).toHaveClass(/\bleaving\b/);
@@ -1691,7 +1686,7 @@ try {
     await expect(page.locator(`${rowOf(t)}:not(.pending)`)).toHaveClass(/\bleaving\b/, { timeout: 15000 });
     await tick(ticked.title);
     await expect(page.locator(rowOf(ticked.title))).toHaveClass(/\bleaving\b/);
-    // While the user touches a heading, nothing leaves the list. The test checks this.
+    // While the user touches a heading, nothing leaves the list, and a reload waits for the finger to lift.
     await page
       .locator('#view .sec')
       .first()
@@ -1701,18 +1696,21 @@ try {
     await page.mouse.down();
     try {
       await synced(page);
-      await loaded(page); // wait for the reload that follows an add
       const made = await taskTitled(t);
       if (made) madeFrom.push(made);
       const next = new Date(todayAt(23)).getTime() + 864e5;
       if (!made || made.done || new Date(made.due_date).getTime() !== next)
         throw new Error('the task in Vikunja is ' + JSON.stringify(made && { done: made.done, due: made.due_date }));
       for (const title of [t, ticked.title]) await shownDone(title, was);
-      await reload();
+      await page.evaluate(() => document.getElementById('btn-refresh').click());
+      await expect(page.locator('#btn-refresh')).toBeDisabled();
       for (const title of [t, ticked.title]) await shownDone(title, was);
     } finally {
       await page.mouse.up();
     }
+    await page.waitForSelector('#btn-refresh:not([disabled])');
+    await loaded(page);
+    for (const title of [t, ticked.title]) await shownDone(title, was);
     await later(3100);
     for (const title of [t, ticked.title]) {
       await expect(page.locator(rowOf(title))).not.toHaveClass(/\bleaving\b/);
