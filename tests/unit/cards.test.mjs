@@ -2114,4 +2114,9 @@ test('a task ticked on Today over a repeating subtask stays its card, done, and 
     [['donetoday', [10]]],
     'once its subtask is due after this week, the task the user ticked goes under Done today',
   );
+  assert.deepEqual(
+    [!!app.view.cards[10], app.isHead(p)],
+    [true, false],
+    'under Done today the task is a done row, not a card that is done, though its card is kept',
+  );
 });

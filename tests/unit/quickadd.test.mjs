@@ -168,6 +168,13 @@ test("a weekly repeat on today's weekday starts today, or next week once its tim
       }
 });
 
+test("a day after a repeat's part of the day keeps the part's time", () =>
+  sameAtEveryHour('Water plants every day evening tomorrow', {
+    title: 'Water plants',
+    due: '10/20 18:00',
+    marked: ['tomorrow'],
+  }));
+
 test('a repeat with a part of the day and no day starts at the next time of that part', () => {
   for (const [phrase, label] of [
     ['every day morning', 'Every day'],
@@ -276,6 +283,9 @@ test('a @user in the middle of the title keeps its @ until it is assigned, and o
   const q = parseCapture('Ask @bob about it @bob', PROJECTS);
   assert.equal(removeAssignees(q.title, '@', ['BOB'], q.mid), 'Ask bob about it', 'the same name at the end goes');
 });
+
+test('two words removed side by side keep their order, even when a date was cut from around the second', () =>
+  assert.equal(added('Do on *a tomorrow *b morning stuff').title, 'Do a b stuff'));
 
 test('the mark on a word in the middle of the title says what it leaves there', () => {
   const text = 'Ask @bob to fix the *"burst pipe" *now at +home first tomorrow *later',

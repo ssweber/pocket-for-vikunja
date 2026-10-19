@@ -40,6 +40,22 @@ test('Move all to today moves each overdue task to today at its time, or with no
   assert.equal(v.task(1).due_date, at(5, 9));
   assert.equal(v.task(2).due_date, at(6, 18, 30));
 });
+test("Move all to today moves a done card's overdue subtask and leaves the done task's date alone", async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const v = fakeVikunja([
+    { id: 10, title: 'Pack the van', done: true, due_date: at(5, 9), related_tasks: { subtask: [{ id: 11 }] } },
+    { id: 11, title: 'Lights', due_date: at(6, 18, 30), related_tasks: { parenttask: [{ id: 10 }] } },
+  ]);
+  const app = overdueApp(t);
+  app.positions = {};
+  app.row(v.task(11));
+  app.view.groups = [{ key: 'overdue', tasks: [app.row(v.task(10))] }];
+  app.view.cards = { 10: { when: at(6, 18, 30), made: null, focus: null } };
+  await app.moveOverdueToToday();
+  assert.deepEqual([v.task(10).due_date, v.task(11).due_date], [at(5, 9), at(7, 18, 30)]);
+  assert.equal(app.toasts.at(-1).msg.split('.')[0], 'Moved 1 to today');
+});
 // Move all to today queues one `due` op for each task, so it needs the outbox and its sender, which is emptied after the test.
 const overdueApp = t => {
   const app = component(tasks, actions, cards, sending, acts, outbox, leaving);

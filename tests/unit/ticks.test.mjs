@@ -23,7 +23,13 @@ import { figure } from '../../src/js/ops/stages.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { lastSaid, lostOnce, noConnection, reached, sender } from './ops-helpers.mjs';
 
-const sub = (id, more = {}) => ({ id, title: 'Subtask ' + id, done: false, ...more });
+const sub = (id, more = {}) => ({
+  id,
+  title: 'Subtask ' + id,
+  done: false,
+  related_tasks: { parenttask: [{ id: 10 }] },
+  ...more,
+});
 // A parent with four subtasks: two open (one half done), one already done, and one that repeats. Completing a parent
 // leaves the repeating subtask alone.
 const family = () => {
@@ -142,6 +148,13 @@ test('when the batch clears, the subtasks closed with a parent on Today go to Do
     'the closed subtasks leave together, and the parent stays as the card of its overdue repeating subtask',
   );
   assert.deepEqual(app.leaving, {});
+  Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {} });
+  const card = app.cardOf(app.tasks[10], { cards: 'today', line: true, key: 'overdue' });
+  assert.deepEqual(
+    [card?.head, card?.rows.map(s => s.id)],
+    ['Done, but 1 subtask is still open', [13]],
+    'the card is done, with the repeating subtask under it',
+  );
 });
 test('a subtask Vikunja refuses to close stays in the Outbox, and the others close', async t => {
   const { v, app } = listed(t, family());

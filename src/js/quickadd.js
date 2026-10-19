@@ -539,7 +539,8 @@ export function parseCapture(
           .map(x => [x.index + x[1].length, x.index + x[0].length])
           .filter(([s, e]) => inside(s, e));
   for (const [s] of mid) out.title = out.title.slice(0, s) + SIGN + out.title.slice(s + 1);
-  // The later word first, so the earlier positions stay valid. Two words removed side by side share a position.
+  // The later word first, so the earlier positions stay valid. Two words removed side by side can share a position,
+  // when a date and its part of the day were cut from around the second one.
   for (const k of keep.sort((a, b) => b.start - a.start || b.g.at - a.g.at))
     out.title = out.title.slice(0, k.start) + k.word + out.title.slice(k.start);
 
