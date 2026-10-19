@@ -84,7 +84,7 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Known gaps
 
-Rare cases, or fixes that would change what the user sees and need deciding first.
+Each of these is rare, or its fix would change what the user sees and needs deciding first.
 
 - An op refused with 404, because its task was deleted in Vikunja, stays failed for good. A tick, an untick, a
   progress, a finish, a reopen, an edit, a move, a link or unlink, an `assign` and a `label` leave the outbox instead
