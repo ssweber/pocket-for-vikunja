@@ -123,5 +123,3 @@ Each of these is rare, or its fix would change what the user sees and needs deci
 - **Sending to `/api/v2` directly.** When Vikunja supports the `Idempotency-Key` header
   (`docs/design/upstream-idempotency-key.md` asks for it), point `api()`'s `key` option at `/api/v2`, delete
   `relay.go`, add a migration that drops `pocket_relay`, and raise the minimum Vikunja version.
-- **A formatter (Prettier).** No. It would rewrite every line of the current compact style. ESLint checks for
-  mistakes only, none about style.
