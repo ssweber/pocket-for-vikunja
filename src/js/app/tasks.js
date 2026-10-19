@@ -93,7 +93,7 @@ const before = w => {
   const at = typeof w === 'number' ? w : (w.start ?? w.at);
   return at > 0 && at <= dropped;
 };
-// The tasks such a request brought, so that a screen's load gives none of them a row either (base).
+// The tasks a request from before the last sign-out brought. A screen's load gives none of them a row (base).
 const lastUser = new WeakSet();
 // Whether the copies were dropped, as a user signed out, after a request that started at `at`.
 export const droppedSince = at => before(at);
