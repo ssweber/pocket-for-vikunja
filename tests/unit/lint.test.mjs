@@ -1,4 +1,5 @@
-// The lint rules that keep every write to Vikunja keyed (eslint.config.js), run on code as `eslint --stdin` would.
+// The lint rules that keep every write to Vikunja keyed, and every sentence in messages.js (eslint.config.js), run on
+// code as `eslint --stdin` would.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ESLint } from 'eslint';
@@ -11,7 +12,8 @@ const lint = async (code, path = 'src/js/app/new.js') => {
 };
 const KEY = 'Send a write with a key',
   WRITE = 'Send a change through the outbox as an op',
-  ALIAS = 'Call api() by its own name';
+  ALIAS = 'Call api() by its own name',
+  WORDS = 'Write the sentence in src/js/messages.js';
 
 test('a write without a key fails lint, however its options are given, and a read passes', async () => {
   const code = `import { api } from '../api.js';
@@ -54,4 +56,31 @@ test('a file that writes to Vikunja directly may write without a key', async () 
 export const f = p => api(p, { method: 'POST', body: {} });
 `;
   assert.deepEqual(await lint(code, 'src/js/app/views.js'), []);
+});
+
+/* A sentence passed to say, notify or confirm, assigned to this.said, given as a marked row's said or as an action's
+   label fails lint outside messages.js. A call that builds the sentence there passes, whatever its arguments. */
+test('a sentence written where it is shown fails lint, and one from messages.js passes', async () => {
+  const code = `import { notDone, UNDO } from '../messages.js';
+export default {
+  f(t, e) {
+    this.say('Renamed', { place: 'sheet:top' });
+    this.say('Not renamed: ' + e.message);
+    this.notify(\`Deleted “\${t.title}”\`);
+    this.say(e ? 'Saved' : t.title);
+    confirm('Delete it?');
+    this.said = 'Done: ' + t.title;
+    this.markRow(t.id, { said: \`Done: \${t.title}\` });
+    this.say(t.title, { action: { label: 'Undo', fn() {} } });
+    this.say(notDone('renamed', e.message), { action: { label: UNDO, fn() {} } });
+    this.say(t.problems.join('; '));
+    this.said = '';
+  },
+};
+`;
+  assert.deepEqual(
+    await lint(code),
+    [4, 5, 6, 7, 8, 9, 10, 11].map(n => `${n}: ${WORDS}`),
+  );
+  assert.deepEqual(await lint(code, 'src/js/messages.js'), []);
 });

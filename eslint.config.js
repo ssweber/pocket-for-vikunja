@@ -1,8 +1,8 @@
 // ESLint looks for mistakes only (a name that isn't defined, a variable never used, an import assigned to), not style,
 // and that only api.js talks to Vikunja, only util.js asks whether less motion is wanted, only lists.js decides how
 // many days Today shows, only checklists.js decides what kind of task a task is, only tasks.js writes a task's row, only
-// src/js/ops/ compares an op's name, and only the files in DIRECT write to Vikunja without the outbox and its keys:
-// npm run lint, which also runs scripts/check.mjs. CI runs it too.
+// src/js/ops/ compares an op's name, only messages.js writes the sentences Pocket shows, and only the files in DIRECT
+// write to Vikunja without the outbox and its keys: npm run lint, which also runs scripts/check.mjs. CI runs it too.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -24,6 +24,14 @@ const OP = name => `:matches([${name}.property.name='op'], [${name}.expression.p
 const TEXT = name => `:matches([${name}.type='Literal'], [${name}.type='TemplateLiteral'])`;
 const OP_NAME = `:matches(BinaryExpression[operator=/^[!=]==?$/]:matches(${OP('left')}${TEXT('right')}, ${OP('right')}${TEXT('left')}), SwitchStatement${OP('discriminant')}, CallExpression[callee.property.name=/^(includes|indexOf|has)$/]${OP('arguments.0')})`;
 const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/js/ops/index.js), adding a field with its default there, or call a helper in the op\'s own file.';
+/* A sentence written where it is shown: a string with a letter in it or a template literal, alone, joined with + or
+   chosen with ?: or ||. It fails as the first argument of say, notify or confirm, assigned to this.said, given as a
+   marked row's `said` (markRow), or as an action's label ({label, fn}). An argument of a call inside it passes, so
+   offlineFor('rename the project') does, and messages.js holds the sentence. */
+const WORDS = ':matches(Literal[value=/[A-Za-z]/], TemplateLiteral)';
+const SENTENCE = `:matches(${WORDS}, :matches(BinaryExpression, ConditionalExpression, LogicalExpression):matches(:has(> ${WORDS}), :has(> :matches(BinaryExpression, ConditionalExpression, LogicalExpression) > ${WORDS})))`;
+const SAID = `:matches(:matches(CallExpression[callee.property.name=/^(say|notify)$/], CallExpression[callee.name='confirm']) > ${SENTENCE}.arguments:first-child, AssignmentExpression[left.property.name='said'] > ${SENTENCE}.right, CallExpression[callee.property.name='markRow'] > ObjectExpression > Property[key.name='said'] > ${SENTENCE}.value, ObjectExpression:has(> Property[key.name='fn']) > Property[key.name='label'] > ${SENTENCE}.value)`;
+const WORDING = 'Write the sentence in src/js/messages.js, as a constant or a function, and pass that here. One situation has one wording there.';
 /* The files that write to Vikunja directly, not through the outbox. What they write needs Vikunja's answer before
    anything else can happen, and the user waits for it on screen. Every other write is an op, sent by acts.js with a
    key through a stage's c.send, which no selector here matches. */
@@ -50,6 +58,7 @@ const RESTRICTED = [
   { selector: "MemberExpression[object.type='ThisExpression'][property.name='opsOn']", message: "Read a task's waiting ops with this.opsOf(id) (tasks.js).", allow: ['src/js/app/tasks.js'] },
   { selector: OP_NAME, message: BY_OP, allow: ['src/js/ops/**'] },
   { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name='unchanged']", message: "Undo with undoOps. An op's invert checks Vikunja's copy itself, field by field.", allow: [] },
+  { selector: SAID, message: WORDING, allow: ['src/js/messages.js'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],
