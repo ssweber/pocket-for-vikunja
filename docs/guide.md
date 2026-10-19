@@ -39,6 +39,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 **Differences from Vikunja's parser.** The same text usually makes the same task in both. Pocket differs on purpose here:
 
 - `at 5` is 5 PM. Vikunja reads it as 5 AM.
+- A part of the day after a day sets the time: `tomorrow morning` is 9 AM, `fri afternoon` 3 PM, `Oct 24 evening` 6 PM and `tomorrow night` 8 PM. `this morning` and `tonight` are today, even once that time has passed. `morning` on its own stays in the title. Vikunja reads `tonight` as 9 PM.
 - `every month` repeats on the same day each month. Vikunja uses every 30 days.
 - A date means its next occurrence. In June, `2nd March` is next March.
 - `10/12` follows your phone's locale. Vikunja always reads it as US format.

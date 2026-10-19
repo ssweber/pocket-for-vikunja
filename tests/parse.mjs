@@ -210,7 +210,14 @@ add({ text: 'plan this tomorrow', now: new Date(2026, 7, 4, 10, 15), date: '2026
 // ---------- day words ----------
 add({ text: 'Lorem Ipsum ToDay', title: 'Lorem Ipsum', date: ymd(REF) });
 add({ text: 'Lorem Ipsum today', title: 'Lorem Ipsum', date: ymd(REF) });
-add({ text: 'Lorem Ipsum tonight', title: 'Lorem Ipsum', date: ymd(REF), time: '21:0' });
+add({
+  text: 'Lorem Ipsum tonight',
+  title: 'Lorem Ipsum',
+  date: ymd(REF),
+  time: '20:0',
+  pocket: true,
+  why: 'tonight is 8 PM, the time "tomorrow night" gets. Vikunja reads it as 9 PM',
+});
 for (const [t, hm] of Object.entries({
   'at 15:00': '15:0',
   '@ 15:00': '15:0',

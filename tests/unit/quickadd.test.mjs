@@ -1,5 +1,6 @@
-// How quick add reads dates (src/js/quickadd.js), with the page's chrono, in a region that writes the month first and
-// in one that writes the day first. tests/parse.mjs holds the other phrases. The clock is Monday 19 October 2026.
+// How quick add reads dates and parts of the day (src/js/quickadd.js), with the page's chrono, in a region that writes
+// the month first and in one that writes the day first. tests/parse.mjs holds the other phrases. The clock is Monday
+// 19 October 2026.
 import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,3 +48,48 @@ test('the second copy reads numeric dates day first', () => {
 
 test('a month name and a day read the same in both regions', () =>
   sameAtEveryHour('Call mom Oct 24', { title: 'Call mom', due: '10/24 12:00', marked: ['Oct 24'] }));
+
+test('"this" with a part of the day is today at that time, even once the time has passed', () => {
+  for (const [phrase, time] of [
+    ['this morning', '9:00'],
+    ['this afternoon', '15:00'],
+    ['this evening', '18:00'],
+    ['tonight', '20:00'],
+  ])
+    sameAtEveryHour('Call mom ' + phrase, { title: 'Call mom', due: '10/19 ' + time, marked: [phrase] });
+});
+
+test('"tomorrow" with a part of the day is tomorrow at that time', () => {
+  for (const [part, time] of [
+    ['morning', '9:00'],
+    ['afternoon', '15:00'],
+    ['evening', '18:00'],
+    ['night', '20:00'],
+  ])
+    sameAtEveryHour('Call mom tomorrow ' + part, {
+      title: 'Call mom',
+      due: '10/20 ' + time,
+      marked: ['tomorrow ' + part],
+    });
+});
+
+test('a part of the day with no day sets nothing, and stays in the title', () => {
+  for (const part of ['morning', 'afternoon', 'evening', 'night'])
+    sameAtEveryHour('Call mom ' + part, { title: 'Call mom ' + part, due: null, marked: [] });
+  sameAtEveryHour('Call mom  morning', { title: 'Call mom morning', due: null, marked: [] });
+});
+
+test('a weekday or a date with a part of the day is that day at that time', () => {
+  sameAtEveryHour('Call mom friday evening', { title: 'Call mom', due: '10/23 18:00', marked: ['friday evening'] });
+  sameAtEveryHour('Call mom Oct 24 morning', { title: 'Call mom', due: '10/24 9:00', marked: ['Oct 24 morning'] });
+  sameAtEveryHour('Call mom on the 24th afternoon', {
+    title: 'Call mom',
+    due: '10/24 15:00',
+    marked: ['on the 24th afternoon'],
+  });
+  sameAtEveryHour('Call mom tomorrow evening at 7', {
+    title: 'Call mom',
+    due: '10/20 19:00',
+    marked: ['tomorrow evening at 7'],
+  });
+});

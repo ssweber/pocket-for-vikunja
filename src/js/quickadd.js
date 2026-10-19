@@ -59,7 +59,11 @@ const dayFrom = (now, n) => {
   return d;
 };
 const laterThisWeek = now => ([5, 6, 0].includes(now.getDay()) ? 0 : 2); // from Friday to Sunday it is today, otherwise in two days
-// Day phrases, with Vikunja's meanings. Longer phrases come first ("later next week" before "next week").
+// The time each part of the day sets. Only Pocket reads them, and only with a day: "friday evening" is Friday at 6 PM.
+const PARTS = { morning: '09:00', afternoon: '15:00', evening: '18:00', night: '20:00' },
+  PART_RE = Object.keys(PARTS).join('|');
+/* Day phrases, with Vikunja's meanings. Longer phrases come first ("later next week" before "next week"). "this" before
+   a part of the day is today, even once that time has passed, and the part sets the time (dropDay). */
 const DAY_WORDS = [
   ['later\\s+next\\s+week', now => dayFrom(now, laterThisWeek(now) + 7)],
   ['later\\s+this\\s+week', now => dayFrom(now, laterThisWeek(now))],
@@ -67,14 +71,15 @@ const DAY_WORDS = [
   ['this\\s+weekend', now => dayFrom(now, (6 - now.getDay()) % 6)],
   ['next\\s+month', now => new Date(now.getFullYear(), now.getMonth() + 1, 1)],
   ['(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?month', now => new Date(now.getFullYear(), now.getMonth() + 1, 0)],
-  ['tonight', now => dayFrom(now, 0), '21:00'],
+  [`this(?=\\s+(?:${PART_RE})${END})`, now => dayFrom(now, 0)],
+  ['tonight', now => dayFrom(now, 0), PARTS.night],
   ['today', now => dayFrom(now, 0)],
   ['tomorrow', now => dayFrom(now, 1)],
 ].map(([src, day, time]) => ({ re: new RegExp(`(^|\\s)(?:${src})${END}`, 'i'), day, time }));
-// A time after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and a bare "17th" only count at
+// A time or a part of the day after a date at the end of the text: "meeting 9/11 at 10:00". Numeric dates and a bare "17th" only count at
 // the start or the end of the text, so "The 9/11 Report" and "13th floor" stay as they are. A checklist step's hidden
 // T#20m after the date doesn't stop the date counting as the last word.
-const TIME_TAIL = '(?:\\s+at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)?(?:\\s+[\\uE000-\\uF8FF]+)*\\s*$';
+const TIME_TAIL = `(?:\\s+(?:at\\s+\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?|(?:${PART_RE})))?(?:\\s+[\\uE000-\\uF8FF]+)*\\s*$`;
 // Read "2021-07-06", "6/7/21", "27/1" or "01.02" as a date, or null. Without a year, the date is the next time it
 // occurs.
 function numericDate(token, now) {
@@ -315,16 +320,22 @@ export function parseCapture(
     let day = null,
       time = null,
       m; // day is a date at midnight. time is "HH:MM", or a full date from chrono
+    // A part of the day right after a day sets the time, and is removed with the day: "tomorrow morning".
+    const dropDay = (start, end) => {
+      const p = out.title.slice(end).match(new RegExp(`^\\s+(${PART_RE})${END}`, 'i'));
+      if (p) time = PARTS[p[1].toLowerCase()];
+      dropDate(start, end + (p ? p[0].length : 0));
+    };
     for (const w of DAY_WORDS)
       if ((m = out.title.match(w.re))) {
         day = w.day(now);
         time = w.time || null;
-        dropDate(m.index + m[1].length, m.index + m[0].length);
+        dropDay(m.index + m[1].length, m.index + m[0].length);
         break;
       }
     if (!day && (m = out.title.match(new RegExp(`(^|\\s)(?:(?:next|this|on)\\s+)?(${WEEKDAY_RE})${END}`, 'i')))) {
       day = dayFrom(now, (weekdayIndex(m[2]) - now.getDay() + 7) % 7); // the next one, including today
-      dropDate(m.index + m[1].length, m.index + m[0].length);
+      dropDay(m.index + m[1].length, m.index + m[0].length);
     }
     if (!day) {
       // numeric date as the first or last word
@@ -335,7 +346,7 @@ export function parseCapture(
           const t = numericDate(token, now);
           if (t) {
             day = t;
-            dropDate(start, start + token.length);
+            dropDay(start, start + token.length);
             break;
           }
         }
@@ -355,7 +366,7 @@ export function parseCapture(
       const t = ordinalDate(+m[2], now);
       if (t) {
         day = t;
-        dropDate(m.index + m[1].length, m.index + m[0].length);
+        dropDay(m.index + m[1].length, m.index + m[0].length);
       }
     }
     if (!day && repeatDay !== null) day = dayFrom(now, (repeatDay - now.getDay() + 7) % 7); // "every monday at 10"
@@ -369,6 +380,7 @@ export function parseCapture(
           out.title[r.index - 1] !== P.assignee && // inside an @username
           !/^for\b/i.test(r.text) && // "for 2 hours" is a duration, not a date
           !/^now$/i.test(r.text) && // "Now what" isn't due this minute
+          !new RegExp(`^\\s*(?:${PART_RE})$`, 'i').test(r.text) && // a part of the day sets a time only with a day
           !/^\d{1,4}[/.-]\d/.test(r.text) && // numeric dates are read above, at the start or end only
           // A month name on its own ("March madness") is read as a date only after in/by/on/before/until, as in "call Bob
           // in May".
@@ -414,6 +426,9 @@ export function parseCapture(
           day = thisYear;
         if (dated.start.isCertain('hour')) time = day;
         else day.setHours(0, 0, 0, 0);
+        // chrono reads "Oct 24 morning" as one phrase, with its own uncertain time for the part.
+        const part = !dated.start.isCertain('hour') && dated.text.match(new RegExp(`\\s(${PART_RE})$`, 'i'));
+        if (part) time = PARTS[part[1].toLowerCase()];
       }
       const clock = !(time instanceof Date) && results.find(r => r !== dated && timeOnly(r));
       if (clock) {
