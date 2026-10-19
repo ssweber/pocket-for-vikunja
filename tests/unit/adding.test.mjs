@@ -380,6 +380,14 @@ test('a person Vikunja refuses is reported alone, the others are assigned, and a
   );
 });
 
+test('a person with no account is reported as the line is first sent, and their @name stays in the title', async t => {
+  const v = fakeVikunja(),
+    app = adding(t);
+  Object.assign(app, { canSee: async () => false, userExists: async () => false });
+  const r = await send(app, entry([line('Chairs @nobody', { assignees: ['nobody'] })]));
+  assert.deepEqual([r.status, r.problems, v.task(101).title], ['sent', ['no user @nobody'], 'Chairs @nobody']);
+});
+
 test('a repeating task that arrives done shows ticked with its given date, then opens at its next date', async t => {
   const v = fakeVikunja(),
     app = adding(t),

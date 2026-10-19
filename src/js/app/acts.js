@@ -419,7 +419,15 @@ export default {
       stages = stagesOf(a),
       c = stageContext(a, this),
       seen = stageView(a),
-      none = { ids: [], tasks: [], problems: a.problems || [], uploaded: 0 };
+      // A line's problems are found as it is sent (prepare, ops/add.js), so they are read when the result is.
+      none = {
+        ids: [],
+        tasks: [],
+        uploaded: 0,
+        get problems() {
+          return a.problems || [];
+        },
+      };
     const got = () => ({
       ...none,
       ids: a.taskId && a.stage >= stages.length ? [a.taskId] : [],
