@@ -272,7 +272,7 @@ test("a template's step moves at once in its sheet, and a move that gives the te
     [
       [2, 4, 3],
       1,
-      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
+      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step.',
     ],
   );
 });

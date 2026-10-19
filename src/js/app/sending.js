@@ -4,7 +4,6 @@ import { api, ApiError, items, opening, passing, seenToken, sharedToken, TRANSIE
 import { isSet, startOfDay } from '../dates.js';
 import {
   addedPart,
-  addedStopped,
   addedWhere,
   cancelName,
   doneRepeats,
@@ -14,8 +13,8 @@ import {
   KEPT,
   lineCancelled,
   lineNotSaved,
+  lineRefused,
   NOT_KEPT,
-  notDone,
   notKnown,
   notSaved,
   notUploaded,
@@ -200,11 +199,7 @@ export default {
             ...err,
             action: undo || toOutbox(this),
           });
-        else
-          this.say(
-            r.ids.length ? addedStopped(r.ids.length, n, but, r.error.message) : notDone('added', r.error.message),
-            { ...err, action: undo },
-          );
+        else this.say(lineRefused(r.ids.length, n, but, r.title, r.error.message), { ...err, action: undo });
       } else if (r.status === 'sent') {
         const away = (r.tasks || []).filter(t => !this.pendingPlace(t));
         if (away.length || but)

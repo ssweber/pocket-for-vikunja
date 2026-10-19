@@ -601,7 +601,7 @@ try {
     await tapStep(2, 'Move up');
     await said(
       'sheet:subtasks',
-      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step',
+      'Not moved: step 2, “First article check”: its time counts from “check-the-guards”, which has to be an earlier step.',
     );
     if ((await subtasks(template.id)).map(s => s.title)[0] !== STEPS[0]) throw new Error('the step moved anyway');
     await tapStep(3, 'Move up');

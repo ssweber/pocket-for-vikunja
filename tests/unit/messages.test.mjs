@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addedPart,
-  addedStopped,
   addedSubs,
   addedWhere,
   archiveAsk,
@@ -43,6 +42,7 @@ import {
   KEPT,
   lineCancelled,
   lineNotSaved,
+  lineRefused,
   moreDone,
   movedBack,
   movedText,
@@ -175,14 +175,18 @@ test('a change that waits says why: offline, or a busy Vikunja', () => {
 test('an action that needs Vikunja at once says what to do once back online, or why Vikunja refused it', () => {
   assert.equal(offlineFor('create the project'), "Offline. You can create the project once you're back online.");
   assert.equal(
-    directFailed(new NetError('Failed to fetch'), 'rename the project', 'renamed'),
+    directFailed(new NetError('Failed to fetch'), 'rename the project', 'Renaming the project'),
     "Offline. You can rename the project once you're back online.",
   );
-  assert.equal(directFailed(new Error('Forbidden'), 'rename the project', 'renamed'), 'Not renamed: Forbidden');
+  assert.equal(
+    directFailed(new Error('Forbidden'), 'rename the project', 'Renaming the project'),
+    "Renaming the project couldn't be saved: Forbidden.",
+  );
   assert.equal(
     notDone('started', 'step 2, “Mop”: no step is named “x”'),
-    'Not started: step 2, “Mop”: no step is named “x”',
+    'Not started: step 2, “Mop”: no step is named “x”.',
   );
+  assert.equal(notDone('deleted', 'Not found.'), 'Not deleted: Not found.', 'one full stop');
   assert.equal(templateProblem('step 1, “Mop”: x'), 'Template not created: step 1, “Mop”: x');
 });
 
@@ -276,6 +280,7 @@ test('Cancel after an unknown answer says what may still be in Vikunja, or only 
       words('templateStep', { p: { title: 'Wipe the till' }, taskId: 9 }, 'Closing'),
       words('addStep', { title: 'Sweep up', runTitle: 'Closing' }),
       words('startRun', { template: { title: 'Closing' } }),
+      words('due', { stage: 1, fixed: { seen: { rep: { repeat_after: 86400 } } } }),
     ],
     [
       'Cancelled. “Mop the floor” may still have priority High in Vikunja.',
@@ -283,7 +288,7 @@ test('Cancel after an unknown answer says what may still be in Vikunja, or only 
       'Cancelled. “Mop the floor” may still have the title “Mop” in Vikunja.',
       'Cancelled. “Mop the floor” may still have your new notes in Vikunja.',
       'Cancelled. “Mop the floor” may still be done in Vikunja.',
-      'Cancelled. “Mop the floor” may still be not done in Vikunja.',
+      'Cancelled. “Mop the floor” may still be open in Vikunja.',
       'Cancelled. “Mop the floor” may still have progress 40% in Vikunja.',
       'Cancelled. “Mop the floor” may already be deleted in Vikunja.',
       'Cancelled. “Mop the floor” may still be without a date in Vikunja.',
@@ -295,8 +300,10 @@ test('Cancel after an unknown answer says what may still be in Vikunja, or only 
       'Cancelled.',
       'Cancelled. “Wipe the till” may still be in “Closing” in Vikunja.',
       'Cancelled.',
-      'Cancelled. “Sweep up” may still be in Closing in Vikunja.',
+      'Cancelled. “Sweep up” may still be in “Closing” in Vikunja.',
       'Cancelled. The checklist started from “Closing”, or one of its steps, may still be in Vikunja.',
+      // The repeat came off, and the request in doubt took the date off.
+      'Cancelled. “Mop the floor” no longer repeats. “Mop the floor” may still be without a date in Vikunja. Set its repeat again in its sheet.',
     ],
   );
 });
@@ -321,6 +328,10 @@ test('signing out names what hasn’t reached Vikunja, counting every waiting op
     "A task and 2 photos haven't reached Vikunja yet. Sign out anyway and discard them?",
   );
   assert.equal(signOutAsk({ files: 1 }), "A file hasn't reached Vikunja yet. Sign out anyway and discard it?");
+  assert.equal(
+    signOutAsk({ tasks: 1, files: 2, changes: 3 }),
+    "A task, 2 files and 3 changes haven't reached Vikunja yet. Sign out anyway and discard them?",
+  );
 });
 
 test('a change the phone had no room for says so in one sentence', () => {
@@ -370,13 +381,13 @@ test('a task coming due is announced by name, alone, or counted with the others'
 test('the add boxes say what part of a list was added, and what a cancelled line left behind', () => {
   assert.equal(addedPart(1, 3), 'Added 1 of 3.');
   assert.equal(
-    addedStopped(2, 3, ", but @sam can't see Orders", 'Forbidden'),
-    "Added 2 of 3, but @sam can't see Orders. Stopped: Forbidden",
+    lineRefused(2, 3, ", but @sam can't see Orders", 'Buy milk', 'Forbidden'),
+    "Added 2 of 3, but @sam can't see Orders. “Buy milk” couldn't be saved: Forbidden.",
   );
+  assert.equal(lineRefused(0, 1, '', 'Buy milk', 'Forbidden.'), "“Buy milk” couldn't be saved: Forbidden.");
   assert.deepEqual([addedSubs(1), addedSubs(3, ', but x')], ['Added 1 subtask', 'Added 3 subtasks, but x']);
-  assert.equal(notDone('added', 'Forbidden'), 'Not added: Forbidden');
   assert.equal(
-    subsNotUnder('Pack', 'Forbidden', ['Rope'], []),
+    subsNotUnder('Pack', 'Forbidden.', ['Rope'], []),
     "Subtasks of “Pack” added offline couldn't be added under it: Forbidden. “Rope” is now its own task.",
   );
   assert.equal(
@@ -403,7 +414,7 @@ test('the add boxes say what part of a list was added, and what a cancelled line
   assert.deepEqual(
     [notStopped(true), notStopped(false), SENT_FIRST],
     [
-      'It was sent before it could be stopped.',
+      'It was sent before it could be cancelled.',
       "It is being sent and can't be stopped now.",
       'It was sent before it could be cancelled.',
     ],

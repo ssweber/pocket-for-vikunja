@@ -78,12 +78,13 @@ export const lineNotSaved = (sub, reason) =>
 export const refusedEarlier = title => `Not sent. Vikunja refused an earlier change to “${title}”.`;
 // The note on a refused row in the Outbox, with Vikunja's reason, or an answer the relay couldn't vouch for (UNKNOWN).
 export const refusedNote = why => (why === UNKNOWN ? why : 'Vikunja refused it: ' + why);
-/* What Pocket didn't do, and why: "Not renamed: Forbidden". `done` is the past tense of the action. The reason is
-   Vikunja's when it refused a direct action, a failed read's, or the problem Pocket found in a template's steps. */
-export const notDone = (done, why) => `Not ${done}: ${why}`;
-// A direct action (`action`, "rename the project") that failed: offline (offlineFor), or refused (notDone).
-export const directFailed = (e, action, done) =>
-  e instanceof NetError ? offlineFor(action) : notDone(done, e.message);
+/* What Pocket didn't do, and why: "Not moved: step 2, …". `done` is the past tense of the action. The reason is a
+   failed read's, or the problem Pocket found in a template's steps. A refusal says what couldn't be saved (notSaved). */
+export const notDone = (done, why) => `Not ${done}: ${String(why).replace(/\.$/, '')}.`;
+/* A direct action that failed: offline (offlineFor, with `action` as "rename the project"), or refused (notSaved, with
+   `what` as "Renaming the project"). */
+export const directFailed = (e, action, what) =>
+  e instanceof NetError ? offlineFor(action) : notSaved(what, e.message);
 // A template Pocket didn't make, because of a problem in its steps (`why`).
 export const templateProblem = why => 'Template not created: ' + why;
 // On the sign-in screen, when Vikunja offers neither a password nor single sign-on.
@@ -226,7 +227,7 @@ const tickWords = done =>
       const t = copy(a.task) ?? { done: a.stage > 0 ? done : !done };
       return `${it(title)} ${is(a)} ${doneWord(t)}.` + (a.stage > 0 ? upStays(a, copy) : '');
     },
-    (a, title) => still(title, done ? 'be done' : 'be not done'),
+    (a, title) => still(title, done ? 'be done' : 'be open'),
   );
 const ticked = { saved: "it's marked done", dropped: tickWords(true) };
 const unticked = { saved: "it's marked not done", dropped: tickWords(false) };
@@ -469,6 +470,8 @@ export const OP_WORDS = {
       // or, when the request in doubt is about the repeat, both changes.
       const rep = a.fixed?.seen?.rep,
         d = copy(a.task)?.due_date ?? a.was;
+      if (rep && a.stage === 1 && unsure(a))
+        return `${it(title)} no longer repeats. ${still(title, 'be ' + dueWords(a.due))} Set its repeat again in its sheet.`;
       if (rep && (a.stage === 1 || (a.stage === 2 && !unsure(a))))
         return (
           (a.stage === 1
@@ -563,7 +566,7 @@ export const OP_WORDS = {
      words say it may still be in Vikunja. `gone` is what Cancel says once the op was sent in full. */
   startRun: {
     text: a => `${a.cancelled ? 'Cancelling the start of' : 'Starting'} “${a.template.title}”`,
-    refused: a => (a.cancelled ? `Cancelling the start of “${a.template.title}”` : 'Starting ' + a.template.title),
+    refused: a => `${a.cancelled ? 'Cancelling the start of' : 'Starting'} “${a.template.title}”`,
     dropped: keeps(
       () => '',
       a => `The checklist started from “${a.template.title}”, or one of its steps, may still be in Vikunja.`,
@@ -595,14 +598,14 @@ export const OP_WORDS = {
     text: a =>
       a.cancelled
         ? `Removing “${named(a.title)}”, because adding it was cancelled`
-        : `${a.from || a.tpl != null ? 'Repeated' : 'Inserted'} in ${a.runTitle}: “${named(a.title)}”`,
+        : `${a.from || a.tpl != null ? 'Repeated' : 'Inserted'} in “${a.runTitle}”: “${named(a.title)}”`,
     refused: a =>
       a.cancelled
         ? `Removing “${named(a.title)}”`
         : `${a.from || a.tpl != null ? 'Repeating' : 'Inserting'} “${named(a.title)}”`,
     dropped: keeps(
       () => '',
-      a => (a.taskId ? '' : `“${named(a.title)}” may still be in ${a.runTitle} in Vikunja.`),
+      a => (a.taskId ? '' : `“${named(a.title)}” may still be in “${a.runTitle}” in Vikunja.`),
     ),
     gone: "It was already sent. Delete it from the checklist if you don't need it.",
   },
@@ -684,8 +687,10 @@ export const nowFor = forText => forText.replace(/^For/, 'Now for');
 /* What the add boxes say when only part of what was typed was added: `k` of `n` lines, with `but`, what didn't go as
    asked (", but …"). */
 export const addedPart = (k, n, but = '') => `Added ${k} of ${n}${but}.`;
-// The same when Vikunja refused the next line, for `why`.
-export const addedStopped = (k, n, but, why) => `${addedPart(k, n, but)} Stopped: ${why}`;
+/* What an add box says when Vikunja refused line `title` for `why`, after `k` of `n` lines were added, with `but`. The
+   lines from it on go back to the box. */
+export const lineRefused = (k, n, but, title, why) =>
+  (k ? addedPart(k, n, but) + ' ' : '') + notSaved(title && `“${title}”`, why);
 // Subtasks added from a task's sheet, with `but`.
 export const addedSubs = (n, but = '') => `Added ${n === 1 ? '1 subtask' : n + ' subtasks'}${but}`;
 // Photos sent with a task that reached Vikunja, while the photos wait: for a busy Vikunja (`reached`), or offline.
@@ -695,7 +700,7 @@ export const photosLater = (project, n, reached = false) =>
 // Lines added offline under a task, which Vikunja wouldn't put under it (`why`). `loose` are the titles made as tasks
 // of their own, and `unsent` the text of the lines not added.
 export const subsNotUnder = (parent, why, loose, unsent) =>
-  `Subtasks of “${parent}” added offline couldn't be added under it: ${why}.` +
+  `Subtasks of “${parent}” added offline couldn't be added under it: ${why.replace(/\.$/, '')}.` +
   (loose.length
     ? ` ${loose.map(t => `“${t}”`).join(', ')} ${loose.length === 1 ? 'is now its own task' : 'are now their own tasks'}.`
     : '') +
@@ -726,11 +731,9 @@ export const cancelled = (words, back = '') =>
   ]
     .filter(Boolean)
     .join(' ');
-// Cancel tapped as the change was sent: in full (`gone`), or with its requests on their way.
-export const notStopped = gone =>
-  gone ? 'It was sent before it could be stopped.' : "It is being sent and can't be stopped now.";
-// Cancel on a waiting row, whose line was sent before Cancel could take it out.
+// Cancel tapped once the change was sent (SENT_FIRST), as a waiting row's line was, or with its requests on their way.
 export const SENT_FIRST = 'It was sent before it could be cancelled.';
+export const notStopped = gone => (gone ? SENT_FIRST : "It is being sent and can't be stopped now.");
 
 // Quick add's project, `project`, which the user can't write to.
 export const readOnly = project => `${project || 'That project'} is read only. Type +project to pick another project.`;
@@ -826,13 +829,12 @@ export const deleteProjectAsk = (title, tasks, kids) => {
 export const signOutAsk = ({ tasks = 0, files = 0, photos = false, changes = 0 }) => {
   const n = tasks + files + changes,
     count = (k, word) => (k === 1 ? 'a ' + word : `${k} ${word}s`),
-    what = [
+    kinds = [
       tasks && count(tasks, 'task'),
       files && count(files, photos ? 'photo' : 'file'),
       changes && count(changes, 'change'),
-    ]
-      .filter(Boolean)
-      .join(' and ');
+    ].filter(Boolean),
+    what = andList(kinds);
   return `${what[0].toUpperCase() + what.slice(1)} ${n === 1 ? "hasn't" : "haven't"} reached Vikunja yet. Sign out anyway and discard ${n === 1 ? 'it' : 'them'}?`;
 };
 

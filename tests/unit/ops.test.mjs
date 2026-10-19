@@ -411,12 +411,12 @@ const WORDS = {
     ["Doesn't repeat: a step", 'Changing how a task repeats', '“it” stays without a repeat.', '“it” has no repeat.'],
   ],
   startRun: [
-    ['Starting “Closing”', 'Starting Closing', '', ''],
-    ['Starting “Closing”', 'Starting Closing', '', ''],
+    ['Starting “Closing”', 'Starting “Closing”', '', ''],
+    ['Starting “Closing”', 'Starting “Closing”', '', ''],
   ],
   addStep: [
-    ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
-    ['Inserted in Closing · Oct 3 · #1: “Sweep up”', 'Inserting “Sweep up”', '', ''],
+    ['Inserted in “Closing · Oct 3 · #1”: “Sweep up”', 'Inserting “Sweep up”', '', ''],
+    ['Inserted in “Closing · Oct 3 · #1”: “Sweep up”', 'Inserting “Sweep up”', '', ''],
   ],
   makeTemplate: [
     ['Making “Unlock the door” a template', 'Making “Unlock the door” a template', '', ''],

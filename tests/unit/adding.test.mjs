@@ -1481,7 +1481,7 @@ test('cancelling or refusing a waiting subtask moves the highlight to its task',
   await add('Straps');
   assert.deepEqual(
     [aimed(), app.cap.text, app.toast.msg],
-    [[['9'], ''], 'Straps', 'Not added: HTTP 400 from the fake'],
+    [[['9'], ''], 'Straps', "“Straps” couldn't be saved: HTTP 400 from the fake."],
   );
   assert.equal(sync.all(1).length, 0);
 });

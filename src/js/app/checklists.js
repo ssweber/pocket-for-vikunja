@@ -225,7 +225,7 @@ export default {
       this.say(SAID.renamed, { place: 'sheet:top' });
     } catch (err) {
       e.name = p.title;
-      this.say(directFailed(err, 'rename the project', 'renamed'), { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'rename the project', 'Renaming the project'), { place: 'sheet:top', cls: 'failed' });
     }
   },
   async archiveProject() {
@@ -239,7 +239,10 @@ export default {
       this.go('#/projects');
       this.say(archivedText(p.title), { place: 'projects' });
     } catch (err) {
-      this.say(directFailed(err, 'archive the project', 'archived'), { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'archive the project', 'Archiving the project'), {
+        place: 'sheet:top',
+        cls: 'failed',
+      });
     }
   },
   async deleteProject() {
@@ -254,7 +257,7 @@ export default {
       this.go('#/projects');
       this.say(deletedProject(p.title), { place: 'projects' });
     } catch (err) {
-      this.say(directFailed(err, 'delete the project', 'deleted'), { place: 'sheet:top', cls: 'failed' });
+      this.say(directFailed(err, 'delete the project', 'Deleting the project'), { place: 'sheet:top', cls: 'failed' });
     }
   },
   // Mark a project for checklists, or unmark it. The mark is a paragraph "pocket:checklists" in the project's
@@ -282,10 +285,17 @@ export default {
       if (this.sheet.project?.id === p.id) this.sheet.project = next;
       this.say(checklistsOn(on), { place: 'sheet:top' });
     } catch (e) {
-      this.say(directFailed(e, `turn checklists ${on ? 'on' : 'off'} for the project`, 'changed'), {
-        place: 'sheet:top',
-        cls: 'failed',
-      });
+      this.say(
+        directFailed(
+          e,
+          `turn checklists ${on ? 'on' : 'off'} for the project`,
+          `Turning checklists ${on ? 'on' : 'off'} for the project`,
+        ),
+        {
+          place: 'sheet:top',
+          cls: 'failed',
+        },
+      );
     } finally {
       this.sheet.checklistBusy = false;
     }
@@ -314,7 +324,7 @@ export default {
       this.go('#/checklists');
       this.say(setUpText(!refused, waits ? waitText(r) : ''), { place: 'checklists', cls: refused ? 'failed' : '' });
     } catch (e) {
-      this.say(directFailed(e, 'set up checklists', 'set up'), { place: 'setup', cls: 'failed' });
+      this.say(directFailed(e, 'set up checklists', 'Setting up checklists'), { place: 'setup', cls: 'failed' });
     } finally {
       this.settingUp = false;
     }

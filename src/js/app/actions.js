@@ -7,7 +7,6 @@ import { dueInfo, isSet, movedDue, repeats } from '../dates.js';
 import { isSubtask, openSubtasks, pctOf } from '../progress.js';
 import {
   addedPart,
-  addedStopped,
   addedSubs,
   dayWord,
   deleteAsk,
@@ -19,6 +18,7 @@ import {
   doneRepeats,
   doneText,
   finishedText,
+  lineRefused,
   movedBack,
   movedText,
   movedTo,
@@ -832,11 +832,7 @@ export default {
         const added = r.ids.length ? addedPart(r.ids.length, n, but) + ' ' : '';
         if (r.error.code === 'unknown')
           this.say(added + notKnown(r.error.what), { place, cls: 'failed', action: toOutbox(this) });
-        else
-          this.say(
-            r.ids.length ? addedStopped(r.ids.length, n, but, r.error.message) : notDone('added', r.error.message),
-            { place, cls: 'failed' },
-          );
+        else this.say(lineRefused(r.ids.length, n, but, r.title, r.error.message), { place, cls: 'failed' });
       } else if (r.ids?.length && but)
         this.say(addedSubs(r.ids.length, but), {
           place,
