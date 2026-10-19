@@ -343,7 +343,8 @@ try {
     await expect(row(2).locator('.title')).toHaveText('First article check');
     await expect(row(2).locator('.meta')).toHaveText(`Due 2h after ${GUARDS}`);
     await expect(row(0).locator('.meta')).toHaveText('Named “check-the-guards”');
-    // The reply to the second step's request is lost. Pressing Create template again continues with the same template and adds nothing twice.
+    // The reply to the second step's request is lost. The rest waits in the Outbox, and sending it again adds nothing
+    // twice.
     let posts = 0;
     const loseStep = async r => {
       if (r.request().method() !== 'POST' || ++posts !== 3) return r.fallback();
@@ -352,10 +353,10 @@ try {
     };
     await page.route(`**/v2/projects/${project.id}/tasks`, loseStep);
     await page.click('#nt-create');
-    await said('sheet:top', 'Tap Create template again');
+    await said('checklists', "Saved offline. It goes to Vikunja when you're back online.");
     await page.unroute(`**/v2/projects/${project.id}/tasks`, loseStep);
-    await page.click('#nt-create');
-    await said('checklists', `Created ${TEMPLATE}`);
+    await online();
+    await synced(page);
     const named = async title =>
       (await api('/tasks?q=' + encodeURIComponent(title))).items.filter(
         t => t.title === title && t.project_id === project.id,
@@ -2878,8 +2879,8 @@ try {
     // The chip is still shown, to pick a step to count from.
     await chip.locator('select').selectOption({ label: 'Warm up the press' });
     await page.waitForSelector(go + ':not([disabled])');
-    // A time in words after an existing step gives that step a name. The reply is lost. The text that wasn't added
-    // returns to the box, and pressing Enter again finds the task already created instead of leaving a stray copy.
+    // A time in words after an existing step gives that step a name. The reply is lost, so the step waits in the
+    // Outbox. Sent again, it is made once.
     await page.fill(box, 'Pull a sample 5 min after Warm up the press');
     await expect(chip).toContainText('5m after');
     let posts = 0;
@@ -2891,9 +2892,9 @@ try {
     await page.route(`**/v2/projects/${project.id}/tasks`, loseStep);
     await toastGone().catch(() => {});
     await page.press(box, 'Enter');
-    await said('sheet:subtasks', 'Added 0 of 1');
+    await said('sheet:subtasks', "Saved offline. It goes to Vikunja when you're back online.");
     await page.unroute(`**/v2/projects/${project.id}/tasks`, loseStep);
-    await expect(page.locator(box)).toHaveValue('Pull a sample 5 min after Warm up the press');
+    await expect(page.locator(box)).toHaveValue('');
     // Vikunja on SQLite is briefly busy ("database is locked") while a step is linked under the template. Pocket retries.
     let locked = 0;
     const lock = r =>
@@ -2901,13 +2902,11 @@ try {
         ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' })
         : r.fallback();
     await page.route('**/v2/tasks/*/relations', lock);
-    await toastGone().catch(() => {});
-    await page.press(box, 'Enter');
+    await online();
     await until('the step was never added', async () => (await subtasks(template.id)).length === 4);
+    await synced(page);
     await page.unroute('**/v2/tasks/*/relations', lock);
     if (!locked) throw new Error('no step was put under the template');
-    if (await page.isVisible('.place-line:has-text("Added")'))
-      throw new Error('the sheet showed a message: ' + (await page.textContent('.place-line')));
     const sample = (await api('/tasks?q=' + encodeURIComponent('Pull a sample'))).items.filter(
       t => t.project_id === project.id,
     );
@@ -2928,8 +2927,9 @@ try {
       throw new Error('the template has the wrong steps: ' + titles.join(' | '));
     if (!(await subtasks(template.id)).every(s => s.done)) throw new Error("a new step isn't done");
     await page.waitForSelector('#d-subtasks .row:nth-of-type(4) .meta:has-text("Due 5m after “Warm up the press”")');
-    // If Vikunja is still busy after a few tries, the step that was created is not left behind as a separate task, and the typed line stays in the box.
-    const stray = `Stray step ${stamp}`,
+    // If Vikunja is still busy after a few tries, the step waits in the Outbox, and is put under the template once
+    // Vikunja answers.
+    const stray = `Waiting step ${stamp}`,
       busy = r =>
         r.request().method() === 'POST'
           ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"database is locked"}' })
@@ -2937,14 +2937,15 @@ try {
     await page.fill(box, stray);
     await page.route('**/v2/tasks/*/relations', busy);
     await page.press(box, 'Enter');
-    await said('sheet:subtasks', 'Added 0 of 1');
+    await said('sheet:subtasks', "Saved offline. It goes to Vikunja when you're back online.");
     await page.unroute('**/v2/tasks/*/relations', busy);
-    await until(
-      'the step was left behind as a separate task',
-      async () => !(await api('/tasks?q=' + encodeURIComponent(stray))).items.some(t => t.title === stray),
+    await online();
+    await until('the waiting step was never put under the template', async () =>
+      (await subtasks(template.id)).some(s => s.title === stray),
     );
-    await expect(page.locator(box)).toHaveValue(stray);
-    await page.fill(box, '');
+    await synced(page);
+    for (const t of (await api('/tasks?q=' + encodeURIComponent(stray))).items.filter(t => t.title === stray))
+      await api('/tasks/' + t.id, { method: 'DELETE' });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
@@ -3127,7 +3128,7 @@ try {
       await r.fetch();
       return r.abort('internetdisconnected');
     };
-    await page.route(`**/api/v2/tasks/${daily.id}`, lose);
+    await page.route(`**/v2/tasks/${daily.id}`, lose);
     await toastGone().catch(() => {});
     await page.evaluate(() => {
       location.hash = '#/checklists';
@@ -3136,7 +3137,7 @@ try {
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     await page.click('#start-go');
     await said('checklists', 'starts as soon as Pocket reaches Vikunja');
-    await page.unroute(`**/api/v2/tasks/${daily.id}`, lose);
+    await page.unroute(`**/v2/tasks/${daily.id}`, lose);
     if (!lost) throw new Error('the tick was never sent');
     await online();
     await page.waitForSelector('.cl .row.pending', { state: 'detached', timeout: 30000 });
