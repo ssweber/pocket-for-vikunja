@@ -4115,12 +4115,25 @@ try {
     const info = await (await fetch(SERVER + '/api/v2/info')).json(),
       me = await (await api('/user')).json();
     if (!info.email_reminders_enabled) return;
-    const setReminders = on =>
-      api('/user/settings/general', {
+    // An API token can't change the user's settings, so this step signs in for them.
+    const session = (
+      await (
+        await fetch(SERVER + '/api/v2/login', {
+          method: 'POST',
+          headers: json,
+          body: JSON.stringify({ username: USER, password: PASSWORD }),
+        })
+      ).json()
+    ).token;
+    const settings = async body => {
+      const r = await fetch(SERVER + '/api/v2/user/settings/general', {
         method: 'PATCH',
-        headers: json,
-        body: JSON.stringify({ ...me.settings, email_reminders_enabled: on }),
+        headers: { ...json, Authorization: 'Bearer ' + session },
+        body: JSON.stringify(body),
       });
+      if (!r.ok) throw new Error(`the settings weren't saved: HTTP ${r.status}`);
+    };
+    const setReminders = on => settings({ ...me.settings, email_reminders_enabled: on });
     const t = `Pocket smoke call the plumber ${stamp}`;
     try {
       await setReminders(false);
@@ -4165,7 +4178,7 @@ try {
         if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
       }
     } finally {
-      await api('/user/settings/general', { method: 'PATCH', headers: json, body: JSON.stringify(me.settings) });
+      await settings(me.settings);
       await page.evaluate(() => document.activeElement?.blur());
     }
   });
@@ -6029,7 +6042,7 @@ ${footName('Hooks')}`);
     const [A, B, C] = [
       await make(`Pocket smoke card A ${stamp}`),
       await make(`Pocket smoke card B ${stamp}`),
-      await make(`Pocket smoke card C ${stamp}`, { due_date: todayAt(22) }),
+      await make(`Pocket smoke card C ${stamp}`, { due_date: todayAt(23) }), // due later today, at any hour before 11pm
     ];
     const Q = await make(`Pocket smoke card's neighbour ${stamp}`, { due_date: todayAt(23) }); // a plain row next to the card on Today
     await under(P, [A, B, C]);
@@ -6086,12 +6099,12 @@ ${footName('Hooks')}`);
       if (/PM$/.test(at23) && (shortTime(at23) !== '11p' || shortTime(at22) !== '10p'))
         throw new Error(`${at23} and ${at22} shorten to ${shortTime(at23)} and ${shortTime(at22)}`);
       await expect(card.locator('.card-head .due')).toHaveText(shortTime(at23));
-      await expect(line.locator('.when .due')).toHaveText(shortTime(at22));
+      await expect(line.locator('.when .due')).toHaveText(shortTime(at23));
       await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .due`)).toHaveText(
         shortTime(at23),
       );
       await expect(card.locator('.card-head .sr')).toContainText('Today ' + at23);
-      await expect(line.locator('.title')).toContainText('Today ' + at22);
+      await expect(line.locator('.title')).toContainText('Today ' + at23);
       // On a phone with a 24-hour clock, the time is written the way that phone writes it, such as "23:00".
       const other = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-GB' }),
         p24 = await other.newPage();
@@ -6105,7 +6118,7 @@ ${footName('Hooks')}`);
         const theirs = await clock(p24, 23);
         if (!/^23[:.]00$/.test(theirs)) throw new Error('a browser set to en-GB writes 11 PM as ' + theirs);
         await expect(p24.locator(`${cardOf(P.title)} .card-head .due`)).toHaveText(theirs, { timeout: 15000 });
-        await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(await clock(p24, 22));
+        await expect(p24.locator(`${stepLine(P.title)} .when .due`)).toHaveText(theirs);
       } finally {
         await other.close();
       }
