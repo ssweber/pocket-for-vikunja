@@ -629,7 +629,9 @@ export default {
         this.cardSubs(t, true).some(s => !s.done && mine(s.assignees))
         ? 'runs'
         : null;
-    return new Date(made) >= t0 && (card || !t.created_by || t.created_by.id === me) ? 'nodate' : null;
+    // An undated subtask is a row only while its task can't be read. The load shows it then when it is the user's.
+    const sub = !!t.related_tasks?.parenttask?.length && mine(t.assignees);
+    return new Date(made) >= t0 && (card || sub || !t.created_by || t.created_by.id === me) ? 'nodate' : null;
   },
   /* The dates Today places task `t` by, as its load does. A card goes by the dates that put it on Today (todayCard),
      and by when it was made (`made`). `card` says whether `t` is a card or becomes one. A task that was a card and has

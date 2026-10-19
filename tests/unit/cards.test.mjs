@@ -1890,7 +1890,7 @@ const loadToday = (c, list, runIndex = {}) => {
       },
       runIndex,
     ),
-    parents = [...got.cards.keys()].map(id => app.tasks[id]);
+    parents = [...got.cards.keys()].map(id => app.tasks[id]).filter(Boolean); // a task not in `list` can't be read
   const { groups, cards: shown } = app.todayFrom(
     {
       ...got,
@@ -1958,6 +1958,12 @@ test('a regroup right after Today loads leaves every card where the load put it'
       [run(40, [41, 42]), step(41, 40, { assignees: [me] }), step(42, 40, { due_date: local(14, 15) })],
       { 40: false },
       [['runs', [40]]],
+    ],
+    [
+      'your undated subtask, made today by a teammate, whose task can’t be read',
+      [task(51, { created: local(14, 9), created_by: other, assignees: [me], related_tasks: under(50) })],
+      {},
+      [['nodate', [51]]],
     ],
   ]) {
     const { app, shows } = loadToday(c, list, runIndex),
