@@ -66,21 +66,15 @@ template for every list, with the parts a given list does not show left in it.
 
 1. **Finish what is being built.** An unsent claim of a checklist step and its let-go cancel each other, as an assign
    and an unassign do. And quick add reads a part of the day: "this morning" is today at 9am, "afternoon" 3pm,
-   "evening" 6pm, "tonight" 8pm.
+   "evening" 6pm, "tonight" 8pm. Then rows move where they belong when the batch clears
+   (`docs/design/regroup.md`).
 2. **Release 0.2.0.** Condense `CHANGELOG.md`'s Unreleased, merge `dev` into `main` by pull request, and publish
    `v0.2.0`. Delete the `v0.1.0-rc.1` pre-release and its tag.
 3. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
-4. **Decide when a screen shows a change without a reload** (below).
-5. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
+4. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
 
 The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
 send whenever the user chooses.
-
-## To decide: when a screen shows a change without a reload
-
-Some changes show only after the page is reloaded, as when a task is unticked from a Done section. Decide, for each
-kind of change, whether the screens that show the task update at once, at the next load of that screen, or only after
-a reload, and make it one rule.
 
 ## Before anyone else uses Pocket
 
