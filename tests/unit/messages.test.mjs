@@ -502,9 +502,13 @@ test('the sheets and checklists say what was made, changed or found wrong', () =
   );
   assert.equal(
     templateMade('Due Fri', false, 'Closing'),
-    "Template created. Due Fri. Starting a checklist marks “Closing” done, because it doesn't repeat.",
+    "Template created. Due Fri. Starting a checklist on or after its due day marks “Closing” done, because it doesn't repeat.",
   );
   assert.equal(startMarksDone('Closing'), "Starting a checklist marks “Closing” done, because it doesn't repeat.");
+  assert.equal(
+    startMarksDone('Closing', true),
+    "Starting a checklist on or after its due day marks “Closing” done, because it doesn't repeat.",
+  );
   assert.equal(templateCreated('Closing'), 'Created Closing. Start it here.');
   assert.equal(setUpText(true), 'Created the Checklists project, with an example template to try.');
   assert.equal(

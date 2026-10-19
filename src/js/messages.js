@@ -772,15 +772,17 @@ export const tooBigText = (files, max) =>
   `${files.join(', ')} ${files.length === 1 ? 'is' : 'are'} too big. Your Vikunja accepts files up to ${max}.`;
 // A template's steps changed, with what Pocket couldn't apply.
 export const changedBut = problems => 'Changed, but ' + problems.join('; ');
-// What starting a checklist does to template `title`, which doesn't repeat.
-export const startMarksDone = title => `Starting a checklist marks “${title}” done, because it doesn't repeat.`;
+/* What starting a checklist does to template `title`, which doesn't repeat. Only a start on or after its due day marks
+   it done (tickOf), so a note shown before the user picks a day says so (`dueDay`). */
+export const startMarksDone = (title, dueDay = false) =>
+  `Starting a checklist${dueDay ? ' on or after its due day' : ''} marks “${title}” done, because it doesn't repeat.`;
 /* A template `title` made from a task. `schedule` says when it is due (scheduleText), and `repeats` whether starting it
    moves it on to its next date. */
 export const templateMade = (schedule = '', repeats = false, title = '') =>
   !schedule
     ? 'Template created. Start it here or under Checklists.'
     : `Template created. ${schedule}. ` +
-      (repeats ? 'Starting it on or after the due day moves it to its next date.' : startMarksDone(title));
+      (repeats ? 'Starting it on or after the due day moves it to its next date.' : startMarksDone(title, true));
 // A template made in New template, named `title`.
 export const templateCreated = title => `Created ${title}. Start it here.`;
 // Set up checklists made the Checklists project. `example` is false when Vikunja refused the example template.

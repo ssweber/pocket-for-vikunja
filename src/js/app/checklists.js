@@ -497,7 +497,7 @@ export default {
     const on = onText(new Date(t.due_date));
     return repeats(t)
       ? `This template is due ${on}, then ${repeatWords(t)}. Today lists it from a week before. Starting a checklist on or after the due day moves it to its next date.`
-      : `This template is due ${on}, once. Today lists it from a week before. ${startMarksDone(templateName(t.title))} Choose Repeats to make it repeat.`;
+      : `This template is due ${on}, once. Today lists it from a week before. ${startMarksDone(templateName(t.title), true)} Choose Repeats to make it repeat.`;
   },
   // Whether a due template shows on the user's Today. It shows for its assignees. With no assignees, it shows for
   // anyone who can start it.

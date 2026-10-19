@@ -220,6 +220,33 @@ test("a template that isn't ready to start has the sheet of a candidate", async 
   assert.deepEqual(sheet({ labels: [] }), ['candidate', 'candidate']);
 });
 
+// A start before the due day leaves the template as it is (tickOf), so the note can't promise that every start marks
+// it done.
+test('the note on a template due once says that only a start on or after its due day marks it done', async () => {
+  const { component } = await import('./fake.mjs'),
+    { default: checklists } = await import('../../src/js/app/checklists.js');
+  const app = component(checklists);
+  app.checklistIds = new Set([7]);
+  app.tasks = {
+    1: {
+      id: 1,
+      title: 'TEMPLATE: Closing',
+      done: false,
+      project_id: 7,
+      labels: [{ title: 'template' }],
+      description: '',
+      due_date: '2026-10-20T09:00:00Z',
+      repeat_after: 0,
+      related_tasks: {},
+    },
+  };
+  app.sheet = { id: 1 };
+  assert.match(
+    app.comesRoundNote,
+    / Starting a checklist on or after its due day marks “Closing” done, because it doesn't repeat\. Choose Repeats/,
+  );
+});
+
 test("a checklist's title is its template's name, the day, then its number or typed name, and a title with the day last is still read", () => {
   const made = new Date(2026, 9, 8, 7, 30),
     created = made.toISOString(),
