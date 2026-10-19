@@ -62,6 +62,7 @@ const api = async (path, init = {}) => {
       ...init,
       headers: { Authorization: 'Bearer ' + TOKEN, ...init.headers },
     });
+    if (init.method === 'DELETE' && /^\/tasks\/\d+$/.test(path)) goneOnPurpose.push(+path.split('/').pop());
     if (r.status !== 500 || i >= 4) return r;
     await new Promise(res => setTimeout(res, 300 * (i + 1)));
   }
@@ -81,12 +82,15 @@ const later = async ms => {
   await page.clock.fastForward(Math.max(0, Math.round(ms)));
   await page.clock.setSystemTime(Date.now());
 };
-/* The browser logs the refused move and the connection reset that two tests cause on purpose, so they are ignored
-   here. So is a 404 for a task in `goneOnPurpose`, which a test has Pocket read or delete after it is gone. */
-const goneOnPurpose = [];
+/* The browser logs the refusals and connection resets the tests cause on purpose, so they are ignored here: an error
+   the test answers itself (its URL in `refused`), and a 404 for a task in `goneOnPurpose`, which a test has Pocket read
+   or delete after it is gone. A task the test deleted is in it, because the catch-up reads such a task alone to learn
+   that it is gone. */
+const goneOnPurpose = [],
+  refused = new Set();
 const meant = m =>
   /ERR_CONNECTION_RESET/.test(m.text()) ||
-  (/status of 403/.test(m.text()) && /\/position$/.test(m.location()?.url || '')) ||
+  refused.has(m.location()?.url) ||
   (/status of 404/.test(m.text()) && goneOnPurpose.some(id => (m.location()?.url || '').endsWith('/tasks/' + id)));
 page.on(
   'console',
@@ -1255,9 +1259,9 @@ try {
     const r = await api('/tasks/' + id);
     return r.ok ? r.json() : null;
   };
-  const todayAt = h => {
+  const todayAt = (h, m = 0) => {
     const d = new Date();
-    d.setHours(h, 0, 0, 0);
+    d.setHours(h, m, 0, 0);
     return d.toISOString();
   };
   const refreshToday = async () => {
@@ -2935,13 +2939,13 @@ try {
      where a task went, on its row or by the add box, with its Undo. */
   const DATES = '.throw .throw-t[data-id]',
     dateChip = id => page.locator(`.throw .throw-t[data-id="${id}"]`);
-  const dayAt = (days, h) => {
+  const dayAt = (days, h, m = 0) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
-    d.setHours(h, 0, 0, 0);
+    d.setHours(h, m, 0, 0);
     return d.toISOString();
   };
-  const mondayAt = h => dayAt((8 - new Date().getDay()) % 7 || 7, h); // next Monday, or a week later if today is Monday
+  const mondayAt = (h, m) => dayAt((8 - new Date().getDay()) % 7 || 7, h, m); // next Monday, or a week later if today is Monday
   const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
   const asPicked = iso => {
     const d = new Date(iso);
@@ -2998,9 +3002,10 @@ try {
   };
   await step('a-hold-on-today-moves-a-task-to-the-date-its-flicked-at-with-an-undo', async () => {
     const late = await make(`Pocket smoke hold late ${stamp}`, { due_date: dayAt(-1, 9) });
-    const a = await make(`Pocket smoke hold A ${stamp}`, { due_date: todayAt(21) }),
-      b = await make(`Pocket smoke hold B ${stamp}`, { due_date: todayAt(22) }),
-      c = await make(`Pocket smoke hold C ${stamp}`, { due_date: todayAt(23) });
+    // Due in the last minutes of today, so they are still due later today whenever the test runs, and Today is dimmed.
+    const a = await make(`Pocket smoke hold A ${stamp}`, { due_date: todayAt(23, 57) }),
+      b = await make(`Pocket smoke hold B ${stamp}`, { due_date: todayAt(23, 58) }),
+      c = await make(`Pocket smoke hold C ${stamp}`, { due_date: todayAt(23, 59) });
     const A = rowOf(a.title),
       B = rowOf(b.title),
       C = rowOf(c.title),
@@ -3064,7 +3069,7 @@ try {
       await expect(movedLine('Moved to tomorrow')).toBeVisible();
       await expect(page.locator('#said')).toContainText('Moved to tomorrow. Undo is');
       await synced(page);
-      if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('after moving right: ' + (await due(a)));
+      if (!sameTime(await due(a), dayAt(1, 23, 57))) throw new Error('after moving right: ' + (await due(a)));
       await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
       await expect(movedLine('Moved to tomorrow')).toHaveCount(0);
       await synced(page);
@@ -3074,7 +3079,7 @@ try {
       await flickOnToday(B, 6, -50, 'week');
       await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
       await synced(page);
-      if (!sameTime(await due(b), mondayAt(22))) throw new Error('after moving up: ' + (await due(b)));
+      if (!sameTime(await due(b), mondayAt(23, 58))) throw new Error('after moving up: ' + (await due(b)));
       // Down, with the same short move, removes the due date. A message with an Undo appears, and Undo restores the date and time.
       await flickOnToday(C, -4, 50, 'none');
       await expect(movedLine('Removed its due date')).toBeVisible();
@@ -3098,7 +3103,7 @@ try {
       await page.mouse.up();
       await expect(movedLine('Moved to tomorrow')).toBeVisible();
       await synced(page);
-      if (!sameTime(await due(c), dayAt(1, 23))) throw new Error('after a flick: ' + (await due(c)));
+      if (!sameTime(await due(c), dayAt(1, 23, 59))) throw new Error('after a flick: ' + (await due(c)));
       // With a real touch, the page must not scroll once the row is held. Drag down to No date.
       await page.locator(A).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       const box = await steady(page.locator(A)),
@@ -3127,9 +3132,10 @@ try {
   });
   await step('a-hold-on-today-without-a-move-leaves-its-dates-open-to-tap', async () => {
     const late = await make(`Pocket smoke tap late ${stamp}`, { due_date: dayAt(-1, 9) });
-    const a = await make(`Pocket smoke tap A ${stamp}`, { due_date: todayAt(21) }),
-      b = await make(`Pocket smoke tap B ${stamp}`, { due_date: todayAt(22) }),
-      c = await make(`Pocket smoke tap C ${stamp}`, { due_date: todayAt(23) });
+    // Due in the last minutes of today, so Today is dimmed whenever the test runs.
+    const a = await make(`Pocket smoke tap A ${stamp}`, { due_date: todayAt(23, 57) }),
+      b = await make(`Pocket smoke tap B ${stamp}`, { due_date: todayAt(23, 58) }),
+      c = await make(`Pocket smoke tap C ${stamp}`, { due_date: todayAt(23, 59) });
     const A = rowOf(a.title),
       B = rowOf(b.title),
       C = rowOf(c.title),
@@ -3208,7 +3214,7 @@ try {
       await expect(page.locator('.throw')).toHaveCount(0);
       await expect(movedLine('Moved to tomorrow')).toBeVisible();
       await synced(page);
-      if (!sameTime(await due(a), dayAt(1, 21))) throw new Error('after tapping Tomorrow: ' + (await due(a)));
+      if (!sameTime(await due(a), dayAt(1, 23, 57))) throw new Error('after tapping Tomorrow: ' + (await due(a)));
       await movedLine('Moved to tomorrow').getByRole('button', { name: 'Undo' }).click();
       await synced(page);
       if (!sameTime(await due(a), a.due_date)) throw new Error('Undo left the task due ' + (await due(a)));
@@ -3217,7 +3223,7 @@ try {
       await dateChip('week').click();
       await expect(movedLine(/^\s*Moved to Mon \d+/)).toBeVisible();
       await synced(page);
-      if (!sameTime(await due(b), mondayAt(22))) throw new Error('after tapping Next week: ' + (await due(b)));
+      if (!sameTime(await due(b), mondayAt(23, 58))) throw new Error('after tapping Next week: ' + (await due(b)));
       // then No date,
       await openDates(C, c);
       await dateChip('none').click();
@@ -3270,7 +3276,7 @@ try {
       await expect(menu(b)).toBeVisible();
       if ((await page.locator('.throw-date').getAttribute('min')) !== asPicked(new Date()))
         throw new Error("the picker's first day isn't today");
-      await page.locator('.throw-date').fill(asPicked(dayAt(9, 22)));
+      await page.locator('.throw-date').fill(asPicked(dayAt(9, 23, 58)));
       await expect(page.locator('.throw')).toHaveCount(0);
       const picked =
         'Moved to ' +
@@ -3284,14 +3290,14 @@ try {
               year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
             });
           },
-          dayAt(9, 22),
+          dayAt(9, 23, 58),
         ));
       await expect(movedLine(picked)).toBeVisible();
       await synced(page);
-      if (!sameTime(await due(b), dayAt(9, 22))) throw new Error('after picking a day: ' + (await due(b)));
+      if (!sameTime(await due(b), dayAt(9, 23, 58))) throw new Error('after picking a day: ' + (await due(b)));
       await movedLine(picked).getByRole('button', { name: 'Undo' }).click();
       await synced(page);
-      if (!sameTime(await due(b), mondayAt(22)))
+      if (!sameTime(await due(b), mondayAt(23, 58)))
         throw new Error('Undo of a picked day left the task due ' + (await due(b)));
       // With the keyboard, an arrow key moves to the date in that direction, and Enter picks it.
       await openDates(A, a);
@@ -3302,7 +3308,7 @@ try {
       await page.keyboard.press('Enter');
       await expect(page.locator('.throw')).toHaveCount(0);
       await synced(page);
-      if (!sameTime(await due(a), dayAt(1, 21)))
+      if (!sameTime(await due(a), dayAt(1, 23, 57)))
         throw new Error('after choosing Tomorrow with the keys: ' + (await due(a)));
       await noToast(page);
     } finally {
@@ -4420,10 +4426,11 @@ try {
     await page.waitForSelector('#outbox-rows .ob-row', { state: 'detached' });
     await page.click('#btn-sheet-close');
   };
-  const refusing = x =>
-    x.request().method() === 'PATCH'
-      ? x.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Forbidden' }) })
-      : x.fallback();
+  const refusing = x => {
+    if (x.request().method() !== 'PATCH') return x.fallback();
+    refused.add(x.request().url());
+    return x.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Forbidden' }) });
+  };
   await step('a-tick-vikunja-refuses-goes-back-and-waits-in-the-outbox', async () => {
     // The row is open again, and a message says why, with a button to the Outbox. Try again there ticks the task.
     const r = await make(`Pocket smoke not saved ${stamp}`, { due_date: todayAt(23) }),
@@ -4863,10 +4870,11 @@ try {
   await step('a-move-turned-down-goes-back-and-says-why', async () => {
     // Vikunja rejects the move. The row goes back where it was and shows Vikunja's reason.
     const T = order.tasks,
-      refuse = r =>
-        r.request().method() === 'PUT'
-          ? r.fulfill({ status: 403, contentType: 'application/json', body: '{"detail":"Forbidden"}' })
-          : r.fallback();
+      refuse = r => {
+        if (r.request().method() !== 'PUT') return r.fallback();
+        refused.add(r.request().url());
+        return r.fulfill({ status: 403, contentType: 'application/json', body: '{"detail":"Forbidden"}' });
+      };
     await page.route('**/v2/tasks/*/position', refuse);
     await dragTo(rowById(T.Charlie.id), rowById(T.Bravo.id), 'bottom');
     await expect(rowLine(page, 'Not reordered: Forbidden')).toBeVisible();
