@@ -1,6 +1,6 @@
 /* A randomized test of the store (src/js/app/tasks.js). fast-check generates sequences of commands on a few tasks: ops
    queued, sent, answered in any order, refused, lost and undone, reads finishing late, rows marked as leaving, a
-   teammate's changes in the web app, sweeps that drop the copies no kept screen needs, and reloads. Each sequence then sends
+   teammate's changes and deletes in the web app, sweeps that drop the copies no kept screen needs, and reloads. Each sequence then sends
    and answers everything still waiting, and reads every task. The checks after each command compare the app with a
    model made from the fake Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own
    functions. A failure prints the seed and the shortest sequence that breaks a check. */
@@ -469,6 +469,7 @@ const HEARD = {
       must = new Set([...m.pointed(), ...[...(w.screen || [])].map(String)]),
       had = [...w.copiesNow()].filter(([, c]) => c).map(([id]) => id);
     fn(keep);
+    ran('check 7', true);
     for (const id of had)
       if (must.has(String(id)) && !copyOf(id))
         w.broken.push(`check 7: the sweep dropped the copy of ${id}, which the outbox or the kept screen needs`);
@@ -1587,6 +1588,29 @@ class Teammate extends Command {
     return `Teammate(${this.t}, ${this.field})`;
   }
 }
+/* A teammate deletes a step in Vikunja's web app. Pocket hears of it only from a 404: a catch-up's read of the task
+   alone, a read again, or an op's request. The checklist stays, since the step being added goes under it. */
+class TeammateDeletes extends Command {
+  constructor(t) {
+    super();
+    this.t = t;
+  }
+  can(m) {
+    const id = m.w.target(this.t);
+    return id !== 1 && m.w.v.tasks.has(id);
+  }
+  async act(w, m) {
+    const id = w.target(this.t),
+      related = Object.values(w.v.tasks.get(id).related_tasks || {}).flat();
+    await w.api('/tasks/' + id, { method: 'DELETE' });
+    w.t++;
+    // The tasks it was related to lose it from their related tasks, which only a read brings.
+    for (const r of related) m.doubt(r.id, ['related_tasks']);
+  }
+  toString() {
+    return `TeammateDeletes(${this.t})`;
+  }
+}
 // A teammate makes a step a subtask of step 2 as well, in the web app, so it has two parents.
 class SecondParent extends Command {
   constructor(t) {
@@ -1720,6 +1744,7 @@ const COMMANDS = [
   fc.tuple(target, fc.constantFrom(...Object.keys(CHANGES))).map(([t, f]) => new Teammate(t, f)),
   fc.tuple(target, fc.constantFrom(...Object.keys(SHEET))).map(([t, f]) => new Sheet(t, f)),
   fc.constantFrom(3, STEP).map(t => new SecondParent(t)),
+  fc.constantFrom(2, 3, STEP).map(t => new TeammateDeletes(t)),
   fc.constantFrom(1000, 30000, 61000).map(ms => new Wait(ms)),
   fc.uniqueArray(target, { maxLength: 3 }).map(ts => new Sweep(ts)),
   fc.boolean().map(cut => new Reload(cut)),

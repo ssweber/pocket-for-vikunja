@@ -1735,3 +1735,44 @@ test('a copy the phone had no room for is saved the next time, and listed only o
   assert.deepEqual([saved.get('task.1')?.title, saved.get('tasks')], ['Wipe the menus', [1]]);
   localStorage.clear();
 });
+
+/* A sweep keeps the copies of what is open on this page, though no kept screen shows them. Task 9 is on no screen, and
+   goes. */
+const sweeping = () => {
+  const app = component(tasks);
+  app.user = { id: 1 };
+  read([
+    { id: 1, title: 'Closing', related_tasks: { parenttask: [{ id: 2 }], subtask: [{ id: 3 }] } },
+    ...[2, 3, 4, 5, 6, 7, 9].map(id => ({ id, title: 'Task ' + id })),
+  ]);
+  for (const id of [1, 2, 3, 4, 5, 6, 7, 9]) app.row(copyOf(id));
+  return app;
+};
+const kept = (...ids) => ids.filter(id => copyOf(id));
+
+test("a sweep keeps the sheet's task, its parent and its subtasks", async () => {
+  await sync.ready;
+  const app = sweeping();
+  app.sheet.id = 1;
+  app.sweep();
+  assert.deepEqual(kept(1, 2, 3, 9), [1, 2, 3]);
+  localStorage.clear();
+});
+
+test('a sweep keeps a row holding a message', async () => {
+  await sync.ready;
+  const app = sweeping();
+  app.lines = { 4: { msg: "Couldn't save" } };
+  app.sweep();
+  assert.deepEqual(kept(4, 9), [4]);
+  localStorage.clear();
+});
+
+test('a sweep keeps the checklist on screen and its steps', async () => {
+  await sync.ready;
+  const app = sweeping();
+  app.view.shownRun = { id: 5, steps: [6, 7] };
+  app.sweep();
+  assert.deepEqual(kept(5, 6, 7, 9), [5, 6, 7]);
+  localStorage.clear();
+});
