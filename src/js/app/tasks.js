@@ -821,8 +821,12 @@ export default {
   },
   /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
      keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
-     while a write to its task was in flight is thrown away. `updated` misses labels, people, reactions, positions and
-     subtasks ticked, so each screen's own load still runs. A catch-up that fails is tried again the next time.
+     while a write to its task was in flight is thrown away. Vikunja 2.7 changes `updated` only for a task's own
+     fields and a new comment. It misses labels, people, reactions, positions, attachments, a subtask linked or ticked,
+     and the step times the plugin writes (docs/design/upstream-task-updated.md asks Vikunja to change that). It also
+     misses a change to a copy older than `since`, as an op's task on no kept screen, and one made soon after a screen
+     loaded when the phone's clock was set back since. So each screen's own load still runs. A catch-up that fails is
+     tried again the next time.
      `reconnected` says the connection came back. Otherwise the catch-up waits for CATCH_UP_MS since the last, unless
      the phone's clock went back meanwhile. */
   async catchUp(reconnected = false) {
@@ -864,7 +868,8 @@ export default {
   /* Forget the tasks the store keeps that Vikunja no longer has (lost), unless an op points to them. A count of the
      ids that still exist (per_page=1) says whether any is gone. Then the whole list says which, and each is read alone,
      since only Vikunja's 404 for the task itself says it was deleted. Vikunja's /tasks leaves out the tasks of an
-     archived project, so only the tasks of the projects Pocket lists are asked about. */
+     archived project (getRelevantProjectsFromCollection, pkg/models/task_collection.go), though GET /tasks/{id} reads
+     them. So only the tasks of the projects Pocket lists are asked about. */
   async findRemoved() {
     const ids = [...new Set([...copies.keys(), ...bases.keys()])].filter(
       id => !alone.has(id) && this.projById?.has(keptCopy(id)?.project_id),

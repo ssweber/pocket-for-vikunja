@@ -5,7 +5,10 @@
    relay refuses a key sent again with a different body, so what a stage reads to build a body is read once and kept.
 
    A label or a person that Vikunja refuses is reported as a problem, and the next stage starts. A lost connection, a
-   busy Vikunja or a key the relay can't vouch for stops the line. */
+   busy Vikunja or a key the relay can't vouch for stops the line.
+
+   Pocket uses neither of Vikunja's bulk creates. PUT /tasks/bulk and POST /projects/{project}/tasks/bulk are each all
+   or nothing, and the second ignores `position` and `labels`. */
 import { passing } from '../api.js';
 import { DONE_MARK, patiently } from '../checklists.js';
 import { OP_WORDS } from '../messages.js';

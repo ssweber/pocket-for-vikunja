@@ -2,8 +2,7 @@
 
 This file is the map: where things are, the rules that hold across files, and what has tripped people up. What a
 function or a file does is in a comment where it is, and this file does not repeat it. A plan for a feature lives in
-`docs/design/` only while the feature is being built, and is deleted once it is built. From then on the code and its
-comments carry the reasons.
+`docs/design/` only while the feature is being built.
 
 ## Where things are
 
@@ -32,7 +31,7 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 |---|---|
 | What is done to a task (tick, progress, delete, move, reorder, save), each with its Undo | `app/actions.js` |
 | The tasks on screen, one object each | `app/tasks.js` |
-| A screen's lists, what a row may do on each, and the copies kept on the phone | `lists.js`, `app/views.js`, `app/sending.js` |
+| A screen's lists, what a row may do on each, and the copies kept on the phone | `lists.js`, `app/views.js`, `app/tasks.js` |
 | A task's row | `markup/task-row.html`, `app/views.js`, `app/claims.js` |
 | Stacked cards and a parent's ring | `cards.js`, `app/cards.js`, `markup/list-item.html`, `markup/ring.html` |
 | A swipe, a hold, a nudge | `progress.js`, `app/progress.js`, `haptics.js` |
@@ -60,8 +59,7 @@ The app is plain CSS and JavaScript, with [Alpine.js](https://alpinejs.dev) keep
 `npm run build` bundles `src/` into one file, `pocket/app/index.html`, with a source map (`pocket.js.map`) and
 compressed copies (`index.html.br`, `index.html.gz`) beside it. `main.go` sends a compressed copy to a browser that
 accepts one. All of them are committed, so the `pocket` folder works as it is. Edit `src/`, never `pocket/app/`. CI
-checks that `pocket/app/` is the build of `src/`, and the build gives the same bytes on every computer. Dates are
-parsed by [chrono-node](https://github.com/wanasit/chrono), with a few rules of Pocket's own on top (`parseCapture`).
+checks that `pocket/app/` is the build of `src/`, and the build gives the same bytes on every computer.
 
 ## How the code is put together
 
@@ -84,25 +82,39 @@ parsed by [chrono-node](https://github.com/wanasit/chrono), with a few rules of 
 How Pocket looks and responds to touch follows the nine rules in [`design-rules.md`](design-rules.md). Check a
 change against them, and say where it bends one. The code's own rules:
 
-1. **One object for each task.** Every list's rows are the objects in `tasks`, by id, so a change shows on all of a
-   task's rows at once. Only `show(id)` (tasks.js) writes them. Every write to what it reads happens inside
-   `change()`, which shows each task it touched once. `read`, `answer` and `made` alone write Vikunja's copies.
+1. **A task is Vikunja's copy with the outbox's ops applied, read from the store by id.** Every list's rows are the
+   objects in `tasks`, so a change shows on all of a task's rows at once. Only `show(id)` (tasks.js) writes them, and
+   every write to what it reads happens inside `change()`. `read`, `answer` and `made` alone write Vikunja's copies. A
+   task's kind comes from `role()`, and Today's groups from `dayGroup`.
+   - Vikunja's copy of a task only moves forward. A field is taken only from a request that started after the request
+     behind that field (`writes`, tasks.js).
+   - Between Pocket and a teammate, the last write to reach Vikunja wins, field by field, as in Vikunja's web app. Undo
+     puts back only a field nobody has changed since.
 2. **One row, everywhere.** `markup/task-row.html` is the row in every list, on a card, in a sheet and on a
    checklist's screen. The list's options object `g` (`screenRows`, `lists.js`) says what the row shows there. The
    gesture code cannot reach `g`, so the row writes the gestures it allows on itself (`data-gestures`). Each place
    that includes the row names its kind of list (`<!-- include markup/task-row.html run -->`). Markup that only some
    kinds need sits between `<!-- only run sheet -->` and `<!-- /only -->`, and the build leaves it out of every
    other copy (`scripts/build.mjs`).
-3. **The markup calls actions, never `api()`.** Each action makes the request, changes what is on screen and returns
-   the way to undo it. A run and its steps go through the outbox instead, as ops (`act`, `app/acts.js`, `ops/`),
-   each request with a key, so it is made once however often it is sent. `fetch()` is only in `api.js`, and lint
-   enforces that.
+3. **Every change is an op sent through the outbox, each request with a key** (`act`, `app/acts.js`, `ops/`), so a
+   change sent twice is made once. The markup calls actions, which queue ops. `fetch()` is only in `api.js`. Lint
+   holds all of this.
+   - Signing in, and creating, renaming, archiving or deleting a project or using it for checklists, stay direct. Each
+     needs Vikunja's answer before anything else can happen, and the user waits for it (`DIRECT`, `eslint.config.js`).
+   - Only `ops/` knows which op is which. The shared code asks the op (the fields listed on `OPS`).
+   - An op records what the user chose (`asks`). What the screen showed (`saw`) is only for its words and its Undo. A
+     body that depends on the task is built from Vikunja's copy with `c.once` when the op is sent.
+   - A request's body is fixed before its first send, because the relay answers 422 to a key sent with another body.
+   - A first request waits while Pocket knows it is offline, because once it is sent the op can't be cancelled.
+   - Every op passes the lifecycle checks (`lifecycle.test.mjs`), so a new op needs a sample in `samples.mjs`.
+     `store.model.test.mjs` runs the store on random orders of ops, reads and answers.
 4. **A change shows at once, as it will be.** It looks "waiting" only after `WAIT_MS`, or with no connection. A task
    not yet sent is already where it will be on its list, so it does not move once it is sent.
 5. **A ticked or deleted row stays where it is,** marked (`leaving`), until the batch clears: 3 seconds after the
    last mark, and never while a finger is down. What is on screen is computed from what is done and what is marked.
 6. **Pocket says what happened where it happened** (`say`, `app/lines.js`): on the row, or in a fixed place on the
-   screen. The toast is for what has neither. The words are in `messages.js`.
+   screen. The toast is for what has neither. The words are in `messages.js`, and lint fails on a sentence written
+   anywhere else.
 7. **Only the row moves on a swipe,** by its transform alone. What it uncovers is a layer lying still under it.
    Nothing bounces, and no two animations have to keep step.
 8. **Nothing on screen may move when late data arrives.** Data that loads late is drawn below anything the user
@@ -167,16 +179,14 @@ VIKUNJA_URL=https://tasks.example.com VIKUNJA_USER=... VIKUNJA_PASSWORD=... VIKU
 # add ASSIGNEE=<username> ASSIGNEE_PROJECT="Team" to test @assignee: a project shared with that user
 ```
 
-`npm run test:local` prints how long each file and each end-to-end step took. CI runs `lint`, `test:unit` and
-`test:parse` in one job, and `test:local` in another.
+CI runs `lint`, `test:unit` and `test:parse` in one job, and `test:local` in another.
 
 Every test's name is a sentence saying what it checks, so the files are their own list. A change in behaviour comes
 with a test in the file for its area:
 
 - `tests/unit/*.test.mjs`: the helpers and the component's methods, in Node, with no server, one file per area.
-  `fake.mjs` is a pretend Vikunja behind `fetch()` and a pretend component. `browser.mjs` is what the modules expect
-  of a browser. `reactive.mjs` runs the reactive part of Pocket's Alpine, to test what is recomputed as data
-  changes. `dom.mjs` reads only the HTML Pocket writes, so tests that read notes from Vikunja stay in `parse.mjs`.
+  `fake.mjs` is a pretend Vikunja behind `fetch()` and a pretend component. The other `.mjs` files there are what the
+  tests share, each saying what it is in its first comment.
 - `tests/parse.mjs`: how quick add reads about 770 phrases and pasted lists, most adapted from Vikunja's own tests.
 - `tests/smoke.mjs`: Pocket end to end in a headless browser against a Vikunja with the plugin: tasks, lists, the
   sheet, gestures, Today, quick add, sharing.
@@ -266,17 +276,16 @@ The tests delete what they create, except the labels `pocket-smoke` and `templat
 ## Measuring
 
 `scripts/perf/` times Pocket with long lists, in Chrome, against a Vikunja of its own (`pocket-perf`, on port 3470)
-seeded with a busy project. `npm run perf` times opening each screen. `npm run perf:rows` times a tick, a swipe, an
-add, the start of a scroll and a checklist left alone. Its README says how, and keeps the numbers. Measure before
-and after any change that could slow a long list: something called for every row, a new `x-for`, something per row
-on every change.
+seeded with a busy project. `npm run perf` times opening each screen. `npm run perf:rows` times a tick, a swipe and
+other changes to one row. Its README says how, and keeps the numbers. Measure before and after any change that could
+slow a long list: something called for every row, a new `x-for`, something per row on every change.
 
 ## The README's pictures
 
 With `npm run dev` running, `npm run demo` remakes the GIFs and screenshots in `docs/screenshots/`. It drives the
-real app in a phone-sized browser with a small café's made-up tasks for two users of its own, `alex` and `jamie`,
-and the page's clock fixed, so the dates in the pictures always match the README. Examples in the README and the
-guide use the same café. Run it after changing how Pocket looks.
+real app in a phone-sized browser with a made-up café's tasks and the page's clock fixed, so the dates in the
+pictures match the README. The README and the guide use the same café in their examples. Run it after changing how
+Pocket looks.
 
 ## The specimen
 

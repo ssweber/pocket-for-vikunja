@@ -205,7 +205,8 @@ export const stageView = a => {
   });
 };
 // The stages entry `a` is sent in. A stage builds its requests only from the entry and `a.fixed`, so each part always
-// carries the same request, and its key gets the same answer from the relay.
+// carries the same request, and its key gets the same answer from the relay. A request that a read decides on goes last
+// in its stage.
 export const stagesOf = a => {
   const s = OPS[a.op].stages;
   return typeof s === 'function' ? s(a) : s;

@@ -19,6 +19,10 @@
 // starts with a UUIDv7, which holds the time it was made. A 5xx, a 408, a 429, a 401, or a forward that couldn't
 // connect to Vikunja, isn't stored, so the request can be sent again. Vikunja changes nothing for a request that fails
 // that way.
+//
+// Vikunja's rate limit sees a relayed write twice. With ratelimit.kind: user, it counts against its user once as it
+// reaches the relay and once as the relay forwards it. With ip, every forwarded request reaches /api/v2 from Vikunja's
+// own machine, as 127.0.0.1, so they all count against that one address.
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what

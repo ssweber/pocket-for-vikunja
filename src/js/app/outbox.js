@@ -71,7 +71,7 @@ export default {
     return OUTBOX.sent;
   },
   // Tells tests whether Pocket is sending, waiting or idle. A busy add box counts as sending before its entry is
-  // queued.
+  // queued, or a test could read 'idle' between the tap and the entry.
   get syncState() {
     return sendState({
       busy: this.flushing || this.writing > 0 || this.cap.busy || this.cap.adding > 0 || this.sheet.sub.adding > 0,
