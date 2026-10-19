@@ -35,6 +35,9 @@
         </template>
         <button class="card-open" @click="openRow(t)"><span class="card-title" x-text="h.title"></span><span class="sr" x-text="h.said ? ', ' + h.said : ''"></span><template x-if="h.prio"><span class="bars" :class="'p' + h.prio" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="h.due"><span class="due num" :class="h.due.cls" aria-hidden="true" x-text="h.due.text"></span></template><template x-if="h.color"><i class="dot" aria-hidden="true" x-style="{background: h.color}"></i></template></button>
       </div>
+      <!-- A done task on Today, kept as the card of its open subtasks, says so under its title (c.head). The header's
+           screen reader text already says it. -->
+      <template x-if="c.head"><div class="card-line" aria-hidden="true" x-text="c.head"></div></template>
       <!-- When every subtask is done, the card waits for Close, which does what tapping the ring does. -->
       <template x-if="c.closes"><div class="card-close"><span x-text="c.run ? 'All steps done' : 'All subtasks done'"></span><button type="button" class="close-btn" x-show="!t.done" :disabled="!canWrite(t.project_id)" :aria-label="c.ring?.label" @click="ringTap(t, $el.closest('.day-card'))">Close</button></div></template>
       <div class="card-rows">

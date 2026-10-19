@@ -81,6 +81,8 @@ is a new 0.x.y.
   claim slot, a slide, the sheet or a step's edit box.
 - Adding `@user` in a template step's edit box no longer also queues a rename of the step.
 - On a phone set to a region that writes the day first, quick add reads "Oct 24" as 24 October, not October 2024.
+- On Today, a done task with a subtask still open, such as one that repeats, stays that subtask's card, marked done,
+  instead of hiding the subtask under Done today.
 
 ### What Pocket writes into Vikunja
 

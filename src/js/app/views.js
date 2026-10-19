@@ -868,7 +868,7 @@ export default {
     let changed = false;
     for (const g of this.view.groups)
       for (const t of g.tasks) {
-        const d = !t.done && this.todayDates(t);
+        const d = this.todayDates(t);
         if (!d?.card) continue;
         const c = cards[t.id],
           when = d.when ?? null;
@@ -1000,7 +1000,11 @@ export default {
       if (!byId.has(id))
         for (const t of c.from) put(t, isSet(t.due_date) ? 'dated' : this.stepRun(t) ? 'runs' : 'nodate');
     this.placeDated(groups, dated, shown);
-    Object.assign(at.donetoday, { tasks: done.map(own), open: !!doneOpen.all().today });
+    // A done task that is the card of its open subtasks is not also listed under Done today (belongsIn).
+    Object.assign(at.donetoday, {
+      tasks: done.filter(t => !shown[t.id] || this.isRunTask(t)).map(own),
+      open: !!doneOpen.all().today,
+    });
     return { groups, cards: shown, steps: steps.map(own), positions };
   },
   /* Load open project tasks in List view order with subtasks under each parent. Count Done separately and load its

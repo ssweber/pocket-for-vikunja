@@ -166,14 +166,17 @@ export default {
       has = p => p?.related_tasks?.subtask?.some(s => s.id === t.id);
     return own ?? (has(this.sheetTask) ? this.sheet.id : (Object.values(this.tasks).find(has)?.id ?? null));
   },
-  // Whether a done task is shown struck through on a project's open list, above subtasks that are still open
-  // (loadProject).
+  // Whether a done task is shown struck through above subtasks that are still open: on a project's open list
+  // (loadProject), or on Today as their card (cardOf).
   isHead(t) {
-    return (
-      !!t?.done &&
-      this.route.name === 'project' &&
-      !!this.view.groups.find(g => g.key === 'open')?.heads?.includes(t.id)
-    );
+    if (!t?.done) return false;
+    if (this.route.name === 'today')
+      return (
+        !!this.view.cards?.[t.id] &&
+        !this.isRunTask(t) &&
+        this.view.groups.some(g => g.key !== 'donetoday' && g.tasks.includes(t))
+      );
+    return this.route.name === 'project' && !!this.view.groups.find(g => g.key === 'open')?.heads?.includes(t.id);
   },
   // Whether a task on a project's open list has subtasks still open under it there.
   leftOpenUnder(t) {

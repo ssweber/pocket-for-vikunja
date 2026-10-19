@@ -595,7 +595,8 @@ export default {
      - In search, by whether it is done.
      - On Today, by its date (dayGroup), or a card's (todayDates). A task with no date goes under "Added today, no date"
        when the user made it today, and a checklist or a step under Checklists when it is the user's or has a step of
-       theirs (todayItems, cards.js). A done task goes under Done today when the user did it (doneByMe). */
+       theirs (todayItems, cards.js). A done task goes under Done today when the user did it (doneByMe), unless open
+       subtasks keep it on Today as their card. */
   belongsIn(t, from = null) {
     const r = this.route,
       fresh = from === null;
@@ -613,16 +614,16 @@ export default {
     const t0 = startOfDay(),
       me = this.user?.id,
       mine = us => (us || []).some(u => u.id === me);
+    if (this.ofFinished(t)) return null;
+    const { when, made, card } = this.todayDates(t);
     // Today's open lists are read without reactions, and Pocket adds its ✅ only where they were read (marked,
     // ops/shown.js). So a task the user ticked counts as theirs too.
-    if (t.done)
+    if (t.done && !card)
       return (this.doneByMe(t) || this.tickedByMe(t.id)) &&
         !this.stepRun(t) &&
         (!isSet(t.done_at) || new Date(t.done_at) >= t0)
         ? 'donetoday'
         : null;
-    if (this.ofFinished(t)) return null;
-    const { when, made, card } = this.todayDates(t);
     if (isSet(when)) return dayGroup(when);
     // A step shows as a row when its checklist can't be read (todayFrom).
     if (this.isRunTask(t) || this.stepRun(t) != null)
@@ -636,11 +637,12 @@ export default {
     return new Date(made) >= t0 && (card || sub || !t.created_by || t.created_by.id === me) ? 'nodate' : null;
   },
   /* The dates Today places task `t` by, as its load does. A card goes by the dates that put it on Today (todayCard),
-     and by when it was made (`made`). `card` says whether `t` is a card or becomes one. A task that was a card and has
-     nothing left to put it on Today goes by its own dates, as a row does. */
+     and by when it was made (`made`). `card` says whether `t` is a card or becomes one. A done task is a card only by
+     its open subtasks, and a finished checklist never is. A task that was a card and has nothing left to put it on
+     Today goes by its own dates, as a row does. */
   todayDates(t) {
     const c = this.view.cards?.[t.id],
-      subs = !t.done && this.role(t) !== 'template' ? this.cardSubs(t).filter(s => !s.done) : [];
+      subs = this.role(t) !== 'template' && !(t.done && this.isRunTask(t)) ? this.cardSubs(t).filter(s => !s.done) : [];
     const why = (c || subs.length) && this.todayCard(t, subs);
     return why
       ? { when: why.when, made: why.made || t.created, card: true }

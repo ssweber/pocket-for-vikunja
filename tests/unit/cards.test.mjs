@@ -1897,6 +1897,7 @@ const loadToday = (c, list, runIndex = {}) => {
       parents,
       steps: parents.flatMap(p => p.related_tasks.subtask.map(s => app.tasks[s.id])),
       positions: {},
+      done: list.filter(t => t.done && new Date(t.done_at) >= t0 && app.doneByMe(t)),
     },
     t => app.row(t),
   );
@@ -1965,6 +1966,21 @@ test('a regroup right after Today loads leaves every card where the load put it'
       {},
       [['nodate', [51]]],
     ],
+    [
+      'your task closed today in the web app, due today, with a subtask still open due Friday',
+      [
+        task(60, {
+          done: true,
+          done_at: local(14, 9),
+          due_date: local(14, 9),
+          assignees: [me],
+          related_tasks: subs([61]),
+        }),
+        task(61, { due_date: local(16, 9), related_tasks: under(60) }),
+      ],
+      {},
+      [['week', [60]]],
+    ],
   ]) {
     const { app, shows } = loadToday(c, list, runIndex),
       loaded = shows();
@@ -1973,4 +1989,129 @@ test('a regroup right after Today loads leaves every card where the load put it'
     assert.deepEqual(shows(), loaded, kind + ': nothing moves at the regroup');
     c.mock.timers.reset();
   }
+});
+
+test('on Today, a task closed in the web app stays the card of its open subtask, done, until nothing open is due this week', c => {
+  const list = (f = {}) => [
+    task(60, {
+      title: 'Pack the van',
+      done: true,
+      done_at: local(14, 9),
+      related_tasks: subs([61], [62, true]),
+      ...f,
+    }),
+    task(61, { title: 'Lights', due_date: local(16, 9), related_tasks: under(60) }),
+    task(62, { title: 'Chairs', done: true, related_tasks: under(60) }),
+  ];
+  const g = { cards: 'today', line: true, key: 'week' };
+  for (const [kind, f, change, want] of [
+    ['its subtask is done', { assignees: [me] }, { done: true }, [['donetoday', [60]]]],
+    ['its subtask moves past this week', {}, { due_date: local(25, 9) }, []],
+  ]) {
+    const { app, shows } = loadToday(c, list(f));
+    Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {} });
+    assert.deepEqual(
+      shows().groups,
+      [['week', [60]]],
+      kind + ': the task is on Today by its subtask, and nowhere else',
+    );
+    const card = app.cardOf(app.tasks[60], g);
+    assert.deepEqual(
+      [card?.head, card?.rows.map(s => s.title), card?.ring.label],
+      ['Done, but 1 subtask is still open', ['Lights'], 'Mark not done: Pack the van'],
+      kind + ': the card says the task is done, and its ring opens it again',
+    );
+    app.change(w => w.read([{ ...list()[1], ...change }], TASK, started()));
+    app.regroup();
+    assert.deepEqual(
+      shows().groups,
+      want,
+      kind + ': the task goes under Done today when it is the user’s, or leaves Today when it is not',
+    );
+    c.mock.timers.reset();
+  }
+});
+
+test('a task ticked on Today over a repeating subtask stays its card, done, and its ring opens it again in place', async t => {
+  const soon = new Date(Date.now() + 36e5).toISOString(),
+    far = new Date(Date.now() + 20 * 864e5).toISOString(),
+    list = [
+      task(10, { title: 'Pack the van', related_tasks: subs([11], [12]) }),
+      task(11, { title: 'Lights', related_tasks: under(10) }),
+      task(12, { title: 'Water the plants', due_date: soon, repeat_after: 86400, related_tasks: under(10) }),
+    ];
+  const { v, app } = sender(t, list, actions, leaving, views, cards, alerts);
+  t.after(async () => {
+    app.clearNow();
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  Object.assign(app, {
+    cardPage: {},
+    cardOpen: {},
+    cardAdded: {},
+    positions: {},
+    lines: {},
+    perms: {},
+    checklistIds: new Set(),
+    render() {},
+    rowEl: () => ROW,
+    openSheet(kind) {
+      this.sheet = { ...this.sheet, kind, open: true };
+    },
+    closeSheet() {
+      this.sheet = { ...this.sheet, kind: '', open: false };
+    },
+  });
+  app.change(w => w.read(structuredClone(list), TASK, started()));
+  for (const x of list) app.row(structuredClone(x));
+  const key = dayGroup(soon),
+    g = { cards: 'today', line: true, key },
+    p = app.tasks[10];
+  Object.assign(app.view, { groups: todayGroups(), cards: { 10: { when: soon, made: null, focus: null } } });
+  app.view.groups.find(x => x.key === key).tasks.push(p);
+  app.regroup();
+  const rows = () => app.view.groups.filter(x => x.tasks.length).map(x => [x.key, x.tasks.map(y => y.id)]);
+  const close = async () => {
+    await app.ringTap(p, ROW);
+    await app.confirmComplete();
+  };
+  await close();
+  assert.deepEqual(
+    [10, 11, 12].map(id => v.task(id).done),
+    [true, true, false],
+    'the task and its plain subtask are done, and the repeating subtask stays open',
+  );
+  assert.deepEqual(
+    [app.leaving, app.cardOf(p, g)?.head],
+    [{ 10: 'done', 11: 'done' }, null],
+    'until the batch clears, the card shows the tick only',
+  );
+  await app.clearBatch(true);
+  assert.deepEqual(rows(), [[key, [10]]], 'the card stays where it was, and Done today doesn’t list the task');
+  assert.deepEqual(
+    [app.cardOf(p, g)?.head, app.cardOf(p, g)?.rows.map(s => s.title)],
+    ['Done, but 1 subtask is still open', ['Water the plants']],
+  );
+  await app.ringTap(p, ROW);
+  assert.deepEqual(
+    [v.task(10).done, v.task(11).done, app.leaving, app.said],
+    [false, true, { 10: 'open' }, 'Not done: Pack the van'],
+    'tapping the ring opens the task again, and only the task',
+  );
+  await app.clearBatch(true);
+  assert.deepEqual(
+    [rows(), app.cardOf(p, g)?.head, app.cardOf(p, g)?.rows.map(s => s.title)],
+    [[[key, [10]]], null, ['Water the plants']],
+    'the task stays in place, open',
+  );
+  await close();
+  await app.clearBatch(true);
+  assert.deepEqual(rows(), [[key, [10]]]);
+  await app.act({ id: uuid7(), op: 'due', task: 12, was: soon, due: far, run: null });
+  await app.clearBatch(true);
+  assert.deepEqual(
+    rows(),
+    [['donetoday', [10]]],
+    'once its subtask is due after this week, the task the user ticked goes under Done today',
+  );
 });

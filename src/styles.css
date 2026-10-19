@@ -1730,10 +1730,17 @@ button.ring::after {
   position: relative;
   top: -1px;
 }
-/* A done parent with open subtasks (a project's list) has its title struck through, like a done row's */
+/* A done parent with open subtasks (on a project's list or Today) has its title struck through, like a done row's */
 .day-card.done .card-title {
   color: var(--muted);
   text-decoration: line-through;
+}
+/* A done task on Today's card has a line under its title, as a done row on a project's list has under its own */
+.card-line {
+  padding: 0 14px 4px var(--title-x);
+  font-size: 14px;
+  line-height: 19px;
+  color: var(--muted);
 }
 /* When every subtask is done, the card says so and shows a Close button where its rows' claim slots were */
 .card-close {

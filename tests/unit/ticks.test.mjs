@@ -123,8 +123,9 @@ test('completing a parent with close closes its open subtasks, and undo opens ex
     [false, true, false, false],
   );
 });
-test('when the batch clears, a parent completed on Today goes to Done today with the subtasks closed with it', async t => {
+test('when the batch clears, the subtasks closed with a parent on Today go to Done today, and the parent stays over the one that repeats', async t => {
   const { v, app } = listed(t, family(), views, cards);
+  Object.assign(app, { positions: {} });
   Object.assign(app.view, { groups: todayGroups(), cards: {} });
   app.view.groups[0].tasks.push(...[10, 11, 13, 14].map(id => app.row(v.task(id))));
   await app.toggleDone(app.tasks[10], ROW, { close: true });
@@ -134,8 +135,11 @@ test('when the batch clears, a parent completed on Today goes to Done today with
   await app.clearBatch(true);
   assert.deepEqual(
     [onToday(app, 'overdue'), onToday(app, 'donetoday')],
-    [[13], [14, 11, 10]],
-    'the rows leave together, and the repeating subtask stays',
+    [
+      [10, 13],
+      [14, 11],
+    ],
+    'the closed subtasks leave together, and the parent stays as the card of its overdue repeating subtask',
   );
   assert.deepEqual(app.leaving, {});
 });
@@ -843,6 +847,7 @@ test('on Today, Done today takes a task ticked here, sent or waiting, and not a 
       t,
       [1, 2, 3].map(id => ({ id, title: 'Task ' + id, project_id: 7 })),
       views,
+      cards,
     );
   Object.assign(app, { seenBy: { 7: 2 }, route: { name: 'today' } });
   Object.assign(app.view, { groups: todayGroups(), cards: {} });

@@ -12,7 +12,7 @@ import { pctOf, workedOut } from '../progress.js';
 import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js';
 import { listViewOf, positionOrder } from '../order.js';
 import { isMovedGap } from '../lists.js';
-import { completeAsk, ringSaid } from '../messages.js';
+import { completeAsk, headText, ringSaid } from '../messages.js';
 import { started, TASK_COUNT } from './tasks.js';
 
 const shownStep = new Map(); // card id -> the step last on its top row, to tell when a new one arrives
@@ -24,9 +24,10 @@ export default {
      On Today ('today') the cards are the tasks in view.cards. In search ('found') any open task with open subtasks or
      steps is a card. On a project's list ('list') listCard decides. On every list, an open task whose subtasks are all
      done is a card with no rows and a Close button (`closes`). A ticked subtask or step stays on its card until the
-     batch clears (leaving.js). The gap a moved row leaves on Today is never a card (isMovedGap).
+     batch clears (leaving.js). The gap a moved row leaves on Today is never a card (isMovedGap). On Today a done task
+     stays the card of its open subtasks, as a project's list keeps it above them, and `head` is the line that says so.
 
-     The card is {id, run, step, steps, rows, n, peek, more, open, folds, all, ring, closes, project, g}.
+     The card is {id, run, step, steps, rows, n, peek, more, open, folds, all, ring, closes, head, project, g}.
      `step` is the top row. `steps` is the open subtasks in the card's order, and `rows` is the ones shown.
      `n` is the number of open subtasks. `peek` is the first row that "More" hides, and `more` is how many rows it
      hides. `open` says the card is expanded, and `folds` that it can be collapsed. `all` is every subtask.
@@ -34,21 +35,16 @@ export default {
   cardOf(t, g) {
     const kind = g?.cards;
     if (kind === 'list') return this.listCard(t, g);
-    if (
-      !kind ||
-      isMovedGap(t) ||
-      t.pending ||
-      (t.done && !this.leaving[t.id] && !closing.has(t.id)) ||
-      this.role(t) === 'template'
-    )
-      return null;
+    const marked = t.done && (!!this.leaving[t.id] || closing.has(t.id)),
+      head = kind === 'today' && t.done && !marked && !this.isRunTask(t);
+    if (!kind || isMovedGap(t) || t.pending || (t.done && !marked && !head) || this.role(t) === 'template') return null;
     const run = this.isRunTask(t),
       all = this.cardSubs(t, run),
       done = s => this.subDone(s, run);
     let steps = all.filter(s => !done(s) || this.leaving[s.id]);
     // Subtasks added from Today's box during this visit (addedRows), including ones still waiting to be sent.
     const added = kind === 'today' ? this.addedRows(t) : [];
-    if (!steps.length && !added.length) return all.length ? this.closingCard(t, g, run, all) : null;
+    if (!steps.length && !added.length) return all.length && !head ? this.closingCard(t, g, run, all) : null;
     // A task that got a subtask from Today's box stays a card until the user leaves the screen, whatever its date.
     // That keeps the new subtask visible.
     if (kind === 'today' && !this.view.cards?.[t.id] && !added.length) return null;
@@ -75,6 +71,7 @@ export default {
       all,
       ring: this.ringOf(t),
       closes: false,
+      head: head ? headText(r.list.filter(s => s.pending || !done(s)).length) : null,
       project: t.project_id,
     };
     // The options for the card's rows. `key` lets a row under the Today heading leave out the word "Today".
@@ -105,6 +102,7 @@ export default {
       all,
       ring: this.ringOf(t),
       closes: true,
+      head: null,
       project: t.project_id,
     };
     card.g = { depth: {}, card, key: g.key };
@@ -141,6 +139,7 @@ export default {
       all,
       ring: this.ringOf(t, waiting),
       closes: false,
+      head: null,
       project: t.project_id,
     };
     // heads and tasks are getters. Reading them here would rebuild every card whenever a row was added or removed.
@@ -405,16 +404,13 @@ export default {
     );
   },
   // The tasks that Move all to today moves: each overdue row, and for an overdue card the task and its overdue open
-  // subtasks. A checklist card moves nothing, because the checklist times its own steps.
+  // subtasks. A checklist card moves nothing, because the checklist times its own steps. A done task's date no longer
+  // places it, so it stays as it is.
   get overdueTasks() {
     const g = this.view.groups.find(x => x.key === 'overdue'),
-      late = x => isSet(x.due_date) && isLate(x.due_date);
+      late = x => !x.done && isSet(x.due_date) && isLate(x.due_date);
     return (g?.tasks || []).flatMap(t =>
-      !this.view.cards?.[t.id]
-        ? [t]
-        : this.isRunTask(t)
-          ? []
-          : [t, ...this.cardSubs(t, false).filter(s => !s.done)].filter(late),
+      !this.view.cards?.[t.id] ? [t] : this.isRunTask(t) ? [] : [t, ...this.cardSubs(t, false)].filter(late),
     );
   },
 
