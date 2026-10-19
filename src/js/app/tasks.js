@@ -85,8 +85,9 @@ let clock = 0;
    carries over to the next page. */
 export const started = () => (clock = Math.max(clock + 1, Date.now() * 1000));
 /* When the copies were last dropped, as a user signed out (dropCopies). A request that started before then may bring
-   the last user's tasks, so nothing it brings goes into the store. A write counts from the start of its try on this
-   page (`start`), and a saved copy (0) is the new user's. */
+   the last user's tasks, so nothing it brings goes into the store. A write is judged by when its try on this page
+   started (`start`), since its op's first request may be from a page before. A copy read from the phone has time 0,
+   and is the signed-in user's, since sign-out clears the phone's copies. */
 let dropped = 0;
 const before = w => {
   const at = typeof w === 'number' ? w : (w.start ?? w.at);

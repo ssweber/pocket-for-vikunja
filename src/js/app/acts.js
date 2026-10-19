@@ -149,8 +149,9 @@ export function stageContext(a, app) {
       } finally {
         own?.end();
       }
-      /* A replayed reply is as old as its request's first send. A page that closed before saving that time sent it
-         after the op's first request. A reply that isn't replayed was made now. */
+      /* A replayed reply is as old as its request's first send. When the entry has no time for that send, a page
+         before this one sent the request and closed before saving the time. That send came after the op's first
+         request, so the op's time stands in for it. A reply that isn't replayed was made now. */
       a.sentAt[key] = replayed ? (first ?? w?.at ?? at) : at;
       if (c.write) c.write.at = firstSent(a);
       if (replayed && w) w.replays = true;
