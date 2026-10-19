@@ -154,7 +154,8 @@ export function parseCapture(
     pct: 0,
     marks: [],
   };
-  const P = QUICK_ADD_PREFIXES[mode];
+  const P = QUICK_ADD_PREFIXES[mode],
+    typed = text;
   if (!P) {
     const f = !ignore.progress && endFigure(text);
     if (f)
@@ -492,13 +493,30 @@ export function parseCapture(
   }
   /* A @user, *label or +project in the middle of the title leaves its word there, without its sign: "Ask @user about
      the invoice" becomes "Ask user about the invoice". One at the start or the end, with only other such words between
-     it and that end, is removed as usual. Every other phrase is out of the title by now, so a date doesn't count. */
+     it and that end, or other phrases, is removed as usual. */
   const bare = s =>
     !Object.values(P)
       .reduce((t, c) => t.replace(tokenRe(c), ' '), s)
       .trim();
+  // A phrase counts whether or not it was read, so tapping a chip off, or a box that doesn't read dates, doesn't move
+  // the edges: "Call the plumber @user tomorrow" keeps @user at the end with dates tapped off.
+  let unread = null;
+  const phrases = () =>
+    new Set(
+      ['due', 'repeat', 'priority', 'progress'].some(k => ignore[k])
+        ? parseCapture(typed, projects, { mode, now, dueTime })
+            .marks.filter(m => m.kind !== 'project' && m.kind !== 'labels' && m.kind !== 'assignees')
+            .flatMap(m => Array.from({ length: m.end - m.start }, (_, i) => m.start + i))
+        : [],
+    );
+  const plain = (s, e) =>
+    out.title
+      .slice(s, e)
+      .split('')
+      .map((c, i) => ((unread ??= phrases()).has(from[s + i]) ? ' ' : c))
+      .join('');
   // A step's hidden T#20m after a word doesn't stop the word being at the end, as with a date.
-  const inside = (s, e) => !bare(out.title.slice(0, s)) && !bare(out.title.slice(e).replace(/[\uE000-\uF8FF]+/g, ' '));
+  const inside = (s, e) => !bare(plain(0, s)) && !bare(plain(e).replace(/[\uE000-\uF8FF]+/g, ' '));
   const keep = [];
   for (const g of signs) {
     const i = from.findIndex(f => f > g.at),

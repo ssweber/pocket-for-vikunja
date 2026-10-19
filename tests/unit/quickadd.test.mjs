@@ -234,6 +234,26 @@ test('a word whose chip is tapped off stays as typed, and still counts as one at
   assert.equal(added('Call the plumber *home @bob', { ignore: { assignees: true } }).title, 'Call the plumber @bob');
 });
 
+test('a date, repeat, priority or percentage counts at the end with its chip tapped off', () => {
+  for (const [text, ignore, title] of [
+    ['Call the plumber @bob tomorrow', { due: true }, 'Call the plumber tomorrow'],
+    ['Fix the leak *home by friday evening', { due: true }, 'Fix the leak by friday evening'],
+    ['Water the plants +home every day', { repeat: true }, 'Water the plants every day'],
+    ['Water the plants @bob every day evening', { due: true }, 'Water the plants evening'],
+    ['Call the plumber @bob !2', { priority: true }, 'Call the plumber !2'],
+    ['Paint the fence *home 50%', { progress: true }, 'Paint the fence 50%'],
+  ])
+    assert.equal(added(text, { ignore }).title, title, text);
+});
+
+test('with people tapped off, a @user keeps its @ in the middle and still counts at the end', () => {
+  assert.equal(added('Ask @bob *now about it', { ignore: { assignees: true } }).title, 'Ask @bob now about it');
+  assert.equal(
+    added('Call the plumber @bob *home tomorrow', { ignore: { assignees: true, due: true } }).title,
+    'Call the plumber @bob tomorrow',
+  );
+});
+
 test('the mark on a word in the middle of the title says what it leaves there', () => {
   const text = 'Ask @bob to fix the *"burst pipe" *now at +home first tomorrow *later',
     p = parseCapture(text, PROJECTS, { now: new Date(2026, 9, 19, 10) });

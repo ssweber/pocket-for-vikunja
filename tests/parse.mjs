@@ -629,6 +629,15 @@ add({
   date: plus(1),
 });
 add({
+  text: 'Call the plumber *home tomorrow',
+  ignore: { due: true },
+  title: 'Call the plumber tomorrow',
+  labels: ['home'],
+  date: null,
+  pocket: true,
+  why: 'a date whose chip is tapped off still counts at the end',
+});
+add({
   text: 'Fix the *urgent leak',
   ignore: { labels: true },
   title: 'Fix the *urgent leak',

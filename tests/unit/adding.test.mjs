@@ -1183,6 +1183,17 @@ test("in a subtask box, a heading's lines go under the heading, and the heading 
   );
 });
 
+test("a checklist project's subtask box leaves a date in the title, and a @user or *label before it counts as at the end", () => {
+  const app = boxes();
+  Object.assign(app, { checklistIds: new Set([5]), tasks: { 9: app.sheet.task } });
+  app.sheet.id = 9;
+  app.sheet.sub.text = 'Call the plumber @bob *home tomorrow';
+  assert.deepEqual(
+    [linesOf(app, 'sub'), app.boxParsed('sub').labels, app.boxParsed('sub').due],
+    [[['Call the plumber @bob tomorrow', false]], ['home'], null],
+  );
+});
+
 test('a pasted list with indented lines puts each under the nearest line above it that is indented less', () => {
   const app = boxes();
   app.cap.text = 'Pack the van (38%)\n  Load chairs (50%)\n    Stack them\n  Tables\nSet the hall';
