@@ -6,6 +6,7 @@
    batch at once. */
 import { app, motion } from '../util.js';
 import { batchTimer, TOP_MS } from '../batch.js';
+import { unmarkedSaid } from '../messages.js';
 
 // The dismissed hint's space is removed this long after the last touch, which is sooner than rows leave.
 const HINT_MS = 1000;
@@ -129,8 +130,7 @@ export default {
     }
     this.dropMark(m);
     const title = this.tasks[id]?.title || '';
-    this.said =
-      m.kind === 'deleted' ? 'Restored: ' + title : m.kind === 'done' ? 'Not done: ' + title : 'Done: ' + title;
+    this.said = unmarkedSaid(m.kind, title);
     return m.undo?.() || true;
   },
   /* A deleted list row shows as a gap until the batch clears. Sheet headings and checklist screens keep their own

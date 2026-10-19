@@ -24,14 +24,43 @@ const OP = name => `:matches([${name}.property.name='op'], [${name}.expression.p
 const TEXT = name => `:matches([${name}.type='Literal'], [${name}.type='TemplateLiteral'])`;
 const OP_NAME = `:matches(BinaryExpression[operator=/^[!=]==?$/]:matches(${OP('left')}${TEXT('right')}, ${OP('right')}${TEXT('left')}), SwitchStatement${OP('discriminant')}, CallExpression[callee.property.name=/^(includes|indexOf|has)$/]${OP('arguments.0')})`;
 const BY_OP = 'Only src/js/ops/ knows which op is which. Ask the op (opOf, src/js/ops/index.js), adding a field with its default there, or call a helper in the op\'s own file.';
-/* A sentence written where it is shown: a string with a letter in it or a template literal, alone, joined with + or
-   chosen with ?: or ||. It fails as the first argument of say, notify or confirm, assigned to this.said, given as a
-   marked row's `said` (markRow), or as an action's label ({label, fn}). An argument of a call inside it passes, so
-   offlineFor('rename the project') does, and messages.js holds the sentence. */
-const WORDS = ':matches(Literal[value=/[A-Za-z]/], TemplateLiteral)';
-const SENTENCE = `:matches(${WORDS}, :matches(BinaryExpression, ConditionalExpression, LogicalExpression):matches(:has(> ${WORDS}), :has(> :matches(BinaryExpression, ConditionalExpression, LogicalExpression) > ${WORDS})))`;
-const SAID = `:matches(:matches(CallExpression[callee.property.name=/^(say|notify)$/], CallExpression[callee.name='confirm']) > ${SENTENCE}.arguments:first-child, AssignmentExpression[left.property.name='said'] > ${SENTENCE}.right, CallExpression[callee.property.name='markRow'] > ObjectExpression > Property[key.name='said'] > ${SENTENCE}.value, ObjectExpression:has(> Property[key.name='fn']) > Property[key.name='label'] > ${SENTENCE}.value)`;
 const WORDING = 'Write the sentence in src/js/messages.js, as a constant or a function, and pass that here. One situation has one wording there.';
+/* A sentence written where it is shown fails lint outside messages.js. A sentence is a string with a letter, or a
+   template literal with a letter outside its ${}, anywhere in a + chain, a choice (?:, ||, &&, ??) or a ${} that makes
+   the first argument of say, notify or confirm (window.confirm too), this.said, a marked row's `said` (markRow), or an
+   action's label ({label, fn}). A call's arguments aren't followed, so offlineFor('rename the project') passes, and
+   messages.js holds the sentence. The rule can't see a sentence put in a variable first, returned by a function outside
+   messages.js, given in another property of say's options (row: {text}), or written in the markup. A selector can't
+   follow a + chain to any depth, so this is a rule of its own. */
+const lettered = s => /[A-Za-z]/.test(s ?? '');
+const sentence = n =>
+  n?.type === 'Literal' ? typeof n.value === 'string' && lettered(n.value)
+  : n?.type === 'TemplateLiteral' ? n.quasis.some(q => lettered(q.value.cooked)) || n.expressions.some(sentence)
+  : n?.type === 'BinaryExpression' ? n.operator === '+' && (sentence(n.left) || sentence(n.right))
+  : n?.type === 'LogicalExpression' ? sentence(n.left) || sentence(n.right)
+  : n?.type === 'ConditionalExpression' ? sentence(n.consequent) || sentence(n.alternate)
+  : false;
+const named = (o, name) => o?.type === 'ObjectExpression' && o.properties.find(p => p.type === 'Property' && !p.computed && p.key.name === name);
+const WORDS = {
+  meta: { type: 'problem', schema: [] },
+  create(context) {
+    const check = n => sentence(n) && context.report({ node: n, message: WORDING });
+    return {
+      CallExpression({ callee: c, arguments: args }) {
+        const method = c.type === 'MemberExpression' && !c.computed ? c.property.name : null;
+        if (/^(say|notify)$/.test(method) || c.name === 'confirm' || (method === 'confirm' && c.object.name === 'window'))
+          check(args[0]);
+        if (method === 'markRow') for (const a of args) check(named(a, 'said')?.value);
+      },
+      AssignmentExpression(n) {
+        if (n.left.type === 'MemberExpression' && n.left.property.name === 'said') check(n.right);
+      },
+      ObjectExpression(n) {
+        if (named(n, 'fn')) check(named(n, 'label')?.value);
+      },
+    };
+  },
+};
 /* The files that write to Vikunja directly, not through the outbox. What they write needs Vikunja's answer before
    anything else can happen, and the user waits for it on screen. Every other write is an op, sent by acts.js with a
    key through a stage's c.send, which no selector here matches. */
@@ -58,7 +87,6 @@ const RESTRICTED = [
   { selector: "MemberExpression[object.type='ThisExpression'][property.name='opsOn']", message: "Read a task's waiting ops with this.opsOf(id) (tasks.js).", allow: ['src/js/app/tasks.js'] },
   { selector: OP_NAME, message: BY_OP, allow: ['src/js/ops/**'] },
   { selector: "CallExpression[callee.object.type='ThisExpression'][callee.property.name='unchanged']", message: "Undo with undoOps. An op's invert checks Vikunja's copy itself, field by field.", allow: [] },
-  { selector: SAID, message: WORDING, allow: ['src/js/messages.js'] },
 ];
 // The tests that make up roleOf in checklists.js. A file outside it asks roleOf, or the component's role(t).
 const ROLES = { group: ['**/checklists.js'], importNames: ['hasTemplateLabel', 'isTemplate', 'isRun', 'isRunStepTask', 'isRunDesc', 'hasOwnOrder'],
@@ -88,6 +116,7 @@ export default [
       'no-restricted-imports': ['error', { patterns: [ROLES] }],
     },
   },
+  { files: ['src/**/*.js'], ignores: ['src/js/messages.js'], plugins: { pocket: { rules: { words: WORDS } } }, rules: { 'pocket/words': 'error' } },
   { files: ['src/js/api.js'], rules: { 'no-restricted-globals': 'off' } },
   { files: ['src/js/checklists.js'], rules: { 'no-restricted-imports': 'off' } },
   ...[...new Set(RESTRICTED.flatMap(r => r.allow))].map(file => ({ files: [file], rules: { 'no-restricted-syntax': restricted(file) } })),

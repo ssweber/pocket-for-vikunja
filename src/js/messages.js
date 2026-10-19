@@ -652,6 +652,12 @@ export const toOutbox = app => ({ label: 'Outbox', fn: () => app.openOutbox() })
 export const besideIt = (text, action) => text + (action ? `. ${action.label} is beside it.` : '');
 // A tick (`done`) or an untick of task `title`.
 export const tickSaid = (done, title) => (done ? 'Done: ' : 'Not done: ') + title;
+// A row's mark (`kind`, 'done', 'open' or 'deleted') taken back by tapping the row again.
+export const unmarkedSaid = (kind, title) =>
+  kind === 'deleted' ? 'Restored: ' + title : tickSaid(kind !== 'done', title);
+// A message on a task's row (`text`), and its button, which is on the row while it `stays`, or where the row was.
+export const rowLineSaid = (text, action, stays) =>
+  text + (action ? `. ${action.label} is ${stays ? 'on its row' : 'where it was'}.` : '');
 // A tick of a repeating task, with its next date (`next`, "next Tue, Oct 20") when Pocket knows it.
 export const doneRepeats = (title, next = '') => `Done: ${title}. It repeats${next ? ', ' + next : ''}`;
 // The same in a task's sheet, where the title is on screen already.

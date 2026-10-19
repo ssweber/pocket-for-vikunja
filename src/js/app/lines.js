@@ -4,7 +4,7 @@
    announces each message to screen readers. */
 import { collapse, motion } from '../util.js';
 import { UNDO_MS } from './toast.js';
-import { besideIt } from '../messages.js';
+import { besideIt, rowLineSaid } from '../messages.js';
 
 export const SAY_MS = 4000; // how long a message with nothing to tap shows
 const timers = new Map();
@@ -70,9 +70,7 @@ export default {
     if (this.lines[id]) this.endLine(id, true);
     const from = els.map(el => el.offsetHeight);
     this.lines[id] = { title: '', more: '', action: null, stays: false, ...line, id };
-    this.said =
-      [line.text, line.title, line.more].filter(Boolean).join(' ') +
-      (line.action ? `. ${line.action.label} is ${line.stays ? 'on its row' : 'where it was'}.` : '');
+    this.said = rowLineSaid([line.text, line.title, line.more].filter(Boolean).join(' '), line.action, line.stays);
     // Animate the height change, so replacing a row with a message doesn't jump.
     if (motion())
       this.$nextTick(() =>

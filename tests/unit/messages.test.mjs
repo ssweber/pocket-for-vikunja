@@ -81,6 +81,7 @@ import {
   repeatedStep,
   repeatsNext,
   ringSaid,
+  rowLineSaid,
   SAID,
   savedOffline,
   SENT_FIRST,
@@ -104,6 +105,7 @@ import {
   TOTP_NEEDED,
   UNDO,
   UNKNOWN,
+  unmarkedSaid,
   waitingWords,
   waitText,
 } from '../../src/js/messages.js';
@@ -374,6 +376,21 @@ test('the sign-in screen says why Pocket signed out, and what Vikunja asked for'
 
 test('a change the phone had no room for says so in one sentence', () => {
   assert.equal(NOT_KEPT, "Pocket couldn't save this on the phone. Keep Pocket open until it's sent.");
+});
+
+test('a screen reader hears a message on a row with its button, and a mark taken back', () => {
+  assert.deepEqual(
+    [
+      rowLineSaid('Done: Mop', { label: 'Undo' }, true),
+      rowLineSaid('Deleted', { label: 'Restore' }, false),
+      rowLineSaid('Done: Mop', null, true),
+    ],
+    ['Done: Mop. Undo is on its row.', 'Deleted. Restore is where it was.', 'Done: Mop'],
+  );
+  assert.deepEqual(
+    ['deleted', 'done', 'open'].map(k => unmarkedSaid(k, 'Mop')),
+    ['Restored: Mop', 'Not done: Mop', 'Done: Mop'],
+  );
 });
 
 test("a screen reader hears a ring's progress and a row's due date", () => {

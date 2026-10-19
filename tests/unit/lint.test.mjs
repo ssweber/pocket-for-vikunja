@@ -59,11 +59,12 @@ export const f = p => api(p, { method: 'POST', body: {} });
 });
 
 /* A sentence passed to say, notify or confirm, assigned to this.said, given as a marked row's said or as an action's
-   label fails lint outside messages.js. A call that builds the sentence there passes, whatever its arguments. */
+   label fails lint outside messages.js, wherever its letters are in a + chain, a choice or a ${}. A call that builds
+   the sentence there passes, whatever its arguments, and so does a template literal with no letters outside its ${}. */
 test('a sentence written where it is shown fails lint, and one from messages.js passes', async () => {
   const code = `import { notDone, UNDO } from '../messages.js';
 export default {
-  f(t, e) {
+  f(t, e, n) {
     this.say('Renamed', { place: 'sheet:top' });
     this.say('Not renamed: ' + e.message);
     this.notify(\`Deleted “\${t.title}”\`);
@@ -72,15 +73,21 @@ export default {
     this.said = 'Done: ' + t.title;
     this.markRow(t.id, { said: \`Done: \${t.title}\` });
     this.say(t.title, { action: { label: 'Undo', fn() {} } });
+    confirm('Delete ' + t.title + '?');
+    window.confirm(t.title + '?' + (n ? ' Sure' : ''));
+    this.say(\`\${n ? 'Moved' : ''}\`);
+    this.said = t.title + ', ' + (e.message || 'refused');
     this.say(notDone('renamed', e.message), { action: { label: UNDO, fn() {} } });
     this.say(t.problems.join('; '));
+    this.say(\`\${n}%\`);
+    this.said = \`\${t.title} \${n}\`;
     this.said = '';
   },
 };
 `;
   assert.deepEqual(
     await lint(code),
-    [4, 5, 6, 7, 8, 9, 10, 11].map(n => `${n}: ${WORDS}`),
+    [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(n => `${n}: ${WORDS}`),
   );
   assert.deepEqual(await lint(code, 'src/js/messages.js'), []);
 });
