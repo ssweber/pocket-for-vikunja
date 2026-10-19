@@ -3,6 +3,7 @@
 import './browser.mjs';
 import { setApp } from '../../src/js/util.js';
 import tasks, { dropCopies } from '../../src/js/app/tasks.js';
+import sheet from '../../src/js/app/sheet.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { setSeenToken, sharedToken } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
@@ -387,6 +388,7 @@ export function component(...parts) {
     shownAs: byId.shownAs,
     removeRow: byId.removeRow,
     hiddenRows: byId.hiddenRows,
+    sheetShows: Object.getOwnPropertyDescriptor(sheet, 'sheetShows'),
   });
   for (const part of parts) Object.defineProperties(c, Object.getOwnPropertyDescriptors(part));
   dropCopies();

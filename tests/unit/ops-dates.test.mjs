@@ -254,7 +254,7 @@ const sheeted = (t, list, role = null) => {
   const s = dated(t, list);
   Object.defineProperties(s.app, Object.getOwnPropertyDescriptors(sheet));
   Object.defineProperties(s.app, { checklistRole: { value: role, writable: true }, dueTime: { value: '09:00' } });
-  Object.assign(s.app.sheet, { id: list[0].id, kind: 'task', open: true });
+  Object.assign(s.app.sheet, { id: list[0].id, kind: 'task', open: true, show: true });
   return s;
 };
 const patches = (v, id) => reached(v, 'PATCH', new RegExp(`^/tasks/${id}$`)).map(r => r.body);

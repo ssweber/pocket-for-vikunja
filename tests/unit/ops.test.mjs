@@ -602,7 +602,7 @@ test("what Cancel gives back is the op's, and Cancel offers Undo only when nothi
 test("an op says it was refused in its task's open sheet only where it names a place there", async t => {
   const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }]);
   t.after(() => emptied(app));
-  Object.assign(app.sheet, { id: 7, kind: 'task', open: true });
+  Object.assign(app.sheet, { id: 7, kind: 'task', open: true, show: true });
   v.trouble = r => (r.method === 'PATCH' ? 403 : null);
   for (const sheetPlace of [null, 'sheet:due']) {
     await emptied(app);

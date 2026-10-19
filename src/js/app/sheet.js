@@ -87,6 +87,11 @@ export default {
       document.getElementById('d-more')?.focus();
     } else if (this.sheet.open) this.closeSheet();
   },
+  // Whether task `id`'s sheet is on screen. A closing sheet stays open while it slides down (closeSheet), and what is
+  // said then belongs on the task's row.
+  sheetShows(id) {
+    return this.sheet.open && this.sheet.show && this.sheet.kind === 'task' && this.sheet.id === id;
+  },
   /* Runs when the user leaves a task's sheet, whether it closes or another task opens. It saves notes being edited. It
      also keeps a comment or subtasks being written, for when the sheet opens again. It does nothing for a sheet that is
      already closing (a task opened again during the slide down), because the first call did the work.
@@ -465,7 +470,7 @@ export default {
      sheet shows both versions. With the sheet closed, a message on the task's row opens it. */
   notesRefused(a, e) {
     taskDrafts.set('desc:' + a.task, { text: a.text, base: a.base });
-    if (this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === a.task) {
+    if (this.sheetShows(a.task)) {
       Object.assign(this.sheet, {
         editingDesc: true,
         descDraft: a.text,

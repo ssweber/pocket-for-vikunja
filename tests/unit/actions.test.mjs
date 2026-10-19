@@ -160,7 +160,7 @@ const family = c => {
     }),
   );
   app.row(v.task(10));
-  opened(app, v.task(12), { kind: 'task', open: true });
+  opened(app, v.task(12), { kind: 'task', open: true, show: true });
   return { v, app, parents: () => v.task(12).related_tasks.parenttask.map(p => p.id) };
 };
 test('turning a subtask into its own task moves it right after its parent, and Undo puts it back', async c => {
@@ -290,7 +290,7 @@ const twoProjects = c => {
       loadSubPeople() {},
     }),
   );
-  opened(app, v.task(10), { kind: 'task', open: true });
+  opened(app, v.task(10), { kind: 'task', open: true, show: true });
   return { v, app, where: () => [10, 11, 12, 13].map(id => v.task(id).project_id) };
 };
 test('moving a task to another project takes its subtasks at every level, and Undo puts each back', async c => {

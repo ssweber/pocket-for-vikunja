@@ -237,11 +237,12 @@ test('notes changed elsewhere while the user wrote come back to the sheet with b
   );
   await app.saveDesc();
   assert.equal(v.task(7).description, '<p>Green cloth</p>', 'saved again, they replace the notes the user has seen');
-  // Leaving the sheet sends the notes being written. With the sheet closed, the row says what happened.
+  // Leaving the sheet sends the notes being written. The row says what happened, also while the sheet still slides
+  // down (closeSheet), when it is open but no longer shown.
   Object.assign(app.sheet, { editingDesc: true, descDraft: 'Yellow cloth', descBase: 'Green cloth' });
   v.task(7).description = '<p>White cloth</p>';
   app.leaveTask();
-  app.sheet = { id: null, open: false };
+  app.sheet.show = false;
   await settle(t, () => lastSaid(app)?.row);
   assert.deepEqual(
     [lastSaid(app).row.id, lastSaid(app).action.label, taskDrafts.get('desc:7')],

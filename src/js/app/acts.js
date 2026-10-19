@@ -383,7 +383,7 @@ export default {
         // A stage that knows the whole sentence gives it (`said`). An op that names a place in its task's open sheet
         // says it there until the sheet closes (sheetPlace). An Undo says it on its task's row, where it was tapped.
         const sheetAt = sheetPlaceOf(e),
-          inSheet = sheetAt && this.sheet.open && this.sheet.kind === 'task' && this.sheet.id === e.task;
+          inSheet = sheetAt && this.sheetShows(e.task);
         if (last.status === 'error' && !quiet?.has(e.id) && (last.kept || refusalOf(now, err) !== 'undone') && !inBox)
           this.say(
             err.said ||
