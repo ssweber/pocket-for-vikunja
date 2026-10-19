@@ -36,7 +36,8 @@ is a new 0.x.y.
   ([guide](docs/guide.md#tasks)).
 - Typing `+` in an add box suggests your projects, as `@` and `*` suggest people and labels.
 - Quick add reads a part of the day with its day: "this morning" is today at 9am, "tomorrow afternoon" 3pm, "friday
-  evening" 6pm and "tonight" 8pm ([guide](docs/guide.md#quick-add)). "morning" on its own stays in the title.
+  evening" 6pm and "tonight" 8pm ([guide](docs/guide.md#quick-add)). "morning" on its own stays in the title, and a
+  bare hour after an evening or a night is PM: "tonight at 10" is 10pm.
 
 ### Changed
 
