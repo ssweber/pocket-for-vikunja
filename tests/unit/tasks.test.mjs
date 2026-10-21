@@ -5,7 +5,7 @@ import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import tasks, { copyOf, dropCopies, putting, sendingOp, started, writes, ID_CHUNK } from '../../src/js/app/tasks.js';
 import { SAVED, TASK, TASK_COUNT, TASK_COUNT_REACTIONS, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
-import { app as current } from '../../src/js/util.js';
+import { app as current, store } from '../../src/js/util.js';
 import acts from '../../src/js/app/acts.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
@@ -1726,6 +1726,74 @@ test('a copy the phone had no room for is saved the next time, and listed only o
   assert.deepEqual([saved.get('task.1'), saved.get('tasks')], [null, []]);
   app.keepChanged();
   assert.deepEqual([saved.get('task.1')?.title, saved.get('tasks')], ['Wipe the menus', [1]]);
+  localStorage.clear();
+});
+
+/* localStorage as a browser keeps it when it holds at most `limit` characters, keys included. A write past that
+   throws QuotaExceededError. Returns a function that puts back the unlimited one. */
+const quota = limit => {
+  const set = localStorage.setItem,
+    size = k => k.length + (localStorage.getItem(k)?.length || 0);
+  localStorage.setItem = (k, v) => {
+    const used = Object.keys(localStorage).reduce((n, x) => n + (x === k ? 0 : size(x)), 0);
+    if (used + k.length + String(v).length > limit)
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    set(k, v);
+  };
+  return () => (localStorage.setItem = set);
+};
+const used = () => Object.keys(localStorage).reduce((n, k) => n + k.length + localStorage.getItem(k).length, 0);
+
+/* Project 7 was loaded three days ago, checklist 20 two days ago and Today yesterday. Project 7's task 1 is on no
+   other screen, and Today shows its task 2 too. The outbox's flag and the sign-in's token are never deleted. */
+test('a full localStorage deletes the oldest saved screen and the copies only it shows, until a write fits', async () => {
+  await sync.ready;
+  const app = component(tasks);
+  app.user = { id: 1 };
+  read([1, 2, 3, 4].map(id => ({ id, title: 'Task ' + id, description: 'Notes '.repeat(80) })));
+  opened('project', 7);
+  opened('run', 20);
+  const ago = days => new Date(Date.now() - days * 864e5).toISOString();
+  saved.set('project.7.open', { groups: [{ key: 'open', tasks: [1, 2] }], at: ago(3) });
+  saved.set('run.20', { shownRun: { id: 20, steps: [3] }, at: ago(2) });
+  saved.set('today', { groups: [{ key: 'today', tasks: [2, 4] }], at: ago(1) });
+  app.keepChanged();
+  store.set('outbox.empty', '1');
+  const freed = ['pocket.saved.project.7.open', 'pocket.saved.task.1'].reduce(
+      (n, k) => n + k.length + localStorage.getItem(k).length,
+      0,
+    ),
+    unlimited = quota(used() + 100);
+  try {
+    assert.ok(store.set('drafts', 'x'.repeat(freed + 50 - 'pocket.drafts'.length)));
+    assert.deepEqual(
+      ['project.7.open', 'task.1', 'task.2', 'run.20', 'task.3', 'today', 'task.4'].filter(k => saved.get(k)),
+      ['task.2', 'run.20', 'task.3', 'today', 'task.4'],
+    );
+    assert.ok(!store.set('drafts', 'x'.repeat(100000)), 'a write that never fits deletes every saved screen and fails');
+    assert.deepEqual(
+      ['run.20', 'today', 'task.2', 'task.3', 'task.4'].filter(k => saved.get(k)),
+      [],
+    );
+    assert.deepEqual([store.get('outbox.empty'), localStorage.getItem('token')], ['1', 'tk_test']);
+  } finally {
+    unlimited();
+  }
+  localStorage.clear();
+});
+
+// A copy on the screen on display stays when its saved screen is deleted to make room.
+test('making room keeps the copies of the screen on display', async () => {
+  await sync.ready;
+  const app = component(tasks);
+  app.user = { id: 1 };
+  read([{ id: 1, title: 'Wipe the menus' }]);
+  saved.set('today', { groups: [{ key: 'today', tasks: [1] }], at: new Date().toISOString() });
+  app.keepChanged();
+  app.view.groups = [{ key: 'today', tasks: [app.row(copyOf(1))] }];
+  assert.ok(app.makeRoom());
+  assert.deepEqual([saved.get('today'), saved.get('task.1')?.title], [null, 'Wipe the menus']);
+  assert.ok(!app.makeRoom(), 'no saved screen is left');
   localStorage.clear();
 });
 

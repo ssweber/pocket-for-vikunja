@@ -14,6 +14,8 @@ import actions from '../../src/js/app/actions.js';
 import claims from '../../src/js/app/claims.js';
 import progress from '../../src/js/app/progress.js';
 import { line } from './samples.mjs';
+import { component } from './fake.mjs';
+import { saved } from '../../src/js/lists.js';
 
 const FLOOR = { id: 600, title: 'floor' },
   MOP = { id: 601, title: 'mop' },
@@ -357,4 +359,18 @@ test('tapping a person in the people menu assigns them, or unassigns them if tic
   );
   await app.whoTap(slot(), ME);
   assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[], []], 'tapping Me again lets it go');
+});
+
+test('saving a picture drops the pictures not fetched for 30 days', async t => {
+  const app = component(claims),
+    day = 864e5;
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }));
+  app.avatars = {
+    bob: { url: 'data:old', at: Date.now() - 31 * day },
+    amy: { url: 'data:new', at: Date.now() - 29 * day },
+  };
+  await app.loadAvatar('zed');
+  assert.deepEqual(Object.keys(saved.get('avatars')).sort(), ['amy', 'zed']);
+  assert.deepEqual(Object.keys(app.avatars).sort(), ['amy', 'zed']);
+  saved.set('avatars', {});
 });

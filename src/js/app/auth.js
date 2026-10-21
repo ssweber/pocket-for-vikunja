@@ -1,5 +1,5 @@
 // Signing in and out, and following the sign-in Pocket shares with Vikunja's web app.
-import { esc, store, taskDrafts, userCache } from '../util.js';
+import { esc, keep, store, taskDrafts, userCache } from '../util.js';
 import {
   api,
   ApiError,
@@ -149,9 +149,7 @@ export default {
      signing in and saves the session where Pocket reads it. The request is the same one Vikunja's login page makes. */
   signInWith(p) {
     const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-    try {
-      localStorage.setItem('state', state);
-    } catch {}
+    keep('state', state);
     const url =
       `${p.auth_url}?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${encodeURIComponent(`${location.origin}/auth/openid/${p.key}`)}` +
       `&response_type=code&scope=${encodeURIComponent(p.scope)}&state=${state}`;

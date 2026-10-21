@@ -34,6 +34,19 @@ export const keptScreens = () => [
   ...(saved.get('projects.recent') || []).map(projectKey),
   ...(saved.get('runs.recent') || []).map(runKey),
 ];
+/* The kept screen saved on the phone whose tasks were loaded longest ago (its `at`), or undefined when none is saved.
+   Each screen loads when it is opened, so this is usually the one opened longest ago. A screen with no time counts as
+   oldest. */
+export const oldestScreen = () => {
+  let oldest,
+    when = Infinity;
+  for (const k of keptScreens()) {
+    const s = saved.get(k),
+      at = Date.parse(s?.at) || 0;
+    if (s && at < when) [oldest, when] = [k, at];
+  }
+  return oldest;
+};
 /* Delete the saved screens of the projects and checklists no longer kept, and `project.last`, which nothing reads. A
    screen saved before it fell out of the kept lists, or saved under an older key, would stay on the phone for good. */
 export const dropUnkept = () => {

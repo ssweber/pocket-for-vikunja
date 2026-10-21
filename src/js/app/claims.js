@@ -273,6 +273,8 @@ export default {
             })
           : '';
       this.avatars[k] = { url, at: Date.now() };
+      // A picture shown is fetched again after a day, so one older than a month is of someone no longer seen.
+      for (const [x, a] of Object.entries(this.avatars)) if (!(Date.now() - a?.at < 30 * DAY)) delete this.avatars[x];
       saved.set('avatars', this.avatars);
     } catch {
       tried.set(k, Date.now());

@@ -1,5 +1,5 @@
 // Talking to Vikunja's API, and staying signed in.
-import { app, esc } from './util.js';
+import { app, esc, keep } from './util.js';
 
 export class ApiError extends Error {
   constructor(status, msg, code) {
@@ -26,9 +26,7 @@ export const sharedToken = {
     }
   },
   set(t) {
-    try {
-      localStorage.setItem('token', t);
-    } catch {}
+    keep('token', t);
   },
   del() {
     try {

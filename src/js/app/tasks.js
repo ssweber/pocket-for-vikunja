@@ -12,7 +12,7 @@
    and in what order (subRow). */
 import { app, raw, store } from '../util.js';
 import { allPages, api, serverTime } from '../api.js';
-import { dropUnkept, intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
+import { dropUnkept, intoKeys, keptScreens, oldestScreen, saved, savedScreen, screenIds } from '../lists.js';
 import { sync } from '../sync.js';
 import { MOVED, opsId, SAVED, TASK, TASK_COUNT_REACTIONS } from '../tasks.js';
 import { opOf, OPS } from '../ops/index.js';
@@ -787,6 +787,18 @@ export default {
   // the newest copy Pocket had.
   keepChanged() {
     if (this.user && outboxRead) keepCopies(this, keptIds(this, true));
+  },
+  /* Make room in a full localStorage (keep, util.js). Delete the oldest saved screen, and the copies of its tasks that
+     nothing else needs (keptIds): no other kept screen, outbox entry or the screen on display. Returns false when no
+     saved screen is left to delete. */
+  makeRoom() {
+    const key = oldestScreen();
+    if (!key) return false;
+    const ids = screenIds(saved.get(key)) || [];
+    store.del('saved.' + key);
+    const keep = keptIds(this);
+    for (const id of ids) if (!keep.has(id)) store.del('saved.task.' + id);
+    return !saved.get(key);
   },
   /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
      keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
