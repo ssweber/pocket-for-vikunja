@@ -9,6 +9,7 @@ import {
   comesRound,
   draftSteps,
   endedOf,
+  inBatches,
   isChecklistDesc,
   isTemplateLabel,
   notesOnly,
@@ -435,10 +436,11 @@ export default {
                 ['order_by', 'desc'],
                 ['expand', 'reactions'],
                 ['expand', 'comments'],
+                ['expand', 'comment_count'],
               ]),
           )
-            .then(list => Promise.all(list.map(allComments)))
-            .then(putting(TASK_REACTIONS_COMMENTS, at)),
+            .then(list => inBatches(list, 4, allComments))
+            .then(putting([...TASK_REACTIONS_COMMENTS, 'comment_count'], at)),
         ]);
         // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there. That
         // includes its open steps, or a step done on this phone and undone elsewhere would still count as done.

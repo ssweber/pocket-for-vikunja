@@ -16,6 +16,7 @@ import {
   stepFrom,
   stepInfos,
   stepProblems,
+  SKIP_MARK,
   stepsOf,
   stepWords,
   parseStep,
@@ -370,7 +371,7 @@ const loaded = async (run, open, more = () => null) => {
     const u = new URL(url),
       f = u.searchParams.get('filter');
     return json(
-      more(u.pathname) ??
+      more(u.pathname, u.searchParams) ??
         (f?.startsWith('done = true')
           ? { items: [run], total_pages: 1 }
           : f === 'done = false'
@@ -417,6 +418,61 @@ test('a finished checklist counts all its comments, past the 50 that Vikunja sen
   );
   const [cl] = await app.readChecklists(t => t);
   assert.equal(cl.ended[1].comments, 55);
+});
+
+// A task list as Vikunja 2.7.1 answers it. With expand=comments it gives the oldest 50 comments of all the tasks it
+// lists, not 50 for each. With expand=comment_count it gives each task's whole count.
+const capped = (tasks, query) =>
+  tasks.map(({ comments, ...t }) => {
+    const oldest = new Set(
+        tasks
+          .flatMap(x => x.comments)
+          .sort((a, b) => Date.parse(a.created) - Date.parse(b.created))
+          .slice(0, 50),
+      ),
+      some = comments.filter(c => oldest.has(c)),
+      asked = query.getAll('expand');
+    return {
+      ...t,
+      ...(asked.includes('comments') && { comments: some.length ? some : null }),
+      ...(asked.includes('comment_count') && { comment_count: comments.length }),
+    };
+  });
+
+test("a finished checklist counts its steps' skips and comments when they have more than 50 comments between them", async () => {
+  const start = Date.now() - 60e3,
+    at = s => new Date(start + s * 1000).toISOString(),
+    note = (id, s, comment = '<p>Note</p>') => ({ id, comment, author: { id: 1 }, created: at(s) }),
+    step = (id, comments, more = {}) => ({
+      id,
+      project_id: 7,
+      title: 'Step ' + id,
+      done: true,
+      done_at: at(0),
+      description: '',
+      related_tasks: { parenttask: [{ id: 1 }] },
+      comments,
+      ...more,
+    });
+  const done = [
+    finishedRun([], { comments: [] }),
+    step(
+      2,
+      Array.from({ length: 55 }, (_, i) => note(100 + i, 1)),
+    ),
+    step(3, [note(200, 2, '<p>Skipped: no milk</p>')], { reactions: { [SKIP_MARK]: [{ id: 1 }] } }),
+    step(
+      4,
+      [1, 2, 3].map(i => note(300 + i, 3)),
+    ),
+  ];
+  const app = await loaded(null, [], (path, query) => {
+    if (query.get('filter')?.startsWith('done = true')) return { items: capped(done, query), total_pages: 1 };
+    const id = +path.match(/\/tasks\/(\d+)\/comments$/)?.[1];
+    return id ? { items: done.find(t => t.id === id).comments, total_pages: 1 } : null;
+  });
+  const [cl] = await app.readChecklists(t => t);
+  assert.deepEqual(cl.ended[1], { skipped: 1, comments: 59 });
 });
 
 test("a template's step being edited isn't saved when the user's access arrives and doesn't let them change the template", async () => {

@@ -66,8 +66,8 @@ template for every list, with the parts a given list does not show left in it.
 
 `docs/design/worklist.md` lists the work in progress, in batches, in the order it is built.
 
-The three drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
-`upstream-plugin-permissions.md`) are ready to send whenever the user chooses.
+The four drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
+`upstream-plugin-permissions.md`, `upstream-comment-cap.md`) are ready to send whenever the user chooses.
 
 ## Before anyone else uses Pocket
 

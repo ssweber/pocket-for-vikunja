@@ -601,11 +601,14 @@ export async function patiently(fn) {
     }
   }
 }
-/* A task with all its comments. Vikunja's expand=comments returns only the first 50, and leaves `comments` out when
-   there are none. An empty list then says the comments were read, so a comment waiting to be sent has a list to join
-   (said, ops/shown.js). */
+/* A task with all its comments. Vikunja's expand=comments returns the oldest 50 comments of all the tasks in a reply,
+   so a task in a list can come with some of its comments or none. Read with expand=comment_count too, a task with
+   fewer comments than its count has more. A task read alone may have more when it has 50. Vikunja leaves `comments` out
+   when there are none. An empty list then says the comments were read, so a comment waiting to be sent has a list to
+   join (said, ops/shown.js). */
 export async function allComments(t) {
-  if ((t.comments || []).length >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
+  const n = (t.comments || []).length;
+  if (t.comment_count != null ? t.comment_count > n : n >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
   t.comments ||= [];
   return t;
 }
