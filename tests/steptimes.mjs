@@ -59,11 +59,12 @@ async function step(name, fn) {
 }
 
 const stamp = Date.now();
+// Take the roast out can't be ticked before its time (!T#). The plugin gives it its due date as it does a T# step.
 const STEPS = [
   'Put the roast in {#roast}',
   'Peel the potatoes T#20m',
   'Baste the roast T#40m:roast',
-  'Take the roast out T#1h:roast',
+  'Take the roast out !T#1h:roast',
   'Carve\u00a0T#10m',
   'Wash up',
 ];

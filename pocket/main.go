@@ -212,10 +212,11 @@ func pageEncoding(accept string) (string, string) {
      T#20m          20 minutes after the step before it is done
      {#roast}       names the step "roast"
      T#40m:roast    40 minutes after the step named "roast" is done
+     !T#20m         as T#20m. Pocket also won't let the step be ticked before then
    The units are d, h, m, s and ms, combined as in T#1h30m, up to a year. Pocket checks templates when they are made,
    changed and started, so anything else here (T#-10m, a name used twice) is simply not a time. */
 var (
-	stepTimeRe = regexp.MustCompile(`(?i)(?:^|\s)T#((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::([a-z][\w-]*))?(?:\s|$)`)
+	stepTimeRe = regexp.MustCompile(`(?i)(?:^|\s)!?T#((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::([a-z][\w-]*))?(?:\s|$)`)
 	stepUnitRe = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)(ms|d|h|m|s)`)
 	stepNameRe = regexp.MustCompile(`\{#([A-Za-z][\w-]*)\}`)
 	stepUnits  = map[string]float64{"d": 86400000, "h": 3600000, "m": 60000, "s": 1000, "ms": 1}
