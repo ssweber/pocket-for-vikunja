@@ -72,6 +72,11 @@ matters there.
   parent, then each step, four at a time, and can wait another 600 ms for notes. A checklist opened before now shows
   its saved copy and reloads behind it, without the wait. The steps are still read one request each, because
   Vikunja's task list returns at most 50 comments in all for the tasks it lists.
+- [ ] **The Checklists screen may lose finished steps' comments.** It reads finished checklists' steps with one task
+  list request and `expand=comments` (`src/js/app/checklists.js`, around line 429). On Vikunja 2.7.1 that request
+  returns at most 50 comments across all the tasks it lists, so in a busy project a finished row's skip reasons and
+  comment counts can be wrong with no sign. Confirm it in the app, then read comments only for the steps that have
+  any (`expand=comment_count`). Add the cap to a draft for Vikunja if it is a bug there.
 - [ ] **UI, discuss first: always show the three tabs.** Today the header switches to the compact layout when
   `checklistProjects` loads, so it can change from two tabs to three. The Checklists screen already has a setup card
   for someone with no checklists.
