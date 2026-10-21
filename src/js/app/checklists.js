@@ -905,7 +905,7 @@ export default {
     if (e.key) return this.draft('new').info.get(e.key) || null; // a New template row: read together with the other rows there
     const before = this.subtasks.slice(0, i).map(s => ({ key: 'task:' + s.id, text: s.title }));
     const d = draftSteps(
-        [{ key: 'edit', text: e.text, keep: e.keep, from: e.from, strict: e.strict }],
+        [{ key: 'edit', text: e.text, keep: e.keep, from: e.from, strict: e.strict, ignore: e.ignore }],
         before,
         this.stepWordsOnly,
       ),
@@ -973,7 +973,8 @@ export default {
     const todo = d
       ? this.subtasks.map((s, k) => ({ s, was: s.title, title: d.titles[k] })).filter(x => x.title !== x.was)
       : [];
-    if (!todo.length && !drops.length) {
+    const notes = d?.notes || '';
+    if (!todo.length && !drops.length && !notes) {
       this.sheet.stepEdit = null;
       return;
     }
@@ -1016,6 +1017,8 @@ export default {
         add: true,
         was: was(st.labels, tagOf),
       })),
+      // Notes typed after " // " go at the end of the step's notes, so its asks stay.
+      ...(notes ? [{ op: 'edit', task: e.id, rebase: 'addNotes', text: notes }] : []),
       // The people and labels the user tapped off.
       ...drops.map(k => {
         const id = +k.slice(1);

@@ -307,6 +307,7 @@ export const packParsed = p => ({
   remind: !!p.remind,
   done: !!p.done,
   pct: p.pct || 0,
+  ...(p.notes && { notes: p.notes }),
 });
 export const unpackParsed = p => ({ ...p, due: p.due ? new Date(p.due) : null });
 export const randomId = () =>

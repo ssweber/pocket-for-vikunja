@@ -3,7 +3,7 @@
 import { allPages, ApiError, serverTime } from './api.js';
 import { htmlToText, parseFragment } from './html.js';
 import { isSet } from './dates.js';
-import { NUMBER_WORDS } from './quickadd.js';
+import { notesOf, NUMBER_WORDS } from './quickadd.js';
 
 /* Checklists live in a project with the line "pocket:checklists" in its description. A template is a task in that
    project, labelled "template" and marked done. Its subtasks, also marked done, are its steps.
@@ -550,9 +550,20 @@ function stepName(title, taken) {
    from: null as typed, '' for the step before, or another row's key. `strict` makes the time !T#…: null as typed, or
    true or false from the padlock in the time chip. A step that another step counts from by key
    gets a name made from its title if it has none, so moving rows doesn't change what a step counts from. `clean`
-   removes what quick add reads out of a title (@people, *labels), so the name is made from the title text alone. */
+   removes what quick add reads out of a title (@people, *labels), so the name is made from the title text alone.
+
+   A row's notes, after " // " (notesOf), are kept apart, so a time in them is not read. Unless the row's notes chip
+   is tapped off (`ignore.notes`), they follow the saved title in `added`, where the step's line reads them again. */
 export function draftSteps(rows, before = [], clean = t => t) {
-  const all = [...before.map(b => ({ ...b, fixed: true })), ...rows.filter(r => r.text.trim())];
+  const all = [
+    ...before.map(b => ({ ...b, fixed: true })),
+    ...rows
+      .filter(r => r.text.trim())
+      .map(r => {
+        const n = !r.ignore?.notes && notesOf(r.text.trim());
+        return n ? { ...r, text: r.text.trim().slice(0, n.at), notes: n.notes } : r;
+      }),
+  ];
   const parsed = all.map(r => parseStep(r.text)),
     at = new Map(all.map((r, i) => [r.key, i]));
   const phrase = all.map((r, i) => (r.fixed || /(^|\s)!?T#/i.test(r.text) ? null : readStepPhrase(r.text)));
@@ -606,6 +617,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
     info.set(r.key, {
       i,
       saved: saved[i],
+      notes: r.notes || '',
       offset: steps[i].offset,
       strict: steps[i].strict,
       name: steps[i].name,
@@ -620,7 +632,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
   });
   return {
     info,
-    added: saved.filter((_, i) => !all[i].fixed),
+    added: saved.flatMap((t, i) => (all[i].fixed ? [] : [all[i].notes ? `${t} // ${all[i].notes}` : t])),
     problem: [...info.values()].some(x => x.problem),
     renames: all
       .map((r, i) => (r.fixed && saved[i] !== r.text.trim() ? { key: r.key, title: saved[i] } : null))

@@ -31,6 +31,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 | `every day`, `every other week`, `every month`, `weekly` | Repeat. Vikunja can't repeat on weekdays only or on specific days, so `every weekday` stays in the title and a chip says so. |
 | `(50%)` or `50%` at the end | Progress. `100%` is done. Pocket only. |
 | `x ` or `[x] ` at the start | Done already. Pocket only. A capital `X` works too. |
+| `Order bags // the brown ones` | Notes, from the text after the first ` // `. Nothing in the notes is read. Slashes without a space on both sides, as in `http://`, stay in the title. Editing a template's step that has notes adds the new notes after them. Pocket only. |
 
 **Undoing a parse.** Tap a chip to keep those words in the title. Wrap the whole text in quotes to turn parsing off: `"Friday night jazz poster"`. Quotes at the start hold the title and leave the rest to parse: `"Lunch friday" @user tomorrow`.
 

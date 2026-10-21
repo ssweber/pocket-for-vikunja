@@ -235,9 +235,9 @@ async function copy(a, c) {
 /* The step starts not done, with no due date, and doesn't repeat or remind. It is done when someone does it. It is
    marked "pocket:added", and a repeated step also keeps the "pocket:step" line of the step it repeats (`tpl`). A
    repeated step's title is its template step's title without T#. An inserted step's title is the one quick add sent,
-   without @people. */
+   without @people, and it keeps the notes quick add sent. */
 async function mark(a, c) {
-  const notes = copiedNotes(a.notes ?? ''),
+  const notes = copiedNotes(a.notes ?? a.body?.description ?? ''),
     body = {
       ...((a.from || a.tpl != null) && { title: a.title }),
       done: false,

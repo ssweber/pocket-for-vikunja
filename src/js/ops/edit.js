@@ -1,6 +1,7 @@
-/* Changing a task's own fields: a title or a priority, set as it is (`set`), or notes, reminders, a template's step
-   order or a template step's asks, which are made on the copy Vikunja has when the edit is sent (`rebase`). An outbox entry is stored in
-   IndexedDB, which can't hold a function, so `rebase` names one of REBASES, which holds the code for it. */
+/* Changing a task's own fields: a title or a priority, set as it is (`set`), or notes, notes added to a step,
+   reminders, a template's step order or a template step's asks, which are made on the copy Vikunja has when the edit
+   is sent (`rebase`). An outbox entry is stored in IndexedDB, which can't hold a function, so `rebase` names one of
+   REBASES, which holds the code for it. */
 import { ApiError } from '../api.js';
 import { plainReminders, reminderKey } from '../dates.js';
 import { htmlToText, textToHtml } from '../html.js';
@@ -46,6 +47,8 @@ const orderOf = (t, moves) => {
       )
     : null;
 };
+// The description with `text` added as a paragraph at the end. An empty paragraph Vikunja leaves at the end goes.
+const addedNotes = (t, text) => (t.description || '').replace(/(<p>\s*<\/p>)+$/, '') + textToHtml(text);
 const remindersOf = (t, a) => {
   const skip = new Set([...a.add, ...a.drop].map(reminderKey));
   return [...plainReminders(t).filter(r => !skip.has(reminderKey(r))), ...a.add];
@@ -118,6 +121,15 @@ const REBASES = {
         .reverse(),
     }),
   },
+  /* Notes typed after " // " when a template step is edited (`text`), added as a paragraph at the end of the notes
+     Vikunja has. The notes before them and Pocket's lines, such as the step's asks, stay as they are. */
+  addNotes: {
+    field: 'description',
+    apply: (t, a) => ({ ...t, description: addedNotes(t, a.text) }),
+    body: (t, a) => ({ description: addedNotes(t, a.text) }),
+    merge: (older, newer) => ({ ...newer, text: older.text + '\n\n' + newer.text }),
+    invert: () => null,
+  },
   // A template step's ask lines (`lines`) in place of those in the notes Vikunja has, which keep the rest of their text.
   asks: {
     field: 'description',
@@ -183,7 +195,9 @@ export const edit = {
   putBack: (app, a, e) => {
     if (e.notes !== undefined) app.notesRefused(a, e);
   },
-  sheetPlace: a => ({ notes: 'sheet:notes', order: 'sheet:subtasks', asks: 'sheet:asks' })[a.rebase] ?? 'sheet:top',
+  sheetPlace: a =>
+    ({ notes: 'sheet:notes', addNotes: 'sheet:subtasks', order: 'sheet:subtasks', asks: 'sheet:asks' })[a.rebase] ??
+    'sheet:top',
   ...OP_WORDS.edit,
   asks: ['set', 'check', 'rebase', 'text', 'base', 'add', 'drop', 'moves', 'lines'],
   saw: ['label', 'was'],

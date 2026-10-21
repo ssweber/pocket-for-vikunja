@@ -1603,6 +1603,80 @@ test("a checklist's add box leaves out a ticked line without a chip to tap, and 
   ]);
 });
 
+const notesOfLines = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.notes]);
+test('the text after " // " is marked and shown as notes after the other chips, and tapping the chip keeps it in the title', () => {
+  const app = boxes();
+  app.cap.text = 'Order paper bags +café // the brown ones, 500 count tomorrow';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', 'Notes: the brown ones, 500 count tomorrow']);
+  assert.deepEqual(marksOf(app, 'cap'), ['project:+café', 'notes:// the brown ones, 500 count tomorrow']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Order paper bags', 'the brown ones, 500 count tomorrow']]);
+  tap(app, 'cap', 'Notes:');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '~Notes: the brown ones, 500 count tomorrow']);
+  assert.deepEqual(
+    marksOf(app, 'cap'),
+    ['project:+café', 'due:tomorrow'],
+    'with the chip off, the notes are read as part of the title',
+  );
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Order paper bags café // the brown ones, 500 count', '']]);
+  // A link or a path has no spaces around its slashes, so it stays in the title.
+  app.cap = newBox();
+  app.cap.text = 'Check http://example.com and a//b';
+  assert.deepEqual([chipsOf(app, 'cap'), marksOf(app, 'cap')], [['Café'], []]);
+});
+
+test('a pasted list gets one chip counting the lines with notes, and tapping it keeps every line’s notes in its title', () => {
+  const app = boxes();
+  app.cap.text = 'Order paper bags // the brown ones\nOrder till rolls\nOrder labels // white';
+  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', 'Notes on 2 tasks']);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:// the brown ones', 'notes:// white']);
+  tap(app, 'cap', 'Notes on');
+  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', '~Notes on 2 tasks']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Order paper bags // the brown ones', ''],
+    ['Order till rolls', ''],
+    ['Order labels // white', ''],
+  ]);
+  // A subtask box and a checklist's box count subtasks and steps.
+  app.sheet.sub.text = 'Load chairs // the folding ones\nTables';
+  assert.deepEqual(chipsOf(app, 'sub'), ['2 subtasks', 'Notes on 1 subtask']);
+  assert.deepEqual(notesOfLines(app, 'sub'), [
+    ['Load chairs', 'the folding ones'],
+    ['Tables', ''],
+  ]);
+  app.runInsert.text = 'Wipe the counter // with the blue cloth\nMop // both rooms';
+  assert.deepEqual(chipsOf(app, 'ins'), ['2 steps', 'Notes on 2 steps']);
+});
+
+test('a line’s notes are sent as its description, in the request that makes it, as one paragraph', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]),
+    app = adding(t),
+    p = parseCapture('Order paper bags // the <brown> ones & lids', []);
+  assert.deepEqual(
+    packParsed(p).notes,
+    'the <brown> ones & lids',
+    'the notes are kept with the line, so a line sent later still has them',
+  );
+  v.trouble = () => 'offline';
+  const e = entry([
+    { raw: 'Order paper bags', p: packParsed(p), under: null },
+    line('Load chairs', { notes: 'the folding ones' }, 0),
+  ]);
+  assert.equal((await send(app, e)).status, 'offline');
+  v.trouble = () => null;
+  v.requests.length = 0;
+  await resend(app, e);
+  assert.deepEqual(sent(v).slice(0, 2), [
+    [
+      'POST',
+      '/projects/5/tasks',
+      { title: 'Order paper bags', description: '<p>the &lt;brown&gt; ones &amp; lids</p>' },
+    ],
+    ['POST', '/projects/5/tasks', { title: 'Load chairs', description: '<p>the folding ones</p>' }],
+  ]);
+  assert.equal(v.task(101).description, '<p>the &lt;brown&gt; ones &amp; lids</p>');
+});
+
 test('typing +project suggests the projects you can add to, Enter takes the first, and a subtask box suggests none', () => {
   const app = boxes(),
     el = { value: '', focus() {}, setSelectionRange() {} };

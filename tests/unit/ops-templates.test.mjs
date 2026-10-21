@@ -307,6 +307,42 @@ test("a step's people and labels tapped off in its edit box are taken off as ops
   );
 });
 
+test('notes typed after " // " in a step\'s edit box go at the end of its notes, and its asks stay', async t => {
+  const asks = '<p>Use the blue mop</p><p>pocket:ask Wet: yes-no</p>';
+  const { v, app } = editor(t, closing({ 8: { description: asks } }));
+  Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });
+  Object.defineProperty(app, 'canEdit', { value: true });
+  app.sheet = {
+    id: 7,
+    kind: 'task',
+    sub: {},
+    stepEdit: { id: 8, ignore: {}, text: 'Mop the floor // and under the bar' },
+  };
+  assert.equal(app.stepEditDraft(0).notes, 'and under the bar');
+  assert.equal(app.stepHasNotes('edit'), true, 'the chip says the notes are added to the notes the step has');
+  await app.saveStepEdit(0);
+  assert.deepEqual(
+    [v.task(8).title, v.task(8).description, outbox()],
+    ['Mop the floor', asks + '<p>and under the bar</p>', []],
+    'the title stays, and the notes are a paragraph after the ask',
+  );
+  // A step with no notes gets them as its notes.
+  app.sheet.stepEdit = { id: 9, ignore: {}, text: 'Lock up the back // the key is on the hook' };
+  assert.equal(app.stepHasNotes('edit'), false);
+  await app.saveStepEdit(1);
+  assert.deepEqual([v.task(9).title, v.task(9).description], ['Lock up the back', '<p>the key is on the hook</p>']);
+});
+
+test('a step typed with notes in New template is made with them as its description', async t => {
+  const { v, app } = editor(t, []);
+  newTemplate(app, ['Proof the loaves in 40 min // cover with a damp cloth']);
+  await app.createTemplate();
+  assert.deepEqual(
+    [v.task(102).title, v.task(102).description],
+    ['Proof the loaves T#40m', '<p>cover with a damp cloth</p>'],
+  );
+});
+
 test("a person assigned in a step's edit box and taken off again leaves nothing to send", async t => {
   const { v, app } = editor(t, closing());
   noConnection(app, v);

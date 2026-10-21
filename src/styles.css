@@ -3312,6 +3312,15 @@ main.bare {
   background: var(--accent);
   color: var(--accent-ink);
 }
+/* A notes chip is cut short with "…" on one line. The box above it shows the whole note. */
+.chip[data-kind='notes'] {
+  max-width: 100%;
+  min-width: 0;
+}
+.chip[data-kind='notes'] span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .chip .x {
   font-weight: 700;
   opacity: 0.6;

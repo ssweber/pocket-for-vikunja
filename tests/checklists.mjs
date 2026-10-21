@@ -2982,6 +2982,64 @@ try {
     await api('/tasks/' + tpl.id, { method: 'DELETE' });
   });
 
+  /* A step's notes are typed after " // ", in the steps' box and in the step editor, and a time in them is not read.
+     Editing a step that has notes adds the new notes as a paragraph after them, and its ask stays. */
+  await step('notes-in-a-templates-steps', async () => {
+    const name = `Loaves ${stamp}`;
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
+    await page.waitForFunction(() => document.activeElement?.id === 'nt-name');
+    await page.keyboard.type(name);
+    await page.focus('#d-subin');
+    await page.keyboard.type('Proof the loaves in 40 min // cover them for 5 min');
+    await expect(page.locator('#d-subbox-chips .chip[data-kind=notes]')).toHaveText('Notes: cover them for 5 min');
+    await expect(page.locator('#d-subbox .cap-marks mark[data-kind="notes"]')).toHaveText('// cover them for 5 min');
+    await expect(page.locator('#d-subbox .draft-time')).toContainText('40m');
+    await page.press('#d-subin', 'Enter');
+    await expect(page.locator('#d-subtasks > .row')).toHaveCount(1);
+    await page.click('#nt-create');
+    await page.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 });
+    let tpl;
+    await until(
+      'the template never appeared',
+      async () =>
+        (tpl = (
+          (await api(`/projects/${project.id}/tasks?filter=${encodeURIComponent('done = true')}`)).items || []
+        ).find(t => t.title === `TEMPLATE: ${name}`)),
+    );
+    const [{ id }] = await subtasks(tpl.id);
+    try {
+      const made = await api('/tasks/' + id);
+      if (made.title !== 'Proof the loaves T#40m' || made.description !== '<p>cover them for 5 min</p>')
+        throw new Error('the step is ' + JSON.stringify([made.title, made.description]));
+      // An ask written in Vikunja's web app.
+      const asked = made.description + '<p>pocket:ask Risen: yes-no</p>';
+      await api('/tasks/' + id, { method: 'PATCH', body: JSON.stringify({ description: asked }) });
+      await page.click(`.cl-tpl:has(.title:text-is("${name}")) .body`, { timeout: 15000 });
+      await page.waitForSelector('#d-subtasks .row:nth-of-type(1) .step-note:has-text("cover them for 5 min")');
+      await page.click('#d-subtasks .row:nth-of-type(1) > button.body');
+      await page.waitForFunction(id => document.activeElement?.id === 'step-edit-' + id, id, { timeout: 5000 });
+      await page.fill(`#step-edit-${id}`, (await page.inputValue(`#step-edit-${id}`)) + ' // then bake');
+      await expect(page.locator('.step-in .box-chips .chip[data-kind=notes]')).toHaveText(
+        'Adds to the notes: then bake',
+      );
+      await page.press(`#step-edit-${id}`, 'Enter');
+      await until(
+        'the notes were never added',
+        async () => (await api('/tasks/' + id)).description === asked + '<p>then bake</p>',
+      );
+      if ((await api('/tasks/' + id)).title !== 'Proof the loaves T#40m')
+        throw new Error('the title changed: ' + (await api('/tasks/' + id)).title);
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally {
+      await api('/tasks/' + id, { method: 'DELETE' });
+      await api('/tasks/' + tpl.id, { method: 'DELETE' });
+    }
+  });
+
   await step('add-steps-to-a-template', async () => {
     await page.evaluate(() => {
       location.hash = '#/checklists';

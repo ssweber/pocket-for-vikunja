@@ -59,7 +59,7 @@ const plus = (n, from = REF) => {
 };
 const cases = [];
 // c: {text, now?, dueTime?, ignore?, title?, date? ('Y-M-D' | null | 'any'), time? ('H:M'), repeat? ({after, mode} | null),
-//     labels?, assignees?, project?, priority?, pct?, pocket?, why?}
+//     labels?, assignees?, project?, priority?, pct?, notes?, pocket?, why?}
 const add = c => cases.push(c);
 
 // ---------- general ----------
@@ -975,6 +975,74 @@ add({
   ...extra('the percentage works with Todoist’s prefixes'),
 });
 
+// ---------- notes after " // " ----------
+const notes = why => ({ pocket: true, why });
+add({
+  text: 'Order paper bags +shop // the brown ones, 500 count',
+  title: 'Order paper bags',
+  project: 'shop',
+  notes: 'the brown ones, 500 count',
+  marked: ['project:+shop', 'notes:// the brown ones, 500 count'],
+  ...notes('the text after " // " is the notes, and the +project before it is at the end of the title'),
+});
+add({
+  text: 'Call the plumber // tomorrow @bob *urgent !3',
+  title: 'Call the plumber',
+  date: null,
+  assignees: [],
+  labels: [],
+  priority: 0,
+  notes: 'tomorrow @bob *urgent !3',
+  ...notes('nothing in the notes is read'),
+});
+add({
+  text: 'Check http://example.com tomorrow',
+  title: 'Check http://example.com',
+  date: '2021-6-25',
+  notes: '',
+  ...notes('the slashes in a link have no space around them'),
+});
+add({ text: 'Label shelf a//b', title: 'Label shelf a//b', notes: '', ...notes('a path keeps its slashes') });
+add({ text: '//x marks', title: '//x marks', notes: '', ...notes('slashes at the start have no space before them') });
+add({ text: 'Buy milk //', title: 'Buy milk //', notes: '', ...notes('slashes with nothing after them stay') });
+add({ text: 'Buy milk //   ', title: 'Buy milk //', notes: '', ...notes('slashes with only spaces after them stay') });
+add({
+  text: 'Bake // 230°C // 35 minutes',
+  title: 'Bake',
+  notes: '230°C // 35 minutes',
+  ...notes('only the first " // " splits'),
+});
+add({
+  text: 'Bake tomorrow !2 // 230°C',
+  ignore: { notes: true },
+  title: 'Bake // 230°C',
+  date: '2021-6-25',
+  priority: 2,
+  notes: '',
+  ...notes('with its chip tapped off, the notes stay in the title, and the words before them are read'),
+});
+add({
+  text: '"Read a // b" tomorrow // the blog post',
+  title: 'Read a // b',
+  date: '2021-6-25',
+  notes: 'the blog post',
+  ...notes('slashes inside a quoted title stay in it'),
+});
+add({
+  text: 'Sweep the floor 50% // and the steps',
+  title: 'Sweep the floor',
+  pct: 50,
+  notes: 'and the steps',
+  ...notes('a percentage before the notes is at the end of the title'),
+});
+add({
+  text: 'Sweep the floor // and the steps',
+  mode: 'disabled',
+  title: 'Sweep the floor',
+  notes: 'and the steps',
+  ...notes('notes are read with quick add off, as a percentage is'),
+});
+
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
@@ -1433,6 +1501,18 @@ const phrases = [
 ];
 // Rows of steps written in Pocket and saved: [rows, steps already in the template, titles to add, steps to rename, whether there is a problem]
 const drafts = [
+  // A step's notes are not read for its time, and follow the saved title. With the chip tapped off they stay in it.
+  [
+    [
+      { key: 'a', text: 'Proof the loaves in 40 min // cover with a damp cloth' },
+      { key: 'b', text: 'Bake // 230°C, in 35 min' },
+      { key: 'c', text: 'Cool // on a rack', ignore: { notes: true } },
+    ],
+    [],
+    ['Proof the loaves T#40m // cover with a damp cloth', 'Bake // 230°C, in 35 min', 'Cool // on a rack'],
+    [],
+    false,
+  ],
   [
     [
       { key: 'a', text: 'Put the roast in' },
@@ -1612,6 +1692,7 @@ const results = await page.evaluate(
         project: r.project?.title ?? r.projectMiss,
         priority: r.priority,
         pct: r.pct,
+        notes: r.notes,
         marks: r.marks,
       };
     }),
@@ -1877,7 +1958,7 @@ cases.forEach((c, i) => {
     if (!r.date) bad.push('no date');
   } else if ('date' in c && r.date !== c.date) bad.push(`date ${r.date}`);
   if ('time' in c && r.time !== c.time) bad.push(`time ${r.time}`);
-  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct'])
+  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct', 'notes'])
     if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);

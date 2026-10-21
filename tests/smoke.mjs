@@ -1549,6 +1549,34 @@ try {
       if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
     }
   });
+  /* The text after " // " is the task's notes. It is highlighted in the box and shown in a chip, and a date in it is not
+     read. The task is made with the notes as its description, and its sheet shows them under the title. */
+  await step('the-text-after-two-slashes-is-the-notes-and-the-sheet-shows-them', async () => {
+    const t = `Pocket smoke notes ${stamp}`,
+      R = `#view ${rowOf(t)}`,
+      chip = page.locator('#cap-chips .chip[data-kind=notes]');
+    await toastGone();
+    await refreshToday();
+    await page.fill('#in-capture', `${t} // the brown ones, tomorrow`);
+    await expect(chip).toHaveText('Notes: the brown ones, tomorrow');
+    await expect.poll(capMarks).toBe('notes:// the brown ones, tomorrow');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
+    await synced(page);
+    const made = await taskTitled(t);
+    try {
+      if (made?.description !== '<p>the brown ones, tomorrow</p>' || made.due_date !== '0001-01-01T00:00:00Z')
+        throw new Error(
+          'the task in Vikunja is ' + JSON.stringify(made && { description: made.description, due: made.due_date }),
+        );
+      await page.click(`${R} > .body`);
+      await expect(page.locator('#d-card #d-desc')).toContainText('the brown ones, tomorrow');
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally {
+      if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
+    }
+  });
   /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 will be added as done"). Tapping the
      chip leaves those lines out and says so, as Pocket did before. Tapping again brings them back. When added, they are
      done subtasks under the first line. Its ring counts them from the start and the parent's progress is written with

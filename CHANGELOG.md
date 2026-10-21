@@ -21,6 +21,8 @@ is a new 0.x.y.
 - A task's labels show on its row, on a line under the title. Tapping one on Today shows only the tasks with that
   label, until Show all or leaving Today. Elsewhere, tapping one searches for the tasks with that label.
 - Searching for `*errands` lists every open task with that label, by project. Typing `*` offers the labels.
+- Text after ` // ` in an add box becomes the notes of the task or step, with a chip that shows them. This works in
+  every add box, the step editor and a pasted list.
 
 ### Changed
 

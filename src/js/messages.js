@@ -314,6 +314,12 @@ const EDITED = {
     dropped: (a, title) => `${it(title)} notes stay as they are.`,
     maybe: (a, title) => still(title, 'have your new notes'),
   },
+  addNotes: {
+    text: (a, title) => `Adding notes to ${task(title)}`,
+    refused: title => 'Adding notes' + on(title),
+    dropped: (a, title) => `${it(title)} notes stay as they are.`,
+    maybe: (a, title) => still(title, 'have your new notes'),
+  },
   reminders: {
     text: (a, title) => `Reminders on ${task(title)}`,
     refused: title => 'Reminders' + on(title),

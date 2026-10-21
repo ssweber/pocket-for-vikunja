@@ -6,7 +6,15 @@ import { parentIds, saved } from '../lists.js';
 import { clearOf, listViewOf, placeAfter, placeFirst } from '../order.js';
 import { inTextField, NUDGE_TICK } from '../progress.js';
 import { haptic } from '../haptics.js';
-import { dueTimeOf, labelsMatching, parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
+import {
+  dueTimeOf,
+  labelsMatching,
+  notesOf,
+  parseCapture,
+  projectName,
+  QUICK_ADD_PREFIXES,
+  readList,
+} from '../quickadd.js';
 import { sync } from '../sync.js';
 import { seats, seatUnder } from './seat.js';
 
@@ -156,20 +164,22 @@ export default {
     return this.boxParsed('cap');
   },
   /* Parse every line of a box. A pasted quick add list uses one project for all its lines. Each line keeps its done
-     state and its parent's index. A parent's own percentage is dropped, because its subtasks decide its progress. */
+     state and its parent's index. A parent's own percentage is dropped, because its subtasks decide its progress. The
+     notes chip, tapped off, keeps every line's notes in its title. */
   boxParsedLines(w) {
     const r = this.boxRead(w);
     if (r.lines) return r.lines;
     const list = this.boxList(w).lines,
       lines = list.map(l => l.text),
-      first = this.boxParsed(w);
+      first = this.boxParsed(w),
+      off = this.box(w).ignore?.notes ? { notes: true } : {};
     const parsed =
       w === 'cap'
         ? lines.length > 1
-          ? this.parseList(lines, first).parsed
+          ? this.parseList(lines, first, off).parsed
           : [first]
         : lines.map((l, i) =>
-            i ? parseCapture(l, this.projects, { ...this.parseOpts, ignore: this.boxBase(w) }) : first,
+            i ? parseCapture(l, this.projects, { ...this.parseOpts, ignore: { ...this.boxBase(w), ...off } }) : first,
           );
     const parents = new Set(list.map(l => l.under));
     return (r.lines = parsed.map((p, i) => ({
@@ -191,18 +201,18 @@ export default {
     }));
   },
   /* The first +project anywhere in a pasted list applies to every line, and other project names stay in their
-     titles. Returns {parsed, project, miss}. `first` is the first line when it is already parsed. */
-  parseList(lines, first) {
+     titles. Returns {parsed, project, miss}. `first` is the first line when it is already parsed. `off` holds the
+     chips tapped off for every line. */
+  parseList(lines, first, off = {}) {
     let owner = -1;
     const parsed = lines.map((raw, i) => {
       const p =
         i === 0 && first
           ? first
-          : parseCapture(
-              raw,
-              this.projects,
-              owner >= 0 ? { ...this.parseOpts, ignore: { project: true } } : this.parseOpts,
-            );
+          : parseCapture(raw, this.projects, {
+              ...this.parseOpts,
+              ignore: owner >= 0 ? { ...off, project: true } : off,
+            });
       if (owner < 0 && (p.project || p.projectMiss)) owner = i;
       return p;
     });
@@ -602,13 +612,28 @@ export default {
     const parsed = this.boxParsed(w),
       p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()),
       out = [],
-      n = list.lines.length;
+      n = list.lines.length,
+      off = k => !!b.ignore?.[k];
     out.push(...photos);
     // For a pasted list, show how many tasks there are, which project they go to, and a warning for each user who
     // can't see that project.
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({ key: 'w' + i, cls: 'warn', text }));
+    // One chip counts the lines with notes. Tapping it keeps every line's notes in its title.
+    const noted = list.lines.filter(l => notesOf(l.text)).length,
+      what = cap ? 'task' : this.isSubBox(w) ? 'subtask' : 'step',
+      notesChip = () =>
+        noted
+          ? [
+              {
+                key: 'notes',
+                kind: 'notes',
+                text: `Notes on ${noted} ${what}${noted === 1 ? '' : 's'}`,
+                off: off('notes'),
+              },
+            ]
+          : [];
     if (n > 1 && !cap) {
-      out.push({ key: 'n', text: `${n} ${this.isSubBox(w) ? 'subtasks' : 'steps'}` }, ...listWarn());
+      out.push({ key: 'n', text: `${n} ${what}s` }, ...listWarn(), ...notesChip());
       return out;
     }
     if (n > 1) {
@@ -632,12 +657,11 @@ export default {
           text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(miss)}”`,
           action: () => this.createProject(miss),
         });
-      out.push(...listWarn());
+      out.push(...listWarn(), ...notesChip());
       return out;
     }
     // The chips come from the full parse. A chip the user tapped off stays visible, so it can be tapped on again.
-    const all = this.boxParsed(w, true),
-      off = k => !!b.ignore?.[k];
+    const all = this.boxParsed(w, true);
     const { auto, warn } = this.accessHints(w);
     if (all.project)
       out.push({
@@ -737,7 +761,20 @@ export default {
         cls: 'warn',
         text: `${this.projById.get(to)?.title || 'This project'} is read only. You can't add tasks to it.`,
       });
+    // The notes, after the other chips. A step that has notes keeps them, and gets these after them (saveStepEdit).
+    if (all.notes)
+      out.push({
+        key: 'notes',
+        kind: 'notes',
+        text: (this.stepHasNotes(w) ? 'Adds to the notes: ' : 'Notes: ') + all.notes,
+        off: off('notes'),
+      });
     return out;
+  },
+  // Whether the step being edited in box `w` already has notes.
+  stepHasNotes(w) {
+    const st = w === 'edit' && this.subtasks.find(s => s.id === this.sheet.stepEdit?.id);
+    return !!st && !!this.stepNote(st);
   },
 
   /* ---------- what quick add's box adds to, on a project's list ---------- */
@@ -1192,9 +1229,12 @@ export default {
       for (const m of parsed[k]?.marks || [])
         if (!(m.kind === 'assignees' && stays(m.name))) out.push({ ...m, start: m.start + l.at, end: m.end + l.at });
     });
-    // A step's time ("in 20 min") is read separately and marked like the rest, unless its chip was tapped off.
-    const ph =
-      this.isStepBox(w) && !this.box(w).keep && !this.box(w).text.includes('\n') && readStepPhrase(this.box(w).text);
+    // A step's time ("in 20 min") is read separately and marked like the rest, unless its chip was tapped off. It is
+    // not read from the notes.
+    const b = this.box(w),
+      nt = !b.ignore?.notes && notesOf(b.text),
+      ph =
+        this.isStepBox(w) && !b.keep && !b.text.includes('\n') && readStepPhrase(nt ? b.text.slice(0, nt.at) : b.text);
     if (ph) out.push({ kind: 'due', start: ph.index, end: ph.index + ph.length });
     return out.sort((a, b) => a.start - b.start);
   },

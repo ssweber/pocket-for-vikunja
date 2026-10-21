@@ -10,6 +10,7 @@
    Pocket uses neither of Vikunja's bulk creates. PUT /tasks/bulk and POST /projects/{project}/tasks/bulk are each all
    or nothing, and the second ignores `position` and `labels`. */
 import { passing } from '../api.js';
+import { textToHtml } from '../html.js';
 import { DONE_MARK, patiently } from '../checklists.js';
 import { OP_WORDS } from '../messages.js';
 import { removeAssignees } from '../quickadd.js';
@@ -64,6 +65,7 @@ async function prepare(a, c) {
   if (parsed.due) body.due_date = parsed.due.toISOString();
   if (parsed.due && parsed.remind) body.reminders = [{ relative_to: 'due_date', relative_period: 0 }]; // the 🔔 chip sets a reminder at the due time
   if (parsed.priority) body.priority = parsed.priority;
+  if (parsed.notes) body.description = textToHtml(parsed.notes); // the text after " // ", as one paragraph
   if (parsed.position) body.position = parsed.position; // its position in its project's List view
   if (parsed.repeat) {
     body.repeat_after = parsed.repeat.after;

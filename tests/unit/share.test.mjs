@@ -508,6 +508,8 @@ test('a title that quick add would read as syntax is quoted, with single quotes 
   assert.equal(line('Order 50% more cups'), '- [ ] Order 50% more cups');
   assert.equal(line('Standup every week'), '- [ ] "Standup every week"');
   assert.equal(line('Paint !2 coats'), '- [ ] "Paint !2 coats"');
+  assert.equal(line('Bake // 230°C'), '- [ ] "Bake // 230°C"', 'a title with " // " in it would lose its notes');
+  assert.equal(line('Check http://example.com'), '- [ ] Check http://example.com');
   // The rest of the line matters. "in" before a date would be read as part of the date.
   assert.equal(line('Sign in'), '- [ ] Sign in');
   assert.equal(line('Sign in', { due: on(16, 12) }), '- [ ] "Sign in" 2026-10-16');
@@ -550,6 +552,7 @@ test('a copy with quoted titles reads back as the same tasks', () => {
     'Order 3/4 inch screws',
     '+Garden shed',
     'Tables (50%)',
+    'Bake // 230°C',
   ];
   const doc = {
     kind: 'task',

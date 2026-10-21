@@ -122,7 +122,7 @@ Each is discussed, with a picture, before it is built.
     date.", with a "Search *errands" button.
   - In search, typing `*` offers the labels that match what follows as chips. Tapping one searches for it.
   - The bar scrolls with the list. Search orders projects by their soonest task, and shows open tasks only.
-- [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
+- [x] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
   keep `http://` and file paths in the title. Agreed from `scratchpad/ui-notes-me/notes.png`, whose `inject.mjs`
   is the start:
   - The notes are highlighted in the box like any parsed part, and are not parsed themselves. A chip after the others
