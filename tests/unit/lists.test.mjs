@@ -339,7 +339,7 @@ for (const [kind, route, screen, shown] of SCREENS)
         { id: 20, title: 'Close up', project_id: 7, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } },
       ]),
       open = () =>
-        Object.assign(component(views, tasks), {
+        Object.assign(component(views, tasks, runs), {
           user: { id: 1 },
           projById: new Map([[7, { id: 7, title: 'Cafe' }]]),
           positions: {},

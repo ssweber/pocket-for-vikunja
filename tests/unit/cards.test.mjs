@@ -19,7 +19,7 @@ import {
 } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
 import cards from '../../src/js/app/cards.js';
-import views from '../../src/js/app/views.js';
+import views, { renderSeq } from '../../src/js/app/views.js';
 import alerts from '../../src/js/app/alerts.js';
 import tasks, { started } from '../../src/js/app/tasks.js';
 import { TASK } from '../../src/js/tasks.js';
@@ -1191,6 +1191,61 @@ test("a checklist's screen reads its steps by id, so a step ticked in a list sho
   assert.equal(app.runView.steps[2].done, false);
   outboxOf(app, [{ kind: 'act', id: 'done53', op: 'done', task: 53, run: 50 }]); // C ticked on Today's card
   assert.equal(app.runView.steps[2].done, true);
+});
+
+/* A checklist opened before shows its saved copy at once, as Today does, and its load changes the steps in place. The
+   load keeps the step the link names, and reads Last time again without making the steps wait for it. The card keeps
+   the notes it shows until another step is on it, so the steps under it stay still. */
+test('a checklist opened again shows its saved copy at once, and its load waits for nothing and keeps the card', async () => {
+  await sync.ready;
+  const note = id => ({ id, author: 'me', when: '', comment: '<p>Oil the hinge</p>', step: 'C', tpl: 'C' });
+  const app = runScreen();
+  app.view.shownRun.last = { id: 40, title: 'Opening up · #1', notes: [note(1)] };
+  saved.set('user', me); // the saved screens are this account's
+  opened('run', 50);
+  app.saveRun();
+  const plain = id => JSON.parse(JSON.stringify(app.tasks[id]));
+  const v = fakeVikunja([
+    { ...plain(50), related_tasks: { subtask: [51, 52, 53, 54].map(id => ({ id })) } },
+    ...[51, 52, 53, 54].map(plain),
+  ]);
+  Object.assign(v.task(54), { done: true, done_at: new Date().toISOString(), updated: new Date().toISOString() }); // a teammate ticks D
+
+  const again = runScreen(),
+    route = { name: 'run', id: 50, step: 53 };
+  Object.assign(again, { route, projects: [], view: { groups: [] } });
+  again.showSaved(route, again.savedView(route));
+  assert.equal(v.requests.length, 0);
+  assert.deepEqual(
+    [again.runView.step.title, again.lastNotes(again.runView.step).map(n => n.id)],
+    ['C', [1]],
+    'the saved copy opens on the step the link names, with Last time on its card, before Vikunja is asked',
+  );
+  let last;
+  again.readLast = () => new Promise(ok => (last = ok));
+  const t0 = Date.now();
+  await again.loadRun(renderSeq, 50);
+  assert.ok(Date.now() - t0 < 300, 'the load does not wait for Last time');
+  assert.deepEqual(
+    [again.runView.step.title, again.runView.steps[3].done, typeof last],
+    ['C', true, 'function'],
+    'the load keeps C on the card, shows D ticked, and reads Last time again',
+  );
+  last({ id: 41, title: 'Opening up · #2', notes: [note(2), note(3)] });
+  await new Promise(ok => setImmediate(ok));
+  assert.deepEqual(
+    [again.view.shownRun.last.notes.length, again.lastNotes(again.runView.step).map(n => n.id)],
+    [2, [1]],
+    'the new notes show under the steps, and the card keeps the notes it showed',
+  );
+  again.showStep(1);
+  again.showStep(2);
+  assert.deepEqual(
+    again.lastNotes(again.runView.step).map(n => n.id),
+    [2, 3],
+    'on C again, the card shows the new notes',
+  );
+  localStorage.clear();
 });
 
 test('a checklist screen opens on the next step in order, and ticking a step moves on to the next', () => {

@@ -65,7 +65,7 @@ import { lastTick, stagesOf, stepsAdding } from '../ops/index.js';
 import { copyOf, putting, started } from './tasks.js';
 import { opsId, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from '../tasks.js';
 
-const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
+const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps load, when nothing is on screen yet
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
    when another step or countdown changes. */
 const lastSteps = new Map();
@@ -367,15 +367,18 @@ export default {
     this.change(w => w.read([run], TASK_COMMENTS, at));
     if (this.projects.length && !this.isRunTask(run))
       throw new ApiError(404, "This task isn't a started checklist. Open it from its project instead.");
-    /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
-       push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
+    /* With nothing on screen yet, wait briefly for Last time's notes before showing the steps, or use the saved notes.
+       Notes that arrive later would push the steps down while the user is touching the screen, so lateLast keeps them
+       off the current card. A checklist already on screen, from its saved copy or an earlier load, never waits. */
     const kept = this.view.shownRun?.id === id ? this.view.shownRun : null;
-    const reading = kept?.last ? null : this.readLast(plainRun(run));
+    const reading = kept?.last && !kept.last.saved ? null : this.readLast(plainRun(run));
     const steps = await inBatches(stepsOf(run), 4, async s =>
       allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)),
     ).then(putting(TASK_REACTIONS_COMMENTS));
     const last =
-      reading && (await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))]));
+      reading && !kept
+        ? await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))])
+        : undefined;
     if (seq !== renderSeq) return;
     const keep = this.view.shownRun?.id === id ? this.view.shownRun : null; // reloading the open checklist keeps its step and drafts
     if (!keep) {
@@ -383,7 +386,7 @@ export default {
       this.runBoxAt = null;
     }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step); // index of the step opened from a list
-    const before = last === undefined ? saved.get('run.' + id)?.shownRun?.last : null;
+    const before = !keep && last === undefined ? saved.get('run.' + id)?.shownRun?.last : null;
     this.runNow = Date.now(); // compute the newly opened run for the current time
     for (const t of [run, ...steps]) this.row(t); // the screen reads the checklist and its steps by id
     this.view.shownRun = {
@@ -394,7 +397,17 @@ export default {
     };
     opened('run', id);
     this.saveRun();
-    if (last === undefined) reading.then(l => this.lateLast(id, l));
+    if (reading && last === undefined) reading.then(l => this.lateLast(id, l));
+  },
+  /* A checklist opened from its saved copy starts as one opened from Vikunja does: on the step the link names, with an
+     empty add box, and with Last time's notes on the step's card. Its load keeps all of that, and reads Last time
+     again because the saved notes may be old (`saved`). */
+  savedRun(r, run) {
+    this.runInsert = newBox();
+    this.runBoxAt = null;
+    this.runNow = Date.now();
+    const at = run.steps.indexOf(r.step);
+    return { ...run, at: at >= 0 ? at : null, last: run.last && { ...run.last, held: null, shown: null, saved: true } };
   },
   // Save the open checklist so it opens offline, as the ids of the checklist and its steps. A save that isn't a load
   // (`fresh` false), as a rename or Last time's notes, doesn't sweep the store.
@@ -433,8 +446,8 @@ export default {
       return null;
     }
   },
-  /* Show late notes below the steps immediately, but hold card notes until another step is selected so the list
-     stays still. */
+  /* Show late notes below the steps immediately. The current card keeps the notes it shows (`shown`) until another
+     step is selected, so the list under it stays still. */
   lateLast(id, last) {
     const r = this.view.shownRun;
     if (r?.id !== id || !last) return;
@@ -442,7 +455,10 @@ export default {
       r.last &&
       JSON.stringify(r.last.notes.map(n => n.id)) === JSON.stringify(last.notes.map(n => n.id)) &&
       r.last.id === last.id;
-    r.last = same ? { ...last, held: r.last.held } : { ...last, held: this.runView?.step?.id ?? null };
+    const step = this.runView?.step;
+    r.last = same
+      ? { ...last, held: r.last.held, shown: r.last.shown }
+      : { ...last, held: step?.id ?? null, shown: this.lastNotes(step) };
     this.saveRun(false);
   },
   /* The checklist on its screen, from its steps as their rows show them, so a tick, a skip or a note waiting in the
@@ -751,7 +767,8 @@ export default {
   // The notes made on this step in the last finished checklist of the same template.
   lastNotes(s) {
     const l = this.view.shownRun?.last;
-    return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : [];
+    if (!s?.tpl || !l) return [];
+    return s.id === l.held ? l.shown || [] : (l.notes || []).filter(n => n.tpl === s.tpl);
   },
   /* Open a run on its own screen, selecting the requested step if given. Back returns to the screen that opened
      it. */

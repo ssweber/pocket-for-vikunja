@@ -511,7 +511,7 @@ export default {
           this.regroupSoon();
           return;
         }
-        const s = this.keptScreen(viewKey(r)); // a checklist's saved copy is used only after a failed load
+        const s = this.keptScreen(viewKey(r));
         if (s && (r.name !== 'run' || s.shownRun)) {
           this.showSaved(r, s);
           return;
@@ -593,13 +593,19 @@ export default {
   drawn(g) {
     return g.fold && !g.open ? [] : drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo);
   },
-  /* Today, a project and Checklists open from the screen saved on the phone while they reload, including background
-     loads. Each account has its own. */
+  /* Today, a project, Checklists and a checklist open from the screen saved on the phone while they reload, including
+     background loads. Each account has its own. */
   savedView(r) {
-    if (!['today', 'project', 'checklists'].includes(r.name) || !this.user || saved.get('user')?.id !== this.user.id)
+    if (
+      !['today', 'project', 'checklists', 'run'].includes(r.name) ||
+      !this.user ||
+      saved.get('user')?.id !== this.user.id
+    )
       return null;
     const s = this.keptScreen(viewKey(r));
-    return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
+    return s && (r.name !== 'project' || s.project?.id === r.id) && (r.name !== 'run' || s.shownRun?.id === r.id)
+      ? s
+      : null;
   },
   // Show a saved screen's ids as the store's rows. Keep the project's current Done toggle, and load Done tasks
   // separately because the saved screen keeps only their count.
@@ -626,7 +632,7 @@ export default {
       cards: s.cards || {},
       project: project || null,
       checklists,
-      shownRun: s.shownRun || null,
+      shownRun: s.shownRun ? this.savedRun(r, s.shownRun) : null,
       savedAt: s.at,
       listView: s.listView || null,
     });

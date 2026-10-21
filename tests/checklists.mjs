@@ -1355,6 +1355,32 @@ try {
     await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
   });
 
+  // A checklist opened before shows its saved copy while it reloads, as Today does. Its steps are on screen before
+  // Vikunja answers a request for them, with no Loading.
+  await step('a-checklist-opened-again-shows-its-saved-copy', async () => {
+    let release;
+    const held = new Promise(ok => (release = ok)),
+      hold = async r => {
+        await held;
+        await r.continue().catch(() => {});
+      };
+    await page.route(/\/v2\/tasks\//, hold);
+    try {
+      await page.click(`${cardOf(`${TEMPLATE} · #`)} > .card-head .card-open`);
+      await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
+      await expect(page.locator('#run-steps .row[data-id]')).toHaveCount(3);
+      await expect(page.locator('#view .loading')).toHaveCount(0);
+      await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
+    } finally {
+      release();
+      await page.unroute(/\/v2\/tasks\//, hold);
+    }
+    await loaded(page);
+    await expect(page.locator('#run-steps .row[data-id]')).toHaveCount(3);
+    await page.click('#btn-back');
+    await page.waitForFunction(() => location.hash === '#/today', null, { timeout: 15000 });
+  });
+
   // Today's card and the checklist's screen read the same step, so a tick on one shows on the other.
   await step('a-tick-on-today-shows-on-the-checklists-screen-and-back', async () => {
     const runCard = cardOf(`${TEMPLATE} · #`),

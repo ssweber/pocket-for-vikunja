@@ -18,6 +18,7 @@ is a new 0.x.y.
 
 - Pocket opens on its saved screen sooner, without waiting for the phone to open the Outbox or for the list of
   projects.
+- A checklist opened before shows its steps at once from its saved copy, and then reloads from Vikunja.
 
 ### Fixed
 

@@ -68,8 +68,10 @@ matters there.
 - [x] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
   and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed. It is drawn with the
   saved projects, as it is when the token is the confirmed one.
-- [ ] **A checklist doesn't open from its saved copy.** `savedView()` leaves checklists out. Opening one fetches the
-  parent, then each step, four at a time, and can wait another 600 ms for notes.
+- [x] **A checklist doesn't open from its saved copy.** `savedView()` leaves checklists out. Opening one fetches the
+  parent, then each step, four at a time, and can wait another 600 ms for notes. A checklist opened before now shows
+  its saved copy and reloads behind it, without the wait. The steps are still read one request each, because
+  Vikunja's task list returns at most 50 comments in all for the tasks it lists.
 - [ ] **UI, discuss first: always show the three tabs.** Today the header switches to the compact layout when
   `checklistProjects` loads, so it can change from two tabs to three. The Checklists screen already has a setup card
   for someone with no checklists.
