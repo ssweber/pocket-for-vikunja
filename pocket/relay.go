@@ -124,6 +124,15 @@ type relayRow struct {
 }
 
 func relayWrite(c *echo.Context) error {
+	// A write may reach only /api/v2. Vikunja's router doesn't resolve "..", so such a path finds no route today, but
+	// the relay doesn't rely on that. Echo has decoded the path, so %2e%2e and %2f arrive here as ".." and "/". The
+	// answer is 400, not 404, which Pocket reads as a deleted task.
+	rest := c.Param("*")
+	for _, seg := range strings.Split(rest, "/") {
+		if seg == ".." {
+			return echo.NewHTTPError(http.StatusBadRequest, "the path can't have a .. segment")
+		}
+	}
 	// The draft's value is a structured-field string, so it may come quoted.
 	key := strings.Trim(strings.TrimSpace(c.Request().Header.Get("Idempotency-Key")), `"`)
 	if len(key) < 16 || len(key) > 255 {
@@ -149,7 +158,7 @@ func relayWrite(c *echo.Context) error {
 	if len(body) > relayMaxBody {
 		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "the body is too large")
 	}
-	target := "/api/v2/" + c.Param("*")
+	target := "/api/v2/" + rest
 	if q := c.Request().URL.RawQuery; q != "" {
 		target += "?" + q
 	}

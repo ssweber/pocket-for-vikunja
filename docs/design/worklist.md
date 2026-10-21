@@ -17,7 +17,7 @@ claim that turns out wrong is noted here and dropped.
   log the INSERT error and answer 500.
 - [x] **The relay prunes old keys before every write.** The `DELETE … WHERE created < ?` has no index on `created`,
   and on SQLite it doubles the write locks per request. Prune at most once a minute and add the index.
-- [ ] **The relay doesn't check its path for `..`.** `"/api/v2/" + c.Param("*")` goes to Vikunja as it is. Refuse a
+- [x] **The relay doesn't check its path for `..`.** `"/api/v2/" + c.Param("*")` goes to Vikunja as it is. Refuse a
   path with a `..` segment.
 - [ ] **The tests need Node 24, and nothing says so.** On Node 22, 19 unit tests fail, among them "each request
   reaches Vikunja at most once for each key". The fake IndexedDB in `tests/unit/outbox-db.mjs` finishes transactions
