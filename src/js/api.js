@@ -1,6 +1,5 @@
 // Talking to Vikunja's API, and staying signed in.
 import { app, esc } from './util.js';
-import { SIGNED_OUT } from './messages.js';
 
 export class ApiError extends Error {
   constructor(status, msg, code) {
@@ -223,7 +222,7 @@ async function request(
     if (renewed) return api(path, { method, body, raw, auth, retry: false, key, replayed });
   }
   if (res.status === 401 && auth) {
-    app.signOut(SIGNED_OUT.ended, { tellServer: false });
+    app.sessionEnded();
     throw new ApiError(401, 'Signed out');
   }
   if (!res.ok && res.status !== 304) {

@@ -168,6 +168,11 @@ export default {
     this.screen = 'login';
     this.login.err = err || '';
   },
+  // api.js calls this when Vikunja refuses the session and renewing it fails. The words are here so that api.js needn't
+  // import messages.js, which imports api.js.
+  sessionEnded() {
+    this.signOut(SIGNED_OUT.ended, { tellServer: false });
+  },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, { tellServer = true } = {}) {
     const me = this.user?.id;

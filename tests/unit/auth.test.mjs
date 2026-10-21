@@ -116,6 +116,15 @@ test("opening with a different token waits for Vikunja, then saves that token's 
   assert.equal((await app().keptUser())?.id, ME.id, 'the next opening shows the saved screen');
 });
 
+test('a 401 that renewing the session does not fix signs Pocket out and says the session ended', async () => {
+  const c = Object.assign(app(), { user: ME, info: {}, login: {}, dropSheet() {}, forgetPeople() {} });
+  globalThis.fetch = async () => reply({ message: 'expired' }, 401);
+  await assert.rejects(api('/tasks/1'), { status: 401 });
+  assert.equal(c.screen, 'login');
+  assert.equal(c.login.err, 'Your session ended. Sign in again.');
+  assert.ok(!sharedToken.get());
+});
+
 test('when Vikunja names a different user for the saved token, the saved lists are cleared and the waiting change is not sent', async () => {
   const v = vikunja({ id: 9, username: 'priya' }),
     c = app();

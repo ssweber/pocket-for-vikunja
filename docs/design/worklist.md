@@ -53,7 +53,7 @@ No change in behaviour. The tests pass before and after.
   small module of their own, and move `DEFAULTS` out of `ops/index.js`, which `ops/comments.js` imports back. Then
   delete the "import an op's helpers from here" warning in `ops/index.js`, and add a lint rule or test that fails on
   a new cycle.
-- [ ] **A small cycle between `api.js`, `messages.js` and `checklists.js`.** Break it the same way, if the result is
+- [x] **A small cycle between `api.js`, `messages.js` and `checklists.js`.** Break it the same way, if the result is
   simpler.
 
 ## Batch 3: opening Pocket
