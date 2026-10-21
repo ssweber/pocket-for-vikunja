@@ -628,11 +628,13 @@ test('a touch that moves past the swipe threshold on a slant and then stops does
     (win[type] ||= []).push(fn);
   };
   globalThis.getSelection = () => null;
+  globalThis.Alpine = { $data: el => el.scope };
   navigator.vibrate = p => felt.push(p);
   c.after(() => {
     delete document.addEventListener;
     delete globalThis.addEventListener;
     delete globalThis.getSelection;
+    delete globalThis.Alpine;
     delete navigator.vibrate;
   });
   app.holdToSlide(area, () => ({ el: row, reorder: { start() {}, move() {}, end() {} } }));
@@ -1432,8 +1434,9 @@ test('holding a row on Today shows its dates, but a repeating task, a template o
    the reschedule the hold ends in. `touch(x, y)` touches the row and waits until the hold registers. `to(x, y)`
    moves the touch, `up()` releases it, and `away()` is the phone cancelling the touch (pointercancel). `felt`
    records navigator.vibrate, which stands in for haptic(): 12 when the hold registers and 6 for each highlighted
-   date. The clock is set to Wednesday 7 October 2026, 2:20 PM. The task `t` (a test may change it between holds) was
-   due the morning before. */
+   date. `claim(can)` is a press on the row's claim slot, which `touch` takes as its third argument, and whoMenu
+   records the people menu it opens. The clock is set to Wednesday 7 October 2026, 2:20 PM. The task `t` (a test may
+   change it between holds) was due the morning before. */
 function heldOnToday(c) {
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 9, 7, 14, 20) });
   const app = component(progress, throwing),
@@ -1470,6 +1473,7 @@ function heldOnToday(c) {
     reschedule: (x, to) => {
       moved.push([x.id, to.label, to.due]);
     },
+    whoMenu: slot => seen.push(['people', slot.id]),
     throwView: (x, held, targets, why, px, py) => {
       seen.push(['drawn', why, px, py]);
       return {
@@ -1488,11 +1492,13 @@ function heldOnToday(c) {
     (win[type] ||= []).push(fn);
   };
   globalThis.getSelection = () => null;
+  globalThis.Alpine = { $data: el => el.scope };
   navigator.vibrate = p => felt.push(p);
   c.after(() => {
     delete document.addEventListener;
     delete globalThis.addEventListener;
     delete globalThis.getSelection;
+    delete globalThis.Alpine;
     delete navigator.vibrate;
   });
   app.holdToSlide(area, () => app.rowGesture(t, row, false));
@@ -1517,12 +1523,16 @@ function heldOnToday(c) {
     felt,
     tap: id => tap(id),
     pickDay: day => choose(day),
-    touch(x = 180, y = 300) {
+    claim(can = true) {
+      const claim = { scope: { slot: { id: t.id, can } }, closest: () => row };
+      return { closest: sel => (sel.startsWith('.claim') ? claim : null) };
+    },
+    touch(x = 180, y = 300, target = undefined) {
       x0 = x;
       y0 = y;
       seen.length = 0;
       felt.length = 0;
-      fire(on.pointerdown, { clientX: x, clientY: y });
+      fire(on.pointerdown, { clientX: x, clientY: y, ...(target && { target }) });
       c.mock.timers.tick(HOLD_MS);
     },
     to(dx, dy) {
@@ -1700,6 +1710,55 @@ test("a day picked in the phone's date picker moves the task there, but not to i
 
 /* The steps of a new template (app/checklists.js, sheet/sub-list.html) exist only as rows on the phone. They are
    written through the one box at the bottom of the list, and Vikunja knows nothing about them until Create template. */
+test('holding "+ me" or your own picture opens the people menu, and the date chips never appear', c => {
+  const h = heldOnToday(c);
+  h.touch(330, 300, h.claim());
+  assert.deepEqual(
+    [h.seen, h.felt],
+    [[['people', 1]], [12]],
+    'when the hold registers, the phone vibrates and the menu opens while the finger is down',
+  );
+  h.to(0, 40);
+  h.up();
+  assert.deepEqual([h.seen, h.moved], [[['people', 1]], []], 'moving and lifting the finger after that does nothing');
+  h.touch(330, 300, h.claim(false));
+  assert.deepEqual(h.seen, [['drawn', null, 330, 300]], "someone else's picture keeps the row's hold");
+});
+
+test("a press on a claim slot keeps the row's swipe and tap, and only its hold opens the people menu", () => {
+  const app = component(progress),
+    row = { id: 'row' },
+    claim = slot => ({ scope: { slot }, closest: () => row }),
+    on = el => ({ closest: sel => (sel === '.claim:not(.restore)' ? el : null) }),
+    menus = [];
+  globalThis.Alpine = { $data: el => el.scope };
+  app.whoMenu = slot => menus.push(slot.id);
+  const s = { el: row, swipe: 'delete', finish: () => {}, start: 0, reorder: { lift() {} } };
+  try {
+    const held = app.whoHold(on(claim({ id: 4, can: true })), s);
+    assert.deepEqual(
+      [held.el, held.swipe, held.finish, held.start, held.reorder === s.reorder],
+      [row, 'delete', s.finish, 0, false],
+      'a swipe from the slot still swipes the row',
+    );
+    held.reorder.lift();
+    assert.deepEqual(menus, [4], "holding opens the menu for the slot's task");
+    assert.equal(
+      app.whoHold(on(claim({ id: 4, can: false })), s),
+      s,
+      "someone else's picture keeps the row's gestures",
+    );
+    assert.equal(app.whoHold(on(null), s), s, 'a press elsewhere on the row keeps its gestures');
+    assert.deepEqual(
+      Object.keys(app.whoHold(on(claim({ id: 5, can: true })), null)),
+      ['el', 'reorder'],
+      'a slot on a row with no gestures of its own, as in search, still opens the menu',
+    );
+  } finally {
+    delete globalThis.Alpine;
+  }
+});
+
 test('in New template, each line from the add box becomes a step row after the row the box is under', () => {
   const app = component(checklists, quickadd, sheet);
   Object.assign(app, {

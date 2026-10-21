@@ -101,6 +101,62 @@ export function chipsOpen(set, title) {
   for (const b of set.querySelectorAll('.throw-t')) b.tabIndex = 0;
 }
 
+/* Keep `set`, a menu a hold opened over the screen, open to tap. `app` is the component. Only a press that starts on
+   the menu counts, so the click that can follow the hold's own release is ignored, and mouse events from it don't take
+   the focus off the menu. A click on an `item` (a selector) calls pick(button) unless the button is aria-disabled. A
+   click anywhere else, Escape, or the page scrolling, rotating or being left calls leave(). Tab stays among the items,
+   and arrow(key, items, i) returns the item an arrow key focuses (undefined for any other key). While the menu is open,
+   rows stay where they are, as under a finger (holdBatch). Returns {on, close}: on() adds a listener that close()
+   removes with the rest. */
+export function tapMenu(app, set, item, { pick, leave, arrow = () => undefined }) {
+  const off = [];
+  const on = (target, type, fn, how) => {
+    target.addEventListener(type, fn, how);
+    off.push(() => target.removeEventListener(type, fn, how));
+  };
+  let pressed = false;
+  on(set, 'pointerdown', () => {
+    pressed = true;
+  });
+  on(set, 'mousedown', e => {
+    if (!pressed || !e.target.closest(item)) e.preventDefault();
+  });
+  on(set, 'click', e => {
+    if (!pressed && e.detail) return;
+    const b = e.target.closest(item);
+    if (!b) leave();
+    else if (b.getAttribute('aria-disabled') !== 'true') pick(b);
+  });
+  on(
+    document,
+    'keydown',
+    e => {
+      const all = [...set.querySelectorAll(item)],
+        i = all.indexOf(document.activeElement);
+      if (e.key === 'Escape') leave();
+      else if (e.key === 'Tab') all[(i + (e.shiftKey ? -1 : 1) + all.length) % all.length]?.focus();
+      else {
+        const to = arrow(e.key, all, i);
+        if (to === undefined) return;
+        to?.focus();
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true,
+  );
+  for (const type of ['scroll', 'resize', 'hashchange', 'popstate']) on(window, type, leave, { passive: true });
+  app.holdBatch(true);
+  return {
+    on,
+    close() {
+      if (!off.length) return;
+      for (const f of off.splice(0)) f();
+      app.holdBatch(false);
+    },
+  };
+}
+
 export default {
   /* What holding task `t` on Today does. `el` is the row or card held. A task does nothing if it is done, marked to
      leave with its batch, replaced by a message, waiting to be sent, or in a project the user can't write to.
@@ -233,91 +289,54 @@ export default {
         );
       set.querySelector('.throw-why')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: THROW.ms });
     }
-    const off = [],
-      close = () => {
-        for (const f of off.splice(0)) f();
-        this.holdBatch(false);
-        if (shut === close) shut = null;
-        set.remove();
-        held.classList.remove('throw-from');
-      };
+    let menu = null;
+    const close = () => {
+      menu?.close();
+      if (shut === close) shut = null;
+      set.remove();
+      held.classList.remove('throw-from');
+    };
     return {
       light: p => chipsLight(set, p),
       close,
-      /* Leave the chips open to tap. Only a press that starts on the chips counts, or a key. The click that can follow
-         the hold's own release is ignored, because the touch may still be over Pick a date…. A dimmed date does
-         nothing.
-         Pick a date… opens the phone's picker straight from the tap, because a phone allows that only from a tap (as
-         the sheet's Due does: propTap). Choosing a day there closes the menu and moves the task.
-         A tap anywhere else, Escape, or the page scrolling, rotating or being left closes the menu, changes nothing,
-         and puts the focus back on the row. An arrow key moves to the date in that direction. Tab stays among the
-         chips. While they are open, rows stay where they are, as under a finger (holdBatch). */
+      /* Leave the chips open to tap (tapMenu). A dimmed date does nothing. Pick a date… opens the phone's picker
+         straight from the tap, because a phone allows that only from a tap (as the sheet's Due does: propTap).
+         Choosing a day there closes the menu and moves the task. Closing without a choice changes nothing and puts the
+         focus back on the row. An arrow key moves to the date in that direction. */
       open: (pick, picked) => {
-        this.holdBatch(true);
         chipsOpen(set, t.title);
         chipsLight(set, null);
-        let pressed = false;
-        const chips = () => [...set.querySelectorAll('.throw-t')],
-          date = set.querySelector('.throw-date');
+        const date = set.querySelector('.throw-date');
         const leave = () => {
           close();
           held.querySelector('.card-open, .body')?.focus({ preventScroll: true });
         };
-        const on = (target, type, fn, how) => {
-          target.addEventListener(type, fn, how);
-          off.push(() => target.removeEventListener(type, fn, how));
-        };
-        on(set, 'pointerdown', () => {
-          pressed = true;
+        menu = tapMenu(this, set, '.throw-t', {
+          pick: b => {
+            if (b.matches('.pick')) {
+              date.focus({ preventScroll: true });
+              try {
+                date.showPicker();
+              } catch {}
+              return;
+            }
+            close();
+            pick(b.dataset.id);
+          },
+          leave,
+          arrow: key => {
+            const to = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[key];
+            return to && set.querySelector('.throw-t.' + to);
+          },
         });
-        // Mouse events from the hold's release, and a press beside the dates, must not take the focus off the chips.
-        on(set, 'mousedown', e => {
-          if (!pressed || !e.target.closest('.throw-t')) e.preventDefault();
-        });
-        on(set, 'click', e => {
-          if (!pressed && e.detail) return;
-          const b = e.target.closest('.throw-t');
-          if (!b) {
-            leave();
-            return;
-          }
-          if (b.getAttribute('aria-disabled') === 'true') return;
-          if (b.matches('.pick')) {
-            date.focus({ preventScroll: true });
-            try {
-              date.showPicker();
-            } catch {}
-            return;
-          }
-          close();
-          pick(b.dataset.id);
-        });
-        on(date, 'change', () => {
+        menu.on(date, 'change', () => {
           const day = date.value;
           if (!day) return;
           close();
           picked(day);
         });
-        on(
-          document,
-          'keydown',
-          e => {
-            const to = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
-            if (e.key === 'Escape') leave();
-            else if (to) set.querySelector('.throw-t.' + to)?.focus();
-            else if (e.key === 'Tab') {
-              const all = chips(),
-                i = all.indexOf(document.activeElement);
-              all[(i + (e.shiftKey ? -1 : 1) + all.length) % all.length]?.focus();
-            } else return;
-            e.preventDefault();
-            e.stopPropagation();
-          },
-          true,
-        );
-        for (const type of ['scroll', 'resize', 'hashchange', 'popstate']) on(window, type, leave, { passive: true });
         shut = close;
-        chips()[0]?.focus({ preventScroll: true });
+        set.querySelector('.throw-t')?.focus({ preventScroll: true });
       },
     };
   },

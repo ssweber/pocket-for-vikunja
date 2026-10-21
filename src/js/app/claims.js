@@ -5,10 +5,13 @@ import { saved } from '../lists.js';
 import { claimsOnSlide } from '../progress.js';
 import { started } from './tasks.js';
 import { TASK } from '../tasks.js';
+import { ME, whoSees } from '../messages.js';
+import { tapMenu } from './throw.js';
 
 const loading = new Set(); // usernames whose picture is being fetched
 const tried = new Map(); // username -> when the last picture request failed
 const DAY = 864e5;
+const el = (tag, cls, text = '') => Object.assign(document.createElement(tag), { className: cls, textContent: text });
 
 export default {
   /* Build a row's claim slot from `people`, including pending claims. An open task with no assignee shows "+ me".
@@ -91,6 +94,105 @@ export default {
     navigator.vibrate?.(10);
     await this.act({ op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run });
     if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true; // Today shows what's assigned to you, so the list needs a refresh
+  },
+
+  /* ---------- the people menu ---------- */
+  /* The people the menu lists for task `t`: you first, then everyone else its project is shared with, by name, each
+     with whether they are assigned. They are the people the sheet's Assigned picker offers (assignSuggestions). */
+  whoList(t) {
+    const me = this.user,
+      on = new Set(this.peopleOf(t.id, t.assignees).map(u => u.id));
+    const others = (this.people || [])
+      .filter(x => x.pids.has(t.project_id) && x.user.id !== me.id)
+      .map(x => x.user)
+      .sort((a, b) => this.nameOf(a).localeCompare(this.nameOf(b)));
+    return [me, ...others].map(u => ({ u, on: on.has(u.id) }));
+  },
+  /* Assign `u` to the task of claim slot `slot`, or unassign them if they are assigned, through the outbox. For you
+     this is the claim or the letting go that tapping the slot sends, so two people claiming at once still settle on
+     one. */
+  whoTap(slot, u) {
+    if (u.id === this.user.id) return this.toggleClaim(slot);
+    const t = this.tasks[slot.id] || this.shownAs(slot.id);
+    if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true; // as for a claim
+    return (t.assignees || []).some(x => x.id === u.id) ? this.removeAssignee(t, u.id) : this.addAssignee(t, u);
+  },
+  /* Open the people menu for claim slot `slot` (the button `claim`) while the finger is still down, under the row and
+     right-aligned to it, or above the row when there's no room below. It is drawn here rather than in the markup, so
+     it is in place before the finger lifts, as the date chips are. Tapping a person closes it and assigns or unassigns
+     them (whoTap). Anything else closes it with no change (tapMenu). People not loaded yet are asked for as the
+     sheet's Assigned picker asks, and they are added to the menu when they arrive. */
+  whoMenu(slot, claim) {
+    const t = this.tasks[slot.id] || this.shownAs(slot.id);
+    if (!t) return;
+    let list = [];
+    const set = el('div', 'people-scrim'),
+      menu = el('div', 'menu people-menu'),
+      head = el('p', 'people-head', whoSees(this.projById.get(t.project_id)?.title)),
+      room = (claim.closest('#view') && document.getElementById('capture')?.getBoundingClientRect().top) || innerHeight;
+    head.id = 'people-head';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-labelledby', head.id);
+    set.append(menu);
+    document.body.append(set);
+    claim.classList.add('holding');
+    const fill = () => {
+      const had = menu.contains(document.activeElement);
+      list = this.whoList(t);
+      menu.replaceChildren(head, ...list.map((x, i) => this.whoItem(x, i)));
+      const r = (claim.closest('.row') || claim).getBoundingClientRect(),
+        h = menu.offsetHeight;
+      menu.style.right = innerWidth - r.right + 'px';
+      menu.style.top = (r.bottom + 6 + h <= room || r.top - 6 - h < 0 ? r.bottom + 6 : r.top - 6 - h) + 'px';
+      if (had) menu.querySelector('[role=menuitemcheckbox]').focus({ preventScroll: true });
+    };
+    fill();
+    if (!this.people)
+      this.loadPeople().then(
+        () => set.isConnected && fill(),
+        () => {},
+      );
+    const close = () => {
+      tap.close();
+      set.remove();
+      claim.classList.remove('holding');
+    };
+    const tap = tapMenu(this, set, '[role=menuitemcheckbox]', {
+      pick: b => {
+        close();
+        this.whoTap(slot, list[+b.dataset.i].u);
+      },
+      leave: () => {
+        close();
+        claim.focus({ preventScroll: true });
+      },
+      arrow: (key, all, i) => {
+        const d = { ArrowDown: 1, ArrowUp: -1 }[key];
+        return d && all[(i + d + all.length) % all.length];
+      },
+    });
+    menu.querySelector('[role=menuitemcheckbox]').focus({ preventScroll: true });
+  },
+  // One person's row in the people menu: their picture, their name and username, and a ✓ when they are assigned.
+  whoItem({ u, on }, i) {
+    const mine = u.id === this.user.id,
+      b = el('button', ''),
+      pic = el('span', mine ? 'pic mine' : 'pic'),
+      av = el('span', 'av'),
+      name = el('span', 'people-name', mine ? ME : this.nameOf(u)),
+      url = this.avatarUrl(u);
+    b.type = 'button';
+    b.dataset.i = i;
+    b.setAttribute('role', 'menuitemcheckbox');
+    b.setAttribute('aria-checked', String(on));
+    pic.setAttribute('aria-hidden', 'true');
+    av.append(el('span', '', this.initials(u)));
+    if (url) av.append(Object.assign(el('img', ''), { src: url, alt: '' }));
+    pic.append(av);
+    name.append(el('small', '', '@' + u.username));
+    b.append(pic, name);
+    b.insertAdjacentHTML('beforeend', '<svg class="i people-tick" aria-hidden="true"><use href="#i-check"/></svg>');
+    return b;
   },
   /* Read the subtasks of `t` in one request, because Vikunja leaves their assignees and labels out of related tasks.
      The read goes into their copies, so the sheet's subtask rows show them. Offline, the rows keep Vikunja's last

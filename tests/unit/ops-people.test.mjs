@@ -309,3 +309,52 @@ test('each op names the person or label, and Cancel names what Vikunja keeps', (
     ],
   );
 });
+
+test("the people menu lists you first, then the others who can see the task's project by name, and ticks who is on it", t => {
+  const { app } = listed(t, [task(2, { assignees: [BOB] })], claims);
+  app.user = ME;
+  const sees = (user, ...pids) => ({ user, pids: new Set(pids) });
+  app.people = [
+    sees({ id: 9, username: 'zed', name: 'Zed' }, 5),
+    sees(BOB, 5),
+    sees(ME, 5, 6),
+    sees({ id: 8, username: 'carol', name: '' }, 6),
+    sees({ id: 3, username: 'amy', name: 'Amy' }, 5, 6),
+  ];
+  assert.deepEqual(
+    app.whoList(app.tasks[2]).map(x => [x.u.username, x.on]),
+    [
+      ['me', false],
+      ['amy', false],
+      ['bob', true],
+      ['zed', false],
+    ],
+    'carol cannot see project 5, so she is not listed',
+  );
+  app.people = null;
+  assert.deepEqual(
+    app.whoList(app.tasks[2]).map(x => x.u.username),
+    ['me'],
+    'before the people are loaded, only you are listed',
+  );
+});
+
+test('tapping a person in the people menu assigns them, or unassigns them if ticked, offline too', async t => {
+  const { app, v } = listed(t, [task(2)], claims);
+  Object.assign(app, { user: ME, canWrite: () => true });
+  noConnection(app, v);
+  const slot = () => app.claimSlot(app.tasks[2], app.tasks[2].assignees, false),
+    queued = () => sync.all(1).map(e => [e.op, e.person?.id ?? e.user, e.add]);
+  await app.whoTap(slot(), BOB);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[7], [['assign', 7, true]]], 'bob is assigned at once');
+  await app.whoTap(slot(), BOB);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[], []], 'tapping bob again unassigns him');
+  await app.whoTap(slot(), ME);
+  assert.deepEqual(
+    [ids(app.tasks[2].assignees), queued()],
+    [[1], [['claim', 1, undefined]]],
+    'tapping Me claims the task, as a tap on "+ me" does',
+  );
+  await app.whoTap(slot(), ME);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[], []], 'tapping Me again lets it go');
+});

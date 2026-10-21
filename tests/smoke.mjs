@@ -3596,6 +3596,16 @@ try {
     // screen the test makes the screen even shorter if Today has so few tasks that the last row isn't next to the add box.
     const first = await make(`Pocket smoke hold first ${stamp}`, { due_date: new Date(2001, 0, 1, 9).toISOString() }),
       last = await make(`Pocket smoke hold last ${stamp}`, { due_date: dayAt(7, 23) });
+    // The touch near the first row's right end is on its claim slot. With someone else on the task, holding there is
+    // the row's own hold, not the people menu that holding "+ me" opens.
+    const seers = await (await api(`/projects/${home2}/users/search`)).json(),
+      other = (seers?.items || seers || []).find(u => u.id !== me2.id);
+    if (other)
+      await api(`/tasks/${first.id}/assignees`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ user_id: other.id }),
+      });
     // Done today's heading, under the last row once earlier tests have ticked tasks, would leave room below that row.
     // It is hidden here, so the last row sits by the add box.
     const noDone = await page.addStyleTag({ content: '#view .done-sec{display:none}' });
@@ -3733,6 +3743,81 @@ try {
       if (await page.$(`${B} .claim.mine`)) throw new Error("someone else's task shows as yours");
     } finally {
       for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+  /* Holding "+ me" opens a menu of the people who can see the task's project, and the date chips never appear. Lifting
+     the finger leaves it open. A tap outside closes it with no change, and tapping a person assigns them. Someone
+     else's picture keeps the row's own hold. A short tap on "+ me" still assigns you, and a swipe that starts on it
+     still swipes the row. */
+  await step('holding-plus-me-offers-the-people-who-can-see-the-project', async () => {
+    const a = await make(`Pocket smoke people ${stamp}`, { due_date: todayAt(21) }),
+      A = rowOf(a.title),
+      menu = page.locator('.people-menu'),
+      people = async () => ((await get(a.id)).assignees || []).map(u => u.username);
+    const holdSlot = async () => {
+      await page.locator(A).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const box = await steady(page.locator(`${A} > .claim`)),
+        x = box.x + box.width / 2,
+        y = box.y + Math.min(box.height / 2, 28);
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await later(700);
+    };
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      await holdSlot();
+      await expect(menu).toBeVisible();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await page.mouse.up();
+      await expect(menu).toBeVisible();
+      const home = projects2.find(p => p.id === home2)?.title;
+      await expect(menu.locator('.people-head')).toHaveText(`People who can see ${home}`);
+      const items = menu.getByRole('menuitemcheckbox');
+      await expect(items.first().locator('.people-name')).toHaveText(new RegExp(`^Me\\s*@${me2.username}$`));
+      await expect(items.filter({ hasText: '@carol' })).toHaveAttribute('aria-checked', 'false');
+      const box = await menu.boundingBox(),
+        row = await page.locator(A).boundingBox();
+      if (Math.abs(box.x + box.width - (row.x + row.width)) > 1 || Math.abs(box.y - (row.y + row.height + 6)) > 1)
+        throw new Error('the menu is not under the row, right-aligned: ' + JSON.stringify([box, row]));
+      await page.mouse.click(20, row.y - 40);
+      await expect(menu).toHaveCount(0);
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible();
+      // Tapping carol assigns her, and her picture replaces "+ me". Holding her picture is the row's own hold.
+      await holdSlot();
+      await page.mouse.up();
+      await items.filter({ hasText: '@carol' }).click();
+      await expect(menu).toHaveCount(0);
+      await expect(page.locator(`${A} > .claim .av`)).toHaveText('C');
+      await synced(page);
+      if (JSON.stringify(await people()) !== '["carol"]') throw new Error('assigned to ' + (await people()));
+      await holdSlot();
+      await expect(page.locator(DATES)).toHaveCount(4);
+      await expect(menu).toHaveCount(0);
+      await page.mouse.up();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await api(`/tasks/${a.id}/assignees/${(await get(a.id)).assignees[0].id}`, { method: 'DELETE' });
+      await refreshToday();
+      // A swipe from "+ me" opens the row on its Delete, and a tap on the row closes it. Then a tap on "+ me" assigns you.
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible({ timeout: 15000 });
+      await swipeRow(page, A, 'open', { from: '> .claim' });
+      await page.waitForSelector(`${A}.swiped`);
+      await expect(menu).toHaveCount(0);
+      const open = await page.locator(A).boundingBox();
+      await page.mouse.click(open.x + open.width / 2, open.y + open.height / 2);
+      await expect(page.locator(`${A}.swiped`)).toHaveCount(0);
+      await expect(page.locator('#sheet')).toBeHidden();
+      await page.locator(`${A} > .claim`).click();
+      await expect(page.locator(`${A} > .claim.mine .av`)).toBeVisible();
+      await expect(menu).toHaveCount(0);
+      await synced(page);
+      if (JSON.stringify(await people()) !== JSON.stringify([me2.username]))
+        throw new Error('after a tap, assigned to ' + (await people()));
+    } finally {
+      await api('/tasks/' + a.id, { method: 'DELETE' });
     }
   });
   /* The sheet's own row claims a task when swiped, as a list row does, because the same rule applies everywhere. So

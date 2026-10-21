@@ -147,7 +147,7 @@ Each is discussed, with a picture, before it is built.
     "Shape the loaves can be ticked at 10:42". A swipe right springs back.
   - The "Due in" line under the title counts in minutes, then in seconds under a minute: "Due in 20m", then "Due in
     50s".
-- [ ] **A long press on "+ me"** offers the project's other people. Agreed from `scratchpad/ui-notes-me/plus-me.png`,
+- [x] **A long press on "+ me"** offers the project's other people. Agreed from `scratchpad/ui-notes-me/plus-me.png`,
   whose `people.mjs` is the start:
   - Holding "+ me", or your own picture, for 450 ms opens a menu under the row headed "People who can see Shop": Me
     first, then the others by name, each with their picture, a ✓ on whoever is assigned. 46 px rows, the ⋯ menu's

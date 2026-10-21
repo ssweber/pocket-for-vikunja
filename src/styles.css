@@ -1734,7 +1734,8 @@ button.ring::after {
 .throw-t:focus-visible {
   border-radius: 16px;
 }
-.throw.open {
+.throw.open,
+.people-scrim {
   pointer-events: auto;
   touch-action: none;
   background: color-mix(in srgb, var(--scrim) 20%, transparent);
@@ -3440,21 +3441,24 @@ main.bare {
   vertical-align: -2px;
   margin-right: 3px;
 }
-#sheet .menu {
-  position: absolute;
-  right: 12px;
-  top: calc(100% - 2px);
-  z-index: 5;
+/* A menu of actions: the sheet's ⋯ menu, and the people menu that holding "+ me" opens */
+.menu {
   min-width: 240px;
-  max-width: calc(100% - 24px);
   background: var(--surface);
   border-radius: 14px;
   padding: 6px;
   box-shadow: var(--shadow-menu);
 }
-#sheet .menu button,
-#sheet .menu > a,
-#sheet .menu > label {
+#sheet .menu {
+  position: absolute;
+  right: 12px;
+  top: calc(100% - 2px);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+}
+.menu button,
+.menu > a,
+.menu > label {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3469,26 +3473,26 @@ main.bare {
   color: var(--ink);
   text-decoration: none;
 }
-#sheet .menu button:hover,
-#sheet .menu button:focus-visible,
-#sheet .menu > a:hover,
-#sheet .menu > a:focus-visible,
-#sheet .menu > label:hover,
-#sheet .menu > label:focus-within {
+.menu button:hover,
+.menu button:focus-visible,
+.menu > a:hover,
+.menu > a:focus-visible,
+.menu > label:hover,
+.menu > label:focus-within {
   background: var(--sunk);
 }
-#sheet .menu small {
+.menu small {
   font-size: 13px;
   font-weight: 400;
   color: var(--muted);
 }
 /* The row that moves a task to another project is a label with its select stretched over it, unseen, so a tap
    anywhere on the row opens the phone's own list of projects */
-#sheet .menu > label {
+.menu > label {
   position: relative;
   cursor: pointer;
 }
-#sheet .menu > label select {
+.menu > label select {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -3497,11 +3501,77 @@ main.bare {
   font-size: 16px;
   cursor: pointer;
 }
-#sheet .menu button.danger {
+.menu button.danger {
   color: var(--danger);
 }
-#sheet .menu button[disabled] {
+.menu button[disabled] {
   opacity: 0.4;
+}
+/* The people menu that holding "+ me" or your own picture opens (whoMenu, claims.js). Each person is a 46px row with
+   their picture and a ✓ when they are assigned. The menu has the date chips' thin edge, which keeps it visible in dark
+   mode, and the screen behind dims as it does behind date chips open to tap (.throw.open). */
+.people-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.people-menu {
+  position: fixed;
+  max-width: calc(100% - 32px);
+  box-shadow:
+    var(--shadow-menu),
+    0 0 0 1px color-mix(in srgb, var(--muted) 35%, transparent);
+}
+.people-head {
+  margin: 0;
+  padding: 8px 14px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.people-menu button {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 9px 14px 9px 10px;
+}
+.people-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people-menu small {
+  margin-left: 6px;
+}
+.people-tick {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  stroke-width: 3;
+  visibility: hidden;
+}
+.people-menu [aria-checked='true'] .people-tick {
+  visibility: visible;
+}
+.people-menu .pic .av {
+  box-shadow: none;
+}
+.people-menu .pic.mine .av {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+/* The slot held for the menu stays pressed while the menu is open */
+.claim.holding .me {
+  background: var(--accent-soft);
+  border-style: solid;
+}
+.claim.holding .pic .av {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 5px var(--accent-soft);
 }
 #sheet .step-menu {
   right: 0;

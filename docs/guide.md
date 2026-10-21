@@ -78,6 +78,7 @@ A user can only be assigned a task in a project they can access.
 
 - **`@user` without a `+project`.** If your default project isn't shared with that user but exactly one of your projects is, Pocket picks that one and shows a chip. Otherwise a chip warns before you send.
 - **+ me** appears only in shared projects. In a private project the slot is empty.
+- **To assign someone else**, hold **+ me** or your own picture, then tap them in the menu.
 - **Assignment never marks anything done.** Completion is recorded for whoever ticks it.
 - **A checklist's row shows who it's for.** Change that from the checklist's **⋯**. Vikunja notifies them once per checklist, not per step.
 - **To reassign a checklist step**, open the checklist's **⋯**, tap **Open as a task**, then tap the step.

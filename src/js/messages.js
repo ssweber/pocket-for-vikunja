@@ -789,6 +789,10 @@ export const notStopped = gone => (gone ? SENT_FIRST : "It is being sent and can
 export const readOnly = project => `${project || 'That project'} is read only. Type +project to pick another project.`;
 // No user has the name typed after @ in a task's sheet.
 export const noUser = name => `No user @${name}`;
+// The heading of the people menu that holding "+ me" opens, for a task in project `project`, and the name it gives you,
+// as the Start sheet does.
+export const whoSees = project => `People who can see ${project || 'this project'}`;
+export const ME = 'Me';
 // The date Pocket picked for a task given a repeat with no date, as `when` ("Tomorrow 9:00 AM").
 export const repeatDate = when =>
   `Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`;
