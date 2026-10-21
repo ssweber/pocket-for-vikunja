@@ -22,6 +22,7 @@ is a new 0.x.y.
 - A change made while another tab changed the Outbox is sent at once, not after the next reload.
 - When the server's rate limit is reached, Pocket waits as long as the server asks before it sends changes again.
 - "Waiting for Vikunja" says the time Pocket tries again, instead of "every 30 seconds".
+- A monthly task due on the 29th, 30th or 31st shows the date Vikunja 2.7.1 moves it to, such as Feb 28 for Jan 31.
 
 ## 0.2.0 (2026-10-19)
 

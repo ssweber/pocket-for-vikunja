@@ -1772,7 +1772,7 @@ const ended = await page.evaluate(() => {
 // being set up as a checklist, never comes round. A run line makes a checklist, and a step or added
 // line makes a checklist's step (the rest of the roles are in tests/unit/checklists.test.mjs). Also covered are the
 // template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja moves it to when it is ticked, as
-// checked on Vikunja 2.7.
+// checked on Vikunja 2.7.1.
 const rounds = await page.evaluate(() => {
   const L = [{ title: 'template' }],
     due = '2026-09-15T19:09:31Z',
@@ -1809,6 +1809,9 @@ const rounds = await page.evaluate(() => {
     at(vikunjaNext({ due_date: due, repeat_after: 86400 }, now)), // every day, 3 weeks late: the next 19:09 after now
     at(vikunjaNext({ due_date: '2026-10-07T18:09:31Z', repeat_after: 86400 }, now)), // ticked early: still one day later
     at(vikunjaNext({ due_date: due, repeat_mode: 1 }, now)), // every month: one month later
+    at(vikunjaNext({ due_date: '2027-01-31T18:09:31Z', repeat_mode: 1 }, now)), // the 31st: February's last day
+    at(vikunjaNext({ due_date: '2028-01-31T18:09:31Z', repeat_mode: 1 }, now)), // in a leap year, Feb 29
+    at(vikunjaNext({ due_date: '2027-02-28T18:09:31Z', repeat_mode: 1 }, now)), // then on from the 28th
     at(vikunjaNext({ due_date: '2026-07-06T18:09:31Z', repeat_mode: 1 }, now)), // every month, still late after one month
     at(nextAfter({ repeat_mode: 1 }, Date.parse('2026-08-06T18:09:31Z'), now)), // Pocket moves it past now
     at(vikunjaNext({ due_date: due, repeat_after: 86400, repeat_mode: 2 }, now)),
@@ -2019,6 +2022,9 @@ const roundsWant = [
   '2026-10-06T19:09:31.000Z',
   '2026-10-08T18:09:31.000Z',
   '2026-10-15T19:09:31.000Z',
+  '2027-02-28T18:09:31.000Z',
+  '2028-02-29T18:09:31.000Z',
+  '2027-03-28T18:09:31.000Z',
   '2026-08-06T18:09:31.000Z',
   '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z',

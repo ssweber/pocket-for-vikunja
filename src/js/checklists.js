@@ -178,7 +178,7 @@ export function repeatWords(t) {
 }
 /* The due date Vikunja gives a template when it's ticked, or null if it doesn't repeat. Mode 0 moves the date forward
    by whole intervals, to the first time after now. Monthly moves it forward one month only, so a template left for
-   months is still late. Mode 2 sets it one interval after now. Checked on Vikunja 2.7. */
+   months is still late. Mode 2 sets it one interval after now. Checked on Vikunja 2.7.1. */
 export function vikunjaNext(t, now = Date.now()) {
   const due = Date.parse(t.due_date);
   if (!isSet(t.due_date)) return null;
@@ -196,10 +196,12 @@ export function nextAfter(t, from, now = Date.now()) {
     d = t.repeat_mode === 1 ? addMonths(from, i) : from + i * (t.repeat_after || 0) * 1000;
   return d;
 }
-// Add `n` months the way Go's AddDate does in Vikunja. It keeps the same day of the month and overflows into the next
-// month (Jan 31 → Mar 3).
+// Add `n` months the way Vikunja 2.7.1 moves a monthly task. It keeps the day of the month, cut to the month's last
+// day (Jan 31 → Feb 28). Vikunja then moves on from the cut day, so Feb 28 → Mar 28.
 const addMonths = (ms, n) => {
-  const d = new Date(ms);
+  const d = new Date(ms),
+    last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(d.getUTCDate(), last));
   d.setUTCMonth(d.getUTCMonth() + n);
   return +d;
 };
