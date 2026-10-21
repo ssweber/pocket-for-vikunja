@@ -81,9 +81,13 @@ matters there.
   screen. It leaves the list and waits in the Outbox, and stays ticked after Pocket is closed and opened again.
   Cancel it in the Outbox, still offline. The task doesn't come back, after switching screens or after reopening
   Pocket, until Pocket reaches Vikunja again.
-- [ ] **A template shows on Today after Set up checklists.** Right after Set up checklists, Today lists "TEMPLATE:
+- [x] **A template shows on Today after Set up checklists.** Right after Set up checklists, Today lists "TEMPLATE:
   Example: Opening up" under "Added today, no date", as a 4/4 parent with "All subtasks done" and Close. Today
-  leaves templates out.
+  leaves templates out. Dropped: the screenshot script closed the browser 2 seconds after the tabs changed, while
+  Set up checklists was still sending, and the next browser started with no outbox. So the label and the final tick
+  were never sent, and Vikunja kept an open task with no "template" label, which is not a template. On one phone,
+  Today never shows the example, whether Today is tapped during the setup or after it. The outbox survives closing
+  the app and signing out, so the sending finishes when Pocket opens again.
 - [ ] **A steady header and grey rows while loading.** Agreed with the user from
   `scratchpad/ui-tabs-rows/tabs-and-grey-rows.png` and `headings-44.png`. The CSS and markup there are the start.
   - The header always has the three tabs in the compact layout (`.tabs.icons`), so it no longer changes from two
@@ -110,11 +114,12 @@ Each is discussed, with a picture, before it is built.
 - [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
   keep `http://` and file paths in the title.
 - [ ] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
-  previous step is done. Until then its Done button is dimmed and reads "Waiting 19:42", counting down. Proposed, not
-  yet agreed: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is
-  also due then, chimes at zero, and the plugin writes its due date. Before that step is done, the button reads
-  "Waiting for Mix the dough". Every way to tick in Pocket respects it, and Vikunja's web app doesn't. Syntax only at
-  first.
+  previous step is done. Until then its Done button is dimmed and reads "Waiting 19:42", counting down. Agreed with
+  the user: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is also
+  due then, chimes at zero, and the plugin writes its due date. Before that step is done, the button reads "Waiting
+  for Mix the dough". Every way to tick in Pocket respects it, and Vikunja's web app doesn't, as the guide will say.
+  No plain-language form yet. A lock button in the step's time chip turns it on and off (proposed: a padlock, open
+  and muted when off, closed in the accent colour when on). A picture of the chip and the button comes first.
 - [ ] **A long press on "+ me"** offers the project's other people.
 
 ## Batch 5: the phone's storage and the test tools
