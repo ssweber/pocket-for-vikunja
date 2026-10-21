@@ -320,7 +320,13 @@ export default {
       if (info) saved.set('info', info);
       this.keepWho(sharedToken.get(), user.id);
       confirmed();
-      await this.loadProjects();
+      // Show the saved screen while the projects load, as Pocket does when it opens with the confirmed token.
+      const projects = !kept && saved.get('projects');
+      if (projects) {
+        this.setProjects(projects);
+        this.refreshPending();
+      }
+      await Promise.all([this.loadProjects(), projects && this.render({ kept: true })]);
       this.refreshPending();
       await this.render();
       this.flush();

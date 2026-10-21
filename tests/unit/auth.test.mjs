@@ -223,34 +223,71 @@ test('a copy in localStorage of a change the outbox database no longer has is dr
   assert.equal(localStorage.getItem('pocket.outbox.' + gone.id), null);
 });
 
+// The app with stubs that read the outbox as the screen does, and record what each screen was drawn with. It sends
+// nothing.
+function outboxApp() {
+  return Object.assign(app(), {
+    flush() {},
+    refreshPending() {
+      this.pending = this.user ? sync.all(this.user.id) : [];
+    },
+    async render({ kept = false } = {}) {
+      this.shown.push(kept ? 'kept' : 'loaded');
+      this.drawnWith = { projects: this.projects, waiting: this.pending.map(e => e.id) };
+      return kept;
+    },
+  });
+}
+
 test('the saved screen shows at once while the outbox database is held up, with the waiting change on it', async () => {
   const v = vikunja(),
-    c = app(),
+    c = outboxApp(),
     tick = waitingTick(),
     ready = sync.ready,
     start = Date.now();
   await keep('tk_test');
   sync.ready = new Promise(() => {}); // the database never opens
   sync.entries.set(tick.id, tick); // as a new page reads it from localStorage
-  c.flush = () => {}; // this test sends nothing
-  c.refreshPending = function () {
-    this.pending = sync.all(this.user.id);
-  };
-  c.render = async function ({ kept = false } = {}) {
-    this.shown.push(kept ? 'kept' : 'loaded');
-    this.drawnWith = this.pending.map(e => e.id);
-    return kept;
-  };
   try {
     const booted = c.boot();
     await asked(v);
     assert.deepEqual(c.shown, ['kept']);
     assert.ok(Date.now() - start < 1500, 'the saved screen does not wait for the database');
-    assert.deepEqual(c.drawnWith, [tick.id], 'the waiting tick is on the saved screen');
+    assert.deepEqual(c.drawnWith.waiting, [tick.id], 'the waiting tick is on the saved screen');
     v.answer();
     await booted;
   } finally {
     sync.ready = ready;
+    sync.entries.delete(tick.id);
+  }
+});
+
+test('opening with a different token shows the saved screen once Vikunja names the user, before the projects load', async () => {
+  const v = vikunja(),
+    c = outboxApp(),
+    tick = waitingTick(),
+    inbox = { id: 1, title: 'Inbox' };
+  await keep('tk_before');
+  saved.set('projects', [inbox]);
+  sync.entries.set(tick.id, tick);
+  let projectsIn;
+  c.loadProjects = function () {
+    this.shown.push('projects');
+    return new Promise(ok => {
+      projectsIn = ok;
+    });
+  };
+  try {
+    const booted = c.boot();
+    await asked(v);
+    v.answer();
+    for (let i = 0; i < 100 && !c.shown.includes('kept'); i++) await settle();
+    assert.deepEqual(c.shown, ['projects', 'kept'], 'the saved screen is shown while the projects load');
+    assert.deepEqual(c.drawnWith, { projects: [inbox], waiting: [tick.id] });
+    projectsIn();
+    await booted;
+    assert.deepEqual(c.shown, ['projects', 'kept', 'loaded']);
+  } finally {
     sync.entries.delete(tick.id);
   }
 });

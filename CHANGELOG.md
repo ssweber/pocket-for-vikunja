@@ -16,7 +16,8 @@ is a new 0.x.y.
 
 ### Changed
 
-- Pocket opens on its saved screen at once when the phone is slow to open the Outbox, with the waiting changes on it.
+- Pocket opens on its saved screen sooner, without waiting for the phone to open the Outbox or for the list of
+  projects.
 
 ### Fixed
 

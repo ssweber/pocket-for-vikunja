@@ -65,8 +65,9 @@ matters there.
   tasks. Find out what the wait protects, then shorten or remove it. The wait kept a row from changing after it was
   drawn, when a waiting change arrived late. `sync.js` now copies each entry to localStorage, and the saved screen
   shows the copies without waiting.
-- [ ] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
-  and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed.
+- [x] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
+  and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed. It is drawn with the
+  saved projects, as it is when the token is the confirmed one.
 - [ ] **A checklist doesn't open from its saved copy.** `savedView()` leaves checklists out. Opening one fetches the
   parent, then each step, four at a time, and can wait another 600 ms for notes.
 - [ ] **UI, discuss first: always show the three tabs.** Today the header switches to the compact layout when
