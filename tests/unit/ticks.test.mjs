@@ -1071,3 +1071,16 @@ test('an Undo the sender reads while it is still being saved on the phone stays 
   await adding;
   assert.deepEqual([read?.id, sync.all(1).map(x => x.id)], [e.id, [e.id]]);
 });
+/* Another tab's change makes this tab read the outbox again. A change this tab saves while that read runs isn't in
+   what the read finds, and must stay in memory, or nothing sends it until the next read. */
+test('a change saved while the outbox is read again stays in the outbox to be sent', async t => {
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  const e = { id: uuid7(), kind: 'act', op: 'done', task: 5, user: 1, at: new Date().toISOString(), n: 0, files: [] };
+  await Promise.all([sync.reload(), sync.add(e, [])]);
+  assert.deepEqual(
+    sync.all(1).map(x => x.id),
+    [e.id],
+  );
+});

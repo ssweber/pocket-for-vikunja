@@ -111,10 +111,11 @@ export const sync = {
       app?.refreshPending();
     });
   },
-  // Reload the entries from the database, and keep those that exist in memory only.
+  /* Reload the entries from the database, and keep those that exist in memory only. Keep those this tab is still adding
+     too. A read that started before their save doesn't find them, and nothing would send them until the next read. */
   async reload() {
     const list = await this.tx(['outbox'], 'readonly', s => s('outbox').getAll());
-    const keep = [...this.volatile].map(id => this.entries.get(id)).filter(Boolean);
+    const keep = [...this.volatile, ...this.adding.keys()].map(id => this.entries.get(id)).filter(Boolean);
     this.entries = new Map([...list, ...keep].map(e => [e.id, e]));
   },
   changed() {

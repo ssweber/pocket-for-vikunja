@@ -19,6 +19,7 @@ is a new 0.x.y.
 - Pocket no longer reloads when the server can't be reached or sends an error. It reloads only for a new version.
 - When the server's database fails, a change no longer waits in the Outbox for good. Pocket shows the error after a
   few tries.
+- A change made while another tab changed the Outbox is sent at once, not after the next reload.
 
 ## 0.2.0 (2026-10-19)
 
