@@ -195,6 +195,7 @@ Pocket opens without a connection and shows lists as last loaded.
   - `Failed to load yaegi plugin pocket`: the plugin didn't load, possibly because a Vikunja update changed the plugin API. Vikunja keeps running.
   - Nothing: plugins aren't enabled, or Vikunja hasn't been restarted.
 - **The log shows the old version after updating.** Vikunja reads `main.go` at startup. Restart it.
+- **The log shows `POST /api/v1/plugins/pocket/v2/* is not available to API tokens`.** Vikunja 2.7.1 and later log this at every start. Pocket signs in as the user, not with an API token, so it is unaffected. An API token can't send a POST through the plugin. It can send to `/api/v2` directly.
 - **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
 - **"@user can't see Inbox".** Share the project with them, or add a `+project` they can access.
 
