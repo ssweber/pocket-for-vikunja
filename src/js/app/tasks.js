@@ -586,6 +586,12 @@ export const dropCopies = () => {
 let unread = null; // the ids of the copies kept on the phone that the store hasn't read yet, once their list is read
 const unsaved = new Set();
 const keptCopy = id => copies.get(id) ?? bases.get(id);
+/* The copy of `t` kept on the phone. Vikunja lists every checklist started from a template, and every copy of each of
+   its steps, as whole tasks (copiedto). The phone keeps their ids only, or each start would make these copies longer. */
+const onPhone = t =>
+  t.related_tasks?.copiedto?.length
+    ? { ...t, related_tasks: { ...t.related_tasks, copiedto: t.related_tasks.copiedto.map(x => ({ id: x.id })) } }
+    : t;
 /* Read the copies kept on the phone into the store: those of tasks `ids`, or all that are left. A screen saved on the
    phone reads its own tasks' copies first, so its first row isn't held up by the rest (keptScreen). A copy the store
    has already is newer, and a copy read after a write to its task is thrown away (read). */
@@ -617,7 +623,9 @@ function keepCopies(c, ids) {
   /* A copy the phone has no room for stays unsaved, so the next save tries it again. It stays out of the list unless an
      older copy of it is on the phone. */
   const failed = new Set(
-    kept.filter(id => keptCopy(id) && (unsaved.has(id) || !was.has(id)) && !saved.set('task.' + id, keptCopy(id))),
+    kept.filter(
+      id => keptCopy(id) && (unsaved.has(id) || !was.has(id)) && !saved.set('task.' + id, onPhone(keptCopy(id))),
+    ),
   );
   unsaved.clear();
   for (const id of failed) unsaved.add(id);

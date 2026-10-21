@@ -1729,6 +1729,19 @@ test('a copy the phone had no room for is saved the next time, and listed only o
   localStorage.clear();
 });
 
+// A template's copy lists each checklist started from it. The phone keeps their ids, and this page the whole tasks.
+test('the phone keeps only the ids of the checklists started from a template', async () => {
+  await sync.ready;
+  const app = component(tasks);
+  app.user = { id: 1 };
+  const run = id => ({ id, title: 'Closing #' + id, description: '<p>Wipe the menus, then the tables.</p>' });
+  read([{ id: 1, title: 'TEMPLATE: Closing', related_tasks: { copiedto: [run(2), run(3)] } }]);
+  app.keepScreen('today', { groups: [{ key: 'today', tasks: [app.row(copyOf(1))] }] });
+  assert.deepEqual(saved.get('task.1').related_tasks.copiedto, [{ id: 2 }, { id: 3 }]);
+  assert.equal(copyOf(1).related_tasks.copiedto[0].title, 'Closing #2');
+  localStorage.clear();
+});
+
 /* localStorage as a browser keeps it when it holds at most `limit` characters, keys included. A write past that
    throws QuotaExceededError. Returns a function that puts back the unlimited one. */
 const quota = limit => {
