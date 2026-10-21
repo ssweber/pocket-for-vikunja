@@ -14,6 +14,11 @@ is a new 0.x.y.
 
 ## Unreleased
 
+### Added
+
+- A checklist step can be locked until its time with the padlock in its time chip. Until then, Pocket shows its Done
+  greyed out with a countdown, and its tick with a padlock.
+
 ### Changed
 
 - Pocket opens on its saved screen sooner. It no longer waits for the list of projects, and it waits for the phone to
@@ -39,6 +44,11 @@ is a new 0.x.y.
   comments.
 - Date chips left open on Today no longer close by themselves when a moved row's gap leaves at the bottom of the
   page. Rows wait until the chips close.
+
+### What Pocket writes into Vikunja
+
+- A template step's title can hold `!T#20m`, a time that the step can't be ticked before. The plugin gives the step
+  its due date as it does for `T#20m`.
 
 ## 0.2.0 (2026-10-19)
 

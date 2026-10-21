@@ -131,7 +131,7 @@ Each is discussed, with a picture, before it is built.
   - The step box and the step editor read notes the same way. On a step that has notes, the new text is added as a
     paragraph at the end, and the chip reads "Adds to the notes: …", so `pocket:ask` lines survive.
   - The notes are sent as the task's description in the request that makes it.
-- [ ] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
+- [x] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
   previous step is done. Until then its Done button is dimmed and reads "Waiting 19:42", counting down. Agreed with
   the user: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is also
   due then, chimes at zero, and the plugin writes its due date. Before that step is done, the button reads "Waiting

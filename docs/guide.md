@@ -102,7 +102,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 ## Timed steps
 
-Write the delay in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**". A chip shows what was parsed. To count from a different step, select it in the chip, or write "**20 minutes after** Turn on the espresso machine". Durations that describe the action, like "steam **for** 2 minutes", aren't parsed.
+Write the delay in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**". A chip shows what was parsed. To count from a different step, select it in the chip, or write "**20 minutes after** Turn on the espresso machine". Durations that describe the action, like "steam **for** 2 minutes", aren't parsed. To stop the step being ticked before its time, tap the padlock in the chip.
 
 Pocket stores the timer in the step's title using PLC duration syntax, which is also how to enter one in Vikunja's web app:
 
@@ -111,10 +111,12 @@ Pocket stores the timer in the step's title using PLC duration syntax, which is 
 | `Wipe the counters T#20m` | 20 minutes after the previous step is done. For the first step, after the checklist starts. |
 | `Put the croissants in the oven {#croissants}` | No timer. `{#croissants}` names the step. |
 | `Take the croissants out T#18m:croissants` | 18 minutes after the step named "croissants" is done, whatever is done in between. |
+| `Glaze the croissants !T#5m` | 5 minutes after the previous step is done, as with `T#5m`. Pocket doesn't let the step be ticked before then. Skip still works. |
 
 - Units: `d`, `h`, `m`, `s`, `ms`. They combine: `T#1h30m`.
 - A timer must refer to an earlier step, and names must be unique. Pocket checks this on edit, reorder and start.
-- Checklist steps get their titles with `T#` and `{#…}` removed.
+- Checklist steps get their titles with `T#`, `!T#` and `{#…}` removed.
+- Vikunja's web app doesn't know `!T#`, so a step can be ticked there before its time.
 - A step inserted during a checklist has no timer and isn't "the previous step" for the one after it. A step timed from a repeated step counts from whichever copy was done last.
 
 ## Asks
