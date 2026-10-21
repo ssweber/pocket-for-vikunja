@@ -1,0 +1,4 @@
+<!-- What a screen says when its lists have nothing to show (emptyText). While Today is narrowed to a label, it offers
+     a search for the label, which finds the tasks Today leaves out. -->
+<div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span>
+  <template x-if="route.name === 'today' && only"><button type="button" class="empty-act" id="btn-search-label" @click="searchLabel(only.title)" x-text="'Search *' + only.title"></button></template></div>

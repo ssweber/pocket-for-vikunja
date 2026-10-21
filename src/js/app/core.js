@@ -112,6 +112,7 @@ export default () => ({
   refreshing: false,
   headerTucked: false, // the header has slid away while scrolling down
   searchQ: '',
+  only: null, // the label Today is narrowed to, as {id, title, hex_color} (narrowToday, views.js)
   searchFrom: '', // what's typed in the search box, and the screen to go back to
   // Quick add and the sheet's subtask box share the same state and parsing methods.
   cap: newBox(),

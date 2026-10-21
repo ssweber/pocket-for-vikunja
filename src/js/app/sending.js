@@ -35,8 +35,10 @@ import { fileEntry, held, itemsOf, older, slowness, sync, uuid7 } from '../sync.
 import {
   dayGroup,
   gapIndex,
+  hasLabel,
   intoGroup,
   intoKeys,
+  isMovedGap,
   keptGroups,
   listItems,
   nestSubtasks,
@@ -709,6 +711,9 @@ export default {
      (sameGroup), so its rows have nothing to redraw. */
   get listGroups() {
     const hidden = this.hiddenRows,
+      only = this.route.name === 'today' && this.only?.id,
+      // While Today is narrowed to a label, a moved row's gap shows with its task
+      shows = t => !only || hasLabel(isMovedGap(t) ? this.tasks[t.gapOf] : t, only),
       order = this.route.name === 'project' ? positionOrder(this.positions) : null,
       can = screenRows(this.route.name);
     let before = 0;
@@ -717,7 +722,7 @@ export default {
         ...g,
         ...can,
         ...nestSubtasks(
-          g.tasks.filter(t => !hidden.has(t.id)),
+          g.tasks.filter(t => !hidden.has(t.id) && shows(t)),
           g.key === 'open' ? order : null,
           t => this.hasOwnOrder(t),
         ),

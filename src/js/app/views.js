@@ -188,6 +188,11 @@ export default {
     });
   },
   get emptyText() {
+    if (this.route.name === 'today' && this.only)
+      return {
+        title: `Nothing due this week has *${this.only.title}.`,
+        body: 'Search finds the tasks due later or with no date.',
+      };
     if (this.route.name === 'today')
       return {
         title: 'Nothing due this week.',
@@ -265,12 +270,19 @@ export default {
   rowLabels(t) {
     return t.labels?.length && this.stepRun(t) == null ? t.labels.filter(l => !isTemplateLabel(l)) : NO_LABELS;
   },
-  // Tapping a label searches for it.
+  // Tapping a label on Today narrows Today to it. Elsewhere it searches for the label.
   tapLabel(l) {
-    this.searchLabel(l.title);
+    if (this.route.name === 'today') this.narrowToday(l);
+    else this.searchLabel(l.title);
   },
   labelSaid(l) {
-    return 'Search for ' + l.title;
+    return (this.route.name === 'today' ? 'Show only ' : 'Search for ') + l.title;
+  },
+  /* Show only the tasks with label `l` on Today, or every task with null. One label at a time. Leaving Today shows
+     every task again (render). The page goes to its top, where the bar says what Today shows. */
+  narrowToday(l) {
+    this.only = l && { id: l.id, title: l.title, hex_color: l.hex_color };
+    if (l && scrollY) scrollTo(0, 0);
   },
   // Open search for the tasks with label `title`, without the keyboard, which would cover them.
   searchLabel(title) {
@@ -473,6 +485,7 @@ export default {
     // Keep the same route object when refreshing a screen. Every row reads it, so replacing an unchanged route
     // would recompute the whole list after every send or refresh.
     if (JSON.stringify(raw(this.route)) !== JSON.stringify(r)) this.route = r;
+    if (r.name !== 'today') this.only = null;
     if (r.name !== 'run') this.runFrom = location.hash || '#/today';
     if (r.name !== 'run' && r.name !== 'project') this.projectFrom = location.hash || '#/today';
     const seq = ++renderSeq;

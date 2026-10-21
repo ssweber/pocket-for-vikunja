@@ -512,6 +512,84 @@ test('a list recalculated with the same content is the same object, so its rows 
   assert.notEqual(again[1], done, 'a changed group is a new object');
 });
 
+/* Tapping a label on Today narrows Today to the tasks with it (narrowToday). The groups then hold only those tasks,
+   so their counts count only what is shown. */
+test('Today narrowed to a label shows and counts only the tasks with it, and a moved row’s gap goes with its task', t0 => {
+  Object.assign(globalThis, { scrollY: 300, scrollTo: (x, y) => (globalThis.scrollY = y) });
+  t0.after(() => {
+    delete globalThis.scrollY;
+    delete globalThis.scrollTo;
+  });
+  const errands = { id: 1, title: 'errands', hex_color: 'e5a50a' },
+    phone = { id: 2, title: 'phone' },
+    soon = h => new Date(Date.now() + h * 36e5).toISOString(),
+    t = (id, labels, f = {}) => ({ id, title: 'Task ' + id, labels, due_date: soon(id), ...f });
+  const a = t(1, [errands]),
+    b = t(2, [phone]),
+    c = t(3, [errands, phone]),
+    d = t(4, [phone], { done: true, done_at: new Date().toISOString() }),
+    e = t(5, [errands], { done: true, done_at: new Date().toISOString() });
+  const app = component(views, sending, lines);
+  Object.assign(app, {
+    route: { name: 'today' },
+    pending: [],
+    positions: {},
+    cardOf: () => null,
+    tasks: { 1: a, 2: b, 3: c },
+    movedGaps: { today: [{ id: 'moved-1', gapOf: 2, after: null, at: 0 }] },
+    view: {
+      cards: {},
+      groups: [
+        { key: 'today', tasks: [a, b, c] },
+        { key: 'donetoday', tasks: [d, e] },
+      ],
+    },
+  });
+  const shown = () =>
+    Object.fromEntries(
+      app.listGroups.filter(g => g.tasks.length).map(g => [g.key, [ids(g.tasks), g.count ?? g.tasks.length]]),
+    );
+  assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] });
+  app.narrowToday(errands);
+  assert.deepEqual(app.only, { id: 1, title: 'errands', hex_color: 'e5a50a' });
+  assert.equal(scrollY, 0, 'the page goes to its top, where the bar is');
+  assert.deepEqual(shown(), { today: [[1, 3], 2], donetoday: [[5], 1] });
+  app.narrowToday(phone);
+  assert.deepEqual(shown(), { today: [['moved-1', 2, 3], 3], donetoday: [[4], 1] }, 'one label at a time');
+  app.route = { name: 'search' };
+  assert.equal(app.listGroups.find(g => g.key === 'today').tasks.length, 3, 'only Today is narrowed');
+  app.route = { name: 'today' };
+  app.narrowToday(null);
+  assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] }, 'Show all');
+});
+
+test('leaving Today shows every task on it again', async t => {
+  Object.assign(globalThis, { scrollY: 0, scrollTo() {} });
+  t.after(() => {
+    delete globalThis.scrollY;
+    delete globalThis.scrollTo;
+  });
+  const app = component(views);
+  Object.assign(app, {
+    route: { name: 'today' },
+    only: { id: 1, title: 'errands' },
+    projects: [{ id: 1 }],
+    view: { groups: [] },
+    hint: {},
+    drawFrom() {},
+    showSaved() {},
+    schedulePreload() {},
+    async loadToday() {},
+  });
+  location.hash = '#/today';
+  await app.render();
+  assert.notEqual(app.only, null, 'Today drawn again stays narrowed');
+  location.hash = '#/projects';
+  await app.render();
+  assert.equal(app.only, null);
+  location.hash = '';
+});
+
 test("other screens are not preloaded in the background while a screen's rows are still being drawn", async () => {
   const app = component(views);
   let asked = 0,

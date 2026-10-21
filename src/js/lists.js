@@ -269,6 +269,8 @@ export const viewKey = r =>
    The gap is a placeholder among the group's rows, not the task, because every row of a task reads the same marks
    (`leaving`, `flashed`) by its id. Its id is its own, so its mark is too. */
 export const isMovedGap = t => t.gapOf !== undefined;
+// Whether task `t` has the label with id `id`.
+export const hasLabel = (t, id) => !!t?.labels?.some(l => l.id === id);
 /* The index of the gap a moved row left among its group's rows. The gap goes under the row that was above it
    (`after`), or at its old index (`at`) once that row has gone too. */
 export const gapIndex = (tasks, { after, at }) => {

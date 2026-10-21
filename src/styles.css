@@ -934,6 +934,42 @@ button.check::after {
   font-size: 17px;
   margin-bottom: 4px;
 }
+/* While Today is narrowed to a label, the bar above its first group says so, with Show all in a 44px button */
+.only-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding-left: 14px;
+  border-radius: var(--r-row);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 15px;
+}
+.only-rule {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.only-rule .lab-pill {
+  font-size: 14px;
+  font-weight: 600;
+}
+.only-clear,
+.empty-act {
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 650;
+}
+.empty-act {
+  display: block;
+  margin: 6px auto 0;
+}
 .loading {
   padding: 40px 0;
   text-align: center;

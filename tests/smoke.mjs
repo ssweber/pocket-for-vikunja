@@ -3410,6 +3410,36 @@ try {
       await page.mouse.up();
       await expect(page.getByRole('dialog', { name: `Move “${a.title}” to another day` })).toBeVisible();
       await page.keyboard.press('Escape');
+      // Tapping the label narrows Today to it. The bar says so, the one group left counts only its task, and Move all
+      // to today is hidden. Show all, or leaving Today, shows every task again.
+      const narrow = async () => {
+        await page.locator(LAB).click();
+        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^Only\\s*\\*${l.title}\\s*Show all$`));
+      };
+      await narrow();
+      await expect(page.locator('#view .list > .row, #view .item > .row')).toHaveCount(1);
+      await expect(page.locator('#view .sec .n')).toHaveText(['1']);
+      await expect(page.locator('#btn-overdue-today')).toHaveCount(0);
+      await page.click('#btn-show-all');
+      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('#view .sec').first()).toBeVisible();
+      if ((await page.locator('#view .list > .row, #view .item > .row').count()) < 2)
+        throw new Error('Show all left one row');
+      await narrow();
+      await page.click('nav.tabs a[data-tab=projects]');
+      await page.click('nav.tabs a[data-tab=today]');
+      await expect(page.locator(R)).toBeVisible();
+      await expect(page.locator('.only-bar')).toHaveCount(0);
+      // With nothing this week left with the label, Today says so and offers a search for it
+      await narrow();
+      await api(`/tasks/${a.id}/labels/${l.id}`, { method: 'DELETE' });
+      await page.click('#btn-refresh');
+      await expect(page.locator('#view .empty > b')).toHaveText(`Nothing due this week has *${l.title}.`);
+      await expect(page.locator('#view .empty > span')).toHaveText('Search finds the tasks due later or with no date.');
+      await page.getByRole('button', { name: `Search *${l.title}` }).click();
+      await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
+      await page.click('#btn-search-cancel');
+      await expect(page.locator('.only-bar')).toHaveCount(0);
     } finally {
       await api('/tasks/' + a.id, { method: 'DELETE' });
       await api('/labels/' + l.id, { method: 'DELETE' });
