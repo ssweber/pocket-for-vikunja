@@ -64,7 +64,21 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-`docs/design/worklist.md` lists the work in progress, in batches, in the order it is built.
+1. **Waiting for the user's answer.**
+   - The new texts for `!T#`, labels and notes in the Outbox. "Adding notes on" should read "Adding notes to".
+   - A padlock on a template's step list for a `!T#` step. Partial progress from a locked step's sheet isn't blocked.
+     Today's padlock can stay up to a minute after the step unlocks.
+   - The label chips under search are under 44 px tall.
+   - A task added while Today is narrowed to a label, without the label, isn't shown.
+2. **Small fixes.**
+   - On a project only you can see, four rows showed "+ me" for about half a second after the first sheet opened
+     (found by `tests/leaks.mjs`).
+   - `a-row-thrown-at-two-dates-offline-sends-one-request` in `tests/offline.mjs` failed once in four runs on
+     MySQL. The two date changes, 0.5 seconds apart, stayed two entries in the Outbox instead of merging into one.
+     Find out whether a second change can miss the first while the first is still being saved.
+3. **What the phone keeps.** `pocket.saved.templates` keeps templates deleted in Vikunja.
+   `pocket.saved.people.<project>` and `drafts` keep entries for deleted projects and tasks. The service worker keeps
+   library files from older versions until its cache name changes. Each is small.
 
 The four drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
 `upstream-plugin-permissions.md`, `upstream-comment-cap.md`) are ready to send whenever the user chooses.
