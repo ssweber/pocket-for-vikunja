@@ -32,6 +32,7 @@ import {
   signIn,
   slideSeen,
   steady,
+  stepper,
   still,
   swipeRow,
   synced,
@@ -100,27 +101,8 @@ page.on(
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // show each test's time, so a slow one stands out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log(
-      'FAIL',
-      name + secs(),
-      '-',
-      e.message
-        .split('\n')
-        .slice(0, process.env.VERBOSE ? 8 : 1)
-        .join(' · '),
-    );
-    await page.screenshot({ path: `${OUT}/fail-${name}.png` });
-  }
-}
+const steps = stepper(name => page.screenshot({ path: `${OUT}/fail-${name}.png` })),
+  { step, setup } = steps;
 
 const stamp = Date.now();
 const title = 'Pocket smoke test ' + stamp;
@@ -162,10 +144,10 @@ try {
     await page.getByLabel('Username or email').fill(USER);
     await expect(go).toBeEnabled();
   });
-  await step('sign-in-with-a-password', () => signIn(page, APP, USER, PASSWORD));
+  await setup('sign-in-with-a-password', () => signIn(page, APP, USER, PASSWORD));
   await page.screenshot({ path: `${OUT}/today.png` });
 
-  await step('quick-add', async () => {
+  await setup('quick-add', async () => {
     await page.fill('#in-capture', `${title} tomorrow at 5pm !3 *${label}`);
     const chips = await page.textContent('#cap-chips');
     if (!/Tomorrow/.test(chips) || !/Priority 3/.test(chips)) throw new Error('chips: ' + chips);
@@ -7271,7 +7253,7 @@ ${footName('Hooks')}`);
     await page.waitForFunction(() => document.querySelector('#in-capture').value === 'Buy milk friday');
   });
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL console errors:', errors);
   }
 } finally {
@@ -7295,5 +7277,4 @@ ${footName('Hooks')}`);
     }
 }
 
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();

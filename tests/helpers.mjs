@@ -7,6 +7,49 @@ import { swipeAt } from '../src/js/progress.js';
    the timeout ends, so a test doesn't need a separate wait before checking the page. */
 export const expect = base.configure({ timeout: 10000 });
 
+/* Runs a file's steps, prints each one's result and time, and counts the failures. `shot(name)` saves a picture of a
+   failed step. STEP=<regex> runs only the steps whose name it matches, plus the setup steps, which always run because
+   later steps need what they make. A step that builds on the steps just before it needs them in the regex too.
+   `end()` prints the totals and sets the exit code. A failure found after the steps adds to `failed`. */
+export function stepper(shot = () => {}) {
+  const only = process.env.STEP ? new RegExp(process.env.STEP) : null;
+  const s = { failed: 0, ran: 0, skipped: 0 };
+  const run = async (name, fn, setup) => {
+    if (only && !setup && !only.test(name)) return void s.skipped++;
+    if (!setup) s.ran++;
+    const start = Date.now(),
+      secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's time, so a slow one stands out
+    try {
+      await fn();
+      console.log('PASS', name + (only && setup ? ' (setup)' : '') + secs());
+    } catch (e) {
+      s.failed++;
+      console.log(
+        'FAIL',
+        name + secs(),
+        '-',
+        e.message
+          .split('\n')
+          .slice(0, process.env.VERBOSE ? 8 : 1)
+          .join(' · '),
+      );
+      try {
+        await shot(name);
+      } catch {}
+    }
+  };
+  s.step = (name, fn) => run(name, fn, false);
+  s.setup = (name, fn) => run(name, fn, true);
+  s.end = () => {
+    const skipped = only ? `, ${s.skipped} skipped by STEP` : '';
+    if (only && !s.ran) console.log(`STEP=${process.env.STEP} matches no step in this file`);
+    console.log((s.failed ? `${s.failed} failed` : 'All passed') + skipped);
+    if (only && s.failed) console.log('A step can fail because STEP skipped a step it needs. Add that step to STEP.');
+    process.exitCode = s.failed ? 1 : 0;
+  };
+  return s;
+}
+
 /* Waits until everything Pocket has to send has reached Vikunja. Call it before a test reads Vikunja or deletes
    what the test made. It needs <html data-sync> (core.js) to be "idle" for `settle` ms, because a tap's handler may be
    about to send something. It never finishes while something can't be sent (a deletion whose Undo is still showing,

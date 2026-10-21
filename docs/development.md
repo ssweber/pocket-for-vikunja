@@ -159,19 +159,19 @@ runs Vikunja on SQLite instead, and `DB=mysql` on MySQL. The containers are `poc
 `pocket-dev-db`. The next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. `dev` shares a
 project called Team with `bob`, and its default project with `carol`, so a task there shows **+ me**. The tests rely on
 that, so against your own Vikunja, share the test account's default project with someone. `npm run dev` rebuilds the
-page as `src/` changes, so an edit shows when you reload. Ctrl+C stops the rebuilding. Vikunja keeps running. After
-changing `main.go`, run `npm run dev` again.
+page as `src/` changes. After changing `main.go`, run it again.
 
 ## Tests
 
 ```sh
-npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
+npx playwright install chromium    # once; or set BROWSER_CHANNEL=chrome, for test:parse too
 npm run lint                       # ESLint, and what scripts/check.mjs checks
 npm run test:unit                  # the unit tests, in a second
 node --test tests/unit/actions.test.mjs                         # one file of them
 node --test --test-name-pattern="Undo" "tests/unit/*.test.mjs"  # the tests whose name says Undo
 npm run test:parse                 # quick add's phrases only
 npm run test:local                 # starts the local Vikunja and runs every test
+STEP="^comment$" npm run test:local  # only the steps STEP matches, and the setup steps
 
 # against a real server with the plugin installed (use a test account). Pocket signs in with the user and password.
 # The tests' own requests use the token, an API token of the same user with every permission.
@@ -270,8 +270,7 @@ The tests delete what they create, except the labels `pocket-smoke` and `templat
 - **Never stop processes by name** (`taskkill /IM`, `pkill`). That closes the user's own Chrome and Node. Stop only
   what you started, by PID, or the `pocket-dev` containers.
 - **On Windows,** Git Bash eats backslashes in a heredoc. Write code with backslashes with the Edit tool, or from a
-  file. `.gitattributes` keeps line endings LF. Without Playwright's own Chromium, `BROWSER_CHANNEL=chrome` uses the
-  installed Chrome, for `test:parse` too.
+  file. `.gitattributes` keeps line endings LF.
 
 ## Measuring
 

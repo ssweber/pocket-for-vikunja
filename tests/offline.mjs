@@ -11,7 +11,7 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright'; // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, placeLine, placeSays, signIn, steady, synced } from './helpers.mjs';
+import { expect, hintSeen, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN,
@@ -52,27 +52,8 @@ const page = await context.newPage();
 page.on('dialog', d => d.accept());
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's duration so slow steps stand out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log(
-      'FAIL',
-      name + secs(),
-      '-',
-      e.message
-        .split('\n')
-        .slice(0, process.env.VERBOSE ? 8 : 1)
-        .join(' · '),
-    );
-    await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {});
-  }
-}
+const steps = stepper(name => page.screenshot({ path: `${OUT}/offline-fail-${name}.png` })),
+  { step, setup } = steps;
 const capture = async text => {
   await page.fill('#in-capture', text);
   await page.click('#f-capture .go');
@@ -119,7 +100,7 @@ try {
   });
   if (!seeded.ok) throw new Error('could not create the seed task: HTTP ' + seeded.status);
 
-  await step('online-first-visit', async () => {
+  await setup('online-first-visit', async () => {
     await signIn(page, POCKET, USER, PASSWORD);
     await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
     await page.evaluate(() => navigator.serviceWorker.ready); // Pocket is now saved for offline use
@@ -1375,7 +1356,7 @@ try {
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL page errors:', errors);
   }
 } finally {
@@ -1388,5 +1369,4 @@ try {
     for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++)
       await new Promise(ok => setTimeout(ok, 500));
 }
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();

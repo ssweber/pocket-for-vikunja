@@ -25,6 +25,7 @@ import {
   rowLine,
   signIn as signInAt,
   steady,
+  stepper,
   swipeRow,
   synced,
   toast as toastOn,
@@ -117,29 +118,12 @@ page.on(
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's duration, so a slow step stands out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log(
-      'FAIL',
-      name + secs(),
-      '-',
-      e.message
-        .split('\n')
-        .slice(0, process.env.VERBOSE ? 8 : 1)
-        .join(' · '),
-    );
+const steps = stepper(async name => {
     await page.screenshot({ path: `${OUT}/checklists-fail-${name}.png` }).catch(() => {});
     await context.setOffline(false);
     await page.unrouteAll(); // so one failure doesn't break the steps after it
-  }
-}
+  }),
+  { step, setup } = steps;
 const signIn = (p, user, password) => signInAt(p, APP, user, password);
 // The card on Today for a checklist with open steps, found by its name.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
@@ -228,7 +212,7 @@ try {
     /pocket:checklists/i.test(p.description || ''),
   ).length;
 
-  await step('sign-in', () => signIn(page, USER, PASSWORD));
+  await setup('sign-in', () => signIn(page, USER, PASSWORD));
 
   // With no project for checklists, the Projects tab offers to set one up. That makes a project "Checklists" with an
   // example template, then opens the Checklists tab with a Getting started card. Skipped if the account has one already.
@@ -304,7 +288,7 @@ try {
         throw new Error('the tabs other than the current one still show their names');
     });
 
-  await step('use-for-checklists', async () => {
+  await setup('use-for-checklists', async () => {
     await page.evaluate(id => {
       location.hash = '#/project/' + id;
     }, project.id);
@@ -322,7 +306,7 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
-  await step('new-template', async () => {
+  await setup('new-template', async () => {
     await page.click('nav.tabs a[data-tab=checklists]');
     // Open project's 44px target fits inside its heading, which is as tall as a heading without a button.
     const head = page.locator(`.cl[data-project="${project.id}"] > .sec`);
@@ -457,12 +441,12 @@ try {
       'Every checklist started from this template gets its labels, except “template”, which marks it as a template.',
     );
     for (const id of ['#d-desc', '#d-due', '#d-repeat', '#d-assignees']) await expect(page.locator(id)).toBeVisible();
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
   });
 
   await step('a-step-it-counts-from-removed', async () => {
     // A step counts from another step, which is then deleted. The step now counts from the start. The template is never created.
-    await page.click('#btn-sheet-close');
-    await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name'); // wait for the sheet to focus the name before typing
     await page.fill('#nt-name', 'Not made');
@@ -681,7 +665,7 @@ try {
   };
 
   let first;
-  await step('start-a-run', async () => {
+  await setup('start-a-run', async () => {
     first = await startRun();
     const run = await api('/tasks/' + first.id),
       steps = await Promise.all((await subtasks(first.id)).map(s => api('/tasks/' + s.id)));
@@ -3505,7 +3489,7 @@ try {
     }
   });
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL page errors:', errors);
   }
 } finally {
@@ -3522,5 +3506,4 @@ try {
       }
     }
 }
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();
