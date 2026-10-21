@@ -3,7 +3,7 @@ import { collapseRows, colorOf, PRIOS, raw, store, TZ } from '../util.js';
 import { askMeta, asksMeta, stepAsks } from '../asks.js';
 import { allPages, api, ApiError, errText, NetError, partOf, why } from '../api.js';
 import { addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay } from '../dates.js';
-import { CHECKLIST_MARK, comesRound, DONE_MARK, templateName } from '../checklists.js';
+import { CHECKLIST_MARK, comesRound, DONE_MARK, isTemplateLabel, templateName } from '../checklists.js';
 import { currentRoute } from '../routing.js';
 import { projectName } from '../quickadd.js';
 import {
@@ -55,6 +55,7 @@ let behindTimer,
   // The open subtasks on Today's cards when the screen last loaded or regrouped (cardKids), so one that leaves its card
   // gets a row (regroupPlan). `at` is the screen they were on.
   kids = { at: '', ids: new Set() };
+const NO_LABELS = Object.freeze([]); // one object for every row without labels, so the row has nothing to redraw
 const PRELOAD_AGE = 60e3; // skip background reloads for copies newer than this
 // The projects whose Done section is open, remembered on this phone: project id -> true, and `today` for Done today.
 const doneOpen = {
@@ -260,6 +261,23 @@ export default {
       said: said.join(', '),
     };
   },
+  // The labels on a row's own line under the title, without `template`. A checklist's steps show none.
+  rowLabels(t) {
+    return t.labels?.length && this.stepRun(t) == null ? t.labels.filter(l => !isTemplateLabel(l)) : NO_LABELS;
+  },
+  // Tapping a label searches for it.
+  tapLabel(l) {
+    this.searchLabel(l.title);
+  },
+  labelSaid(l) {
+    return 'Search for ' + l.title;
+  },
+  // Open search for the tasks with label `title`, without the keyboard, which would cover them.
+  searchLabel(title) {
+    if (this.route.name !== 'search') this.searchFrom = location.hash || '#/today';
+    this.searchQ = '*' + title;
+    this.go('#/search');
+  },
   // Use Today's grouping minute for due text so its rows redraw only once a minute.
   rowNow() {
     return (this.route.name === 'today' && this.groupedAt) || Date.now();
@@ -393,8 +411,6 @@ export default {
     // Name an absent parent so an isolated subtask can be identified.
     const up = !card && !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({ key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title });
-    for (const l of (t.labels || []).slice(0, 3))
-      out.push({ key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true });
     if (repeats(t)) out.push({ key: 'rep', text: '↻', label: 'Repeats' });
     // Show the count of done subtasks. A task with a ring (a checklist or an open parent) shows it in the ring (rowRing).
     const subs = t.related_tasks?.subtask || [];

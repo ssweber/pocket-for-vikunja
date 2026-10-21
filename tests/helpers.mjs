@@ -251,16 +251,23 @@ export const hintSeen = context =>
    edge and a swipe left near its right edge, so each direction has space to move. `start` is the row's progress when
    the swipe starts (100 for a done row). `one` is for a parent's header or row, whose right side only has its full
    point. `check` runs while the swipe is held. By default the mouse is used, which the page treats as a touch but
-   which never meets the phone's touch rules. Pass `finger` (finger(page).touch) to swipe with real touch events. */
-export async function swipeRow(page, sel, to, { start = 0, one = false, check = null, finger = null } = {}) {
+   which never meets the phone's touch rules. Pass `finger` (finger(page).touch) to swipe with real touch events. `from`
+   is a selector inside the row to start the swipe on, at its centre. */
+export async function swipeRow(
+  page,
+  sel,
+  to,
+  { start = 0, one = false, check = null, finger = null, from = null } = {},
+) {
   const el = page.locator(sel);
   await el.evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
   const box = await steady(el),
     width = await el.evaluate(e => e.clientWidth),
-    screen = page.viewportSize().width;
+    screen = page.viewportSize().width,
+    on = from && (await el.locator(from).first().boundingBox());
   const right = to === 'back' || (typeof to === 'number' && to > start),
-    x = right ? box.x + 60 : box.x + box.width - 40,
-    y = box.y + Math.min(box.height / 2, 28);
+    x = on ? on.x + on.width / 2 : right ? box.x + 60 : box.x + box.width - 40,
+    y = on ? on.y + on.height / 2 : box.y + Math.min(box.height / 2, 28);
   const wants = r =>
     to === 'back'
       ? r.to === 'stop' && r.off > 20

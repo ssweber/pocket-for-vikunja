@@ -18,6 +18,7 @@ is a new 0.x.y.
 
 - A checklist step can be locked until its time with the padlock in its time chip. Until then, Pocket shows its Done
   greyed out with a countdown, and its tick with a padlock.
+- A task's labels show on its row, on a line under the title. Tapping one searches for the tasks with that label.
 
 ### Changed
 

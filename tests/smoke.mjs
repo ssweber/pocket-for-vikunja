@@ -563,8 +563,8 @@ try {
     await page.click('#btn-refresh');
     await page.waitForSelector('#btn-refresh:not([disabled])');
     // On Today a row is one line: small priority bars, then a short due time, and the project's dot at the right of
-    // the title. The tick's ring does not show the priority. Labels and counts are not shown. A screen reader still
-    // announces the priority, the due time in words and the project.
+    // the title. The tick's ring does not show the priority. Counts are not shown. A screen reader still announces the
+    // priority, the due time in words and the project. The task's label is on a line of its own, 20px under it.
     const R = page.locator(row);
     await expect(R).toHaveClass(/\bone-line\b/);
     await expect(R.locator('.when > .bars.p3 ~ .due')).toHaveText(/\S/);
@@ -583,8 +583,11 @@ try {
     const said = await R.locator('.title .sr').allTextContents();
     if (!said.some(s => /Priority: High/.test(s) && /Due |Late: /.test(s)))
       throw new Error('a screen reader hears ' + JSON.stringify(said));
-    if ((await R.evaluate(el => el.offsetHeight)) > 57)
-      throw new Error('a row on Today is more than one line: ' + (await R.evaluate(el => el.offsetHeight)));
+    await expect(R.locator('> .labs > .lab')).toHaveText([label]);
+    if ((await R.evaluate(el => el.offsetHeight)) > 77)
+      throw new Error(
+        'a row on Today is more than a line and its labels: ' + (await R.evaluate(el => el.offsetHeight)),
+      );
     // On the project's list the row has a second line with the priority bars, the comment count and the attachment count.
     await page.evaluate(
       id => {
@@ -3376,6 +3379,42 @@ try {
   });
   /* Open date chips hold the batch, as a finger does. Removing a moved row's gap shortens the page, and at the bottom
      of a long Today the scroll that causes would close the chips. */
+  /* A row's labels are buttons on a line of their own under its title. A swipe or a hold that starts on a label still
+     moves the row, and a tap beside the labels opens the task. */
+  await step('a-rows-labels-are-buttons-and-the-row-still-swipes-and-holds-from-them', async () => {
+    const l = await (
+        await api('/labels', { method: 'POST', headers: json, body: JSON.stringify({ title: `errands${stamp}` }) })
+      ).json(),
+      a = await make(`Pocket smoke labelled A ${stamp}`, { due_date: dayAt(1, 12) }),
+      R = rowOf(a.title),
+      LAB = `${R} > .labs > .lab`;
+    try {
+      await api(`/tasks/${a.id}/labels`, { method: 'POST', headers: json, body: JSON.stringify({ label_id: l.id }) });
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(LAB)).toHaveText([l.title], { timeout: 15000 });
+      await loaded(page);
+      const h = await page.locator(R).evaluate(el => el.offsetHeight);
+      if (h < 74 || h > 77) throw new Error('a row with labels is ' + h + 'px tall, not 76');
+      // A tap on the label line, beside the label, opens the task
+      const k = await page.locator(LAB).boundingBox();
+      await page.mouse.click(k.x + k.width + 60, k.y + k.height / 2);
+      await expect(page.locator('#sheet')).toBeVisible();
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      await swipeRow(page, R, 50, { from: '> .labs > .lab' });
+      await synced(page);
+      if (Math.round((await get(a.id)).percent_done * 100) !== 50)
+        throw new Error('a swipe from the label saved ' + (await get(a.id)).percent_done);
+      await holdOnToday(LAB);
+      await page.mouse.up();
+      await expect(page.getByRole('dialog', { name: `Move “${a.title}” to another day` })).toBeVisible();
+      await page.keyboard.press('Escape');
+    } finally {
+      await api('/tasks/' + a.id, { method: 'DELETE' });
+      await api('/labels/' + l.id, { method: 'DELETE' });
+    }
+  });
   await step('a-hold-on-today-keeps-the-batch-waiting-while-its-dates-are-open', async () => {
     const ts = [];
     for (let i = 0; i < 14; i++)

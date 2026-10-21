@@ -38,6 +38,7 @@
   --title-x: calc(14px + var(--tick) + 12px);
   --sub-tick: 24px;
   --sub-in: 30px;
+  --lab-tint: 16%; /* how much of a label's colour tints its pill */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -59,6 +60,7 @@
     --danger: #f07a8b;
     --danger-ink: #1a080c;
     --danger-soft: #45202a;
+    --lab-tint: 24%;
     color-scheme: dark;
   }
 }
@@ -713,6 +715,62 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 }
 .when .dot {
   margin: 0;
+}
+/* A row's labels, on a line of their own under the title. Each 44px button overlaps the body's bottom padding, so the
+   row grows by 20px, not 44px. The line ignores touches, so beside the labels a tap reaches the body. */
+.row:has(> .labs) {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.row > .labs {
+  order: 1;
+  flex: 0 0 calc(100% - var(--tick) - 9px);
+  display: flex;
+  flex-wrap: wrap;
+  margin: -10px 0 -12px calc(var(--tick) + 9px);
+  pointer-events: none;
+}
+/* The body reaches down beside the labels to the row's bottom edge, so a tap there opens the task too. Its margin
+   takes back what its padding adds, so the title's line keeps its height. The labels are drawn over it. */
+.row:has(> .labs) > button.body {
+  padding-bottom: 36px;
+  margin-bottom: -34px;
+}
+/* Positioned, so the label is drawn over the title's line it overlaps, and takes taps there */
+.lab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 3px;
+  border: 0;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+/* A label is a pill tinted with its colour, with a dot in that colour, because a light tint of yellow is faint */
+.lab > span,
+.lab-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 38px;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--lc) var(--lab-tint), var(--surface));
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+:is(.lab, .lab-pill) .dot {
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  background: var(--lc);
 }
 .when .bars {
   height: 9px;

@@ -278,13 +278,29 @@ test("the sheet's own row shows only the due date, priority, repeat and upcoming
   };
   assert.deepEqual(
     app.rowMeta(t, { depth: {} }).map(m => m.key),
-    ['due', 'prio', 'p', 'up', 'l1', 'rep', 'com', 'att', 'rem'],
-    'a row on Today shows every item',
+    ['due', 'prio', 'p', 'up', 'rep', 'com', 'att', 'rem'],
+    'a row on Today shows every item but its labels, which have a line of their own',
   );
   assert.deepEqual(
     app.rowMeta(t, SHEET_ROW).map(m => m.key),
     ['due', 'prio', 'rep', 'rem'],
   );
+});
+
+test("a row's labels have a line of their own, without template, and a checklist's steps show none", () => {
+  const app = component(views),
+    errands = { id: 1, title: 'errands' },
+    t = { id: 5, labels: [errands, { id: 2, title: 'Template' }] };
+  app.stepRun = x => (x.id === 6 ? 4 : null);
+  assert.deepEqual(app.rowLabels(t), [errands]);
+  const none = app.rowLabels({ id: 3, labels: [] });
+  assert.deepEqual(none, []);
+  assert.equal(
+    app.rowLabels({ id: 3 }),
+    none,
+    'every row without labels gets the same list, so it has nothing to redraw',
+  );
+  assert.deepEqual(app.rowLabels({ ...t, id: 6 }), [], 'a step of a checklist');
 });
 
 test("under a step's title the row shows Inserted or Repeated, the latest comment, its files and a countdown until it is done", () => {
