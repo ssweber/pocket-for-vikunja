@@ -26,8 +26,8 @@
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
-// main.go doesn't, and uses main.go's imports for the rest (net/http, strconv, strings, time, db, log, plugins,
-// echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
+// main.go doesn't, and uses main.go's imports for the rest (io, net/http, strconv, strings, time, db, log,
+// plugins, echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
 //go:build ignore
 
 package main
@@ -38,7 +38,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
 	"net"
 
 	"code.vikunja.io/api/pkg/user"

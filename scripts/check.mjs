@@ -2,7 +2,8 @@
 // hsla()) in src/styles.css outside the :root blocks, or anywhere in src/markup/. Colours are custom properties set in
 // :root, with their dark mode values beside them, so a colour written anywhere else would look the same in dark mode.
 // It also fails on a :style bound to an object in the markup, because x-style does that (component.js says why). It
-// also keeps docs/development.md under a size limit, with lines short enough to read.
+// also keeps docs/development.md under a size limit, with lines short enough to read, and fails on a package imported
+// by two of the plugin's .go files.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +57,24 @@ doc
     else if (!fenced && !line.startsWith('|') && line.length > DOC_LINE)
       problems.push(`${relative(ROOT, docFile)}:${i + 1}: a line of ${line.length} characters, over ${DOC_LINE}`);
   });
+
+// Vikunja evaluates the plugin's .go files into one package, in name order, and Yaegi refuses to load a file that
+// imports a package an earlier file imports ("redeclared in this block"). The whole plugin then fails to load.
+const goDir = join(ROOT, 'pocket'),
+  imported = new Map();
+for (const name of readdirSync(goDir)
+  .filter(n => n.endsWith('.go'))
+  .sort()) {
+  const file = join(goDir, name),
+    go = readFileSync(file, 'utf8');
+  for (const m of go.matchAll(/^import\s*(?:\(([^)]*)\)|("[^"]+"))/gm))
+    for (const p of (m[1] || m[2]).matchAll(/"([^"]+)"/g)) {
+      const at = m.index + m[0].indexOf(p[0]);
+      if (imported.has(p[1]))
+        report(file, go, at, `${p[1]} is imported by ${imported.get(p[1])} already: use that import`);
+      else imported.set(p[1], name);
+    }
+}
 
 if (problems.length) {
   console.error(problems.join('\n') + `\n${problems.length} problem${problems.length === 1 ? '' : 's'}`);
