@@ -112,7 +112,16 @@ Each is discussed, with a picture, before it is built.
 - [ ] **Filter by label.** Rows don't show their labels today, so that comes first. Then tapping a label on a row
   narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and clearing it, or leaving
   Today, shows everything again. One label at a time. Typing `*errands` in search lists every open task with that
-  label, wherever it is due, grouped by project.
+  label, wherever it is due, grouped by project. Agreed from `scratchpad/ui-labels/labels.png`, whose
+  `inject.mjs` is the start:
+  - Labels sit on a line of their own under the title, only on rows that have any (option b). Those rows are 76 px.
+    Each label is a 22 px tinted pill with a dot in its colour, in a 44 px tall button. `template` never shows.
+  - On Today, tapping a label narrows Today. Elsewhere it opens search for `*label`.
+  - Group counts count only the tasks shown. "Move all to today" is hidden while Today is narrowed.
+  - With nothing to show: "Nothing due this week has *errands." and "Search finds the tasks due later or with no
+    date.", with a "Search *errands" button.
+  - In search, typing `*` offers the labels that match what follows as chips. Tapping one searches for it.
+  - The bar scrolls with the list. Search orders projects by their soonest task, and shows open tasks only.
 - [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
   keep `http://` and file paths in the title.
 - [ ] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
@@ -122,7 +131,15 @@ Each is discussed, with a picture, before it is built.
   for Mix the dough". Every way to tick in Pocket respects it, and Vikunja's web app doesn't, as the guide will say.
   No plain-language form yet. A padlock button in the step's time chip turns it on and off: open and muted when off,
   closed in the accent colour when on. When on, the chip reads "Locked until 20m after the step before". Pocket has
-  no lock icon yet, so it gets one in the clock's line style. A picture of the chip and the button comes first.
+  no lock icon yet, so it gets one in the clock's line style. Agreed from `scratchpad/ui-timelock/time-locked-step.png`,
+  whose `inject.mjs` is the start:
+  - The locked chip takes two lines: the text, then the picker, the padlock and the ×.
+  - Done while locked is grey (`--sunk`, `--muted`) with a padlock, and keeps its size in every state.
+  - Skip still works while the step is locked.
+  - A locked step's tick, on the checklist screen and on Today's checklist card, shows a grey padlock. Tapping it says
+    "Shape the loaves can be ticked at 10:42". A swipe right springs back.
+  - The "Due in" line under the title counts in minutes, then in seconds under a minute: "Due in 20m", then "Due in
+    50s".
 - [ ] **A long press on "+ me"** offers the project's other people.
 
 ## Batch 5: the phone's storage and the test tools
