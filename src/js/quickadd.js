@@ -174,8 +174,8 @@ export function parseCapture(
       });
     return out;
   }
-  // A checklist step's T#20m, T#40m:roast and {#roast} must not be read as a date, a time or a project. Each is
-  // replaced by a run of one private-use character of the same length, and restored at the end.
+  // A checklist step's T#20m, !T#20m, T#40m:roast and {#roast} must not be read as a date, a time, a project or a
+  // priority. Each is replaced by a run of one private-use character of the same length, and restored at the end.
   const stepTokens = [];
   const hide = tok => String.fromCharCode(0xe000 + stepTokens.push(tok) - 1).repeat(tok.length);
   const unhide = t => t.replace(/([\uE000-\uF8FF])\1*/g, (run, c) => stepTokens[c.charCodeAt(0) - 0xe000] ?? run);
@@ -194,7 +194,7 @@ export function parseCapture(
       text.slice(held[0].length);
   text = text
     .replace(
-      /(^|\s)(T#(?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+(?::[a-z][\w-]*)?)(?=\s|$|["'])/gi,
+      /(^|\s)(!?T#(?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+(?::[a-z][\w-]*)?)(?=\s|$|["'])/gi,
       (_, sp, tok) => sp + hide(tok),
     )
     .replace(/\{#[a-z][\w-]*\}/gi, hide);

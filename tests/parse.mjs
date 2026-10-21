@@ -1298,6 +1298,22 @@ add({
   why: 'T#40m:roast is not a time of day either',
 });
 add({
+  text: 'Shape the loaves !3 !T#20m',
+  title: 'Shape the loaves !T#20m',
+  priority: 3,
+  date: null,
+  pocket: true,
+  why: "!T#20m isn't a priority or a time of day, and !3 beside it still is a priority",
+});
+add({
+  text: 'Shape the loaves !T#18m:dough',
+  title: 'Shape the loaves !T#18m:dough',
+  priority: 0,
+  date: null,
+  pocket: true,
+  why: '!T#18m:dough stays in the title for parseStep',
+});
+add({
   text: 'pay rent Oct 5',
   now: new Date(2026, 9, 5, 20, 50),
   title: 'pay rent',
@@ -1348,8 +1364,10 @@ const collisions = [
   ['Set the table #project', 'T#20m:roast', 'todoist'],
   ['Set the table #project', '{#table}', 'todoist'],
   ['Make the gravy *kitchen', 'T#5m'],
+  ['Shape the loaves at 5pm', '!T#20m'],
+  ['Shape the loaves *bakery', '!T#18m:dough'],
 ];
-// parseStep: [text, title, offset in ms, name, ref, number of problems]
+// parseStep: [text, title, offset in ms, name, ref, number of problems, whether it can't be ticked before its time]
 const steps = [
   ['Check the guards', 'Check the guards', null, null, null, 0],
   ['Warm up the press T#30m', 'Warm up the press', 30 * 6e4, null, null, 0],
@@ -1376,6 +1394,12 @@ const steps = [
   ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1],
   ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0],
   ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1],
+  ['Shape the loaves !T#20m', 'Shape the loaves', 20 * 6e4, null, null, 0, true],
+  ['Shape the loaves !t#18m:dough', 'Shape the loaves', 18 * 6e4, null, 'dough', 0, true],
+  ['Strict once T#5m !T#10m', 'Strict once', 5 * 6e4, null, null, 1, false],
+  ['Shout hi!T#5m', 'Shout hi!T#5m', null, null, null, 0, false],
+  ['Twice !!T#5m', 'Twice !!T#5m', null, null, null, 0, false],
+  ['Not a time !T#5', 'Not a time', null, null, null, 1, false],
 ];
 // stepProblems on a template's steps: [titles, the text each problem message contains]
 const templates = [
@@ -1385,6 +1409,8 @@ const templates = [
   [['A {#a}', 'B {#A}'], ['an earlier step is also named']],
   [['A', 'B T#5m:nope'], ['no step is named']],
   [['A T#5', 'B'], ["isn't a time"]],
+  [['A {#a}', 'B !T#5m:a', 'C !T#1h'], []],
+  [['A !T#5m:a', 'B {#a}'], ['which has to be an earlier step']],
 ];
 // A step's time written in words, parsed while the user writes steps in Pocket: [text, offset in ms or null]
 const phrases = [
@@ -1491,6 +1517,26 @@ const drafts = [
     ['Baste T#20m'],
     [],
     true,
+  ],
+  // The padlock in the time chip makes the time !T#, and takes the ! off again. Without it, the time is as typed.
+  [
+    [
+      { key: 'a', text: 'Mix the dough' },
+      { key: 'b', text: 'Shape the loaves in 20 min', strict: true },
+      { key: 'c', text: 'Bake !T#40m', from: 'a' },
+      { key: 'd', text: 'Cool !T#10m', strict: false },
+      { key: 'e', text: 'Slice !T#5m' },
+    ],
+    [],
+    [
+      'Mix the dough {#mix-the-dough}',
+      'Shape the loaves !T#20m',
+      'Bake !T#40m:mix-the-dough',
+      'Cool T#10m',
+      'Slice !T#5m',
+    ],
+    [],
+    false,
   ],
   // A generated name doesn't end on a small word.
   [
@@ -1879,9 +1925,16 @@ reads.forEach((r, i) => {
     console.log(`FAIL the list's name in ${JSON.stringify(r.text)} [${r.why}]: ${JSON.stringify(got.names)}`);
   }
 });
-steps.forEach(([text, title, offset, name, ref, problems], i) => {
+steps.forEach(([text, title, offset, name, ref, problems, strict = false], i) => {
   const r = stepResults[i];
-  if (r.title !== title || r.offset !== offset || r.name !== name || r.ref !== ref || r.problems.length !== problems) {
+  if (
+    r.title !== title ||
+    r.offset !== offset ||
+    r.name !== name ||
+    r.ref !== ref ||
+    r.problems.length !== problems ||
+    r.strict !== strict
+  ) {
     failed++;
     console.log(`FAIL step ${JSON.stringify(text)}: ${JSON.stringify(r)}`);
   }

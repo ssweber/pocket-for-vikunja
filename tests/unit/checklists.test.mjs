@@ -67,6 +67,24 @@ test('a timed step counts from the previous step, a named earlier step, or the s
   assert.equal(stepFrom([parseStep('First T#5m')], 0), -1, 'the first step counts from the start of the checklist');
 });
 
+test('a step timed with !T# is due as with T#, counts from the same step, and is marked strict', () => {
+  const steps = ['Mix the dough {#dough}', 'Shape the loaves !T#20m', 'Bake !T#40m:dough', 'Cool T#10m'].map(parseStep);
+  assert.deepEqual(
+    steps.map(s => [s.title, s.offset, s.strict]),
+    [
+      ['Mix the dough', null, false],
+      ['Shape the loaves', 20 * 6e4, true],
+      ['Bake', 40 * 6e4, true],
+      ['Cool', 10 * 6e4, false],
+    ],
+  );
+  assert.deepEqual(
+    [1, 2, 3].map(i => stepFrom(steps, i)),
+    [0, 0, 2],
+  );
+  assert.deepEqual(stepProblems(['A !T#5m:b', 'B {#b}']).length, 1, 'it must count from an earlier step, as T# must');
+});
+
 test("a template's steps are shown with when each is due, its name, and any problem", () => {
   const shown = stepInfos(['Heat the oven T#0m {#oven}', 'Roast T#40m:oven', 'Baste T#20m:gravy', 'Plate']);
   assert.deepEqual(shown, [
