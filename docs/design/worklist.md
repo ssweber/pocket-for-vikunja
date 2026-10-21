@@ -27,10 +27,11 @@ claim that turns out wrong is noted here and dropped.
   calls a free lock's holder at once. The tests now use a fake that grants locks as a browser does.
 - [x] **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too.
   Accept `default_due_time` only as `HH:MM`.
-- [ ] **The model test fails at seed 616988444.** Path `350:3:4:11:11:15:24:24:17:17:17:18:21:21:21`: StepMade,
+- [x] **The model test fails at seed 616988444.** Path `350:3:4:11:11:15:24:24:17:17:17:18:21:21:21`: StepMade,
   Queue done, Reload(lost), Send, Sheet assign, Queue add, Queue delete, Reload(lost). It breaks check 5, "1's copy
   took a read that ran while another write to it was in flight". It fails on the code before the fake IndexedDB
-  changed, too.
+  changed, too. The bug was in the test. `settle()` counted database requests only, so it stopped while the next
+  op in line for the outbox lock was about to send.
 - [ ] **The waiting message names the time of the next try.** "Waiting for Vikunja. Pocket tries again every 30
   seconds." is wrong after a 429's `Retry-After`. Make it "Waiting for Vikunja. Pocket tries again at 3:42 PM.",
   with the end of the wait or the next 30-second send, whichever is later.

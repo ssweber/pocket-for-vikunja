@@ -4,9 +4,12 @@
    every earlier one on the same stores, unless both only read. Import it before anything from src/, because sync.js
    opens the database as it loads. */
 export const stores = new Map();
-// How many requests the database has had, so a test can tell when the app has stopped working.
-export const used = { requests: 0 };
-const task = setImmediate;
+// How many tasks the database has run, so a test can tell when the app has stopped working.
+export const used = { tasks: 0 };
+const task = fn => {
+  used.tasks++;
+  setImmediate(fn);
+};
 class Request {
   result = undefined;
   onsuccess = null;
@@ -64,7 +67,6 @@ const database = {
     };
     const request = run => {
       const r = Object.assign(new Request(), { run });
-      used.requests++;
       waiting.push(r);
       return r;
     };
