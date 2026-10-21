@@ -118,8 +118,9 @@ Each is discussed, with a picture, before it is built.
   the user: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is also
   due then, chimes at zero, and the plugin writes its due date. Before that step is done, the button reads "Waiting
   for Mix the dough". Every way to tick in Pocket respects it, and Vikunja's web app doesn't, as the guide will say.
-  No plain-language form yet. A lock button in the step's time chip turns it on and off (proposed: a padlock, open
-  and muted when off, closed in the accent colour when on). A picture of the chip and the button comes first.
+  No plain-language form yet. A padlock button in the step's time chip turns it on and off: open and muted when off,
+  closed in the accent colour when on. When on, the chip reads "Locked until 20m after the step before". Pocket has
+  no lock icon yet, so it gets one in the clock's line style. A picture of the chip and the button comes first.
 - [ ] **A long press on "+ me"** offers the project's other people.
 
 ## Batch 5: the phone's storage and the test tools
