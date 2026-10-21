@@ -22,6 +22,7 @@ is a new 0.x.y.
 - The header always has the Today, Projects and Checklists tabs. With no checklist project, Checklists offers to set
   one up.
 - A screen with nothing saved on the phone shows grey rows while it loads, instead of "Loading…".
+- "Move all to today" and "Open project" are easier to tap, and their headings are no taller than the others.
 
 ### Fixed
 

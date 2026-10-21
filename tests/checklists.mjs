@@ -323,6 +323,11 @@ try {
 
   await step('new-template', async () => {
     await page.click('nav.tabs a[data-tab=checklists]');
+    // Open project's 44px target fits inside its heading, which is as tall as a heading without a button.
+    const head = page.locator(`.cl[data-project="${project.id}"] > .sec`);
+    const [h, act] = [await head.boundingBox(), await head.locator('.sec-act').boundingBox()];
+    if (Math.round(h.height) !== 21 || Math.round(act.height) !== 44)
+      throw new Error(`the heading is ${h.height}px tall and Open project ${act.height}px`);
     await page.click(`.cl[data-project="${project.id}"] .cl-new .body`, { timeout: 15000 });
     await page.waitForFunction(() => document.activeElement?.id === 'nt-name'); // wait for the sheet to focus the name before typing
     await page.fill('#nt-name', TEMPLATE);

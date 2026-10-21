@@ -562,24 +562,22 @@ main {
   font-weight: 600;
   font-size: 14px;
 }
+/* A 44px target inside the heading's height, so a heading with a button is no taller than one without */
 .sec-act {
-  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 12px 2px;
+  margin: -12px 0 -12px auto;
+  text-align: right;
   border: 0;
   background: transparent;
   color: var(--accent);
   font-size: 14px;
   font-weight: 650;
-  padding: 6px 2px;
 }
 .sec-act[disabled] {
   opacity: 0.55;
 }
-#btn-copy-done {
-  min-width: 44px;
-  padding: 12px 2px;
-  margin: -12px 0 -12px auto;
-  text-align: right;
-} /* a 44px target in a heading's height */
 /* A heading after a list that ends in a card's footer moves up. Most of the space above it is already the footer's
    own gap, so without this the heading would sit too far from the list. The footer keeps its 48px touch target, which
    now overlaps the heading, so the heading ignores touches (pointer-events:none) and they reach the footer. */

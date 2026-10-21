@@ -479,6 +479,13 @@ try {
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
     await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
+    // The button's 44px target fits inside the Overdue heading, which is as tall as a heading without a button.
+    const [head, act] = [
+      await page.locator('.sec.overdue').boundingBox(),
+      await page.locator('#btn-overdue-today').boundingBox(),
+    ];
+    if (Math.round(head.height) !== 21 || Math.round(act.height) !== 44)
+      throw new Error(`the Overdue heading is ${head.height}px tall and its button ${act.height}px`);
     await page.click('#btn-overdue-today');
     await page.waitForSelector(`.sec.today ~ .list ${lateRow}`, { timeout: 15000 });
     // A message with an Undo button appears under the Overdue heading, which stays in place meanwhile.

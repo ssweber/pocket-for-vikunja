@@ -88,7 +88,7 @@ matters there.
   were never sent, and Vikunja kept an open task with no "template" label, which is not a template. With its outbox
   kept, Pocket's Today never shows the example, whether Today is tapped during the setup or after it. The outbox survives closing
   the app and signing out, so the sending finishes when Pocket opens again.
-- [ ] **A steady header and grey rows while loading.** Agreed with the user from
+- [x] **A steady header and grey rows while loading.** Agreed with the user from
   `scratchpad/ui-tabs-rows/tabs-and-grey-rows.png` and `headings-44.png`. The CSS and markup there are the start.
   - The header always has the three tabs in the compact layout (`.tabs.icons`), so it no longer changes from two
     tabs to three when `checklistProjects` loads. With no checklist project, Checklists shows its setup card.
