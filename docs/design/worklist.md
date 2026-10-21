@@ -123,7 +123,14 @@ Each is discussed, with a picture, before it is built.
   - In search, typing `*` offers the labels that match what follows as chips. Tapping one searches for it.
   - The bar scrolls with the list. Search orders projects by their soonest task, and shows open tasks only.
 - [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
-  keep `http://` and file paths in the title.
+  keep `http://` and file paths in the title. Agreed from `scratchpad/ui-notes-me/notes.png`, whose `inject.mjs`
+  is the start:
+  - The notes are highlighted in the box like any parsed part, and are not parsed themselves. A chip after the others
+    reads "Notes: …", cut to one line. Tapping it keeps the words in the title.
+  - A pasted list gets one chip, "Notes on 1 task", counted like "3 tasks".
+  - The step box and the step editor read notes the same way. On a step that has notes, the new text is added as a
+    paragraph at the end, and the chip reads "Adds to the notes: …", so `pocket:ask` lines survive.
+  - The notes are sent as the task's description in the request that makes it.
 - [ ] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
   previous step is done. Until then its Done button is dimmed and reads "Waiting 19:42", counting down. Agreed with
   the user: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is also
@@ -140,7 +147,16 @@ Each is discussed, with a picture, before it is built.
     "Shape the loaves can be ticked at 10:42". A swipe right springs back.
   - The "Due in" line under the title counts in minutes, then in seconds under a minute: "Due in 20m", then "Due in
     50s".
-- [ ] **A long press on "+ me"** offers the project's other people.
+- [ ] **A long press on "+ me"** offers the project's other people. Agreed from `scratchpad/ui-notes-me/plus-me.png`,
+  whose `people.mjs` is the start:
+  - Holding "+ me", or your own picture, for 450 ms opens a menu under the row headed "People who can see Shop": Me
+    first, then the others by name, each with their picture, a ✓ on whoever is assigned. 46 px rows, the ⋯ menu's
+    look (make `#sheet .menu` a shared `.menu` rule), with the date chips' thin edge and 20% scrim.
+  - Tapping a person assigns them, or unassigns them if ticked, and closes the menu. A tap outside, Escape, a scroll
+    or leaving the screen closes it with no change. The batch waits while it is open (`holdBatch`).
+  - Someone else's picture gets no long press.
+  - Today holding "+ me" starts the row's hold, so the date chips appear. A press inside a `.claim` must start only
+    the menu's hold. A tap is still a tap, and a swipe from "+ me" still swipes the row.
 
 ## Batch 5: the phone's storage and the test tools
 
