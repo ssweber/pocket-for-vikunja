@@ -12,7 +12,7 @@ claim that turns out wrong is noted here and dropped.
 - [x] **A failed update check reloads the page.** After a network failure or a 502, `sw.js` answers with the cached
   page and a 200, and `updateIfNew()` reloads on any 200. Reload only when the server sent a different build. Compare
   a build id written by `scripts/build.mjs` rather than file times.
-- [ ] **`relayClaim` reads any INSERT error as "key already taken".** If `pocket_relay` is missing, every write gets
+- [x] **`relayClaim` reads any INSERT error as "key already taken".** If `pocket_relay` is missing, every write gets
   a 409 with Retry-After, the phone waits for good, and the server logs nothing. When `relayGet` then finds no row,
   log the INSERT error and answer 500.
 - [ ] **The relay prunes old keys before every write.** The `DELETE … WHERE created < ?` has no index on `created`,

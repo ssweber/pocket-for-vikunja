@@ -139,15 +139,17 @@ func relayWrite(c *echo.Context) error {
 	fp := hex.EncodeToString(sum[:])
 
 	// Claim the key. The primary key lets only one request do so. Any other gets the row the first one wrote.
-	if claimed, err := relayClaim(u.ID, key, fp); err != nil {
-		return err
-	} else if !claimed {
+	if claimErr := relayClaim(u.ID, key, fp); claimErr != nil {
 		row, ok, err := relayGet(u.ID, key)
 		if err != nil {
 			return err
 		}
-		if !ok { // the first request failed in a way that can be retried, and released the key in the meantime
-			return relayBusy(c, false)
+		// No request holds the key, so the claim failed for another reason, such as a database error. A 409 would tell
+		// the phone to wait for a request that isn't running. After a 500, Pocket sends the write again a few times and
+		// then tells the user. The request that held the key may also have released it in the meantime, after an error.
+		if !ok {
+			log.Errorf("pocket: relay couldn't claim key %q: %s", key, claimErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "the relay couldn't store the Idempotency-Key")
 		}
 		if row.Fingerprint != fp {
 			return echo.NewHTTPError(http.StatusUnprocessableEntity, "this Idempotency-Key was used for a different request")
@@ -287,7 +289,9 @@ func relayTarget() (string, *http.Transport) {
 	return "http://" + net.JoinHostPort(host, port), t
 }
 
-func relayClaim(userID int64, key, fp string) (bool, error) {
+// relayClaim stores a pending row for the key. Its error doesn't say why: the key may be taken, or the database may
+// have failed. relayGet tells them apart.
+func relayClaim(userID int64, key, fp string) error {
 	s := db.NewSession()
 	defer s.Close()
 	now := time.Now()
@@ -295,10 +299,10 @@ func relayClaim(userID int64, key, fp string) (bool, error) {
 	// send a key for up to relayAhead after relayKeep has passed on the server, so its answer is kept that long.
 	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
 		_ = s.Rollback()
-		return false, err
+		return err
 	}
 	if err := s.Commit(); err != nil {
-		return false, err
+		return err
 	}
 	t := db.NewSession()
 	defer t.Close()
@@ -308,11 +312,9 @@ func relayClaim(userID int64, key, fp string) (bool, error) {
 		err = t.Commit()
 	}
 	if err != nil {
-		// Taken already, most likely. relayGet decides.
 		_ = t.Rollback()
-		return false, nil
 	}
-	return true, nil
+	return err
 }
 
 func relayGet(userID int64, key string) (relayRow, bool, error) {

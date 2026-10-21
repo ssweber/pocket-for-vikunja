@@ -239,6 +239,17 @@ try {
   check('neither made a task', (await titled(me, title8)).length === 0);
   const v4 = keep(await relay('POST', `/projects/${team.id}/tasks`, me, { title: title8 }, crypto.randomUUID()));
   check("a key that isn't a UUIDv7 gets 400", v4.status === 400, brief(v4));
+  // A key with a byte that isn't UTF-8 makes MySQL refuse the INSERT, though the SELECT after it works. That stands
+  // for any database error while the relay claims a key. The phone sends a 500 again a few times. A 409 would tell it
+  // to wait for good. SQLite stores the key, and the task is made.
+  const unstored = keep(
+    await relay('POST', `/projects/${team.id}/tasks`, me, { title: `Relay bad key ${run}` }, newKey() + ':\xff'),
+  );
+  check(
+    "a key the database can't store gets 500, not 409",
+    unstored.status === 500 || unstored.status === 201,
+    brief(unstored),
+  );
   const staged = keep(
     await relay('POST', `/projects/${team.id}/tasks`, me, { title: `Relay staged ${run}` }, newKey() + ':2:1'),
   );
