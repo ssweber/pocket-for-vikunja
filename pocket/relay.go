@@ -26,7 +26,7 @@
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
-// main.go doesn't, and uses main.go's imports for the rest (io, net/http, strconv, strings, time, db, log,
+// main.go doesn't, and uses main.go's imports for the rest (io, net/http, strconv, strings, sync, time, db, log,
 // plugins, echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
 //go:build ignore
 
@@ -51,6 +51,7 @@ const (
 	relayRunning = 2 * time.Minute     // a first request still pending after this never finished
 	relayTimeout = 90 * time.Second    // how long a forwarded request may take
 	relayMaxBody = 50 << 20            // attachments go through the relay too
+	relayPrune   = time.Minute         // how often old answers are deleted, at most
 )
 
 type relay struct{}
@@ -78,6 +79,23 @@ func (r *relay) Migrations() []*xormigrate.Migration {
 		},
 		Rollback: func(tx *xorm.Engine) error {
 			_, err := tx.Exec("DROP TABLE pocket_relay")
+			return err
+		},
+	}, {
+		// A server that has the table ran the migration above already, and never runs it again. So the index comes in
+		// a migration of its own.
+		ID:          "pocket-20261021-relay-created",
+		Description: "Pocket: index pocket_relay by the time each key was claimed, which old answers are deleted by.",
+		Migrate: func(tx *xorm.Engine) error {
+			_, err := tx.Exec("CREATE INDEX pocket_relay_created ON pocket_relay (created)")
+			return err
+		},
+		Rollback: func(tx *xorm.Engine) error {
+			drop := "DROP INDEX pocket_relay_created"
+			if tx.DriverName() == "mysql" {
+				drop += " ON pocket_relay"
+			}
+			_, err := tx.Exec(drop)
 			return err
 		},
 	}}
@@ -292,18 +310,8 @@ func relayTarget() (string, *http.Transport) {
 // relayClaim stores a pending row for the key. Its error doesn't say why: the key may be taken, or the database may
 // have failed. relayGet tells them apart.
 func relayClaim(userID int64, key, fp string) error {
-	s := db.NewSession()
-	defer s.Close()
 	now := time.Now()
-	// Old answers go as new keys come in. The table stays small, so a scan is cheap. A phone whose clock is fast can
-	// send a key for up to relayAhead after relayKeep has passed on the server, so its answer is kept that long.
-	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
-		_ = s.Rollback()
-		return err
-	}
-	if err := s.Commit(); err != nil {
-		return err
-	}
+	relayPruneOld(now)
 	t := db.NewSession()
 	defer t.Close()
 	_, err := t.Exec("INSERT INTO pocket_relay (user_id, op_key, fingerprint, state, code, content_type, body, created) VALUES (?, ?, ?, ?, 0, '', '', ?)",
@@ -315,6 +323,36 @@ func relayClaim(userID int64, key, fp string) error {
 		_ = t.Rollback()
 	}
 	return err
+}
+
+var (
+	relayPruned   time.Time // when relayPruneOld last deleted old answers
+	relayPrunedMu sync.Mutex
+)
+
+// relayPruneOld deletes old answers as new keys come in, at most once every relayPrune. Before every write, it would
+// double the write locks a write takes on SQLite. A phone whose clock is fast can send a key for up to relayAhead
+// after relayKeep has passed on the server, so its answer is kept that long.
+func relayPruneOld(now time.Time) {
+	relayPrunedMu.Lock()
+	due := now.Sub(relayPruned) >= relayPrune
+	if due {
+		relayPruned = now
+	}
+	relayPrunedMu.Unlock()
+	if !due {
+		return
+	}
+	s := db.NewSession()
+	defer s.Close()
+	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
+		_ = s.Rollback()
+		log.Errorf("pocket: relay couldn't delete old answers: %s", err)
+		return
+	}
+	if err := s.Commit(); err != nil {
+		log.Errorf("pocket: relay couldn't delete old answers: %s", err)
+	}
 }
 
 func relayGet(userID int64, key string) (relayRow, bool, error) {
