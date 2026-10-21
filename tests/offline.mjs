@@ -805,13 +805,21 @@ try {
         ];
       };
       await expect.poll(kept, { timeout: 20000 }).toEqual([true, 1, 1]);
-      // The same requests again, each with the key Pocket sent it with: the comment, and the tick.
+      // The same requests again, each with the key Pocket sent it with: the comment, and the tick. Since Vikunja 2.7.1,
+      // an API token can't be given POST on a plugin route. So they are sent with a session token, as Pocket sends them.
+      const { token } = await (
+        await fetch(SERVER + '/api/v2/login', {
+          method: 'POST',
+          body: JSON.stringify({ username: USER, password: PASSWORD }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      ).json();
       const again = (a, method, path, body) =>
         fetch(SERVER + '/api/v1/plugins/pocket/v2' + path, {
           method,
           body: JSON.stringify(body),
           headers: {
-            Authorization: 'Bearer ' + TOKEN,
+            Authorization: 'Bearer ' + token,
             'Content-Type': 'application/json',
             'Idempotency-Key': `"${a.key || a.id}:0:0"`,
           },
