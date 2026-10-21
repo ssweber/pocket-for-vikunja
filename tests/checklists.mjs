@@ -2937,7 +2937,7 @@ try {
     await page.fill(box, stray);
     await page.route('**/v2/tasks/*/relations', busy);
     await page.press(box, 'Enter');
-    await said('sheet:subtasks', 'Waiting for Vikunja. Pocket tries again every 30 seconds.');
+    await said('sheet:subtasks', 'Waiting for Vikunja. Pocket tries again at');
     await page.unroute('**/v2/tasks/*/relations', busy);
     await online();
     await until('the waiting step was never put under the template', async () =>

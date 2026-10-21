@@ -32,7 +32,7 @@ claim that turns out wrong is noted here and dropped.
   took a read that ran while another write to it was in flight". It fails on the code before the fake IndexedDB
   changed, too. The bug was in the test. `settle()` counted database requests only, so it stopped while the next
   op in line for the outbox lock was about to send.
-- [ ] **The waiting message names the time of the next try.** "Waiting for Vikunja. Pocket tries again every 30
+- [x] **The waiting message names the time of the next try.** "Waiting for Vikunja. Pocket tries again every 30
   seconds." is wrong after a 429's `Retry-After`. Make it "Waiting for Vikunja. Pocket tries again at 3:42 PM.",
   with the end of the wait or the next 30-second send, whichever is later.
 

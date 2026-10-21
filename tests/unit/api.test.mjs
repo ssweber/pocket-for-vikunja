@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allPages, api, partOf, passing } from '../../src/js/api.js';
+import { allPages, api, nextTry, partOf, passing } from '../../src/js/api.js';
 
 /* A fake Vikunja with a list of `n` items, paged the way Vikunja pages them (at most `max` per page). Each reply is
    delayed briefly so requests made together overlap. It records the requests (`asked`, as [page, per_page]) and the
@@ -293,6 +293,20 @@ test('after a 429, no keyed write reaches Vikunja until Retry-After has passed, 
   t.mock.timers.tick(1e3);
   assert.equal(flushed, 1, 'the outbox is sent when the wait is over');
   assert.deepEqual(await write(), { id: 5 });
+});
+
+// The waiting message names this time, so it must be when the outbox really sends next.
+test('the outbox next sends when a 429’s wait ends, or else at the next 30-second send', () => {
+  const app = component(),
+    now = Date.UTC(2026, 9, 21, 15, 40);
+  assert.equal(nextTry(now), now + 30e3, 'before the first 30-second send is timed, 30 seconds on');
+  app.nextFlush = now + 20e3;
+  assert.equal(nextTry(now), now + 20e3);
+  app.calmUntil = now + 90e3;
+  assert.equal(nextTry(now), now + 90e3, 'the 30-second send before then sends no keyed write');
+  app.calmUntil = now + 5e3;
+  assert.equal(nextTry(now), now + 5e3, 'the end of the wait sends the outbox itself');
+  assert.equal(nextTry(now + 10e3), now + 20e3, 'once the wait is over');
 });
 
 test('Retry-After may be an HTTP date, and a wait longer than 5 minutes, or one Pocket cannot read, is cut', async t => {

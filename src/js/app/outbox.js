@@ -1,6 +1,7 @@
 // The Outbox: the header's button and its sheet, including rejected changes that can be retried or dropped.
 import { fmtSize, taskDrafts } from '../util.js';
 import { addedText, parseStep } from '../checklists.js';
+import { nextTry } from '../api.js';
 import { older, sendState, sync, uuid7 } from '../sync.js';
 import { cancelling, cancelOf, dropUnder, opOf, passUps, photosOf } from '../ops/index.js';
 import { cancelled, notStopped, OUTBOX, outboxLabel, refusedNote, STILL_OFFLINE, UNDO } from '../messages.js';
@@ -66,7 +67,7 @@ export default {
   },
   get outboxStatus() {
     if (this.flushing) return OUTBOX.sending;
-    if (this.pending.length) return this.offline ? OUTBOX.offline : OUTBOX.busy;
+    if (this.pending.length) return this.offline ? OUTBOX.offline : OUTBOX.busy(nextTry());
     if (this.failed.length) return OUTBOX.refused;
     return OUTBOX.sent;
   },

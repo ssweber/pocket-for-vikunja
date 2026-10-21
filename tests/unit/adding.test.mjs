@@ -17,7 +17,7 @@ import cards from '../../src/js/app/cards.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
-import { photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
+import { busyText, photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
 import { packParsed, sync } from '../../src/js/sync.js';
 import { parseCapture } from '../../src/js/quickadd.js';
@@ -788,9 +788,10 @@ test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines
 
 /* An add box says "Saved offline" only when Pocket is offline. Lines or photos that wait for a busy Vikunja say what
    the Outbox says, because Pocket stays online and sends them again by itself. */
+const AT = Date.UTC(2026, 9, 21, 15, 42); // the time Pocket next sends
 for (const [why, trouble, said] of [
   ['offline', () => 'offline', "Saved offline. They go to Vikunja when you're back online."],
-  ['busy', r => (r.method === 'POST' ? 429 : null), 'Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+  ['busy', r => (r.method === 'POST' ? 429 : null), busyText(AT)],
 ])
   test(`lines that wait say why they wait (${why})`, async t => {
     t.after(clear);
@@ -798,7 +799,7 @@ for (const [why, trouble, said] of [
       app = adding(t);
     v.trouble = trouble;
     const r = await send(app, entry([line('Pack the van'), line('Load chairs')]));
-    assert.deepEqual([r.status, waitText(r, 2)], ['offline', said]);
+    assert.deepEqual([r.status, waitText(r, 2, 0, AT)], ['offline', said]);
   });
 test('a photo that waits for a busy Vikunja says so, not that it goes once back online', async t => {
   t.after(clear);
@@ -808,8 +809,8 @@ test('a photo that waits for a busy Vikunja says so, not that it goes once back 
   v.trouble = r => (r.path.endsWith('/attachments') ? 503 : null);
   const r = shown(app, await app.sendLines(withPhoto(app, e), [photo()]));
   assert.deepEqual(
-    [r.status, r.ids, photosLater('Van', 1, r.reached)],
-    ['offline', [101], 'Added to Van. Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+    [r.status, r.ids, photosLater('Van', 1, r.reached, AT)],
+    ['offline', [101], 'Added to Van. ' + busyText(AT)],
   );
 });
 

@@ -9,6 +9,7 @@ import {
   archiveAsk,
   archivedText,
   besideIt,
+  busyText,
   cancelled,
   cancelName,
   changedBut,
@@ -113,6 +114,7 @@ import {
 } from '../../src/js/messages.js';
 import { ZERO as ZERO_DATE } from '../../src/js/util.js';
 import { NetError } from '../../src/js/api.js';
+import { fmtTime } from '../../src/js/dates.js';
 import lines from '../../src/js/app/lines.js';
 import leaving from '../../src/js/app/leaving.js';
 import { blankSheet } from '../../src/js/app/core.js';
@@ -170,19 +172,22 @@ test('a change that waits offline says it goes to Vikunja when you are back onli
 
 /* A request whose reply was lost puts Pocket offline, as one that never left the phone does. Pocket sends either again
    by itself, so neither says to tap Try again. */
-test('a change that waits says why: offline, or a busy Vikunja', () => {
+test('a change that waits says why: offline, or a busy Vikunja', t => {
+  const now = new Date(2026, 9, 21, 15, 41, 40).getTime(),
+    busy = `Waiting for Vikunja. Pocket tries again at ${fmtTime(new Date(now + 30e3))}.`;
+  t.mock.timers.enable({ apis: ['Date'], now });
   assert.equal(waitText({}, 2), "Saved offline. They go to Vikunja when you're back online.");
-  assert.equal(waitText({ reached: true }), 'Waiting for Vikunja. Pocket tries again every 30 seconds.');
-  assert.equal(waitText({ reached: true }), OUTBOX.busy, 'the busy words are the Outbox’s');
-  assert.equal(
-    finishedText('Closing', { reached: true }),
-    'Finished Closing. Waiting for Vikunja. Pocket tries again every 30 seconds.',
-  );
-  assert.equal(doneLater('', true), 'Done. Waiting for Vikunja. Pocket tries again every 30 seconds.');
-  assert.equal(
-    photosLater('Orders', 2, true),
-    'Added to Orders. Waiting for Vikunja. Pocket tries again every 30 seconds.',
-  );
+  assert.equal(waitText({ reached: true }), busy, 'with no wait from Vikunja, the next 30-second send');
+  assert.equal(waitText({ reached: true }), OUTBOX.busy(now + 30e3), 'the busy words are the Outbox’s');
+  assert.equal(finishedText('Closing', { reached: true }), 'Finished Closing. ' + busy);
+  assert.equal(doneLater('', true), 'Done. ' + busy);
+  assert.equal(photosLater('Orders', 2, true), 'Added to Orders. ' + busy);
+});
+
+test('the busy words name the time of the next send in the phone’s own format', () => {
+  const at = new Date(2026, 9, 21, 15, 42, 10);
+  assert.equal(busyText(at.getTime()), `Waiting for Vikunja. Pocket tries again at ${fmtTime(at)}.`);
+  assert.match(fmtTime(at), /3:42|15:42/);
 });
 
 test('an action that needs Vikunja at once says what to do once back online, or why Vikunja refused it', () => {

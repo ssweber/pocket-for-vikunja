@@ -1,6 +1,6 @@
 // The Alpine component's data, and what Pocket does when it opens. Its methods are in the other files of app/.
 import { grow, setApp, store, taskDrafts } from '../util.js';
-import { sharedToken } from '../api.js';
+import { SEND_EVERY, sharedToken } from '../api.js';
 import { currentRoute } from '../routing.js';
 import { saved } from '../lists.js';
 import { noneWaiting } from '../ops/index.js';
@@ -168,6 +168,7 @@ export default () => ({
   flushing: false,
   writing: 0, // changes on their way to Vikunja (api.js)
   calmUntil: 0, // the time a 429's Retry-After ends, before which no keyed write is sent (api.js)
+  nextFlush: 0, // the time of the next 30-second send of the outbox
   unsent: null, // this user's outbox entries, including held and rejected entries, or null before loading
   starting: null, // a checklist being started, with its progress: {id, done, total}
   runFrom: '', // the last screen that wasn't a checklist, for the checklist's Back
@@ -260,9 +261,11 @@ export default () => ({
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') this.flush();
     });
+    this.nextFlush = Date.now() + SEND_EVERY;
     setInterval(() => {
+      this.nextFlush = Date.now() + SEND_EVERY;
       if (this.pending.length && document.visibilityState === 'visible') this.flush();
-    }, 30000);
+    }, SEND_EVERY);
     setInterval(() => {
       if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now();
       this.tickRun();

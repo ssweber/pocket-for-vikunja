@@ -2,7 +2,7 @@
 // shown. These functions only build the text, so the unit tests can check it. Lint fails on such a sentence written
 // anywhere else (eslint.config.js).
 import { andList, PRIOS } from './util.js';
-import { NetError } from './api.js';
+import { NetError, nextTry } from './api.js';
 import { dayName, dueInfo, fmtTime, isSet, repeats } from './dates.js';
 import { parseStep } from './checklists.js';
 import { htmlToText } from './html.js';
@@ -30,21 +30,22 @@ export const savedOffline = (n = 1, photos = 0) =>
   'Saved offline' +
   (photos ? `, with ${photos === 1 ? 'the photo' : photos + ' photos'}` : '') +
   `. ${n === 1 && !photos ? 'It goes' : 'They go'} to Vikunja when you're back online.`;
-// Vikunja answered busy, so the change waits, as the Outbox says.
-export const BUSY = 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
+// Vikunja answered busy, so the change waits until `at`, when Pocket next sends (nextTry). The Outbox says the same.
+export const busyText = at => `Waiting for Vikunja. Pocket tries again at ${fmtTime(new Date(at))}.`;
 // A change that names itself (`what`, "Finished Wipe the counter") and waits: for a busy Vikunja (`reached`), or
 // while Pocket is offline.
-export const sentLater = (what, reached = false) =>
-  `${what}. ${reached ? BUSY : "It goes to Vikunja when you're back online."}`;
+export const sentLater = (what, reached = false, at = nextTry()) =>
+  `${what}. ${reached ? busyText(at) : "It goes to Vikunja when you're back online."}`;
 /* What a change that waits says, by sendActs' result `r`: Vikunja was busy (`reached`), or Pocket is offline. A
    request whose reply was lost puts Pocket offline too. Pocket can't tell it from one that never left the phone, and
    sends it again with the same key, so it is made once. */
-export const waitText = (r, n = 1, photos = 0) => (r.reached ? BUSY : savedOffline(n, photos));
-// The Outbox's line while changes wait, offline or not, and once Vikunja refused some or has them all.
+export const waitText = (r, n = 1, photos = 0, at = nextTry()) => (r.reached ? busyText(at) : savedOffline(n, photos));
+// The Outbox's line while changes wait, offline or not, and once Vikunja refused some or has them all. `busy` takes
+// the time Pocket next sends.
 export const OUTBOX = {
   sending: 'Sending…',
   offline: "No connection. These go to Vikunja when you're back online.",
-  busy: BUSY,
+  busy: busyText,
   refused: 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Cancel.',
   sent: 'Everything has reached Vikunja.',
 };
@@ -724,9 +725,9 @@ export const lineRefused = (k, n, but, title, why) =>
 // Subtasks added from a task's sheet, with `but`.
 export const addedSubs = (n, but = '') => `Added ${n === 1 ? '1 subtask' : n + ' subtasks'}${but}`;
 // Photos sent with a task that reached Vikunja, while the photos wait: for a busy Vikunja (`reached`), or offline.
-export const photosLater = (project, n, reached = false) =>
+export const photosLater = (project, n, reached = false, at = nextTry()) =>
   `Added to ${project || 'its project'}. ` +
-  (reached ? BUSY : `${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`);
+  (reached ? busyText(at) : `${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`);
 // Lines added offline under a task, which Vikunja wouldn't put under it (`why`). `loose` are the titles made as tasks
 // of their own, and `unsent` the text of the lines not added.
 export const subsNotUnder = (parent, why, loose, unsent) =>

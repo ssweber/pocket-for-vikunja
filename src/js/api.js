@@ -74,6 +74,11 @@ export function retryAfter(v) {
 // The longest a 429's Retry-After holds back the outbox, so a wrong header can't stop sending for hours.
 const MOST_RETRY = 300;
 let calmTimer;
+export const SEND_EVERY = 30000; // how often the outbox sends what waits (core.js)
+/* When the outbox next sends: when a 429's Retry-After ends, or else at the next 30-second send. A send before the
+   wait ends sends no keyed write, and the wait's own timer sends the outbox when it ends. */
+export const nextTry = (now = Date.now()) =>
+  now < (app?.calmUntil || 0) ? app.calmUntil : app?.nextFlush > now ? app.nextFlush : now + SEND_EVERY;
 /* A file upload's body, as a browser builds one from FormData, with a boundary made from the upload's key. The relay
    answers a key sent again with another body with 422, and FormData picks a new boundary on every send. */
 function fileBody(file, name, key) {

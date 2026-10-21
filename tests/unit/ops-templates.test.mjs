@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
 import { sync } from '../../src/js/sync.js';
-import { UNKNOWN } from '../../src/js/messages.js';
+import { busyText, UNKNOWN } from '../../src/js/messages.js';
 import checklists from '../../src/js/app/checklists.js';
 import quickadd from '../../src/js/app/quickadd.js';
 
@@ -379,7 +379,7 @@ const setUp = async (t, trouble) => {
     globalThis.fetch = real;
   });
   v.trouble = trouble;
-  Object.assign(app, { perms: {}, setProjects: list => (app.projects = list) });
+  Object.assign(app, { perms: {}, setProjects: list => (app.projects = list), nextFlush: Date.now() + 600e3 });
   // A busy Vikunja is asked again after a pause (patiently), on the test's clock.
   let done = false;
   app.setUpChecklists().finally(() => (done = true));
@@ -404,7 +404,7 @@ test('Set up checklists says the example template waits when Vikunja is busy, an
   const { v, app } = await setUp(t, r => (making(FIRST)(r) ? 503 : null));
   assert.equal(
     lastSaid(app).msg,
-    'Created the Checklists project, with an example template to try. Waiting for Vikunja. Pocket tries again every 30 seconds.',
+    'Created the Checklists project, with an example template to try. ' + busyText(app.nextFlush),
   );
   await online(t, app, v);
   assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);
