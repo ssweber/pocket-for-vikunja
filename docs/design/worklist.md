@@ -85,8 +85,8 @@ matters there.
   Example: Opening up" under "Added today, no date", as a 4/4 parent with "All subtasks done" and Close. Today
   leaves templates out. Dropped: the screenshot script closed the browser 2 seconds after the tabs changed, while
   Set up checklists was still sending, and the next browser started with no outbox. So the label and the final tick
-  were never sent, and Vikunja kept an open task with no "template" label, which is not a template. On one phone,
-  Today never shows the example, whether Today is tapped during the setup or after it. The outbox survives closing
+  were never sent, and Vikunja kept an open task with no "template" label, which is not a template. With its outbox
+  kept, Pocket's Today never shows the example, whether Today is tapped during the setup or after it. The outbox survives closing
   the app and signing out, so the sending finishes when Pocket opens again.
 - [ ] **A steady header and grey rows while loading.** Agreed with the user from
   `scratchpad/ui-tabs-rows/tabs-and-grey-rows.png` and `headings-44.png`. The CSS and markup there are the start.
