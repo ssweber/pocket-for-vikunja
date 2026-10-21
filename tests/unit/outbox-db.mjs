@@ -79,6 +79,7 @@ const database = {
           }),
         get: k => request(() => structuredClone(s.get(k))),
         getAll: () => request(() => [...s.values()].map(v => structuredClone(v))),
+        count: () => request(() => s.size),
         delete: k =>
           request(() => {
             s.delete(k);

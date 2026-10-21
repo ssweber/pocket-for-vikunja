@@ -63,8 +63,8 @@ matters there.
 
 - [x] **The outbox holds up the saved Today.** `auth.js` waits up to 3 seconds for `sync.ready` before it shows saved
   tasks. Find out what the wait protects, then shorten or remove it. The wait kept a row from changing after it was
-  drawn, when a waiting change arrived late. `sync.js` now copies each entry to localStorage, and the saved screen
-  shows the copies without waiting.
+  drawn, when a waiting change arrived late. `sync.js` now keeps a flag in localStorage that says whether the outbox
+  had no entries when last read. The saved screen waits only when the flag doesn't say so.
 - [x] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
   and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed. It is drawn with the
   saved projects, as it is when the token is the confirmed one.

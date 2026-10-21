@@ -1,7 +1,7 @@
 // Opening on the saved screen (boot in src/js/app/auth.js). Pocket shows saved lists only when the sign-in token is the
 // one it last confirmed for that user. It recognises the token by its hash. Pocket sends nothing until Vikunja has
 // said who the user is.
-import './outbox-db.mjs';
+import { stores } from './outbox-db.mjs';
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -188,39 +188,72 @@ const waitingTick = () => ({
   n: 0,
   files: [],
 });
-// Loads another copy of sync.js, as a new page would, while the outbox's database never opens.
-async function heldPage(name) {
-  const open = indexedDB.open;
-  indexedDB.open = () => ({});
-  try {
-    return (await import('../../src/js/sync.js?' + name)).sync;
-  } finally {
-    indexedDB.open = open;
-  }
-}
+// The flag in localStorage that says the outbox's database had no entries when it was last read.
+const EMPTY = 'pocket.outbox.empty';
+// Another copy of sync.js, as a new page loads it, once it has read the outbox's database.
+const newPage = async name => {
+  const page = (await import('../../src/js/sync.js?' + name)).sync;
+  await page.ready;
+  return page;
+};
+// Runs `fn` when the outbox's database next stores an entry, before its transaction commits.
+const onStore = fn => {
+  const outbox = stores.get('outbox');
+  outbox.set = (k, v) => {
+    delete outbox.set;
+    fn();
+    return outbox.set(k, v);
+  };
+};
 
-test('a new page has the waiting changes before the outbox database opens, and not those sent since', async () => {
-  const sent = waitingTick(),
-    left = waitingTick();
-  await sync.add(sent, []);
-  await sync.add(left, []);
-  await sync.remove(sent.id);
-  assert.deepEqual(
-    (await heldPage('held')).all(ME.id).map(e => e.id),
-    [left.id],
-  );
-  await sync.remove(left.id);
-  assert.deepEqual((await heldPage('held-again')).all(ME.id), []);
+test('the outbox reads as empty only once a read of its database finds no entries', async () => {
+  const a = waitingTick(),
+    b = waitingTick();
+  localStorage.removeItem(EMPTY);
+  assert.ok(!sync.seenEmpty(), 'a phone with no flag may have entries waiting');
+  await newPage('empty');
+  assert.ok(sync.seenEmpty(), 'a new page found no entries');
+  let flagged;
+  onStore(() => (flagged = sync.seenEmpty()));
+  await sync.add(a, []);
+  assert.equal(flagged, false, 'the flag is deleted before the entry is written');
+  await sync.add(b, []);
+  await sync.remove(a.id);
+  assert.ok(!sync.seenEmpty(), 'an entry is still waiting');
+  await sync.remove(b.id);
+  assert.ok(sync.seenEmpty(), 'the last entry was removed');
 });
 
-test('a copy in localStorage of a change the outbox database no longer has is dropped once the database opens', async () => {
-  const gone = waitingTick();
-  localStorage.setItem('pocket.outbox.' + gone.id, JSON.stringify(gone));
-  const page = (await import('../../src/js/sync.js?gone')).sync;
-  assert.ok(page.entries.has(gone.id), 'the copy shows until the database is read');
-  await page.ready;
-  assert.ok(!page.entries.has(gone.id));
-  assert.equal(localStorage.getItem('pocket.outbox.' + gone.id), null);
+test('an "empty" written by another tab while an entry is saved, or one the database contradicts, is deleted', async () => {
+  const e = waitingTick();
+  onStore(() => localStorage.setItem(EMPTY, '1')); // another tab, from a read made before this write
+  await sync.add(e, []);
+  assert.ok(!sync.seenEmpty(), 'the save deletes the flag again once it commits');
+  localStorage.setItem(EMPTY, '1');
+  await newPage('contradicted');
+  assert.ok(!sync.seenEmpty(), 'a new page that finds an entry deletes the flag');
+  // This tab's read found no entries before another tab added `e`. The flag this tab then writes is deleted.
+  await sync.noteEmpty();
+  assert.ok(!sync.seenEmpty(), 'the database is read again after the flag is written');
+  await sync.remove(e.id);
+});
+
+test("when localStorage can't be written or read, the outbox reads as maybe not empty", async () => {
+  const { getItem, setItem } = localStorage;
+  localStorage.removeItem(EMPTY);
+  localStorage.setItem = () => {
+    throw new DOMException('full', 'QuotaExceededError');
+  };
+  await sync.noteEmpty();
+  localStorage.setItem = setItem;
+  assert.ok(!sync.seenEmpty(), 'a flag that did not fit is missing');
+  await sync.noteEmpty();
+  localStorage.getItem = () => {
+    throw new DOMException('denied', 'SecurityError');
+  };
+  assert.ok(!sync.seenEmpty(), 'a flag that cannot be read');
+  localStorage.getItem = getItem;
+  assert.ok(sync.seenEmpty());
 });
 
 // The app with stubs that read the outbox as the screen does, and record what each screen was drawn with. It sends
@@ -239,26 +272,57 @@ function outboxApp() {
   });
 }
 
-test('the saved screen shows at once while the outbox database is held up, with the waiting change on it', async () => {
+test('with the outbox empty when last read, the saved screen shows at once while the outbox database is held up', async () => {
   const v = vikunja(),
     c = outboxApp(),
     tick = waitingTick(),
-    ready = sync.ready,
-    start = Date.now();
+    ready = sync.ready;
   await keep('tk_test');
+  await sync.add(tick, []);
+  await sync.remove(tick.id); // the last change was sent
   sync.ready = new Promise(() => {}); // the database never opens
-  sync.entries.set(tick.id, tick); // as a new page reads it from localStorage
+  const start = Date.now();
   try {
     const booted = c.boot();
     await asked(v);
     assert.deepEqual(c.shown, ['kept']);
     assert.ok(Date.now() - start < 1500, 'the saved screen does not wait for the database');
+    assert.deepEqual(c.drawnWith.waiting, []);
+    v.answer();
+    await booted;
+  } finally {
+    sync.ready = ready;
+  }
+});
+
+test('with a change waiting, the saved screen waits for the outbox database, and shows the change on it', async () => {
+  const v = vikunja(),
+    c = outboxApp(),
+    tick = waitingTick(),
+    ready = sync.ready;
+  await keep('tk_test');
+  await sync.add(tick, []);
+  sync.entries.delete(tick.id); // as on a new page, which reads the tick once the database opens
+  let open;
+  sync.ready = new Promise(ok => {
+    open = () => {
+      sync.entries.set(tick.id, tick);
+      ok();
+    };
+  });
+  try {
+    const booted = c.boot();
+    for (let i = 0; i < 10; i++) await settle();
+    assert.deepEqual(c.shown, [], 'nothing is drawn while the database is held up');
+    open();
+    await asked(v);
+    assert.deepEqual(c.shown, ['kept']);
     assert.deepEqual(c.drawnWith.waiting, [tick.id], 'the waiting tick is on the saved screen');
     v.answer();
     await booted;
   } finally {
     sync.ready = ready;
-    sync.entries.delete(tick.id);
+    await sync.remove(tick.id);
   }
 });
 

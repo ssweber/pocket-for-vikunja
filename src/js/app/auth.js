@@ -260,7 +260,10 @@ export default {
     this.screen = 'app';
     this.signedIn = true;
     Object.assign(this.view, { loading: true, error: '', bootFailed: false, route: null });
-    // The saved screen doesn't wait for the outbox's database. Its waiting entries are read from their copies (sync.js).
+    /* A row drawn before the outbox's database is read would change when a change waiting there arrives. So wait for
+       the database, unless it had no entries when last read (seenEmpty, sync.js). Another tab with an older Pocket can
+       hold the database up, so don't wait for long. */
+    if (!sync.seenEmpty()) await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
     sync.ready.then(() => this.refreshPending());
     /* If the token is the one last confirmed for the saved user (keepWho), show that user's saved screen at once and
        ask Vikunja whose token it is. Until Vikunja answers, nothing is sent (setOpening, api.js). Any other token
