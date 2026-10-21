@@ -48,7 +48,7 @@ claim that turns out wrong is noted here and dropped.
 
 No change in behaviour. The tests pass before and after.
 
-- [ ] **One import cycle runs through all of `ops/` and `app/tasks.js`.** The ops import `TASK`, `MOVED` and `opsId`
+- [x] **One import cycle runs through all of `ops/` and `app/tasks.js`.** The ops import `TASK`, `MOVED` and `opsId`
   from the store, and the store imports `ops/index.js`. Move `TASK`, the `TASK_*` lists, `MOVED` and `opsId` into a
   small module of their own, and move `DEFAULTS` out of `ops/index.js`, which `ops/comments.js` imports back. Then
   delete the "import an op's helpers from here" warning in `ops/index.js`, and add a lint rule or test that fails on
