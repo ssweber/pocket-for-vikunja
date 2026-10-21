@@ -22,6 +22,7 @@ import {
   noToast,
   placeLine,
   placeSays,
+  rowLine,
   signIn as signInAt,
   steady,
   swipeRow,
@@ -2609,6 +2610,89 @@ try {
     };
     if (!(await Promise.all([tpl.id, a.id, b.id].map(gone))).every(Boolean))
       throw new Error('the template or a step is still there');
+  });
+
+  /* A step with !T# can't be ticked before its time. Until Mix the dough is done, Shape the loaves waits for it. Then
+     its Done button counts down, and its tick on the checklist's screen and on Today's card shows a padlock. A tap on
+     the tick says when it can be ticked, a tap on Done does nothing, and a swipe right springs back. Skip still works,
+     here on Bake. At its time Shape the loaves is ticked as any step. */
+  await step('a-step-with-a-padlock-waits-for-its-time', async () => {
+    const label =
+      (await api('/labels?s=template')).items?.find(l => l.title === 'template') ||
+      (await api('/labels')).items?.find(l => l.title === 'template');
+    const make = async (title, done) =>
+      api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, done }) });
+    const tpl = await make(`Bread ${stamp}`, false);
+    for (const title of ['Mix the dough', 'Shape the loaves !T#2m', 'Bake !T#5m']) {
+      const st = await make(title, true);
+      await api(`/tasks/${tpl.id}/relations`, {
+        method: 'POST',
+        body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }),
+      });
+    }
+    await api(`/tasks/${tpl.id}/labels`, { method: 'POST', body: JSON.stringify({ label_id: label.id }) });
+    await api('/tasks/' + tpl.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
+    await page.evaluate(() => {
+      location.hash = '#/today';
+    });
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .cl-start`, { timeout: 15000 });
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    await page.click('#start-go');
+    await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+    const run = +(await page.evaluate(() => location.hash)).split('/').pop();
+    runs.push(run);
+    const [mix, shape, bake] = (await subtasks(run)).map(x => x.id),
+      row = id => `#run-steps .row[data-id="${id}"]`,
+      done = '#step-done';
+    await page.waitForSelector(`${row(shape)} > button.check.locked`, { timeout: 15000 });
+    await page.click(`${row(shape)} > button.check`);
+    await said('step', 'Waiting for Mix the dough');
+    await page.click(`${row(bake)} .body`);
+    await expect(page.locator(done)).toHaveText('Waiting for Shape the loaves');
+    await page.click('#step-skip');
+    await until('Bake was never skipped', async () => (await task(bake)).done);
+    await page.click(`${row(mix)} > button.check`);
+    await until('Mix the dough was never done', async () => (await task(mix)).done);
+    await page.click(`${row(shape)} .body`);
+    await expect(page.locator(done)).toHaveText(/^Waiting (2:00|1:[0-5]\d)$/);
+    await expect(page.locator(done)).toHaveAttribute('aria-disabled', 'true');
+    await page.locator(done).dispatchEvent('click'); // aria-disabled, which Playwright won't click
+    await page.click(`${row(shape)} > button.check`);
+    await said('step', 'Shape the loaves can be ticked at ');
+    await swipeRow(page, row(shape), 100);
+    await later(3000);
+    await synced(page);
+    if ((await task(shape)).done) throw new Error('Shape the loaves was ticked before its time');
+    // On Today, the checklist's card shows Shape the loaves with a padlock, and a tap on it ticks nothing.
+    await page.evaluate(() => {
+      location.hash = '#/today';
+    });
+    const card = `.day-card[data-id="${run}"] .row[data-id="${shape}"] > button.check`;
+    await page.waitForSelector(`${card}.locked`, { timeout: 15000 });
+    await page.click(card);
+    await expect(rowLine(page, 'Shape the loaves can be ticked at ')).toBeVisible();
+    await page.evaluate(id => {
+      location.hash = '#/run/' + id;
+    }, run);
+    await page.click(`${row(shape)} .body`, { timeout: 15000 });
+    /* At its time, Done is back, and the tick has no padlock. Rather than wait 2 minutes, the test moves the step's due
+       date to 4 seconds from now in Vikunja, which Pocket keeps because it was changed after Mix the dough was done.
+       Moving the page's clock would not do, because Pocket counts on Vikunja's clock from each reply's Date header. */
+    await new Promise(r => setTimeout(r, 1100)); // a change in the same second as the tick counts as before it
+    await api('/tasks/' + shape, {
+      method: 'PATCH',
+      body: JSON.stringify({ due_date: new Date(Date.now() + 4000).toISOString() }),
+    });
+    await page.reload();
+    await page.click(`${row(shape)} .body`, { timeout: 15000 });
+    await expect(page.locator(done)).toHaveText(/^Waiting 0:0\d$/);
+    await expect(page.locator(done)).toHaveText('Done', { timeout: 15000 });
+    await expect(page.locator(`${row(shape)} > button.check.locked`)).toHaveCount(0);
+    await page.click(done);
+    await until('Shape the loaves was never done', async () => (await task(shape)).done);
   });
 
   await step('asks-on-a-step', async () => {

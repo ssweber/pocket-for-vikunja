@@ -396,6 +396,13 @@ export function component(...parts) {
     isRunTask() {
       return false;
     },
+    // A step with !T# that can't be ticked yet (runs.js). Without runs.js, every step can be ticked.
+    stepLock() {
+      return null;
+    },
+    lockedTap() {
+      return false;
+    },
   };
   const byId = Object.getOwnPropertyDescriptors(tasks);
   // What every part reads from the store, and change(), the one way to write it.

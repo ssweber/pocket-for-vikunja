@@ -1,6 +1,6 @@
 // Checklists: how templates, runs and timed steps are stored in Vikunja, and how steps are parsed as they are typed.
 // Pocket marks its own data with lines in task descriptions, and these functions read and write those lines.
-import { allPages, ApiError } from './api.js';
+import { allPages, ApiError, serverTime } from './api.js';
 import { htmlToText, parseFragment } from './html.js';
 import { isSet } from './dates.js';
 import { NUMBER_WORDS } from './quickadd.js';
@@ -362,7 +362,8 @@ export const countText = left =>
     : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
 /* One string for everything on a run's screen that changes only because time passes. It holds today's date, which
    "Due tomorrow" depends on. For each open step with a time (`dueAt`, ms), it holds whether the time has come,
-   whether it is within a day, and the countdown text. tickRun (app/alerts.js) redraws the run only when the string
+   whether it is within a day, and the countdown text. A step that can't be ticked yet (`lock`) counts the seconds on
+   its Done button, so the string holds them too. tickRun (app/alerts.js) redraws the run only when the string
    changes, so an idle run does no work as the seconds pass. */
 export const runShows = (steps, now) =>
   new Date(now).toDateString() +
@@ -370,7 +371,10 @@ export const runShows = (steps, now) =>
     .filter(s => !s.done && Number.isFinite(s.dueAt))
     .map(s => {
       const left = s.dueAt - now;
-      return `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}`;
+      return (
+        `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}` +
+        (s.lock && left > 0 ? ':' + Math.ceil(left / 1e3) : '')
+      );
     })
     .join('');
 /* The index of the step a run goes to next. The run's screen and its card on Today both use this rule. `steps` are
@@ -392,6 +396,60 @@ export function stepFrom(steps, i) {
   if (!s.ref) return i - 1;
   const j = steps.findIndex(x => sameName(x.name, s.ref));
   return j >= 0 && j < i ? j : null;
+}
+/* When each step of a run is due. `steps` are the run's steps in order, {title, tpl, added, done, doneAt, waiting,
+   due_date, updated}. `tpl` is the template step's title, which holds the time, and `waiting` says the tick is still
+   in the outbox, so `doneAt` is the phone's time. A time counts from when the step it names was done. A due date
+   changed after that is kept. One the plugin set is not, because the plugin leaves `updated` alone. Whole seconds are
+   compared, because offline ticks can reach Vikunja within one second. An inserted step has no time. A repeated step
+   stands in for its template step, and a step timed from it counts from the copy done last.
+
+   Returns, for each step, {time: its template step's parseStep, or null; from: the step it counts from, or null;
+   due: a Date, or null}. */
+export function stepTimes(steps) {
+  const group = [],
+    timing = [],
+    place = [];
+  steps.forEach((s, i) => {
+    group[i] = -1;
+    if (!s.added) {
+      group[i] = timing.length;
+      timing.push(parseStep(s.tpl || ''));
+      place.push(i);
+    } else if (s.tpl != null)
+      for (let j = i - 1; j >= 0; j--)
+        if (group[j] >= 0 && steps[j].tpl === s.tpl) {
+          group[i] = group[j];
+          break;
+        }
+  });
+  const lastOf = g =>
+    steps
+      .filter((s, i) => group[i] === g && s.done)
+      .sort((a, b) => new Date(a.doneAt) - new Date(b.doneAt))
+      .pop() || steps[place[g]];
+  return steps.map((s, i) => {
+    const own = !s.added && group[i] >= 0,
+      time = own ? timing[group[i]] : null,
+      j = own ? stepFrom(timing, group[i]) : null,
+      from = j >= 0 ? lastOf(j) : null;
+    let due = isSet(s.due_date) ? new Date(s.due_date) : null;
+    if (from && !from.done) due = null;
+    else if (
+      from &&
+      (from.waiting || !due || !(Math.floor(+new Date(s.updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000)))
+    )
+      due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + time.offset);
+    return { time, from, due };
+  });
+}
+/* Whether step `s` of a run can't be ticked yet, from what stepTimes gave it (`at`). A step with !T# can't be ticked
+   before it is due, or while the step it counts from is open. Returns null when it can be ticked, else {at: when it
+   can, or null while it waits on that step, from: that step}. */
+export function lockOf(s, at, now) {
+  if (s.done || !at.time?.strict) return null;
+  if (at.from && !at.from.done) return { at: null, from: at.from };
+  return at.due && +at.due > now ? { at: +at.due, from: at.from } : null;
 }
 /* A step's time typed as a phrase: "in 20 min", "after an hour", "20 minutes later", "1h 30m after". It is saved as
    T#20m. Instructions like "for 2 minutes" or "rest 10 minutes" aren't read as times. */

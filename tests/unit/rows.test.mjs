@@ -672,6 +672,44 @@ test('a checklist step swipes for progress like a task, and only an inserted ste
   assert.equal(at(1), null, "a finished checklist's steps do not swipe");
 });
 
+/* A step with !T# that can't be ticked yet (stepLock) springs back from a swipe right, on a checklist's screen and in
+   any list, and nothing is set. */
+test("a step that can't be ticked yet springs back from a swipe, and its progress stays as it is", () => {
+  const app = component(progress),
+    set = [];
+  Object.assign(app, {
+    runView: { steps: [step({ id: 1, pct: 0 })], finished: false },
+    tasks: { 9: { id: 9, project_id: 1 } },
+    view: { shownRun: { id: 9 } },
+    lines: {},
+    leaving: {},
+    canWrite: () => true,
+    canTick: () => true,
+    canDelete: () => false,
+    isRunTask: () => false,
+    ringOf: () => null,
+    rowRing: () => null,
+    stepLock: t => (t.id === 1 ? { at: Date.now() + 6e4, from: 'Mix the dough' } : null),
+    claimOnSlide: () => () => set.push('claim'),
+    stepProgress: (s, pct) => set.push(['step', pct]),
+    setProgress: (t, pct) => set.push(['task', pct]),
+  });
+  const row = id => ({ dataset: { id: String(id), gestures: '' }, clientWidth: 360, closest: () => null }),
+    onRun = app.stepSlide(row(1), { closest: () => null }),
+    onToday = app.rowGesture({ id: 1, percent_done: 0 }, row(1), false);
+  for (const s of [onRun, onToday]) {
+    assert.equal(s.springs, true);
+    s.finish(100);
+    s.finish(50);
+  }
+  assert.deepEqual(set, [], 'no progress, no tick and no claim');
+  assert.equal(
+    app.rowGesture({ id: 2, percent_done: 0 }, row(2), false).springs,
+    false,
+    'another task swipes as usual',
+  );
+});
+
 // Deleting a step added during a checklist asks for confirmation, from its × or from its row's Delete. A swipe asks
 // before the row moves (swipeDeleteStep), so the deletion itself does not ask again.
 test('deleting a step added during a checklist asks once, whether from its × or from a swipe', async () => {

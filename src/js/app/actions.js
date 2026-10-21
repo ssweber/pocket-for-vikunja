@@ -242,6 +242,7 @@ export default {
   /* Tick a checklist step through the outbox, which records who did it and works offline. The op shows the tick on
      the step's row while it waits. A list row waits for the batch to clear. In a sheet the step stays visible as done. */
   async tickRunStep(t, run, rowEl) {
+    if (!t.done && this.lockedTap(t)) return; // a tick from a sheet, as a row's tick has already asked (tickRow)
     const was = t.done,
       f = { id: uuid7(), op: was ? 'undone' : 'done', task: t.id, run },
       acting = this.act(f);

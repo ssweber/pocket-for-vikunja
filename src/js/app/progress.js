@@ -786,14 +786,17 @@ export default {
       return (r.finish || swipe || reorder) && r;
     }
     if (!slides) return (swipe || reorder) && { el: row, swipe, reorder };
+    // A step that can't be ticked yet (stepLock) springs back from a swipe right, and its progress stays as it is.
+    const locked = !t.done && !!this.stepLock(t);
     return {
       el: row,
       swipe,
       reorder,
       start: t.done ? 100 : pctOf(t),
       width: row.clientWidth,
+      springs: locked,
       finish: pct => {
-        if (pct === null) return;
+        if (pct === null || locked) return;
         // The claim is queued after the progress, so unassigning yourself next cancels it in the outbox (fold).
         const claimed = this.claimOnSlide(sheet ? this.subSlot(t) : this.rowSlot(t, {}));
         const setting = this.setProgress(t, pct, sheet ? null : row, { sub: sheet || undefined });
@@ -1049,13 +1052,16 @@ export default {
       s = v?.steps.find(x => String(x.id) === row.dataset.id);
     if (!s || s.pending || v.finished || !this.canWrite(this.runTask.project_id) || target.closest('.step-del'))
       return null;
+    // A step that can't be ticked yet springs back from a swipe right, as on any list.
+    const locked = !s.done && !!this.stepLock(s);
     return {
       el: row,
       start: s.done ? 100 : s.pct,
       width: row.clientWidth,
       swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row), s.title) : null,
+      springs: locked,
       finish: pct => {
-        if (pct === null) return;
+        if (pct === null || locked) return;
         const claimed = this.claimOnSlide(s.slot); // queued after the progress, as for a task
         const setting = this.stepProgress(s, pct);
         claimed(true);
@@ -1096,7 +1102,7 @@ export default {
       width: row.clientWidth,
       springs: true,
       finish: pct => {
-        if (pct !== null) this.setSheetProgress(pct);
+        if (pct !== null && !this.stepLock(t)) this.setSheetProgress(pct);
       },
     };
   },

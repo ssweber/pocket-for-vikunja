@@ -3,6 +3,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  waitingText,
   addedPart,
   addedSubs,
   addedWhere,
@@ -963,4 +964,11 @@ test("the Markdown copy message names both uses: pasting into notes, and pasting
     COPIED.markdown,
     "Copied as a Markdown list. Paste it into your notes, or into Pocket's add box to make the same tasks",
   );
+});
+
+test("the Done button of a step that can't be ticked yet counts down to the second, with hours over an hour", () => {
+  assert.equal(waitingText(19 * 6e4 + 42e3), 'Waiting 19:42');
+  assert.equal(waitingText(19 * 6e4 + 41.2e3), 'Waiting 19:42', 'a part of a second counts as a whole one');
+  assert.equal(waitingText(65 * 6e4), 'Waiting 1:05:00');
+  assert.equal(waitingText(5e3), 'Waiting 0:05');
 });

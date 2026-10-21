@@ -6,7 +6,7 @@ import { component, fakeVikunja, outboxOf } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cardGroup, cardRows, countdown, runTop, todayItems, urgentFirst } from '../../src/js/cards.js';
-import { dueInfo, shortTime } from '../../src/js/dates.js';
+import { dueInfo, fmtTime, shortTime } from '../../src/js/dates.js';
 import {
   dayGroup,
   listItems,
@@ -1133,8 +1133,8 @@ test('a checklist card on Today opens on the step its screen would, and follows 
 });
 
 // A checklist on its screen (runView, runs.js). A was done a minute ago. B is timed 30 minutes after A and is counting down. C and D have no time.
-// The screen holds ids (view.shownRun) and reads the checklist and its steps from tasks.
-const runScreen = () => {
+// The screen holds ids (view.shownRun) and reads the checklist and its steps from tasks. `time` is B's time in its template.
+const runScreen = (time = 'T#30m') => {
   const app = component(tasks, runs, claims, checklists, cards, views),
     now = Date.now(),
     NONE = '0001-01-01T00:00:00Z';
@@ -1158,7 +1158,7 @@ const runScreen = () => {
   for (const t of [
     { id: 50, title: 'Opening up', done: false, project_id: 5, assignees: [me], created_by: me, comments: [] },
     step(51, 'A', { done: true, done_at: new Date(now - 6e4).toISOString(), reactions: { '✅': [me] } }),
-    step(52, 'B', {}, 'B T#30m'),
+    step(52, 'B', {}, 'B ' + time),
     step(53, 'C', { percent_done: 0.5 }),
     step(54, 'D'),
   ])
@@ -1354,6 +1354,82 @@ test("time passing recalculates a checklist only when a countdown's text changes
   c.mock.timers.setTime(t0 + 29 * 60000 + 2000);
   app.tickRun();
   assert.deepEqual([app.runView.steps[1].late, app.runView.steps[1].countText], [true, '2s late']);
+});
+
+/* A step with !T# (B, 30 minutes after A) can't be ticked before its time. Its Done button is grey and counts down to
+   the second, and a tap on it does nothing. Skip still works. At zero, tickRun redraws the checklist and B can be
+   ticked. Before A is done, the button names A. */
+test("a step with !T# can't be ticked before its time: Done counts down to the second, Skip works, and zero unlocks it", async c => {
+  const { Alpine } = watching(c),
+    app = Alpine.reactive(Object.defineProperties(runScreen('!T#30m'), Object.getOwnPropertyDescriptors(alerts))),
+    t0 = app.runNow,
+    acts = [];
+  c.mock.timers.enable({ apis: ['Date'], now: t0 });
+  Object.assign(app, {
+    route: { name: 'run' },
+    runDrafts: {},
+    keepAwake() {},
+    chime() {},
+    notify() {},
+    unlockSound() {},
+    act: async f => (acts.push(f.op), { status: 'sent' }),
+  });
+  globalThis.document.visibilityState = 'visible';
+  const b = () => app.runView.steps[1],
+    at = ms => {
+      c.mock.timers.setTime(t0 + ms);
+      app.tickRun();
+      return [b().lockText, b().dueText];
+    };
+  assert.deepEqual([b().lockText, b().dueText, !!app.stepLock(b())], ['Waiting 29:00', 'Due in 29m', true]);
+  assert.equal(await app.tickStep(b(), 'done'), false, 'Done does nothing');
+  app.tickRow(b(), app.runRows);
+  assert.deepEqual(
+    [acts, app.toast.msg.startsWith('B can be ticked at '), app.toast.row, app.toast.place],
+    [[], true, null, ['sheet:top', 'step', 'run']],
+    "a tap on B's tick says so on the step card, because the screen's rows have no messages",
+  );
+  assert.deepEqual(at(1000), ['Waiting 28:59', 'Due in 29m'], 'the button counts the seconds, the line the minutes');
+  assert.deepEqual(at(29 * 6e4 - 50e3), ['Waiting 0:50', 'Due in 50s'], 'under a minute the line counts seconds too');
+  await app.tickStep(b(), 'skip');
+  assert.deepEqual(acts, ['skip'], 'Skip still works');
+  assert.deepEqual(at(29 * 6e4), ['', 'Due in 0s'], 'at zero Done is back');
+  assert.equal(app.stepLock(b()), null);
+  app.tasks[51].done = false; // A is not done any more
+  assert.deepEqual(
+    [b().lockText, b().dueText, b().lock],
+    ['Waiting for A', 'Due 30m after “A”', { at: null, from: 'A' }],
+    'before A is done, the button names A',
+  );
+});
+
+/* Elsewhere, as on Today's card, a step's lock is worked out from its checklist's steps as the phone has them. Its tick
+   shows a padlock, and a tap on it says when it can be ticked instead of ticking it. */
+test('on Today a step with !T# shows a padlock, and a tap on its tick says when it can be ticked and ticks nothing', () => {
+  const app = runScreen('!T#30m'),
+    ticked = [];
+  Object.assign(app, {
+    route: { name: 'today' },
+    stepRun: t => ([51, 52, 53, 54].includes(t.id) ? 50 : null),
+    toggleDone: t => ticked.push(t.id),
+    unmark: () => false,
+  });
+  app.tasks[50].related_tasks = { subtask: [51, 52, 53, 54].map(id => ({ id })) };
+  const b = app.tasks[52],
+    g = { depth: {} },
+    due = Date.parse(app.tasks[51].done_at) + 30 * 6e4;
+  assert.deepEqual(app.stepLock(b), { at: due, from: 'A' });
+  assert.deepEqual([app.rowLock(b, g), app.rowLock(app.tasks[53], g)], [true, false], 'only B has a padlock');
+  app.tickRow(b, g, null);
+  assert.deepEqual(
+    [ticked, app.toast.msg, app.toast.row],
+    [[], 'B can be ticked at ' + fmtTime(new Date(due)), { id: 52, stays: true }],
+  );
+  app.tickRow(app.tasks[53], g, null);
+  assert.deepEqual(ticked, [53], 'C has no time, so its tick ticks it');
+  app.tasks[51].done = false;
+  app.tickRow(b, g, null);
+  assert.equal(app.toast.msg, 'Waiting for A', 'before A is done, the tap names A');
 });
 
 /* A change shows sending words only once it has waited WAIT_MS without an answer (markSlow), or at once offline, so a

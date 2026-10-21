@@ -35,7 +35,7 @@
   <!-- only step -->
   <template x-if="g.step"><span class="check step-n num" aria-hidden="true" x-text="stepNo(t)"></span></template>
   <!-- /only -->
-  <template x-if="!g.top && !g.step && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true} : {wait: t.waits, sq: isStepRow(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : '#i-check'"/></svg></button></template>
+  <template x-if="!g.top && !g.step && (g.run || g.sheet || canTick(t)) && !rowRing(t, g)"><button class="check" :class="g.run ? {wait: t.slow, skip: t.skipped, sq: true, locked: rowLock(t, g)} : {wait: t.waits, sq: isStepRow(t, g), locked: rowLock(t, g)}" :disabled="g.run ? g.locked : !!t.pending" :aria-label="(t.done ? 'Mark not done: ' : 'Mark done: ') + t.title" @click="tickRow(t, g, $el.closest('.row'))"><svg class="i"><use :href="t.skipped ? '#i-skip' : rowLock(t, g) ? '#i-lock' : '#i-check'"/></svg></button></template>
   <!-- A checklist is ticked and finished on its own screen, and a template is never ticked. Neither has a tick. -->
   <!-- only list card own -->
   <template x-if="!g.run && !g.sheet && !g.top && !canTick(t) && !rowRing(t, g)"><span class="check no-tick" :class="{ro: !canWrite(t.project_id)}" aria-hidden="true" :title="canWrite(t.project_id) ? null : 'Read only'"><template x-if="canWrite(t.project_id)"><svg class="i"><use href="#i-checklist"/></svg></template></span></template>

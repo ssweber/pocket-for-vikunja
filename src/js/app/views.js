@@ -210,8 +210,10 @@ export default {
     return this.role(t) === 'template' ? templateName(t.title) : t.title;
   },
   // Send a row's tick to the action for its place: a checklist step, the sheet's own task, a sheet subtask or a list
-  // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once.
+  // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once. A step that can't be ticked
+  // yet says when it can instead (lockedTap).
   tickRow(t, g, row) {
+    if (!t.done && this.lockedTap(t, !!g.run)) return;
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
     haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();

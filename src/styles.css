@@ -1220,6 +1220,22 @@ button.check::after {
 .row:not(.done) > button.check {
   background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1turn), transparent 0) content-box;
 }
+/* The tick of a step that can't be ticked yet: a grey box with a padlock, drawn over any progress. */
+.check.locked {
+  border-color: var(--line);
+  background: var(--surface);
+}
+.check.locked svg,
+.row:not(.done) > button.check.locked svg {
+  opacity: 1;
+  stroke: var(--muted);
+  stroke-width: 2.2;
+  width: 15px;
+  height: 15px;
+}
+.row:not(.done) > button.check.locked {
+  background: none;
+}
 /* A parent's ring (ring.html) replaces the tick on a task with subtasks or a checklist. It is a thin arc (--ring)
    starting at 12 o'clock on a faint track, never a quarter pie, so it isn't mistaken for the task's own tick. When
    every subtask is done, the count turns the accent colour and waits for Close. On a row or a card's header the ring
@@ -2526,6 +2542,19 @@ a.sec-act {
 .step-acts .go-on {
   flex: 1;
   max-width: 360px;
+}
+/* The Done of a step that can't be ticked yet looks like a disabled button, and keeps its size. Grey, because a faded
+   green still looks ready to tap in dark mode. */
+.btn.locked {
+  background: var(--sunk);
+  color: var(--muted);
+}
+.btn.locked span {
+  line-height: 1.2;
+}
+.btn.locked svg.i {
+  width: 18px;
+  height: 18px;
 }
 /* What a step asks to record (step-card.html). A number is set large, as a reading. A picked option is tinted, so Done
    stays the one solid button. */

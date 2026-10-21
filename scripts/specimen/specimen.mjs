@@ -1056,7 +1056,7 @@ function runSteps() {
     step({ title: 'Wipe the steam wand', added: 'Repeated' }),
     step({ title: 'Restock the cups', assignees: [jamie], percent_done: 0.5 }),
     step({ title: 'Unlock the door', tpl: 'Unlock the door T#30m:machine' }),
-    step({ title: 'Sweep the floor', tpl: 'Sweep the floor T#10m' }),
+    step({ title: 'Sweep the floor', tpl: 'Sweep the floor !T#10m' }), // can't be ticked before Unlock the door is done
     step({
       title: 'Check the walk-in cooler',
       tpl: 'Check the walk-in cooler',
@@ -1626,6 +1626,25 @@ document.addEventListener('alpine:init', () =>
           time: {
             problem: '',
             offset: 12e5,
+            strict: false,
+            i: 4,
+            lost: false,
+            from: '',
+            choices: tplSteps.slice(0, 3).map((x, i) => ({ key: 'k' + i, title: x.title })),
+            phrase: 'in 20 min',
+            kept: false,
+            name: '',
+          },
+        }),
+        footBox('The padlock tapped: the step can’t be ticked before its time, and the picker goes to a second line', {
+          g: stepList,
+          before: tplSteps,
+          fb: { ...stepFb, can: true },
+          box: { text: 'Lock up in 20 min', focus: true },
+          time: {
+            problem: '',
+            offset: 12e5,
+            strict: true,
             i: 4,
             lost: false,
             from: '',
