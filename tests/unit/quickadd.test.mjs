@@ -5,7 +5,7 @@ import './browser.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { parseCapture, removeAssignees } from '../../src/js/quickadd.js';
+import { dueTimeOf, parseCapture, removeAssignees } from '../../src/js/quickadd.js';
 
 globalThis.chrono = await import(
   '../../pocket/app/' + readdirSync(new URL('../../pocket/app/', import.meta.url)).find(f => /^chrono-.*\.js$/.test(f))
@@ -303,4 +303,10 @@ test('the mark on a word in the middle of the title says what it leaves there', 
       ],
     ],
   );
+});
+
+test('the default due time is read only as HH:MM, as Vikunja reads it, and anything else is noon', () => {
+  for (const v of ['00:00', '09:05', '23:59']) assert.equal(dueTimeOf(v), v);
+  for (const v of [undefined, null, '', '9:05', '09:5', '24:00', '12:60', '25:99', '09:05:00', ' 09:05', 'noon', 905])
+    assert.equal(dueTimeOf(v), '12:00', String(v));
 });

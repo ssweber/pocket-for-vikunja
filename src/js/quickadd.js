@@ -48,6 +48,9 @@ export function removeAssignees(title, prefix, names, mid = []) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
+// The user's default due time setting, or noon when it isn't set. Vikunja's web app reads only "HH:MM", with hours to
+// 23 and minutes to 59, and atTime would move "25:99" to the next day.
+export const dueTimeOf = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : '12:00');
 // Set a date's time from "HH:MM". The default is Vikunja's default due time setting, which is noon unless the user
 // changed it.
 export function atTime(d, hhmm = '12:00') {

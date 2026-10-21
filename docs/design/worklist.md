@@ -25,7 +25,7 @@ claim that turns out wrong is noted here and dropped.
   on tasks, so the tests pass on Node 22 and 24, and add `"engines": { "node": ">=24" }` only if they still need it.
   If a real bug shows up, fix it as its own commit. The main cause was Web Locks: Node 22 has none, and Node 24's
   calls a free lock's holder at once. The tests now use a fake that grants locks as a browser does.
-- [ ] **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too.
+- [x] **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too.
   Accept `default_due_time` only as `HH:MM`.
 - [ ] **The model test fails at seed 616988444.** Path `350:3:4:11:11:15:24:24:17:17:17:18:21:21:21`: StepMade,
   Queue done, Reload(lost), Send, Sheet assign, Queue add, Queue delete, Reload(lost). It breaks check 5, "1's copy

@@ -6,7 +6,7 @@ import { parentIds, saved } from '../lists.js';
 import { clearOf, listViewOf, placeAfter, placeFirst } from '../order.js';
 import { inTextField, NUDGE_TICK } from '../progress.js';
 import { haptic } from '../haptics.js';
-import { parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
+import { dueTimeOf, parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
 import { sync } from '../sync.js';
 import { seats, seatUnder } from './seat.js';
 
@@ -130,7 +130,7 @@ export default {
   },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
   get dueTime() {
-    return this.user?.settings?.frontend_settings?.default_due_time || '12:00';
+    return dueTimeOf(this.user?.settings?.frontend_settings?.default_due_time);
   },
   get quickAddMode() {
     return this.user?.settings?.frontend_settings?.quick_add_magic_mode || 'vikunja';
