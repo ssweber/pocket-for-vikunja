@@ -141,15 +141,8 @@ const TROUBLE = {
 /* Open `tab` on the outbox as the database has it, with nothing in memory, as a tab opens or reloads. Its rows come
    from Vikunja, as a screen reads them. */
 async function open(tab, x) {
-  const s = tab.sync;
-  s.entries = new Map();
-  s.volatile.clear();
-  s.bytes.clear();
-  s.held.clear();
-  s.claimed.clear();
-  await s.reload();
-  for (const c of await s.tx(['claims'], 'readonly', st => st('claims').getAll())) s.claimed.set(c.id, c);
-  const app = tab.fake.component(...tab.parts);
+  const s = tab.sync,
+    app = tab.fake.component(...tab.parts);
   Object.assign(app, {
     user: ME,
     pending: [],
@@ -169,6 +162,13 @@ async function open(tab, x) {
     notesRefused() {},
   });
   Object.defineProperty(app, 'toast', { value: {} });
+  // The outbox is read once the component is made, since making it empties sync.entries.
+  s.volatile.clear();
+  s.bytes.clear();
+  s.held.clear();
+  s.claimed.clear();
+  await s.reload();
+  for (const c of await s.tx(['claims'], 'readonly', st => st('claims').getAll())) s.claimed.set(c.id, c);
   // A read lists only the subtasks that still exist, as Vikunja's does.
   const list = [...x.v.tasks.values()].map(t =>
     structuredClone({

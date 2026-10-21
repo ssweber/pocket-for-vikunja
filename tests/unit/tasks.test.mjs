@@ -1,7 +1,7 @@
 // The tasks on screen. The app keeps one copy of each task (src/js/app/tasks.js).
 import { component, fakeVikunja, outboxOf, QUEUED, sendStages } from './fake.mjs';
 import { watching } from './reactive.mjs';
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import tasks, {
   copyOf,
@@ -33,6 +33,11 @@ import { opened, saved } from '../../src/js/lists.js';
 import { api } from '../../src/js/api.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 
+/* An answer reads its task again. A test without a fake Vikunja gets a fetch that never answers, so that read can't
+   reach the last test's fake Vikunja and change a later test's store. */
+beforeEach(() => {
+  globalThis.fetch = () => new Promise(() => {});
+});
 // A read as a screen's load makes it: started, answered, then put into Vikunja's copies, inside a change.
 const read = (list, asked = TASK) => current.change(w => w.read(list, asked, started()));
 // An answer to a write that started now, or a read that started at `at`, put into Vikunja's copies.

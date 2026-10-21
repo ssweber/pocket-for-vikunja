@@ -36,3 +36,20 @@ globalThis.localStorage = new Proxy(
       kept.has(k) ? { value: kept.get(k), enumerable: true, configurable: true } : undefined,
   },
 );
+
+/* Web Locks, as a browser grants them: one holder of a name at a time, in the order asked, each called in a task of its
+   own. Node 22 has none. Node 24's calls a free lock's holder before request() returns, which a browser never does. */
+const locks = new Map(); // name -> the last holder's end
+Object.defineProperty(navigator, 'locks', {
+  configurable: true,
+  value: {
+    request(name, fn) {
+      const turn = (locks.get(name) || Promise.resolve()).then(() => new Promise(ok => setImmediate(ok))).then(fn);
+      locks.set(
+        name,
+        turn.catch(() => {}),
+      );
+      return turn;
+    },
+  },
+});

@@ -19,11 +19,12 @@ claim that turns out wrong is noted here and dropped.
   and on SQLite it doubles the write locks per request. Prune at most once a minute and add the index.
 - [x] **The relay doesn't check its path for `..`.** `"/api/v2/" + c.Param("*")` goes to Vikunja as it is. Refuse a
   path with a `..` segment.
-- [ ] **The tests need Node 24, and nothing says so.** On Node 22, 19 unit tests fail, among them "each request
+- [x] **The tests need Node 24, and nothing says so.** On Node 22, 19 unit tests fail, among them "each request
   reaches Vikunja at most once for each key". The fake IndexedDB in `tests/unit/outbox-db.mjs` finishes transactions
   on microtasks, so the result depends on V8's ordering. Real IndexedDB finishes them on tasks. Make the fake finish
   on tasks, so the tests pass on Node 22 and 24, and add `"engines": { "node": ">=24" }` only if they still need it.
-  If a real bug shows up, fix it as its own commit.
+  If a real bug shows up, fix it as its own commit. The main cause was Web Locks: Node 22 has none, and Node 24's
+  calls a free lock's holder at once. The tests now use a fake that grants locks as a browser does.
 - [ ] **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too.
   Accept `default_due_time` only as `HH:MM`.
 

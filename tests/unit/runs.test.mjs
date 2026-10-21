@@ -11,11 +11,13 @@ import { SAMPLES } from './samples.mjs';
 const D9 = '2026-10-09T09:00:00.000Z';
 // A sample's tasks in a fake Vikunja, and its op's fields with an entry id. The outbox starts and ends empty.
 const world = (t, name) => {
-  t.after(async () => {
-    for (const x of sync.all(1)) await sync.remove(x.id);
-  });
   const s = SAMPLES[name],
     { v, app } = sender(t, structuredClone(s.tasks));
+  // A flush the test didn't wait for ends first. Otherwise it would send the next test's ops, which share the outbox.
+  t.after(async () => {
+    while (app.flushing) await new Promise(ok => setImmediate(ok));
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
   v.labels.push(...(s.labels || []));
   return { v, app, f: { id: uuid7(), ...s.fields(ops) } };
 };
