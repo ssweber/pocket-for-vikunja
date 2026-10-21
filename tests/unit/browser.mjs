@@ -11,7 +11,6 @@ globalThis.location = { origin: 'http://pocket.test', hash: '' };
 globalThis.NodeFilter = { SHOW_TEXT: 4 };
 
 globalThis.document = {
-  lastModified: '',
   visibilityState: 'visible',
   querySelector: () => null,
   implementation: { createHTMLDocument: () => doc },

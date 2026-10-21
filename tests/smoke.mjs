@@ -184,14 +184,14 @@ try {
     if (!(await before.evaluate(el => el.isConnected))) throw new Error('refresh rebuilt the list');
   });
   await step('refresh-loads-a-new-version', async () => {
-    // A second tab whose copy of Pocket looks older than the server's copy.
+    // A second tab whose copy of Pocket has another build id than the server's copy.
     const old = await page.context().newPage();
-    await old.addInitScript(() =>
-      Object.defineProperty(document, 'lastModified', { get: () => '01/01/2000 00:00:00' }),
-    );
     await old.goto(APP);
     await old.waitForSelector(row, { timeout: 15000 });
-    await old.evaluate(() => (window.marker = 1));
+    await old.evaluate(() => {
+      window.marker = 1;
+      document.querySelector('meta[name="pocket-build"]').content = 'old';
+    });
     // Typed text blocks the reload, so the list refreshes in place instead.
     await old.fill('#in-capture', 'half-typed');
     await old.click('#btn-refresh');

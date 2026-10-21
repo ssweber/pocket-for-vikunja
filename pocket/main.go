@@ -38,6 +38,7 @@ package main
 import (
 	"encoding/json"
 	"html"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -143,9 +144,13 @@ func (p *Pocket) serve(c *echo.Context) error {
 	if name == "/index.html" {
 		h.Set("Cache-Control", "no-cache") // browsers pick up a new version as soon as it is uploaded
 		h.Set("Vary", "Accept-Encoding")
+		// The ETag is the build's id, so a browser that has this build gets a 304, whatever the file's time. Pocket's
+		// check for a new version (updateIfNew in views.js) sends the id it runs.
+		if id := pageBuild(file); id != "" {
+			h.Set("ETag", `W/"`+id+`"`)
+		}
 		// The build also writes compressed copies of the page (index.html.br and .gz, a fifth and a quarter of its size).
-		// They go to browsers that accept them, with the page's own modified time, so Pocket's check for a new version
-		// works the same on a compressed copy.
+		// They go to browsers that accept them, with the page's own ETag and modified time.
 		if enc, ext := pageEncoding(c.Request().Header.Get("Accept-Encoding")); enc != "" {
 			if f, err := os.Open(file + ext); err == nil {
 				defer f.Close()
@@ -157,6 +162,23 @@ func (p *Pocket) serve(c *echo.Context) error {
 	}
 	return c.File(file)
 }
+
+// pageBuild returns the build id that scripts/build.mjs writes near the top of the page, or "" if there is none.
+func pageBuild(file string) string {
+	f, err := os.Open(file)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	head := make([]byte, 1024)
+	n, _ := io.ReadFull(f, head)
+	if m := pageBuildRe.FindSubmatch(head[:n]); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+var pageBuildRe = regexp.MustCompile(`<meta name="pocket-build" content="(\w+)">`)
 
 // pageEncoding returns the compressed page to send for an Accept-Encoding header such as "gzip, deflate, br". It
 // prefers brotli, then gzip, and returns "" for the uncompressed page. An encoding with q=0 ("br;q=0") is refused.

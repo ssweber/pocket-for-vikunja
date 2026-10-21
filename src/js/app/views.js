@@ -1,7 +1,7 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
 import { collapseRows, colorOf, PRIOS, raw, store, TZ } from '../util.js';
 import { askMeta, asksMeta, stepAsks } from '../asks.js';
-import { allPages, api, ApiError, errText, LOADED, NetError, partOf, why } from '../api.js';
+import { allPages, api, ApiError, errText, NetError, partOf, why } from '../api.js';
 import { addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay } from '../dates.js';
 import { CHECKLIST_MARK, comesRound, DONE_MARK, templateName } from '../checklists.js';
 import { currentRoute } from '../routing.js';
@@ -1250,20 +1250,25 @@ export default {
     });
   },
   /* Check for a newer Pocket alongside refreshes. Reload only when no drafts or actions would be lost, otherwise
-     try on the next refresh or return. The server answers the version check in a few bytes. */
+     try on the next refresh or return. The server answers in a few bytes when its page has this copy's build id. */
   async updateIfNew() {
-    if (!LOADED || !this.signedIn || this.screen !== 'app') return;
-    let res;
+    const build = document.querySelector('meta[name="pocket-build"]')?.content;
+    if (!build || !this.signedIn || this.screen !== 'app') return;
+    let page;
     try {
       // eslint-disable-next-line no-restricted-globals -- Pocket's own page, not Vikunja's API
-      res = await fetch(new URL('.', location.href), {
+      const res = await fetch(new URL('.', location.href), {
         cache: 'no-store',
-        headers: { 'If-Modified-Since': LOADED.toUTCString() },
+        headers: { 'If-None-Match': `W/"${build}"` },
       });
+      page = res.status === 200 ? await res.text() : '';
     } catch {
-      return;
-    } // offline, so there is nothing to check
-    if (res.status !== 200) return;
+      return; // offline, so there is nothing to check
+    }
+    // A 200 can be the page this copy already runs. sw.js answers with its saved copy when the network fails or the
+    // server sends an error.
+    const id = page.match(/<meta name="pocket-build" content="(\w+)">/)?.[1];
+    if (!id || id === build) return;
     const busy =
       this.sheet.open ||
       this.cap.text.trim() ||

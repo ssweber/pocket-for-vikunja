@@ -39,11 +39,6 @@ export const sharedToken = {
 };
 // Whether Pocket runs as a home-screen app rather than in a browser tab.
 export const INSTALLED = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-// When this copy of Pocket was put on the server, from the page's Last-Modified. The browser gives it in local time as
-// "MM/DD/YYYY hh:mm:ss", and gives the current time when the server sent none.
-export const LOADED = (m => m && new Date(m[3], m[1] - 1, m[2], m[4], m[5], m[6]))(
-  document.lastModified.match(/(\d+)\/(\d+)\/(\d+) (\d+):(\d+):(\d+)/),
-);
 let refreshing = null; // the session renewal under way, so concurrent 401s share it
 export let seenToken = ''; // the shared token the last time Pocket checked who it belongs to
 export const setSeenToken = t => {

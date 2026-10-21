@@ -12,6 +12,12 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
+## Unreleased
+
+### Fixed
+
+- Pocket no longer reloads when the server can't be reached or sends an error. It reloads only for a new version.
+
 ## 0.2.0 (2026-10-19)
 
 ### Before you update
