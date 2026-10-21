@@ -526,3 +526,41 @@ test("a template's step being edited isn't saved when the user's access arrives 
   assert.deepEqual([saves, app.sheet.stepEdit, step.title], [[], null, 'Mop']);
   assert.equal(app.toast.msg, 'Not changed. Only the person who made this template or a project admin can change it.');
 });
+
+/* The padlock in a step's time chip (sheet/step-time.html) sets the row's `strict`, and the step is saved with !T# or
+   T#. The editor shows the time in words, which have no !, so a strict step opens with `strict` set. */
+test("the padlock in a step's time chip writes !T# in the step's title, and a second tap takes the ! out", async () => {
+  const { component } = await import('./fake.mjs'),
+    { default: checklists } = await import('../../src/js/app/checklists.js');
+  const app = component(checklists),
+    steps = [
+      { id: 1, title: 'Mix the dough' },
+      { id: 2, title: 'Shape the loaves !T#20m' },
+    ];
+  Object.assign(app, {
+    subtasks: steps,
+    sheet: { kind: 'task', stepEdit: null },
+    stepParsed: title => ({ title, assignees: [], labels: [], priority: 0 }),
+    keepFocus() {},
+  });
+  const was = document.getElementById;
+  document.getElementById = () => null;
+  try {
+    app.editStep(steps[1]);
+    const e = app.sheet.stepEdit,
+      saved = () => [app.stepEditDraft(1).strict, app.stepEditDraft(1).saved];
+    assert.deepEqual([e.text, e.strict], ['Shape the loaves in 20m', true]);
+    assert.deepEqual(saved(), [true, 'Shape the loaves !T#20m']);
+    e.strict = false; // the padlock is tapped
+    assert.deepEqual(saved(), [false, 'Shape the loaves T#20m']);
+    e.strict = true;
+    assert.deepEqual(saved(), [true, 'Shape the loaves !T#20m']);
+    // A step typed in the box under the template, with the padlock on, is added as !T#.
+    app.sheet.addBox = { key: '+', text: 'Bake in 40 min', keep: false, from: null, strict: true };
+    app.sheet.addRows = [];
+    assert.deepEqual(app.draft('add').info.get('+').saved, 'Bake !T#40m');
+    await new Promise(ok => setTimeout(ok, 60)); // editStep's focus timer
+  } finally {
+    document.getElementById = was;
+  }
+});

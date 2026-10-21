@@ -1,15 +1,17 @@
 <!-- The time chip of a step being typed. It shows when the step is due, read from the typed text, a picker for the
-     step it counts from, and any problem. `st` is the row ({text, keep, from}) and `d` is how the text was read
-     (draftSteps). The buttons keep the keyboard up. -->
+     step it counts from, a padlock that stops the step being ticked before its time (!T#), and any problem. `st` is
+     the row ({text, keep, from, strict}) and `d` is how the text was read (draftSteps). The buttons keep the keyboard
+     up. -->
 <div class="draft-meta">
   <template x-if="d.problem"><span class="bad" x-text="d.problem"></span></template>
-  <template x-if="d.offset !== null"><span class="chip draft-time"><svg class="i"><use href="#i-clock"/></svg><span x-text="durText(d.offset) + ' after'"></span>
+  <template x-if="d.offset !== null"><span class="chip draft-time" :class="{locked: d.strict}"><svg class="i"><use href="#i-clock"/></svg><span x-text="(d.strict ? 'Locked until ' : '') + durText(d.offset) + ' after'"></span>
     <template x-if="d.i === 0 && !d.lost"><span>the start</span></template>
     <template x-if="d.i > 0 || d.lost"><select :aria-label="'Step that “' + st.text + '” counts from'" @change="st.from = $event.target.value">
       <template x-if="d.lost"><option value="?" disabled selected>pick one</option></template>
       <option value="" :selected="!d.lost && d.from === ''" x-text="d.i ? 'the step before' : 'the start'"></option>
       <template x-for="o in d.choices" :key="o.key"><option :value="o.key" :selected="d.from === o.key" x-text="o.title"></option></template>
     </select></template>
+    <button type="button" class="chip-lock" :aria-pressed="String(d.strict)" aria-label="Can't be ticked before its time" @mousedown.prevent @click="st.strict = !d.strict"><svg class="i"><use :href="d.strict ? '#i-lock' : '#i-lock-open'"/></svg></button>
     <template x-if="d.phrase"><button type="button" class="chip-x" :aria-label="'Keep “' + d.phrase + '” in the title'" @mousedown.prevent @click="st.keep = true"><svg class="i"><use href="#i-close"/></svg></button></template>
   </span></template>
   <template x-if="d.kept"><button type="button" class="chip tap off" title="Tap to use these words as the step's time" @mousedown.prevent @click="st.keep = false"><svg class="i"><use href="#i-clock"/></svg><span x-text="d.phrase"></span></button></template>

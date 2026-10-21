@@ -2318,6 +2318,44 @@ a.sec-act {
   color: var(--muted);
   cursor: pointer;
 }
+/* The padlock in a step's time chip. Its tap area is 44px square, centred on the icon. The button is 34px wide, so
+   with the chip's 5px gap that area meets the step picker and the × without covering them. */
+.chip-lock {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: -2px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chip-lock::after {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 22px);
+}
+.chip .chip-lock svg.i {
+  width: 17px;
+  height: 17px;
+}
+.chip-lock[aria-pressed='true'] {
+  color: var(--accent);
+}
+.chip-lock[aria-pressed='true'] svg.i {
+  stroke-width: 2.4;
+}
+/* "Locked until 20m after" with the step picker is wider than a phone's row, so the picker, the padlock and the × go
+   to a second line. */
+.draft-time.locked {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  border-radius: 16px;
+}
 /* A checklist's own row between Back and ⋯ (app.html, RUN_ROW). It sits on the page, not in a card, and is tighter
    than a list's row. Its ring and the first line of its name are level with Back. The name takes two lines at most, so
    the top of the screen is no taller than the name with "For you" under it would be. */

@@ -22,7 +22,7 @@ export const newBox = () => ({
   adding: 0,
 });
 // Give a template's add box the same row state as a step, with key '+'.
-export const newStepBox = () => ({ ...newBox(), key: '+', keep: false, from: null });
+export const newStepBox = () => ({ ...newBox(), key: '+', keep: false, from: null, strict: null });
 export const blankSheet = kind => ({
   open: false,
   show: false,
@@ -349,7 +349,7 @@ export default () => ({
         if (nt && !nt.made)
           taskDrafts.set('newtpl:' + nt.project.id, {
             name: nt.box.text,
-            rows: nt.rows.map(r => ({ text: r.text, keep: r.keep, ignore: r.ignore })),
+            rows: nt.rows.map(r => ({ text: r.text, keep: r.keep, strict: r.strict, ignore: r.ignore })),
             add: nt.add.text,
           });
       },
