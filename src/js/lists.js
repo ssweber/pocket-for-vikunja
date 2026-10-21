@@ -66,7 +66,7 @@ export const savedScreen = s => ({
 export const screenIds = s => {
   if (!s) return [];
   const ids = [
-    ...(s.groups || []).flatMap(g => g.tasks || []),
+    ...(s.groups || []).flatMap(g => [...(g.tasks || []), ...(g.left || []).map(l => l.id)]),
     ...(s.steps || []),
     ...(s.tasks || []),
     ...(s.checklists || []).flatMap(cl => [

@@ -613,6 +613,7 @@ export default {
     this.rowsOf(s.steps);
     if (s.shownRun) this.rowsOf([s.shownRun.id, ...s.shownRun.steps]);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
+    for (const g of s.groups || []) this.rowsOf((g.left || []).map(l => l.id)); // rows a Cancel can put back (offList)
     const groups = keptGroups(s.groups || []).map(g => ({
       ...g,
       loading: false,
@@ -795,6 +796,14 @@ export default {
         const k = skip(t) ? g.key : this.belongsIn(now(t), g.key);
         if (k !== undefined && k !== g.key) out.push({ t, from: g, to: groups.find(x => x.key === k) || null });
       }
+    // A row that left while an op waited goes back once it belongs in its group again, as after a Cancel (offList).
+    // `from` is the list it left for, whose count goes down.
+    for (const g of groups)
+      for (const l of g.left || []) {
+        const t = this.tasks[l.id];
+        if (t && !listed.has(t.id) && !skip(t) && this.belongsIn(now(t), g.key) === g.key)
+          out.push({ t, from: groups.find(x => x.key === l.to) || null, to: g });
+      }
     if (this.route.name === 'today' && kids.at === this.view.route) {
       const on = this.cardKids();
       for (const id of kids.ids) {
@@ -828,12 +837,14 @@ export default {
     const r = this.route,
       today = r.name === 'today',
       cards = today && this.keepCards(),
-      plan = this.regroupPlan();
+      plan = this.regroupPlan(),
+      off = this.offList(plan);
     for (const { t, from, to } of plan) {
       // A done task kept above its open subtasks was counted in Done as it was ticked (makeHead).
-      const head = !!from?.heads?.includes(t.id);
+      const head = !!from?.heads?.includes(t.id),
+        i = from ? from.tasks.indexOf(t) : -1;
       if (from) {
-        from.tasks.splice(from.tasks.indexOf(t), 1);
+        if (i >= 0) from.tasks.splice(i, 1);
         if (head) from.heads = from.heads.filter(id => id !== t.id);
         if (typeof from.count === 'number') from.count = Math.max(0, from.count - 1);
       }
@@ -847,7 +858,7 @@ export default {
       kids = { at: this.view.route, ids: this.cardKids() };
       this.setBadge(this.view.groups.find(g => g.key === 'overdue')?.tasks.length || 0);
     }
-    if (!plan.length && !cards) return;
+    if (!plan.length && !cards && !off) return;
     // A row that has just come due keeps that highlight (tickToday).
     const moved = plan.filter(p => p.to && !this.flashed?.due?.[p.t.id]).map(p => p.t.id);
     if (moved.length) this.flash(moved, 'arrived');
@@ -867,6 +878,32 @@ export default {
       );
     // A task back on a project's open list goes to its place in the List view, which a load reads.
     if (r.name === 'project' && plan.some(p => p.to?.key === 'open')) this.render();
+  },
+  /* Record in each group's `left` the rows that leave it, while an op waits on their task, for a list the screen
+     hasn't loaded or for none. The screen is saved without those rows, so without the record a Cancel made offline
+     would lose them until the next load. regroupPlan puts a recorded row back once it belongs in the group again. A
+     record is kept while its row is off the screen's lists and an op still waits on its task. Returns whether any
+     group's `left` changed. */
+  offList(plan) {
+    const listed = this.listedIds(),
+      going = plan.filter(
+        p => p.from?.tasks.includes(p.t) && (!p.to || p.to.loaded === false) && this.opsOf(p.t.id).length,
+      ),
+      back = new Set(plan.filter(p => !p.from?.tasks.includes(p.t)).map(p => p.t.id)),
+      out = new Set(going.map(p => p.t.id));
+    let changed = false;
+    for (const g of this.view.groups) {
+      const was = g.left || [],
+        left = [
+          ...was.filter(l => !back.has(l.id) && !out.has(l.id) && !listed.has(l.id) && this.opsOf(l.id).length),
+          ...going.filter(p => p.from === g).map(p => ({ id: p.t.id, to: p.to?.key ?? null })),
+        ];
+      if (JSON.stringify(left) === JSON.stringify(was)) continue;
+      changed = true;
+      if (left.length) g.left = left;
+      else delete g.left;
+    }
+    return changed;
   },
   // Keep each card's dates on Today as todayDates gives them, and make a card of a row that has open subtasks now.
   // Returns whether anything changed.
@@ -1247,7 +1284,9 @@ export default {
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
     const groups = keptGroups(this.view.groups),
-      ids = groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
+      ids = groups
+        .flatMap(g => [...g.tasks.map(t => t.id), ...(g.left || []).map(l => l.id)])
+        .filter(id => id in this.positions);
     this.keepScreen(viewKey(this.route), {
       groups,
       project: p,

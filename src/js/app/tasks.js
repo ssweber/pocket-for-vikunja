@@ -648,7 +648,7 @@ function keptIds(c, phone = false) {
   for (const k of keptScreens()) for (const id of screenIds(saved.get(k)) || []) add(id);
   for (const id of pointed(c)) add(id);
   if (!phone) {
-    for (const g of c.view?.groups || []) for (const t of g.tasks) add(t.id);
+    for (const g of c.view?.groups || []) for (const t of [...g.tasks, ...(g.left || [])]) add(t.id);
     for (const cl of c.view?.checklists || [])
       for (const t of [...(cl.runs || []), ...(cl.finished || []), ...(cl.templates || [])]) add(t.id);
     const r = c.view?.shownRun,

@@ -287,6 +287,27 @@ test('a row thrown 10 days ahead leaves a gap naming the day, and the task is on
   await tapGap(app, 1);
   assert.deepEqual([v.task(1).due_date, rows('week')], [at(10, 16), [1]], 'Undo brings the task back to its gap');
 });
+test('a row thrown 10 days ahead offline goes back to its group when Cancel in the Outbox takes the move back', async c => {
+  const { app, rows } = onToday(c, [
+    { id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() },
+  ]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(views));
+  Object.assign(app, { render() {}, todayDay: +startOfDay() });
+  app.view.route = location.hash;
+  app.view.groups[4].tasks.push(app.tasks[1]);
+  app.keepScreen('today', { ...app.view, at: new Date().toISOString() }, false);
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => [];
+  c.after(() => (was ? (document.querySelectorAll = was) : delete document.querySelectorAll));
+  app.offline = true;
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 17), 'Sat 17');
+  await app.clearBatch(true);
+  assert.deepEqual(rows('week'), [], 'the gap leaves with the batch');
+  await app.dropAct(sync.all(1)[0].id);
+  assert.deepEqual([rows('week'), app.tasks[1].due_date], [[1], new Date(2026, 9, 10, 16).toISOString()]);
+  app.showSaved({ name: 'today' }, app.keptScreen('today'));
+  assert.deepEqual(rows('week'), [1], 'Today as saved on the phone lists it too');
+});
 test('a move Vikunja refuses puts the row back in Next 7 days with Try again, and leaves no gap', async c => {
   const { v, app, at, key, rows } = onToday(c, [
     { id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() },

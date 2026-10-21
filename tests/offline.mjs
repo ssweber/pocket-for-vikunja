@@ -885,6 +885,53 @@ try {
     }
   });
 
+  /* A task ticked offline leaves its project's list, and the project is saved without it. After a reload offline, Cancel
+     in the Outbox shows the task on the list again, not done, and it stays there after the next reload. */
+  await step('a-tick-cancelled-offline-after-a-reload-shows-its-task-again', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('cancelled project') });
+    try {
+      await post(`/projects/${proj.id}/tasks`, { title: T('cancelled tick') });
+      await post(`/projects/${proj.id}/tasks`, { title: T('left open') });
+      await page.reload(); // so Pocket lists the project
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => {
+        location.hash = '#/project/' + id;
+      }, proj.id);
+      const tick = name => page.getByRole('button', { name: 'Mark done: ' + T(name) });
+      await expect(tick('cancelled tick')).toBeVisible({ timeout: 15000 });
+      await context.setOffline(true);
+      await tick('cancelled tick').click();
+      const rows = name => page.locator(`#view .row:has(.title:has-text("${T(name)}"))`);
+      await expect(rows('cancelled tick')).toHaveCount(0, { timeout: 10000 }); // the batch clears
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.reload();
+      await expect(tick('left open')).toBeVisible({ timeout: 15000 });
+      await expect(rows('cancelled tick')).toHaveCount(0);
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.click('#btn-refresh');
+      const row = `#outbox-rows .ob-row:has-text("Done: ${T('cancelled tick')}")`;
+      await page.locator(row).getByRole('button', { name: 'Cancel' }).click();
+      await page.waitForSelector(row, { state: 'detached' });
+      await page.click('#btn-sheet-close');
+      await expect(tick('cancelled tick')).toBeVisible();
+      await page.reload();
+      await expect(tick('left open')).toBeVisible({ timeout: 15000 });
+      await expect(tick('cancelled tick')).toBeVisible();
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const [t] = await byTitle(T('cancelled tick'));
+      if (t?.done !== false) throw new Error('Vikunja has the task as ' + JSON.stringify(t?.done));
+    } finally {
+      await context.setOffline(false);
+      await page.evaluate(() => {
+        location.hash = '#/today';
+      });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
   /* A checklist's sheet lists its steps as their own rows. Two steps ticked there offline wait in the outbox. Back
      online, Vikunja refuses the first tick. The sheet and the checklist's ring show that step open again, while the
      second step is done. */

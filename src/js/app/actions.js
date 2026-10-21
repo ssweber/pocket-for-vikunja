@@ -582,6 +582,8 @@ export default {
         from.tasks.findIndex(x => x.id === t.id),
         1,
       );
+    // A task moved off Today goes back if its move is cancelled (offList, views.js).
+    if (from && !into) from.left = [...(from.left || []).filter(l => l.id !== t.id), { id: t.id, to: null }];
     into?.tasks.push(t);
     this.setBadge(groups.find(g => g.key === 'overdue')?.tasks.length || 0);
   },

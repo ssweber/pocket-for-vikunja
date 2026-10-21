@@ -77,7 +77,7 @@ matters there.
   returns at most 50 comments across all the tasks it lists, so in a busy project a finished row's skip reasons and
   comment counts can be wrong with no sign. Confirm it in the app, then read comments only for the steps that have
   any (`expand=comment_count`). Add the cap to a draft for Vikunja if it is a bug there.
-- [ ] **A tick cancelled offline leaves its task hidden.** Seen on the phone. Offline, tick a task on a project
+- [x] **A tick cancelled offline leaves its task hidden.** Seen on the phone. Offline, tick a task on a project
   screen. It leaves the list and waits in the Outbox, and stays ticked after Pocket is closed and opened again.
   Cancel it in the Outbox, still offline. The task doesn't come back, after switching screens or after reopening
   Pocket, until Pocket reaches Vikunja again.
