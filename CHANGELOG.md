@@ -14,6 +14,10 @@ is a new 0.x.y.
 
 ## Unreleased
 
+### Changed
+
+- Pocket opens on its saved screen at once when the phone is slow to open the Outbox, with the waiting changes on it.
+
 ### Fixed
 
 - Pocket no longer reloads when the server can't be reached or sends an error. It reloads only for a new version.

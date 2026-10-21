@@ -1,6 +1,7 @@
 // Opening on the saved screen (boot in src/js/app/auth.js). Pocket shows saved lists only when the sign-in token is the
 // one it last confirmed for that user. It recognises the token by its hash. Pocket sends nothing until Vikunja has
 // said who the user is.
+import './outbox-db.mjs';
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,6 +9,7 @@ import auth from '../../src/js/app/auth.js';
 import sending from '../../src/js/app/sending.js';
 import { api, setSeenToken, sharedToken, tokenHash } from '../../src/js/api.js';
 import { saved } from '../../src/js/lists.js';
+import { sync, uuid7 } from '../../src/js/sync.js';
 
 const ME = { id: 7, username: 'alex' };
 const reply = (body, status = 200) =>
@@ -173,4 +175,82 @@ test('the saved screen shows only for the token whose hash is saved, and the sav
   assert.deepEqual(saved.get('who'), { id: ME.id, hash: await tokenHash('jwt-3') });
   assert.equal((await c.keptUser())?.id, ME.id);
   sharedToken.del();
+});
+
+// A tick waiting in the outbox, for task 5.
+const waitingTick = () => ({
+  id: uuid7(),
+  kind: 'act',
+  op: 'done',
+  task: 5,
+  user: ME.id,
+  at: new Date().toISOString(),
+  n: 0,
+  files: [],
+});
+// Loads another copy of sync.js, as a new page would, while the outbox's database never opens.
+async function heldPage(name) {
+  const open = indexedDB.open;
+  indexedDB.open = () => ({});
+  try {
+    return (await import('../../src/js/sync.js?' + name)).sync;
+  } finally {
+    indexedDB.open = open;
+  }
+}
+
+test('a new page has the waiting changes before the outbox database opens, and not those sent since', async () => {
+  const sent = waitingTick(),
+    left = waitingTick();
+  await sync.add(sent, []);
+  await sync.add(left, []);
+  await sync.remove(sent.id);
+  assert.deepEqual(
+    (await heldPage('held')).all(ME.id).map(e => e.id),
+    [left.id],
+  );
+  await sync.remove(left.id);
+  assert.deepEqual((await heldPage('held-again')).all(ME.id), []);
+});
+
+test('a copy in localStorage of a change the outbox database no longer has is dropped once the database opens', async () => {
+  const gone = waitingTick();
+  localStorage.setItem('pocket.outbox.' + gone.id, JSON.stringify(gone));
+  const page = (await import('../../src/js/sync.js?gone')).sync;
+  assert.ok(page.entries.has(gone.id), 'the copy shows until the database is read');
+  await page.ready;
+  assert.ok(!page.entries.has(gone.id));
+  assert.equal(localStorage.getItem('pocket.outbox.' + gone.id), null);
+});
+
+test('the saved screen shows at once while the outbox database is held up, with the waiting change on it', async () => {
+  const v = vikunja(),
+    c = app(),
+    tick = waitingTick(),
+    ready = sync.ready,
+    start = Date.now();
+  await keep('tk_test');
+  sync.ready = new Promise(() => {}); // the database never opens
+  sync.entries.set(tick.id, tick); // as a new page reads it from localStorage
+  c.flush = () => {}; // this test sends nothing
+  c.refreshPending = function () {
+    this.pending = sync.all(this.user.id);
+  };
+  c.render = async function ({ kept = false } = {}) {
+    this.shown.push(kept ? 'kept' : 'loaded');
+    this.drawnWith = this.pending.map(e => e.id);
+    return kept;
+  };
+  try {
+    const booted = c.boot();
+    await asked(v);
+    assert.deepEqual(c.shown, ['kept']);
+    assert.ok(Date.now() - start < 1500, 'the saved screen does not wait for the database');
+    assert.deepEqual(c.drawnWith, [tick.id], 'the waiting tick is on the saved screen');
+    v.answer();
+    await booted;
+  } finally {
+    sync.ready = ready;
+    sync.entries.delete(tick.id);
+  }
 });

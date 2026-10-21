@@ -1,6 +1,6 @@
 // The outbox: everything waiting to go to Vikunja, kept on the phone. The requests of each change are its op's stages
 // (src/js/ops/).
-import { app } from './util.js';
+import { app, store } from './util.js';
 
 /* The rows show the ops waiting in the outbox (keyOps, app/tasks.js), so each change to it in this tab tells them,
    once for all the changes made together. Deletes held for Restore change what the rows show too. */
@@ -23,6 +23,20 @@ class Told extends Set {
     return super.delete(v);
   }
 }
+/* The copies of the entries in localStorage (see below), one key for each, so two tabs never write over each other's.
+   When a copy doesn't fit, the older copy is deleted, and the entry shows once the database opens. */
+const COPY = 'outbox.';
+const copy = e => store.set(COPY + e.id, JSON.stringify(e)) || uncopy(e.id);
+const uncopy = id => store.del(COPY + id);
+function copied() {
+  try {
+    return Object.keys(localStorage)
+      .filter(k => k.startsWith('pocket.' + COPY))
+      .map(k => JSON.parse(localStorage.getItem(k)));
+  } catch {
+    return [];
+  }
+}
 
 /* An entry is one of:
    - an op (`kind: 'act'`, `op`), sent through its stages. A line typed in an add box is an `add` op (ops/add.js):
@@ -36,7 +50,10 @@ class Told extends Set {
    Entries, file bytes and the tasks Pocket has added live in IndexedDB. An entry and its files are saved together or
    not at all. The screen reads a copy in memory (`entries`). Sending always starts from the database's copy, so two
    tabs never work from a stale one. If the database can't be used or the phone is out of space, the entry waits in
-   memory only, and Pocket tells the user to keep it open. */
+   memory only, and Pocket tells the user to keep it open.
+
+   Each entry the database has is copied to localStorage too (`copy`), so a new page shows what is waiting before the
+   database opens, which a slow phone or another tab can hold up for seconds. Only the screen reads the copies. */
 export const sync = {
   entries: new Map(), // id -> entry, what the screen shows
   volatile: new Set(), // ids of entries kept in memory only
@@ -89,8 +106,12 @@ export const sync = {
   },
   // Load the entries that are waiting, and the record of which task was added for which line.
   async start() {
+    const copies = copied();
+    for (const e of copies) this.entries.set(e.id, e);
     try {
       await this.reload();
+      // A copy read before the database was read, of an entry the database doesn't have, is of an entry sent since.
+      for (const e of copies) if (!this.entries.has(e.id)) uncopy(e.id);
       // A claim lasts a day, or while an entry still waits for its task: a line under a line, or an op on a new step.
       const day = Date.now() - 86400000,
         named = new Set(
@@ -139,10 +160,11 @@ export const sync = {
       const data = await Promise.all(
         files.map(async f => ({ name: f.name, type: f.type, data: await f.arrayBuffer() })),
       );
-      await this.tx(['files', 'outbox'], 'readwrite', s => {
+      const put = await this.tx(['files', 'outbox'], 'readwrite', s => {
         data.forEach((d, i) => s('files').put(d, entry.files[i].key));
-        s('outbox').put(plain(entry));
+        return [putEntry(s, entry)];
       });
+      put.forEach(copy);
       this.changed();
       return { kept: true };
     } catch {
@@ -163,10 +185,11 @@ export const sync = {
       return;
     }
     try {
-      await this.tx(['files', 'outbox'], 'readwrite', s => {
+      const put = await this.tx(['files', 'outbox'], 'readwrite', s => {
         for (const k of drop) s('files').delete(k);
-        for (const e of all) s('outbox').put(plain(e));
+        return all.map(e => putEntry(s, e));
       });
+      put.forEach(copy);
       this.changed();
     } catch {
       for (const e of all) this.volatile.add(e.id);
@@ -184,14 +207,17 @@ export const sync = {
     for (const k of keys) this.bytes.delete(k);
     if (task != null) for (const x of this.entries.values()) named(x, name, task);
     try {
+      const renamed = [];
       await this.tx(['files', 'outbox'], 'readwrite', s => {
         for (const k of keys) s('files').delete(k);
         s('outbox').delete(id);
         if (task != null)
           s('outbox').getAll().onsuccess = r => {
-            for (const x of r.target.result) if (named(x, name, task)) s('outbox').put(x);
+            for (const x of r.target.result) if (named(x, name, task)) renamed.push(putEntry(s, x));
           };
       });
+      uncopy(id);
+      renamed.forEach(copy);
       this.changed();
     } catch {}
   },
@@ -248,6 +274,12 @@ export const sync = {
 sync.ready = sync.start();
 // A copy of an entry that the database can store. Parts of an entry can be Alpine's reactive proxies, which it can't.
 const plain = o => JSON.parse(JSON.stringify(o));
+// Put entry `e` in the outbox store of a transaction's stores `s`. Returns what was stored, to copy once it commits.
+const putEntry = (s, e) => {
+  const p = plain(e);
+  s('outbox').put(p);
+  return p;
+};
 // Put task id `id` where entry `e` names waiting id `name`. Returns whether anything changed.
 function named(e, name, id) {
   let changed = false;

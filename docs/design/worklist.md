@@ -61,8 +61,10 @@ No change in behaviour. The tests pass before and after.
 The steps below make Pocket open faster from its saved screen. A timing trace from the phone shows which of them
 matters there.
 
-- [ ] **The outbox holds up the saved Today.** `auth.js` waits up to 3 seconds for `sync.ready` before it shows saved
-  tasks. Find out what the wait protects, then shorten or remove it.
+- [x] **The outbox holds up the saved Today.** `auth.js` waits up to 3 seconds for `sync.ready` before it shows saved
+  tasks. Find out what the wait protects, then shorten or remove it. The wait kept a row from changing after it was
+  drawn, when a waiting change arrived late. `sync.js` now copies each entry to localStorage, and the saved screen
+  shows the copies without waiting.
 - [ ] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
   and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed.
 - [ ] **A checklist doesn't open from its saved copy.** `savedView()` leaves checklists out. Opening one fetches the
