@@ -81,11 +81,20 @@ matters there.
   screen. It leaves the list and waits in the Outbox, and stays ticked after Pocket is closed and opened again.
   Cancel it in the Outbox, still offline. The task doesn't come back, after switching screens or after reopening
   Pocket, until Pocket reaches Vikunja again.
-- [ ] **UI, discuss first: always show the three tabs.** Today the header switches to the compact layout when
-  `checklistProjects` loads, so it can change from two tabs to three. The Checklists screen already has a setup card
-  for someone with no checklists.
-- [ ] **UI, discuss first: grey rows instead of "Loading…".** Static rows with the list's spacing, shown only when no
-  saved screen is ready. A refresh never replaces rows already shown.
+- [ ] **A template shows on Today after Set up checklists.** Right after Set up checklists, Today lists "TEMPLATE:
+  Example: Opening up" under "Added today, no date", as a 4/4 parent with "All subtasks done" and Close. Today
+  leaves templates out.
+- [ ] **A steady header and grey rows while loading.** Agreed with the user from
+  `scratchpad/ui-tabs-rows/tabs-and-grey-rows.png` and `headings-44.png`. The CSS and markup there are the start.
+  - The header always has the three tabs in the compact layout (`.tabs.icons`), so it no longer changes from two
+    tabs to three when `checklistProjects` loads. With no checklist project, Checklists shows its setup card.
+  - "Loading…" becomes still grey rows (`.skeleton`, `.skel-row`): two groups of 3 and 5 rows under short heading
+    bars, a 28 px outlined circle and one 12 px bar per row, in `color-mix(in srgb, var(--muted) 25%,
+    var(--surface))`. They show only when no saved screen is ready. A refresh never replaces rows already shown.
+  - `.sec-act` gets a 44 px tap target inside its heading's height (`min-width` and `min-height: 44px`,
+    `padding: 12px 2px`, `margin: -12px 0 -12px auto`), as `#btn-copy-done` has, and that rule is deleted. The
+    Overdue and "Open project" headings become 21 px, like the others, so every list starts 49 px below the header,
+    where the grey rows start.
 
 ## Batch 4: features for 0.3.0
 
@@ -100,7 +109,12 @@ Each is discussed, with a picture, before it is built.
   label, wherever it is due, grouped by project.
 - [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
   keep `http://` and file paths in the title.
-- [ ] **A minimum time for a step, `!T#`.** To be defined with the user.
+- [ ] **A minimum time for a step, `!T#`.** `Shape the loaves !T#20m` can't be ticked until 20 minutes after the
+  previous step is done. Until then its Done button is dimmed and reads "Waiting 19:42", counting down. Proposed, not
+  yet agreed: it counts from the same step as `T#`, and `:name` works the same. It is `T#` made strict, so it is
+  also due then, chimes at zero, and the plugin writes its due date. Before that step is done, the button reads
+  "Waiting for Mix the dough". Every way to tick in Pocket respects it, and Vikunja's web app doesn't. Syntax only at
+  first.
 - [ ] **A long press on "+ me"** offers the project's other people.
 
 ## Batch 5: the phone's storage and the test tools
