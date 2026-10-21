@@ -21,6 +21,7 @@ is a new 0.x.y.
 - A checklist opened before shows its steps at once from its saved copy, and then reloads from Vikunja.
 - The header always has the Today, Projects and Checklists tabs. With no checklist project, Checklists offers to set
   one up.
+- A screen with nothing saved on the phone shows grey rows while it loads, instead of "Loading…".
 
 ### Fixed
 

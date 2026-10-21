@@ -883,6 +883,57 @@ button.check::after {
   text-align: center;
   color: var(--muted);
 }
+/* Grey rows have a real row's height, tick and title, so the list replaces them without moving. They stay still. */
+.skeleton {
+  --skel: color-mix(in srgb, var(--muted) 25%, var(--surface));
+}
+.skeleton .sec {
+  align-items: center;
+  height: 21px;
+}
+.skeleton .sec::before {
+  content: '';
+  width: 84px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--skel);
+}
+.skeleton .sec.short::before {
+  width: 56px;
+}
+.skel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 57px;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+}
+.skel-row:first-child {
+  height: 56px;
+  border-top: 0;
+}
+.skel-row::before {
+  content: '';
+  flex: none;
+  width: var(--tick);
+  height: var(--tick);
+  border-radius: 50%;
+  border: 2px solid var(--skel);
+}
+.skel-row::after {
+  content: '';
+  width: 62%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--skel);
+}
+.skel-row:nth-child(3n + 2)::after {
+  width: 44%;
+}
+.skel-row:nth-child(3n)::after {
+  width: 76%;
+}
 .offline {
   margin: 8px 0 0;
   padding: 9px 12px;

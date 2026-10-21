@@ -1361,7 +1361,7 @@ try {
   });
 
   // A checklist opened before shows its saved copy while it reloads, as Today does. Its steps are on screen before
-  // Vikunja answers a request for them, with no Loading.
+  // Vikunja answers a request for them, with no grey rows.
   await step('a-checklist-opened-again-shows-its-saved-copy', async () => {
     let release;
     const held = new Promise(ok => (release = ok)),
@@ -1374,7 +1374,7 @@ try {
       await page.click(`${cardOf(`${TEMPLATE} · #`)} > .card-head .card-open`);
       await page.waitForFunction(id => location.hash === '#/run/' + id, first.id, { timeout: 15000 });
       await expect(page.locator('#run-steps .row[data-id]')).toHaveCount(3);
-      await expect(page.locator('#view .loading')).toHaveCount(0);
+      await expect(page.locator('#view .skel-row')).toHaveCount(0);
       await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
     } finally {
       release();

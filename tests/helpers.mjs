@@ -34,10 +34,10 @@ export async function signIn(page, url, user, password) {
   await loaded(page);
 }
 
-/* Waits until the current screen is loaded from Vikunja. That means no Loading text, and no saved copy of the
-   screen that is shown while the real one loads behind it (<main id="view" aria-busy>). */
+/* Waits until the current screen is loaded from Vikunja. That means no grey rows or Loading text, and no saved copy
+   of the screen that is shown while the real one loads behind it (<main id="view" aria-busy>). */
 export async function loaded(page, timeout = 15000) {
-  await expect(page.locator('#view .loading')).toHaveCount(0, { timeout });
+  await expect(page.locator('#view :is(.skeleton, .loading)')).toHaveCount(0, { timeout });
   await expect(page.locator('#view[aria-busy="true"]')).toHaveCount(0, { timeout });
 }
 

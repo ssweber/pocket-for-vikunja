@@ -179,7 +179,23 @@ try {
   const row = `.row:has(.title:has-text("${title}"))`;
   await step('refresh-keeps-rows', async () => {
     const before = await page.$(row);
-    await page.click('#btn-refresh');
+    // While Vikunja is slow to answer, the rows stay on screen and no grey rows replace them.
+    let answer;
+    const late = new Promise(ok => (answer = ok)),
+      slow = async r => {
+        await late;
+        await r.fallback();
+      };
+    await page.route(/\/api\/v2\/tasks\?/, slow);
+    try {
+      await page.click('#btn-refresh');
+      await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator(row)).toBeVisible();
+      await expect(page.locator('#view .skel-row')).toHaveCount(0);
+    } finally {
+      answer();
+      await page.unroute(/\/api\/v2\/tasks\?/, slow);
+    }
     await page.waitForSelector('#btn-refresh:not([disabled])');
     if (!(await before.evaluate(el => el.isConnected))) throw new Error('refresh rebuilt the list');
   });
@@ -737,20 +753,45 @@ try {
     if (made?.attachments?.[0]?.file?.name !== 'receipt.png')
       throw new Error('attachments: ' + JSON.stringify(made?.attachments));
   });
+  const chipTask = `Pocket smoke new project task ${stamp}`;
+  let chipProject;
   await step('create-project-from-chip', async () => {
     const name = `PocketSmoke${stamp}`,
-      t = `Pocket smoke new project task ${stamp}`;
+      t = chipTask;
     await page.fill('#in-capture', `${t} tomorrow +${name}`);
     await page.click('#cap-chips .chip[data-kind=new-project]');
     await page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 });
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     if (!project) throw new Error('project not found in Vikunja');
     createdProjects.push(project.id);
+    chipProject = project.id;
     await page.click('#f-capture .go');
     await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
     await synced(page);
     const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
+  });
+  // A screen with nothing saved on the phone shows grey rows until Vikunja answers, and no Loading text.
+  await step('a-first-open-shows-grey-rows', async () => {
+    let answer;
+    const late = new Promise(ok => (answer = ok)),
+      slow = async r => {
+        if (r.request().method() === 'GET') await late;
+        await r.fallback();
+      };
+    await page.route(/\/api\/v2\/(projects|tasks)/, slow);
+    try {
+      await page.evaluate(id => (location.hash = '#/project/' + id), chipProject);
+      await expect(page.locator('#view .skeleton[role=status] .skel-row')).toHaveCount(8);
+      await expect(page.locator('#view')).not.toContainText('Loading');
+    } finally {
+      answer();
+      await page.unroute(/\/api\/v2\/(projects|tasks)/, slow);
+    }
+    await expect(page.locator(`.row .title:has-text("${chipTask}")`)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#view .skel-row')).toHaveCount(0);
+    await page.click('nav.tabs a[data-tab=today]');
+    await loaded(page);
   });
   await step('pasted-list-says-who-cant-get-it', async () => {
     // A pasted list that names someone who isn't a user shows a warning before sending, as a single task does. A line
@@ -5934,7 +5975,7 @@ ${footName('Hooks')}`);
       headers: json,
       body: JSON.stringify({ title: `Instant renamed ${stamp}` }),
     });
-    // Today's lists answer late. Meanwhile Pocket shows the saved copy, with no Loading message.
+    // Today's lists answer late. Meanwhile Pocket shows the saved copy, with no grey rows.
     let answer;
     const late = new Promise(ok => {
       answer = ok;
@@ -5947,7 +5988,7 @@ ${footName('Hooks')}`);
     try {
       await page.click('nav.tabs a[data-tab=today]');
       await expect(page.locator(rowOf(`Instant ${stamp}`))).toBeVisible();
-      await expect(page.locator('#view .loading')).toHaveCount(0);
+      await expect(page.locator('#view .skel-row')).toHaveCount(0);
       await page.locator(rowOf(`Instant ${stamp}`)).evaluate(el => {
         el.dataset.mark = 'kept';
       });
@@ -6622,7 +6663,7 @@ ${footName('Hooks')}`);
         await page.click('nav.tabs a[data-tab=today]');
         await expect(stepTitle(P.title)).toHaveText(X.title);
         await expect(page.locator(`${stepLine(P.title)} .claim`)).toBeVisible();
-        await expect(page.locator('#view .loading')).toHaveCount(0);
+        await expect(page.locator('#view .skel-row')).toHaveCount(0);
         await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
       } finally {
         answer();
