@@ -162,5 +162,5 @@ Each is discussed, with a picture, before it is built.
 
 - [x] **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete
   the oldest saved screen and try again.
-- [ ] **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers)
+- [x] **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers)
   after opening the sheet and switching screens many times.

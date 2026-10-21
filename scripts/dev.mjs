@@ -255,6 +255,7 @@ if (process.argv.includes('--test')) {
     'tests/session.mjs',
     'tests/offline.mjs',
     'tests/checklists.mjs',
+    'tests/leaks.mjs',
     'tests/steptimes.mjs',
     'tests/relay.mjs',
   ].map(test => {

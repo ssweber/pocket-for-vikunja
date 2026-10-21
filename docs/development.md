@@ -192,6 +192,7 @@ with a test in the file for its area:
   sheet, gestures, Today, quick add, sharing.
 - `tests/checklists.mjs`: checklists end to end, in a project of their own.
 - `tests/offline.mjs`: with the connection cut, Pocket opens, queues, and sends once the connection is back.
+- `tests/leaks.mjs`: opening a sheet and switching screens many times leaves nothing behind.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side, signing in and out on either.
 - `tests/steptimes.mjs`: the plugin's step times, through the API only.
 - `tests/relay.mjs`: the plugin's relay, through the API only. A write sent twice with one key is made once.
