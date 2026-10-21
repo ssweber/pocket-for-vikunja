@@ -109,7 +109,7 @@ Each is discussed, with a picture, before it is built.
 - [x] **The batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let go so
   its chips stay open. When the batch clears the first row's gap, the page shortens, and at the bottom of the page
   the scroll that causes closes the chips. Hold the batch while chips are open, as it is held for a finger.
-- [ ] **Filter by label.** Rows don't show their labels today, so that comes first. Then tapping a label on a row
+- [x] **Filter by label.** Rows don't show their labels today, so that comes first. Then tapping a label on a row
   narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and clearing it, or leaving
   Today, shows everything again. One label at a time. Typing `*errands` in search lists every open task with that
   label, wherever it is due, grouped by project. Agreed from `scratchpad/ui-labels/labels.png`, whose

@@ -42,6 +42,7 @@ import {
   keptGroups,
   listItems,
   nestSubtasks,
+  projectGroupKey,
   sameGroup,
   saved,
   screenRows,
@@ -594,7 +595,7 @@ export default {
      - In a project, by its project and whether it is done. A done task stays on the open list while subtasks of it are
        still open there (makeHead), and a step of a finished checklist leaves (onProjectList). Done leaves out a
        checklist's steps and templates (doneTasks).
-     - In search, by whether it is done.
+     - In search, by whether it is done. In search by label, an open task with the label goes under its project.
      - On Today, by its date (dayGroup), or a card's (todayDates). A task with no date goes under "Added today, no date"
        when the user made it today, and a checklist or a step under Checklists when it is the user's or has a step of
        theirs (todayItems, cards.js). A done task goes under Done today when the user did it (doneByMe), unless open
@@ -610,7 +611,12 @@ export default {
           : this.withoutTemplates([t], true).length
             ? 'done'
             : null;
-    if (r.name === 'search') return fresh ? null : t.done ? 'done' : 'open';
+    if (r.name === 'search') {
+      const label = !fresh && this.view.groups.find(g => g.key === from)?.label;
+      if (label)
+        return !t.done && t.labels?.some(l => l.title.toLowerCase() === label) ? projectGroupKey(t.project_id) : null;
+      return fresh ? null : t.done ? 'done' : 'open';
+    }
     if (r.name !== 'today') return fresh ? null : undefined;
     if (fresh) return t.child || t.parent ? null : dayGroup(t.due_date);
     const t0 = startOfDay(),

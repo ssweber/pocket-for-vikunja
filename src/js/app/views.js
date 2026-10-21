@@ -5,7 +5,7 @@ import { allPages, api, ApiError, errText, NetError, partOf, why } from '../api.
 import { addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay } from '../dates.js';
 import { CHECKLIST_MARK, comesRound, DONE_MARK, isTemplateLabel, templateName } from '../checklists.js';
 import { currentRoute } from '../routing.js';
-import { projectName } from '../quickadd.js';
+import { labelsMatching, projectName } from '../quickadd.js';
 import {
   batchMs,
   DONE_PART,
@@ -18,7 +18,9 @@ import {
   opened,
   OWN_META,
   parentIds,
+  projectGroups,
   saved,
+  searchedLabel,
   soonestFirst,
   TODAY_DAYS,
   todayGroups,
@@ -198,6 +200,14 @@ export default {
         title: 'Nothing due this week.',
         body: `Today is ${this.todayDate}. Add a task below — try “Call the plumber tomorrow !3”.`,
       };
+    const name = this.route.name === 'search' && searchedLabel(this.searchQ.trim());
+    if (typeof name === 'string') {
+      const known = this.labels.find(l => l.title.toLowerCase() === name.toLowerCase());
+      if (known) return { title: `No open task has *${known.title}.`, body: 'Search by label shows open tasks only.' };
+      return !name || !this.labelsLoaded || this.searchLabels.length
+        ? { title: 'Search by label.', body: 'Tap a label, or type its name after the *.' }
+        : { title: `No label is called “${name}”.`, body: 'Leave out the * to search titles and notes.' };
+    }
     if (this.route.name === 'search')
       return this.searchQ.trim()
         ? {
@@ -406,9 +416,10 @@ export default {
       if (tp && this.route.name !== 'project') out.push({ key: 'p', color: colorOf(tp.hex_color), text: tp.title });
       return out;
     }
-    // Avoid repeating the card's project on its step rows, except when a step belongs to another project.
+    // Avoid repeating the project of a card, or of a group in search by label, except on a row in another project.
     const p =
       (!card || card.project !== t.project_id) &&
+      g?.project !== t.project_id &&
       (this.route.name === 'today' || this.route.name === 'search') &&
       this.projById.get(t.project_id);
     // Name the checklist on Today and search step rows, so steps with the same name can be told apart. Project lists
@@ -1412,21 +1423,34 @@ export default {
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
   /* Search titles, notes or task numbers. Show open tasks soonest first and page completed matches newest first.
-     Exclude templates and their steps. Load open subtasks, assignees and positions for collapsed parent cards. */
+     Exclude templates and their steps. Load open subtasks, assignees and positions for collapsed parent cards.
+     A search starting with * is for a label (searchedLabel): it uses Vikunja's label filter and shows open tasks
+     only, grouped by project (projectGroups). Every label with that name counts, as one made by a teammate. */
   async loadSearch(seq) {
-    const s = this.searchQ.trim();
+    const s = this.searchQ.trim(),
+      name = searchedLabel(s)?.toLowerCase();
     if (!s) {
       this.view.groups = [];
       return;
     }
-    const open = new URLSearchParams({ q: s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count' });
+    const ids = name != null && (await this.loadLabels()).filter(l => l.title.toLowerCase() === name).map(l => l.id);
+    if (seq !== renderSeq) return;
+    if (ids && !ids.length) {
+      this.view.groups = [];
+      return;
+    }
+    const open = new URLSearchParams({
+      ...(ids ? { filter: `labels in ${ids.join(', ')} && done = false` } : { q: s, filter: 'done = false' }),
+      filter_timezone: TZ,
+      expand: 'comment_count',
+    });
     const again = s === searched ? this.view.groups.find(g => g.key === 'done')?.tasks.length || 0 : 0;
     const [opened, found] = await Promise.all([
       allPages('/tasks?' + open).then(putting(TASK_COUNT)),
-      this.foundDone(s, 0, Math.max(FOUND_PART, again)),
+      ids ? null : this.foundDone(s, 0, Math.max(FOUND_PART, again)),
     ]);
     if (seq !== renderSeq) return;
-    const finished = found.list;
+    const finished = found?.list || [];
     searched = s;
     const parents = opened.filter(t => openSubs(t).length && this.role(t) !== 'template');
     const read = parents.length
@@ -1436,18 +1460,33 @@ export default {
     for (const t of read.steps) this.row(t);
     Object.assign(this.positions, read.positions);
     if (!(await this.lifted(seq))) return;
-    this.view.groups = this.keepMarked([
-      { key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t)) },
-      {
-        key: 'done',
-        cls: '',
-        title: 'Done',
-        per: FOUND_PART,
-        skip: found.skip,
-        count: counted(found, found.skip, null),
-        tasks: found.tasks.map(t => this.row(t)),
-      },
-    ]);
+    const rows = soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t));
+    this.view.groups = this.keepMarked(
+      ids
+        ? projectGroups(rows, name, this.projById)
+        : [
+            { key: 'open', cls: '', title: 'Open', tasks: rows },
+            {
+              key: 'done',
+              cls: '',
+              title: 'Done',
+              per: FOUND_PART,
+              skip: found.skip,
+              count: counted(found, found.skip, null),
+              tasks: found.tasks.map(t => this.row(t)),
+            },
+          ],
+    );
+  },
+  // The labels offered as chips while a search starts with *, at most 12, without template (labelsMatching)
+  get searchLabels() {
+    const name = this.route.name === 'search' ? searchedLabel(this.searchQ.trim()) : null;
+    return name === null
+      ? []
+      : labelsMatching(
+          this.labels.filter(l => !isTemplateLabel(l)),
+          name,
+        ).slice(0, 12);
   },
 
   /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */

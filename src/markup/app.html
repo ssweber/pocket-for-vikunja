@@ -45,6 +45,9 @@
     <template x-for="line in placeLines('project')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
+    <!-- While a search starts with *, the labels that match what follows, as the add box offers them. Tapping one
+         searches for it. -->
+    <template x-if="searchLabels.length"><div class="chips search-chips"><template x-for="l in searchLabels" :key="l.id"><button type="button" class="chip suggest tap" @click="searchLabel(l.title)"><i class="dot" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="'*' + l.title"></span></button></template></div></template>
     <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. Changes wait in the Outbox.'"></p></template>
     <!-- Grey rows hold the list's place on a screen with nothing saved on the phone. view.loading is never set while a
          screen shows rows, so a refresh leaves them in place. -->

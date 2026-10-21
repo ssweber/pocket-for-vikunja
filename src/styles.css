@@ -935,6 +935,15 @@ button.check::after {
   margin-bottom: 4px;
 }
 /* While Today is narrowed to a label, the bar above its first group says so, with Show all in a 44px button */
+.sec-dot {
+  width: 9px;
+  height: 9px;
+  margin: 0 -2px 0 2px;
+  align-self: center;
+}
+.search-chips {
+  margin: 10px 0 4px;
+}
 .only-bar {
   display: flex;
   align-items: center;

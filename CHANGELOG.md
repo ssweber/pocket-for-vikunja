@@ -20,6 +20,7 @@ is a new 0.x.y.
   greyed out with a countdown, and its tick with a padlock.
 - A task's labels show on its row, on a line under the title. Tapping one on Today shows only the tasks with that
   label, until Show all or leaving Today. Elsewhere, tapping one searches for the tasks with that label.
+- Searching for `*errands` lists every open task with that label, by project. Typing `*` offers the labels.
 
 ### Changed
 

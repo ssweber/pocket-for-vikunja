@@ -271,6 +271,30 @@ export const viewKey = r =>
 export const isMovedGap = t => t.gapOf !== undefined;
 // Whether task `t` has the label with id `id`.
 export const hasLabel = (t, id) => !!t?.labels?.some(l => l.id === id);
+/* The label a search is for, without its *: "errands" for "*errands" or `*"on hold"`, "" for "*" alone, and null for
+   a search of titles and notes. */
+export const searchedLabel = q => {
+  if (!q.startsWith('*')) return null;
+  return q
+    .slice(1)
+    .trim()
+    .replace(/^"(.*)"$/, '$1');
+};
+export const projectGroupKey = id => 'project:' + id;
+/* The open tasks with label `label`, as search shows them: a group for each project, named after it. `tasks` are
+   soonest first, so the project with the soonest task comes first. */
+export const projectGroups = (tasks, label, projById) => {
+  const by = new Map();
+  for (const t of tasks) by.set(t.project_id, [...(by.get(t.project_id) || []), t]);
+  return [...by].map(([id, list]) => ({
+    key: projectGroupKey(id),
+    cls: '',
+    title: projById.get(id)?.title || '',
+    project: id,
+    label,
+    tasks: list,
+  }));
+};
 /* The index of the gap a moved row left among its group's rows. The gap goes under the row that was above it
    (`after`), or at its old index (`at`) once that row has gone too. */
 export const gapIndex = (tasks, { after, at }) => {

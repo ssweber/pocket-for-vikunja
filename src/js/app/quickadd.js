@@ -6,7 +6,7 @@ import { parentIds, saved } from '../lists.js';
 import { clearOf, listViewOf, placeAfter, placeFirst } from '../order.js';
 import { inTextField, NUDGE_TICK } from '../progress.js';
 import { haptic } from '../haptics.js';
-import { dueTimeOf, parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
+import { dueTimeOf, labelsMatching, parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
 import { sync } from '../sync.js';
 import { seats, seatUnder } from './seat.js';
 
@@ -395,19 +395,15 @@ export default {
       Math.min(...names.map(n => (n || '').toLowerCase()).map(n => (n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9)));
     let out;
     if (tk.kind === 'label') {
-      out = this.labels
-        .map(l => ({ l, s: score(l.title) }))
-        .filter(x => x.s < 9)
-        .sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
-        .map(({ l }) => ({
-          key: 's' + l.id,
-          kind: 'suggest',
-          cls: 'suggest',
-          color: colorOf(l.hex_color),
-          text: tk.prefix + l.title,
-          hint: 'Use this label',
-          action: () => this.useSuggestion(w, tk, l.title),
-        }));
+      out = labelsMatching(this.labels, q).map(l => ({
+        key: 's' + l.id,
+        kind: 'suggest',
+        cls: 'suggest',
+        color: colorOf(l.hex_color),
+        text: tk.prefix + l.title,
+        hint: 'Use this label',
+        action: () => this.useSuggestion(w, tk, l.title),
+      }));
     } else if (tk.kind === 'project') {
       out = this.projects
         .filter(p => this.canWrite(p.id))

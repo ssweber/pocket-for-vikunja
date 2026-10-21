@@ -21,6 +21,7 @@ import {
   saved,
   sameGroup,
   savedScreen,
+  searchedLabel,
   soonestFirst,
   TODAY_DAYS,
   todayAt,
@@ -839,6 +840,132 @@ test('done matches in search show 50 tasks, count all of them, and have a row th
     Array.from({ length: 120 }, (_, k) => k + 1),
   );
   assert.equal(app.moreOf('done'), null, 'once all tasks are shown, there is no row');
+});
+
+test('a search starting with * is for a label, with "" for * alone, and anything else searches titles and notes', () => {
+  assert.equal(searchedLabel('*errands'), 'errands');
+  assert.equal(searchedLabel('* errands '), 'errands');
+  assert.equal(searchedLabel('*"on hold"'), 'on hold');
+  assert.equal(searchedLabel('*'), '');
+  assert.equal(searchedLabel('errands'), null);
+});
+
+/* A search for *errands asks Vikunja for the open tasks with every label called errands, and none of the done
+   tasks. It shows them by project, the project with the soonest task first, and rows leave out the project name. */
+test('a search by label lists its open tasks by project, the one with the soonest task first', async () => {
+  const errands = { id: 3, title: 'Errands' },
+    at = d => new Date(Date.now() + d * 864e5).toISOString(),
+    task = (id, project_id, d) => ({ id, title: 'Task ' + id, project_id, due_date: at(d), labels: [errands] });
+  const asked = [];
+  globalThis.fetch = async url => {
+    const u = new URL(url);
+    asked.push(
+      u.pathname.replace('/api/v2', '') + ' ' + (u.searchParams.get('filter') || '') + (u.searchParams.get('q') ?? ''),
+    );
+    const body = u.pathname.endsWith('/labels')
+      ? [errands, { id: 4, title: 'phone' }, { id: 9, title: 'errands' }]
+      : [task(1, 5, 3), task(2, 6, 1), task(3, 5, 2), task(4, 6, 9)];
+    return new Response(JSON.stringify({ items: body, total: body.length }), { status: 200 });
+  };
+  const app = doneApp({ name: 'search' });
+  Object.assign(app, {
+    searchQ: '*errands',
+    labels: [],
+    projById: new Map([
+      [5, { id: 5, title: 'Home', hex_color: '2f9e8f' }],
+      [6, { id: 6, title: 'Shop' }],
+    ]),
+    readCards: async () => ({ steps: [], positions: {} }),
+    keepMarked: g => g,
+  });
+  await app.loadSearch(renderSeq);
+  assert.deepEqual(
+    asked,
+    ['/labels ', '/tasks labels in 3, 9 && done = false'],
+    'both labels called errands, open tasks only',
+  );
+  assert.deepEqual(
+    app.view.groups.map(g => [g.key, g.title, ids(g.tasks)]),
+    [
+      ['project:6', 'Shop', [2, 4]],
+      ['project:5', 'Home', [3, 1]],
+    ],
+  );
+  const home = app.view.groups[1];
+  app.route = { name: 'search' };
+  app.stepRun = () => null;
+  app.rowRing = () => null;
+  assert.ok(
+    !app.rowMeta(home.tasks[0], { ...home, depth: {} }).some(m => m.key === 'p'),
+    'the heading names the project',
+  );
+  assert.ok(
+    app.rowMeta({ ...home.tasks[0], project_id: 6 }, { ...home, depth: {} }).some(m => m.key === 'p'),
+    'a row in another project names its own',
+  );
+
+  asked.length = 0;
+  app.searchQ = '*errandz';
+  await app.loadSearch(renderSeq);
+  assert.deepEqual([asked, app.view.groups], [[], []], 'a label nobody has asks Vikunja for no tasks');
+  app.searchQ = 'errands';
+  await app.loadSearch(renderSeq);
+  assert.ok(asked.includes('/tasks done = falseerrands'), 'without the *, search looks for the word');
+});
+
+test('in search by label, a task that is ticked or loses the label leaves, and one moved goes to its project', () => {
+  const errands = { id: 3, title: 'errands' },
+    t = { id: 1, project_id: 5, labels: [errands] };
+  const app = component(views, sending);
+  Object.assign(app, {
+    route: { name: 'search' },
+    view: {
+      groups: [
+        { key: 'project:5', label: 'errands', tasks: [t] },
+        { key: 'open', tasks: [] },
+      ],
+    },
+  });
+  assert.equal(app.belongsIn(t, 'project:5'), 'project:5');
+  assert.equal(app.belongsIn({ ...t, project_id: 6 }, 'project:5'), 'project:6');
+  assert.equal(app.belongsIn({ ...t, done: true }, 'project:5'), null);
+  assert.equal(app.belongsIn({ ...t, labels: [] }, 'project:5'), null);
+  assert.equal(
+    app.belongsIn({ ...t, done: true }, 'open'),
+    'done',
+    'a search of words still moves a ticked task to Done',
+  );
+});
+
+test('typing * in search offers the labels that match what follows, and says when no label has that name', () => {
+  const app = component(views);
+  Object.assign(app, {
+    route: { name: 'search' },
+    labelsLoaded: true,
+    labels: [
+      { id: 1, title: 'errands' },
+      { id: 2, title: 'phone' },
+      { id: 3, title: 'template' },
+      { id: 4, title: 'Overdue errands' },
+    ],
+  });
+  const offered = q => {
+    app.searchQ = q;
+    return app.searchLabels.map(l => l.title);
+  };
+  assert.deepEqual(offered('*'), ['errands', 'Overdue errands', 'phone'], 'every label but template');
+  assert.deepEqual(offered('*err'), ['errands', 'Overdue errands'], 'those starting with it first');
+  assert.equal(app.emptyText.title, 'Search by label.');
+  assert.deepEqual(offered('*Errands'), [], 'a label called that is searched, not offered');
+  assert.equal(app.emptyText.title, 'No open task has *errands.');
+  assert.deepEqual(offered('*errandz'), []);
+  assert.deepEqual(app.emptyText, {
+    title: 'No label is called “errandz”.',
+    body: 'Leave out the * to search titles and notes.',
+  });
+  assert.deepEqual(offered('err'), [], 'a search of words offers no labels');
+  app.route = { name: 'today' };
+  assert.deepEqual(offered('*err'), [], 'nor does any other screen');
 });
 
 /* This keeps the cost of each row low. A list's group stays one object for as long as the screen is the same

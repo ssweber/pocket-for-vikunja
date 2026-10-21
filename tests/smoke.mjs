@@ -3386,10 +3386,12 @@ try {
         await api('/labels', { method: 'POST', headers: json, body: JSON.stringify({ title: `errands${stamp}` }) })
       ).json(),
       a = await make(`Pocket smoke labelled A ${stamp}`, { due_date: dayAt(1, 12) }),
+      b = await make(`Pocket smoke labelled B ${stamp}`, { due_date: dayAt(20, 12) }),
       R = rowOf(a.title),
       LAB = `${R} > .labs > .lab`;
     try {
-      await api(`/tasks/${a.id}/labels`, { method: 'POST', headers: json, body: JSON.stringify({ label_id: l.id }) });
+      for (const t of [a, b])
+        await api(`/tasks/${t.id}/labels`, { method: 'POST', headers: json, body: JSON.stringify({ label_id: l.id }) });
       await toastGone();
       await refreshToday();
       await expect(page.locator(LAB)).toHaveText([l.title], { timeout: 15000 });
@@ -3397,7 +3399,8 @@ try {
       const h = await page.locator(R).evaluate(el => el.offsetHeight);
       if (h < 74 || h > 77) throw new Error('a row with labels is ' + h + 'px tall, not 76');
       // A tap on the label line, beside the label, opens the task
-      const k = await page.locator(LAB).boundingBox();
+      await page.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const k = await steady(page.locator(LAB));
       await page.mouse.click(k.x + k.width + 60, k.y + k.height / 2);
       await expect(page.locator('#sheet')).toBeVisible();
       await page.click('#btn-sheet-close');
@@ -3436,12 +3439,29 @@ try {
       await page.click('#btn-refresh');
       await expect(page.locator('#view .empty > b')).toHaveText(`Nothing due this week has *${l.title}.`);
       await expect(page.locator('#view .empty > span')).toHaveText('Search finds the tasks due later or with no date.');
+      // The search lists the open tasks with the label, under their project's name, which the rows leave out
       await page.getByRole('button', { name: `Search *${l.title}` }).click();
       await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
+      const home = await (await api('/projects/' + b.project_id)).json(),
+        found = async () => {
+          await expect(page.locator('#view .sec > .n')).toHaveText(['1'], { timeout: 15000 });
+          await expect(page.locator('#view .sec > span').first()).toHaveText(home.title);
+          await expect(page.locator('#view .sec > .sec-dot')).toHaveCount(1);
+          await expect(page.locator(`#view ${rowOf(b.title)}`)).toBeVisible();
+          await expect(page.locator(`#view ${rowOf(b.title)} .meta .dot`)).toHaveCount(0);
+        };
+      await found();
+      // Typing * offers the labels that match what follows. Tapping one searches for it.
+      await page.fill('#in-search', '*' + l.title.slice(0, 8));
+      await page.locator('.search-chips .chip', { hasText: '*' + l.title }).click();
+      await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
+      await found();
+      await page.fill('#in-search', `*nolabel${stamp}`);
+      await expect(page.locator('#view .empty > b')).toHaveText(`No label is called “nolabel${stamp}”.`);
       await page.click('#btn-search-cancel');
       await expect(page.locator('.only-bar')).toHaveCount(0);
     } finally {
-      await api('/tasks/' + a.id, { method: 'DELETE' });
+      for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' });
       await api('/labels/' + l.id, { method: 'DELETE' });
     }
   });

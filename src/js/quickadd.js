@@ -34,6 +34,21 @@ const DAY_FIRST = (() => {
   }
 })();
 export const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
+/* The labels to offer for `q`, typed after *: those whose title starts with it first, then those that contain it,
+   each in alphabetical order. None when a label is called `q`, since the word is a label already. */
+export function labelsMatching(labels, q) {
+  q = q.toLowerCase();
+  if (q && labels.some(l => l.title.toLowerCase() === q)) return [];
+  const score = l => {
+    const n = l.title.toLowerCase();
+    return n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9;
+  };
+  return labels
+    .map(l => ({ l, s: score(l) }))
+    .filter(x => x.s < 9)
+    .sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
+    .map(x => x.l);
+}
 function tokenRe(prefix, flags = 'g') {
   return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags);
 }
