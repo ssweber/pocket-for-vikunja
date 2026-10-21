@@ -35,7 +35,7 @@ claim that turns out wrong is noted here and dropped.
 - [x] **The waiting message names the time of the next try.** "Waiting for Vikunja. Pocket tries again every 30
   seconds." is wrong after a 429's `Retry-After`. Make it "Waiting for Vikunja. Pocket tries again at 3:42 PM.",
   with the end of the wait or the next 30-second send, whichever is later.
-- [ ] **A monthly repeat's next date no longer matches Vikunja 2.7.1** (go-vikunja/vikunja#4107). Vikunja 2.7.1
+- [x] **A monthly repeat's next date no longer matches Vikunja 2.7.1** (go-vikunja/vikunja#4107). Vikunja 2.7.1
   clamps the day when it moves a monthly task on (Jan 31 → Feb 28). `addMonths` in `src/js/checklists.js` still
   overflows (Jan 31 → Mar 3), so `vikunjaNext` guesses wrong for a task due on the 29th, 30th or 31st. The "next …"
   message after a tick and the Start sheet's note show the wrong date. The catch-up in `ops/runs.js` never matches,

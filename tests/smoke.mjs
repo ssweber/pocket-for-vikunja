@@ -139,7 +139,7 @@ try {
       r.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          version: 'v2.7.0',
+          version: 'v2.7.1',
           auth: { local: { enabled: false }, ldap: { enabled: false }, openid_connect: { enabled: false } },
         }),
       });

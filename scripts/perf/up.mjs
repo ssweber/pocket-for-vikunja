@@ -153,7 +153,7 @@ run('docker', [
   'VIKUNJA_PLUGINS_ENABLED=true',
   '-e',
   'VIKUNJA_PLUGINS_LOADER=yaegi',
-  'vikunja/vikunja:2.7.0',
+  'vikunja/vikunja:2.7.1',
 ]);
 await waitFor(BASE + '/api/v2/info');
 const logs = run('docker', ['logs', NAME]);

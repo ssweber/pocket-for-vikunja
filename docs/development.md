@@ -153,7 +153,7 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456` on Postgres, with the plugin loaded from `pocket/`,
+This starts a throwaway Vikunja 2.7.1 at `http://127.0.0.1:3456` on Postgres, with the plugin loaded from `pocket/`,
 step times on and a mock single sign-on provider, and prints Pocket's address. `DB=sqlite npm run dev` (or `test:local`)
 runs Vikunja on SQLite instead, and `DB=mysql` on MySQL. The containers are `pocket-dev`, `pocket-dev-sso` and
 `pocket-dev-db`. The next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. `dev` shares a
