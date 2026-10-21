@@ -9,10 +9,10 @@
              enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
     </form>
-    <nav class="tabs" aria-label="Views" :class="{icons: checklistProjects.length}">
+    <nav class="tabs icons" aria-label="Views">
       <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Today</span></a>
       <a href="#/projects" data-tab="projects" :aria-current="tab === 'projects' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg><span class="lbl">Projects</span></a>
-      <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
+      <a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
     <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens the Outbox instead

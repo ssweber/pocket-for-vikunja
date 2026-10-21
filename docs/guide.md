@@ -86,7 +86,7 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 <p align="center"><img src="screenshots/pocket-checklist.gif" width="300" alt="Starting a checklist and completing two steps"></p>
 
-**Setup.** Under Projects, **Set up checklists** creates a project with an example template. Or mark an existing project with **Use for checklists** in its **⋯**. Share the project in Vikunja's web app with **Read & write**. Vikunja defaults to *Read only*, which lets people see checklists but not tick steps.
+**Setup.** On the Checklists tab, or under Projects, **Set up checklists** creates a project with an example template. Or mark an existing project with **Use for checklists** in its **⋯**. Share the project in Vikunja's web app with **Read & write**. Vikunja defaults to *Read only*, which lets people see checklists but not tick steps.
 
 **Templates.** Steps are parsed like quick add (`@user`, `*front`, `!3`) except for dates. Step timing is separate (see **Timed steps**). Tap a step to edit it. Hold to reorder. Swipe left to delete. **Notes, photos and asks** under a step are copied into every checklist, as are the template's own notes, attachments, labels and assignees. An existing task with subtasks becomes a template with **Use as checklist template**. In Pocket, only the person who made a template, or an admin of its project, can change or delete it, or make a task into one. Everyone with **Read & write** can still start checklists from it and add steps to those checklists. Vikunja's web app doesn't know this rule, so anyone with write can still change a template there.
 

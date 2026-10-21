@@ -288,17 +288,22 @@ try {
         if (made) await api('/projects/' + made.id, { method: 'DELETE' }).catch(() => {});
       }
       await page.click('#btn-refresh');
-      await page.waitForSelector('nav.tabs a[data-tab=checklists]', { state: 'detached', timeout: 15000 });
+      await page.waitForSelector('#btn-setup-checklists', { timeout: 15000 });
+    });
+
+  // With no checklist project, the header still has all three tabs, and Checklists offers to set one up.
+  if (!checklistsBefore)
+    await step('the-header-has-three-tabs-with-no-checklist-project', async () => {
+      await expect(page.locator('nav.tabs.icons a')).toHaveCount(3);
+      await page.click('nav.tabs a[data-tab=checklists]');
+      await page.waitForFunction(() => location.hash === '#/checklists');
+      await expect(page.locator('#view #btn-setup-checklists')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('nav.tabs a[data-tab=checklists]')).toHaveAttribute('aria-current', 'page');
+      if (await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width >= 2))
+        throw new Error('the tabs other than the current one still show their names');
     });
 
   await step('use-for-checklists', async () => {
-    if (!checklistsBefore && (await page.isVisible('nav.tabs a[data-tab=checklists]')))
-      throw new Error('a Checklists tab without any checklist project');
-    if (
-      !checklistsBefore &&
-      (await page.$eval('nav.tabs a[data-tab=today] .lbl', el => el.getBoundingClientRect().width < 2))
-    )
-      throw new Error('the tab names are hidden');
     await page.evaluate(id => {
       location.hash = '#/project/' + id;
     }, project.id);
@@ -3308,8 +3313,7 @@ try {
     await said('sheet:top', 'This project is no longer used for checklists');
     if (/pocket:checklists/i.test((await api('/projects/' + project.id)).description))
       throw new Error('the marker is still there');
-    if (!checklistsBefore && (await page.isVisible('nav.tabs a[data-tab=checklists]')))
-      throw new Error('the Checklists tab is still there');
+    await expect(page.locator('nav.tabs.icons a')).toHaveCount(3);
   });
   await step('new-project-for-checklists', async () => {
     if (await page.isVisible('#btn-sheet-close')) {
@@ -3334,7 +3338,6 @@ try {
       if (made.parent_project_id !== project.id) throw new Error(`the project was made in ${made.parent_project_id}`);
       if (!/<p>pocket:checklists<\/p>/.test(made.description || ''))
         throw new Error('the project is not marked for checklists: ' + made.description);
-      await page.waitForSelector('nav.tabs a[data-tab=checklists]');
       await page.waitForSelector(`#getting-started-${id} a[href$="/projects/${id}/settings/share"]`, {
         timeout: 15000,
       });

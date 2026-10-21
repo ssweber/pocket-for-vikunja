@@ -19,6 +19,8 @@ is a new 0.x.y.
 - Pocket opens on its saved screen sooner. It no longer waits for the list of projects, and it waits for the phone to
   open the Outbox only when a change may be waiting there.
 - A checklist opened before shows its steps at once from its saved copy, and then reloads from Vikunja.
+- The header always has the Today, Projects and Checklists tabs. With no checklist project, Checklists offers to set
+  one up.
 
 ### Fixed
 
