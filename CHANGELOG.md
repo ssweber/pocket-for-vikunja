@@ -20,6 +20,7 @@ is a new 0.x.y.
 - When the server's database fails, a change no longer waits in the Outbox for good. Pocket shows the error after a
   few tries.
 - A change made while another tab changed the Outbox is sent at once, not after the next reload.
+- When the server's rate limit is reached, Pocket waits as long as the server asks before it sends changes again.
 
 ## 0.2.0 (2026-10-19)
 

@@ -167,6 +167,7 @@ export default () => ({
   dropping: [], // keys of waiting files being cancelled, hidden meanwhile
   flushing: false,
   writing: 0, // changes on their way to Vikunja (api.js)
+  calmUntil: 0, // the time a 429's Retry-After ends, before which no keyed write is sent (api.js)
   unsent: null, // this user's outbox entries, including held and rejected entries, or null before loading
   starting: null, // a checklist being started, with its progress: {id, done, total}
   runFrom: '', // the last screen that wasn't a checklist, for the checklist's Back

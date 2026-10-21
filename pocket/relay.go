@@ -20,9 +20,10 @@
 // connect to Vikunja, isn't stored, so the request can be sent again. Vikunja changes nothing for a request that fails
 // that way.
 //
-// Vikunja's rate limit sees a relayed write twice. With ratelimit.kind: user, it counts against its user once as it
-// reaches the relay and once as the relay forwards it. With ip, every forwarded request reaches /api/v2 from Vikunja's
-// own machine, as 127.0.0.1, so they all count against that one address.
+// Vikunja's rate limit sees a relayed write twice, once as it reaches the relay and once as the relay forwards it to
+// /api/v2. Vikunja counts plugin routes and /api/v2 separately, so the forward can get a 429 that the first request
+// didn't. With ratelimit.kind: ip, every forwarded request reaches /api/v2 from Vikunja's own machine, as 127.0.0.1,
+// so they all count against that one address.
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
@@ -193,7 +194,7 @@ func relayWrite(c *echo.Context) error {
 
 	// The phone may hang up while this runs. The forward doesn't use the request's context, so it finishes and its
 	// answer is stored for the retry.
-	code, ct, out, sent, err := relayForward(c.Request(), target, body)
+	code, h, out, sent, err := relayForward(c.Request(), target, body)
 	if err != nil && !sent {
 		relayRelease(u.ID, key)
 		log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
@@ -206,10 +207,15 @@ func relayWrite(c *echo.Context) error {
 		log.Errorf("pocket: relay lost Vikunja's answer for key %q: %s", key, err)
 		return relayUnknown(c, relayLost)
 	}
+	ct := h.Get("Content-Type")
 	// A 5xx, or a 408 or 429 (Vikunja busy or rate-limited), says nothing was changed, and Pocket sends it again. So
 	// does a 401: the session ended after the relay's own check. Kept, it would sign the user out on every retry.
+	// Vikunja's Retry-After goes back with it, so Pocket waits as long as Vikunja's rate limit asks.
 	if code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
 		relayRelease(u.ID, key)
+		if ra := h.Get("Retry-After"); ra != "" {
+			c.Response().Header().Set("Retry-After", ra)
+		}
 		return relayAnswer(c, code, ct, out)
 	}
 	if err := relayStore(u.ID, key, code, ct, out); err != nil {
@@ -258,15 +264,15 @@ func relayAnswer(c *echo.Context, code int, ct string, body []byte) error {
 	return err
 }
 
-// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user. sent is false only
-// when the request never reached Vikunja.
-func relayForward(in *http.Request, target string, body []byte) (int, string, []byte, bool, error) {
+// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user, and returns its
+// status, headers and body. sent is false only when the request never reached Vikunja.
+func relayForward(in *http.Request, target string, body []byte) (int, http.Header, []byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), relayTimeout)
 	defer cancel()
 	base, transport := relayTarget()
 	req, err := http.NewRequestWithContext(ctx, in.Method, base+target, bytes.NewReader(body))
 	if err != nil {
-		return 0, "", nil, false, err
+		return 0, nil, nil, false, err
 	}
 	for _, h := range []string{"Authorization", "Content-Type", "Accept", "Accept-Language", "User-Agent"} {
 		if v := in.Header.Get(h); v != "" {
@@ -275,14 +281,14 @@ func relayForward(in *http.Request, target string, body []byte) (int, string, []
 	}
 	res, err := (&http.Client{Transport: transport}).Do(req)
 	if err != nil {
-		return 0, "", nil, !relayNotConnected(err), err
+		return 0, nil, nil, !relayNotConnected(err), err
 	}
 	defer res.Body.Close()
 	out, err := io.ReadAll(res.Body)
 	if err != nil {
-		return 0, "", nil, true, err
+		return 0, nil, nil, true, err
 	}
-	return res.StatusCode, res.Header.Get("Content-Type"), out, true, nil
+	return res.StatusCode, res.Header, out, true, nil
 }
 
 // relayNotConnected says whether an error from the forward came from dialing Vikunja, such as a refused connection or

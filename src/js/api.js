@@ -64,6 +64,16 @@ export async function tokenHash(t) {
 let serverOffset = null; // Vikunja's clock minus the phone's, from the Date header of its replies
 // Convert a time on the phone's clock to Vikunja's.
 export const serverTime = ms => ms + (serverOffset ?? 0);
+// The seconds a Retry-After header asks for, given as seconds or as an HTTP date on Vikunja's clock. Null when the
+// header is missing or is neither.
+export function retryAfter(v) {
+  if (/^\s*\d+\s*$/.test(v || '')) return +v;
+  const at = Date.parse(v || '');
+  return at ? Math.max(0, (at - serverTime(Date.now())) / 1000) : null;
+}
+// The longest a 429's Retry-After holds back the outbox, so a wrong header can't stop sending for hours.
+const MOST_RETRY = 300;
+let calmTimer;
 /* A file upload's body, as a browser builds one from FormData, with a boundary made from the upload's key. The relay
    answers a key sent again with another body with 422, and FormData picks a new boundary on every send. */
 function fileBody(file, name, key) {
@@ -167,6 +177,9 @@ async function request(
     !(await app.confirmAccount())
   )
     throw new ApiError(401, 'Someone else is signed in now');
+  // Until a 429's Retry-After has passed, a keyed write fails at once as another 429, without reaching Vikunja. The
+  // outbox keeps it, and sends it when the wait is over.
+  if (key && Date.now() < (app?.calmUntil || 0)) throw new ApiError(429, 'Too Many Requests');
   const headers = {};
   const token = sharedToken.get();
   if (auth && token) headers.Authorization = 'Bearer ' + token;
@@ -215,6 +228,13 @@ async function request(
       j = await res.json();
     } catch {}
     const reason = j.detail || j.message || res.statusText || 'HTTP ' + res.status;
+    // Vikunja's rate limit says how long to wait. The outbox waits that long, at most MOST_RETRY seconds, then sends.
+    const calm = res.status === 429 && Math.min(retryAfter(res.headers.get('retry-after')) ?? 0, MOST_RETRY);
+    if (calm > 0 && app && Date.now() + calm * 1000 > (app.calmUntil || 0)) {
+      app.calmUntil = Date.now() + calm * 1000;
+      clearTimeout(calmTimer);
+      calmTimer = setTimeout(() => app.flush(), calm * 1000);
+    }
     /* The relay answers 409 while the first request with this key still runs, so Pocket waits and asks again. A wait
        is at most 10 seconds, whatever Retry-After says. With Idempotency-Unknown, the relay doesn't know whether
        that request made the change, and only the user can tell. Vikunja's own 409, such as a link it has already, gives
@@ -222,8 +242,8 @@ async function request(
     if (res.status === 409 && key && j.code === undefined) {
       if (res.headers.get('idempotency-unknown') === 'true') throw new ApiError(409, reason, 'unknown');
       if (busy >= 3) throw new ApiError(409, reason, 'running');
-      const s = parseFloat(res.headers.get('retry-after'));
-      await new Promise(ok => setTimeout(ok, Math.min(s >= 0 ? s : 2, 10) * 1000));
+      const s = retryAfter(res.headers.get('retry-after')) ?? 2;
+      await new Promise(ok => setTimeout(ok, Math.min(s, 10) * 1000));
       return request(path, { method, body, raw, auth, retry, key, replayed, busy: busy + 1 });
     }
     throw new ApiError(res.status, reason, j.code);
