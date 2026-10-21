@@ -1,0 +1,80 @@
+# Worklist
+
+The open items from the roadmap, the Pocket project in Vikunja, a code review of v0.2.0 and a look at why Pocket
+opens slowly. They are built one at a time, in this order. Tick an item in the commit that finishes it. `npm run
+test:local` runs at the end of each batch. Delete this file when every item is ticked or moved back to the roadmap.
+
+The code review and the loading look were done by other sessions. Check each claim in the code before fixing it. A
+claim that turns out wrong is noted here and dropped.
+
+## Batch 1: fixes
+
+- [ ] **A failed update check reloads the page.** After a network failure or a 502, `sw.js` answers with the cached
+  page and a 200, and `updateIfNew()` reloads on any 200. Reload only when the server sent a different build. Compare
+  a build id written by `scripts/build.mjs` rather than file times.
+- [ ] **`relayClaim` reads any INSERT error as "key already taken".** If `pocket_relay` is missing, every write gets
+  a 409 with Retry-After, the phone waits for good, and the server logs nothing. When `relayGet` then finds no row,
+  log the INSERT error and answer 500.
+- [ ] **The relay prunes old keys before every write.** The `DELETE … WHERE created < ?` has no index on `created`,
+  and on SQLite it doubles the write locks per request. Prune at most once a minute and add the index.
+- [ ] **The relay doesn't check its path for `..`.** `"/api/v2/" + c.Param("*")` goes to Vikunja as it is. Refuse a
+  path with a `..` segment.
+- [ ] **The tests need Node 24, and nothing says so.** On Node 22, 19 unit tests fail, among them "each request
+  reaches Vikunja at most once for each key". The fake IndexedDB in `tests/unit/outbox-db.mjs` finishes transactions
+  on microtasks, so the result depends on V8's ordering. Real IndexedDB finishes them on tasks. Make the fake finish
+  on tasks, so the tests pass on Node 22 and 24, and add `"engines": { "node": ">=24" }` only if they still need it.
+  If a real bug shows up, fix it as its own commit.
+- [ ] **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too.
+  Accept `default_due_time` only as `HH:MM`.
+
+## Batch 2: import cycles
+
+No change in behaviour. The tests pass before and after.
+
+- [ ] **One import cycle runs through all of `ops/` and `app/tasks.js`.** The ops import `TASK`, `MOVED` and `opsId`
+  from the store, and the store imports `ops/index.js`. Move `TASK`, the `TASK_*` lists, `MOVED` and `opsId` into a
+  small module of their own, and move `DEFAULTS` out of `ops/index.js`, which `ops/comments.js` imports back. Then
+  delete the "import an op's helpers from here" warning in `ops/index.js`, and add a lint rule or test that fails on
+  a new cycle.
+- [ ] **A small cycle between `api.js`, `messages.js` and `checklists.js`.** Break it the same way, if the result is
+  simpler.
+
+## Batch 3: opening Pocket
+
+The steps below make Pocket open faster from its saved screen. A timing trace from the phone shows which of them
+matters there.
+
+- [ ] **The outbox holds up the saved Today.** `auth.js` waits up to 3 seconds for `sync.ready` before it shows saved
+  tasks. Find out what the wait protects, then shorten or remove it.
+- [ ] **Startup waits for projects after checking the account.** When the token has changed, startup checks `/user`
+  and then waits for `loadProjects()`. Show the saved screen as soon as the account is confirmed.
+- [ ] **A checklist doesn't open from its saved copy.** `savedView()` leaves checklists out. Opening one fetches the
+  parent, then each step, four at a time, and can wait another 600 ms for notes.
+- [ ] **UI, discuss first: always show the three tabs.** Today the header switches to the compact layout when
+  `checklistProjects` loads, so it can change from two tabs to three. The Checklists screen already has a setup card
+  for someone with no checklists.
+- [ ] **UI, discuss first: grey rows instead of "Loading…".** Static rows with the list's spacing, shown only when no
+  saved screen is ready. A refresh never replaces rows already shown.
+
+## Batch 4: features for 0.3.0
+
+Each is discussed, with a picture, before it is built.
+
+- [ ] **The batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let go so
+  its chips stay open. When the batch clears the first row's gap, the page shortens, and at the bottom of the page
+  the scroll that causes closes the chips. Hold the batch while chips are open, as it is held for a finger.
+- [ ] **Filter by label.** Rows don't show their labels today, so that comes first. Then tapping a label on a row
+  narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and clearing it, or leaving
+  Today, shows everything again. One label at a time. Typing `*errands` in search lists every open task with that
+  label, wherever it is due, grouped by project.
+- [ ] **Notes from the add box.** Text after ` // ` becomes the notes of the task or step. The spaces on both sides
+  keep `http://` and file paths in the title.
+- [ ] **A minimum time for a step, `!T#`.** To be defined with the user.
+- [ ] **A long press on "+ me"** offers the project's other people.
+
+## Batch 5: the phone's storage and the test tools
+
+- [ ] **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete
+  the oldest saved screen and try again.
+- [ ] **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers)
+  after opening the sheet and switching screens many times.

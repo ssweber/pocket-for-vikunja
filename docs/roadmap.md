@@ -64,15 +64,7 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
-2. **For 0.3.0: filtering by label.** Rows don't show their labels today, so that comes first. Then:
-   - Tapping a label on a row narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and
-     clearing it, or leaving Today, shows everything again. One label at a time.
-   - Typing `*errands` in search lists every open task with that label, wherever it is due, grouped by project.
-3. **For 0.3.0: the batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let
-   go so its chips stay open. When the batch clears the first row's gap, the page shortens, and at the bottom of the
-   page the scroll that causes closes the chips. Hold the batch while chips are open, as it is held for a finger.
-4. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
+`docs/design/worklist.md` lists the work in progress, in batches, in the order it is built.
 
 The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
 send whenever the user chooses.
@@ -83,16 +75,10 @@ send whenever the user chooses.
   never drops the outbox, and give each entry and saved screen a format version. Show an entry Pocket can't read in
   the Outbox with Cancel. Today such an entry breaks the Outbox's list (`op.text`) and the sender (`stagesOf`), and a
   start or a step that an older Pocket saved before they were ops is dropped unsent.
-- **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete the
-  oldest saved screen and try again.
 - **Deleted tasks.** In `docs/design/upstream-task-updated.md`, ask Vikunja for a way to learn which tasks were
   deleted, such as the ids deleted since a time, a soft-delete flag a filter can see, or a table of deleted ids kept
   for a set time. If Vikunja declines, build a change log in the plugin from Vikunja's task events. It can't replace
   a checklist's reload, because Vikunja sends no events for labels or reactions.
-- **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too. Accept
-  `default_due_time` only as `HH:MM`.
-- **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers) after
-  opening the sheet and switching screens many times.
 - **To discuss with the user first.** Screen readers (`aria-live` off `#view`, group titles as headings, rows as
   lists). Back restoring the scroll position. A step added under a template waits as a row at the end of its sheet,
   not after the step the box was under, until Vikunja has made it.
