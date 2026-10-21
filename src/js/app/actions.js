@@ -46,7 +46,8 @@ import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlock
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, sync, uuid7 } from '../sync.js';
 import { addLines, cancelling, cancelOf, movedFrom, opOf, personOf, tagOf, waitingPositions } from '../ops/index.js';
-import { copyOf, opsId } from './tasks.js';
+import { copyOf } from './tasks.js';
+import { opsId } from '../tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.

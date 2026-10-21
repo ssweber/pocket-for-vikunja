@@ -15,7 +15,7 @@ import { OP_WORDS } from '../messages.js';
 import { removeAssignees } from '../quickadd.js';
 import { ALREADY, sync, unpackParsed, uuid7 } from '../sync.js';
 import { ZERO } from '../util.js';
-import { opsId } from '../app/tasks.js';
+import { opsId } from '../tasks.js';
 import { figureOf } from './stages.js';
 
 const settle = (e, problem) => {

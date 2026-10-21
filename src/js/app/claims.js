@@ -3,7 +3,8 @@ import { allPages, api, ApiError } from '../api.js';
 import { comesRound, parseStep } from '../checklists.js';
 import { saved } from '../lists.js';
 import { claimsOnSlide } from '../progress.js';
-import { started, TASK } from './tasks.js';
+import { started } from './tasks.js';
+import { TASK } from '../tasks.js';
 
 const loading = new Set(); // usernames whose picture is being fetched
 const tried = new Map(); // username -> when the last picture request failed

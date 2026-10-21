@@ -1,7 +1,7 @@
 // Moving a task to another date, changing how it repeats, and the Undo of each.
 import { isSet, repeats } from '../dates.js';
 import { OP_WORDS } from '../messages.js';
-import { MOVED } from '../app/tasks.js';
+import { MOVED } from '../tasks.js';
 import { changed, now, patch } from './stages.js';
 
 // Vikunja writes a date in its own format, so two dates are compared as times.

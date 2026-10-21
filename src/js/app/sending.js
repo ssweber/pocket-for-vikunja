@@ -53,7 +53,7 @@ import { positionOrder, SPACING } from '../order.js';
 import { todayItems } from '../cards.js';
 import { addLines, cancelOf, linesUnder, movedFrom, noneWaiting, opOf, passUps } from '../ops/index.js';
 import { heldTasks, hold, waits } from './acts.js';
-import { opsId } from './tasks.js';
+import { opsId } from '../tasks.js';
 
 let waitTimer;
 // A flush asked for while one runs, which runs once more when that one ends. The first may have passed by an entry

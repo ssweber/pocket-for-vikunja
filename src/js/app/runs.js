@@ -62,7 +62,8 @@ import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks } from './acts.js';
 import { lastTick, stagesOf, stepsAdding } from '../ops/index.js';
-import { copyOf, opsId, putting, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, putting, started } from './tasks.js';
+import { opsId, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from '../tasks.js';
 
 const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw

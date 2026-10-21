@@ -8,7 +8,7 @@ import { CANCEL } from '../sync.js';
 import { ZERO } from '../util.js';
 import { DONE_MARK, SKIP_MARK } from '../checklists.js';
 import { FINISHED_MEANWHILE, OP_WORDS } from '../messages.js';
-import { MOVED } from '../app/tasks.js';
+import { MOVED } from '../tasks.js';
 import { backOf, changed, comment, figure, mark, patch, tick, unmark, untick } from './stages.js';
 import { marked, said } from './shown.js';
 

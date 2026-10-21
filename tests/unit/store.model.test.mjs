@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { fakeVikunja } from './fake.mjs';
-import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { older, uuid7 } from '../../src/js/sync.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 

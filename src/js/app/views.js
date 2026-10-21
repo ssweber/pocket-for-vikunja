@@ -40,7 +40,8 @@ import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 import { tickFeel } from '../progress.js';
 import { shared } from './core.js';
-import { droppedSince, putting, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
+import { droppedSince, putting, started } from './tasks.js';
+import { TASK_COUNT, TASK_COUNT_REACTIONS } from '../tasks.js';
 
 export let renderSeq = 0;
 // Stop every screen load still on its way from showing or saving what it brings, as a user signs out.

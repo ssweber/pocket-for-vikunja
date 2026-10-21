@@ -3,7 +3,8 @@
 import { component, outboxOf } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
-import tasks, { started, TASK } from '../../src/js/app/tasks.js';
+import tasks, { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';

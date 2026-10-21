@@ -5,7 +5,8 @@ import { sender, reached, lostOnce, noConnection, settle, offlineSender, lastSai
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addLines, OPS } from '../../src/js/ops/index.js';
-import { copyOf, started, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { CANCEL, sync } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { NOT_KEPT, UNKNOWN } from '../../src/js/messages.js';

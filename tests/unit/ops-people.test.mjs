@@ -6,7 +6,8 @@ import { sender, reached, noConnection, lastSaid, settle } from './ops-helpers.m
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
-import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
+import { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { addLines } from '../../src/js/ops/index.js';
 import actions from '../../src/js/app/actions.js';

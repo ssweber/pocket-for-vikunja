@@ -2,7 +2,7 @@
 import { OP_WORDS } from '../messages.js';
 import { comment } from './stages.js';
 import { said } from './shown.js';
-import { DEFAULTS } from './index.js';
+import { DEFAULTS } from './defaults.js';
 
 const add = (t, a) => said({ ...t }, a);
 /* A comment's text goes back to its box when Vikunja refuses it or Cancel takes it out, so the text is never both in

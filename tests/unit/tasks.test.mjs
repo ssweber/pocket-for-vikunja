@@ -3,20 +3,8 @@ import { component, fakeVikunja, outboxOf, QUEUED, sendStages } from './fake.mjs
 import { watching } from './reactive.mjs';
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import tasks, {
-  copyOf,
-  dropCopies,
-  putting,
-  SAVED,
-  sendingOp,
-  started,
-  TASK,
-  TASK_COUNT,
-  TASK_COUNT_REACTIONS,
-  TASK_REACTIONS_COMMENTS,
-  writes,
-  ID_CHUNK,
-} from '../../src/js/app/tasks.js';
+import tasks, { copyOf, dropCopies, putting, sendingOp, started, writes, ID_CHUNK } from '../../src/js/app/tasks.js';
+import { SAVED, TASK, TASK_COUNT, TASK_COUNT_REACTIONS, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { app as current } from '../../src/js/util.js';
 import acts from '../../src/js/app/acts.js';
 import actions from '../../src/js/app/actions.js';

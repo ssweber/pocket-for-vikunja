@@ -26,7 +26,8 @@ import {
   stageView,
   stagesOf,
 } from '../ops/index.js';
-import { CREATED, firstSent, opsId, overlaps, sendingOp, started, TASK, writes } from './tasks.js';
+import { firstSent, overlaps, sendingOp, started, writes } from './tasks.js';
+import { CREATED, opsId, TASK } from '../tasks.js';
 
 let actCount = 0; // orders things done in the same millisecond
 export const nextN = () => ++actCount;

@@ -37,7 +37,7 @@ registerHooks({
 });
 const tab = async name => {
   const from = path => import(new URL(`${path}?tab=${name}`, import.meta.url));
-  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages, dates, checklists, util] =
+  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages, dates, checklists, util, fields] =
     await Promise.all(
       [
         './fake.mjs',
@@ -54,6 +54,7 @@ const tab = async name => {
           'dates',
           'checklists',
           'util',
+          'tasks',
         ].map(p => `../../src/js/${p}.js`),
       ].map(from),
     );
@@ -71,6 +72,7 @@ const tab = async name => {
     dates,
     checklists,
     util,
+    fields,
     parts: [tasks, acts, sending, outbox, runs].map(m => m.default).concat(deletes),
   };
 };
@@ -180,7 +182,7 @@ async function open(tab, x) {
       }),
     }),
   );
-  app.change(w => w.read(list, tab.tasks.TASK_REACTIONS_COMMENTS, tab.tasks.started()));
+  app.change(w => w.read(list, tab.fields.TASK_REACTIONS_COMMENTS, tab.tasks.started()));
   for (const t of list) app.row(t);
   app.refreshPending();
   x.tabs.push(app);

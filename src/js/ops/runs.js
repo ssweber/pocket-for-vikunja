@@ -17,7 +17,7 @@ import {
   withRunMark,
   withStepLine,
 } from '../checklists.js';
-import { TASK } from '../app/tasks.js';
+import { TASK } from '../tasks.js';
 import { LINE } from './add.js';
 import { cancelledStages, figureOf, notFound, now, patch, place, remove, unadd, unplace } from './stages.js';
 

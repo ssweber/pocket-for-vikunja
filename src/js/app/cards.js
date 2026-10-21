@@ -13,7 +13,8 @@ import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js'
 import { listViewOf, positionOrder } from '../order.js';
 import { isMovedGap } from '../lists.js';
 import { completeAsk, headText, ringSaid } from '../messages.js';
-import { started, TASK_COUNT } from './tasks.js';
+import { started } from './tasks.js';
+import { TASK_COUNT } from '../tasks.js';
 
 const shownStep = new Map(); // card id -> the step last on its top row, to tell when a new one arrives
 let cardIO = null; // the IntersectionObserver that collapses an opened card once it is off the screen

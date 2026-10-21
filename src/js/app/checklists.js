@@ -48,7 +48,8 @@ import {
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
 import { addLines, lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
-import { copyOf, putting, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, putting, started } from './tasks.js';
+import { TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from '../tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
