@@ -236,6 +236,7 @@ export default {
     const off = [],
       close = () => {
         for (const f of off.splice(0)) f();
+        this.holdBatch(false);
         if (shut === close) shut = null;
         set.remove();
         held.classList.remove('throw-from');
@@ -250,8 +251,9 @@ export default {
          the sheet's Due does: propTap). Choosing a day there closes the menu and moves the task.
          A tap anywhere else, Escape, or the page scrolling, rotating or being left closes the menu, changes nothing,
          and puts the focus back on the row. An arrow key moves to the date in that direction. Tab stays among the
-         chips. */
-      open(pick, picked) {
+         chips. While they are open, rows stay where they are, as under a finger (holdBatch). */
+      open: (pick, picked) => {
+        this.holdBatch(true);
         chipsOpen(set, t.title);
         chipsLight(set, null);
         let pressed = false;

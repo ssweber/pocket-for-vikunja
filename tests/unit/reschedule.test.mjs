@@ -257,6 +257,30 @@ test('the gap leaves with the batch, and stays while a finger is down', async c 
   await new Promise(setImmediate);
   assert.deepEqual([rows('week'), rows('today'), app.leaving], [[], [1], {}], 'then it leaves');
 });
+test('the gap stays while date chips are open, and leaves 3 seconds after they close', async c => {
+  const { app, rows } = onToday(
+    c,
+    [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() }],
+    {},
+    ['Date', 'setTimeout'],
+  );
+  app.view.groups[4].tasks.push(app.tasks[1]);
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => [];
+  c.after(() => (was ? (document.querySelectorAll = was) : delete document.querySelectorAll));
+  await moveTo(app, app.tasks[1], new Date(), 'Today');
+  app.holdBatch(true); // another row's chips open (throwView, app/throw.js)
+  c.mock.timers.tick(10000);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), ['Moved to Today'], 'the gap stays while the chips are open');
+  app.holdBatch(false);
+  c.mock.timers.tick(2999);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), ['Moved to Today'], 'and for 3 seconds after they close');
+  c.mock.timers.tick(1);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), [], 'then it leaves');
+});
 test('Undo puts the task back in Next 7 days where its gap was, and takes it out of Today', async c => {
   const { v, app, at, rows } = onToday(c, [
     { id: 1, title: 'Order milk', due_date: new Date(2026, 9, 9, 9).toISOString() },

@@ -106,7 +106,7 @@ matters there.
 
 Each is discussed, with a picture, before it is built.
 
-- [ ] **The batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let go so
+- [x] **The batch waits while date chips are open.** Throw a row, then within 3 seconds hold another and let go so
   its chips stay open. When the batch clears the first row's gap, the page shortens, and at the bottom of the page
   the scroll that causes closes the chips. Hold the batch while chips are open, as it is held for a finger.
 - [ ] **Filter by label.** Rows don't show their labels today, so that comes first. Then tapping a label on a row

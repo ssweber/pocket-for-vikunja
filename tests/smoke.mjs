@@ -3374,6 +3374,51 @@ try {
       for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
+  /* Open date chips hold the batch, as a finger does. Removing a moved row's gap shortens the page, and at the bottom
+     of a long Today the scroll that causes would close the chips. */
+  await step('a-hold-on-today-keeps-the-batch-waiting-while-its-dates-are-open', async () => {
+    const ts = [];
+    for (let i = 0; i < 14; i++)
+      ts.push(
+        await make(`Pocket smoke wait ${String(i).padStart(2, '0')} ${stamp}`, { due_date: dayAt(6, 23, 40 + i) }),
+      );
+    const menu = t => page.getByRole('dialog', { name: `Move “${t.title}” to another day` });
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(rowOf(ts.at(-1).title))).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      await flickOnToday(rowOf(ts[0].title), 50, 4, 'tomorrow');
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toBeVisible();
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      if (!(await page.evaluate(() => scrollY > 0))) throw new Error('Today is too short to scroll');
+      // The row nearest the middle of the screen, so neither the header nor the add box is under the touch.
+      const mid = await page.evaluate(
+        titles =>
+          titles
+            .map(t => [...document.querySelectorAll('#view .row')].find(r => r.innerText.includes(t)))
+            .map((r, i) => [i, Math.abs(r.getBoundingClientRect().top - innerHeight / 2)])
+            .sort((x, y) => x[1] - y[1])[0][0],
+        ts.map(t => t.title),
+      );
+      await holdOnToday(rowOf(ts[mid].title), { scroll: false });
+      await page.mouse.up();
+      await expect(menu(ts[mid]), 'the chips open').toBeVisible();
+      await later(5000);
+      await expect(menu(ts[mid]), 'the chips are still open after 5 seconds').toBeVisible();
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toBeVisible();
+      // Closing the chips lets the batch clear 3 seconds later.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await later(4000);
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toHaveCount(0);
+      await synced(page);
+    } finally {
+      await page.mouse.up();
+      await page.keyboard.press('Escape');
+      for (const t of ts) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
   await step('a-hold-on-today-leaves-a-repeating-task-where-it-is-and-says-why', async () => {
     const r = await make(`Pocket smoke hold repeats ${stamp}`, { due_date: todayAt(21), repeat_after: 86400 }),
       R = rowOf(r.title);

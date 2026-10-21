@@ -51,7 +51,7 @@ export function batchTimer(go, ms = BATCH_MS) {
       arm();
     },
     // A touch holds everything. When it ends, the wait starts over. `id` is the pointer's id, because two touches can
-    // be down at once.
+    // be down at once. Open date chips hold it the same way, as 'chips' (holdBatch, app/leaving.js).
     down(id) {
       fingers.add(id);
       arm();
