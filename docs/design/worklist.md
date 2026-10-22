@@ -9,7 +9,7 @@ report.
 
 ## A. Decided, no picture
 
-- [ ] **A1. Outbox wording.** A refused note still reads "Adding notes on …" (`refused` in `messages.js`). It should
+- [x] **A1. Outbox wording.** A refused note still reads "Adding notes on …" (`refused` in `messages.js`). It should
       read "Adding notes to …", like the row above it.
 - [ ] **A2. Label chips under search** are under 44 px tall. Give each a 44 px tap area without making the bar look
       taller than it needs to.

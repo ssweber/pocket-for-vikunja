@@ -316,7 +316,7 @@ const EDITED = {
   },
   addNotes: {
     text: (a, title) => `Adding notes to ${task(title)}`,
-    refused: title => 'Adding notes' + on(title),
+    refused: title => 'Adding notes' + (title ? ` to “${named(title)}”` : ''),
     dropped: (a, title) => `${it(title)} notes stay as they are.`,
     maybe: (a, title) => still(title, 'have your new notes'),
   },
