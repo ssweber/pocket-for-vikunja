@@ -690,7 +690,7 @@ test('a checklist step swipes for progress like a task, and only an inserted ste
   assert.equal(at(1), null, "a finished checklist's steps do not swipe");
 });
 
-/* A step with !T# that can't be ticked yet (stepLock) springs back from a swipe right, on a checklist's screen and in
+/* A step that can't be ticked yet (stepLock) springs back from a swipe right, on a checklist's screen and in
    any list, and nothing is set. */
 test("a step that can't be ticked yet springs back from a swipe, and its progress stays as it is", () => {
   const app = component(progress),
@@ -707,7 +707,7 @@ test("a step that can't be ticked yet springs back from a swipe, and its progres
     isRunTask: () => false,
     ringOf: () => null,
     rowRing: () => null,
-    stepLock: t => (t.id === 1 ? { at: Date.now() + 6e4, from: 'Mix the dough' } : null),
+    stepLock: t => (t.id === 1 ? { icon: 'hourglass', at: Date.now() + 6e4, from: 'Mix the dough' } : null),
     claimOnSlide: () => () => set.push('claim'),
     stepProgress: (s, pct) => set.push(['step', pct]),
     setProgress: (t, pct) => set.push(['task', pct]),

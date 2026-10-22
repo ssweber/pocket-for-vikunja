@@ -2596,18 +2596,21 @@ try {
       throw new Error('the template or a step is still there');
   });
 
-  /* A step with !T# can't be ticked before its time. Until Mix the dough is done, Shape the loaves waits for it. Then
-     its Done button counts down, and its tick on the checklist's screen and on Today's card shows a padlock. A tap on
-     the tick says when it can be ticked, a tap on Done does nothing, and a swipe right springs back. Skip still works,
-     here on Bake. At its time Shape the loaves is ticked as any step. */
-  await step('a-step-with-a-padlock-waits-for-its-time', async () => {
+  /* "Wait for step times", turned on by tapping its row in the template's sheet, writes pocket:wait in the template's
+     notes, and an hourglass shows beside each step's time. In a checklist started then, Shape the loaves waits for Mix
+     the dough, then for its time. Its Done button counts down, and its tick on the checklist's screen and on Today's
+     card shows the hourglass. A tap on the tick says when it can be ticked, a tap on Done does nothing, and a swipe
+     right springs back. Skip still works, here on Bake. At its time Shape the loaves is ticked as any step. */
+  let bread = null,
+    breadRun = null;
+  await step('a-template-that-waits-for-step-times', async () => {
     const label =
       (await api('/labels?s=template')).items?.find(l => l.title === 'template') ||
       (await api('/labels')).items?.find(l => l.title === 'template');
     const make = async (title, done) =>
       api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, done }) });
-    const tpl = await make(`Bread ${stamp}`, false);
-    for (const title of ['Mix the dough', 'Shape the loaves !T#2m', 'Bake !T#5m']) {
+    const tpl = (bread = await make(`Bread ${stamp}`, false));
+    for (const title of ['Mix the dough', 'Shape the loaves T#2m', 'Bake T#5m']) {
       const st = await make(title, true);
       await api(`/tasks/${tpl.id}/relations`, {
         method: 'POST',
@@ -2622,16 +2625,29 @@ try {
     await page.evaluate(() => {
       location.hash = '#/checklists';
     });
+    await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .body`, { timeout: 15000 });
+    const hourglass = '#d-subtasks .row:nth-of-type(2) .meta use[href="#i-hourglass"]';
+    await expect(page.locator('#d-wait')).not.toBeChecked({ timeout: 15000 });
+    await expect(page.locator(hourglass)).toHaveCount(0);
+    await page.click('#d-rules b:text-is("Wait for step times")'); // the whole row flips the switch
+    await expect(page.locator('#d-wait')).toBeChecked();
+    await expect(page.locator(hourglass)).toHaveCount(1);
+    await until('the template never got its pocket:wait line', async () =>
+      /<p>pocket:wait<\/p>/.test((await api('/tasks/' + tpl.id)).description),
+    );
+    await expect(page.locator('#d-desc')).not.toContainText('pocket:');
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .cl-start`, { timeout: 15000 });
     await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
     await page.click('#start-go');
     await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
-    const run = +(await page.evaluate(() => location.hash)).split('/').pop();
+    const run = (breadRun = +(await page.evaluate(() => location.hash)).split('/').pop());
     runs.push(run);
     const [mix, shape, bake] = (await subtasks(run)).map(x => x.id),
       row = id => `#run-steps .row[data-id="${id}"]`,
       done = '#step-done';
-    await page.waitForSelector(`${row(shape)} > button.check.locked`, { timeout: 15000 });
+    await page.waitForSelector(`${row(shape)} > button.check.locked use[href="#i-hourglass"]`, { timeout: 15000 });
     await page.click(`${row(shape)} > button.check`);
     await said('step', 'Waiting for Mix the dough');
     await page.click(`${row(bake)} .body`);
@@ -2650,7 +2666,7 @@ try {
     await later(3000);
     await synced(page);
     if ((await task(shape)).done) throw new Error('Shape the loaves was ticked before its time');
-    // On Today, the checklist's card shows Shape the loaves with a padlock, and a tap on it ticks nothing.
+    // On Today, the checklist's card shows Shape the loaves with the hourglass, and a tap on it ticks nothing.
     await page.evaluate(() => {
       location.hash = '#/today';
     });
@@ -2662,9 +2678,10 @@ try {
       location.hash = '#/run/' + id;
     }, run);
     await page.click(`${row(shape)} .body`, { timeout: 15000 });
-    /* At its time, Done is back, and the tick has no padlock. Rather than wait 2 minutes, the test moves the step's due
-       date to 4 seconds from now in Vikunja, which Pocket keeps because it was changed after Mix the dough was done.
-       Moving the page's clock would not do, because Pocket counts on Vikunja's clock from each reply's Date header. */
+    /* At its time, Done is back, and the tick has no hourglass. Rather than wait 2 minutes, the test moves the step's
+       due date to 4 seconds from now in Vikunja, which Pocket keeps because it was changed after Mix the dough was
+       done. Moving the page's clock would not do, because Pocket counts on Vikunja's clock from each reply's Date
+       header. */
     await new Promise(r => setTimeout(r, 1100)); // a change in the same second as the tick counts as before it
     await api('/tasks/' + shape, {
       method: 'PATCH',
@@ -2677,6 +2694,59 @@ try {
     await expect(page.locator(`${row(shape)} > button.check.locked`)).toHaveCount(0);
     await page.click(done);
     await until('Shape the loaves was never done', async () => (await task(shape)).done);
+  });
+
+  /* "Steps in order" turned on, and "Wait for step times" off, in the same template. The checklist started before keeps
+     the settings it started with. In a new one, Bake's Done names Shape the loaves, the nearest open step above it, and
+     a tap on its tick says so. Skipping Shape the loaves leaves Mix the dough to finish first, and once that is done,
+     Bake is ticked as any step, with no wait for its time. */
+  await step('a-template-with-steps-in-order', async () => {
+    if (!bread) throw new Error('needs a-template-that-waits-for-step-times');
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .body`, { timeout: 15000 });
+    await page.click('#d-rules b:text-is("Steps in order")');
+    await page.click('#d-rules b:text-is("Wait for step times")');
+    await expect(page.locator('#d-order')).toBeChecked();
+    await expect(page.locator('#d-wait')).not.toBeChecked();
+    await expect(page.locator('#d-subtasks .meta use[href="#i-hourglass"]')).toHaveCount(0);
+    await until('the template never swapped its settings lines', async () => {
+      const d = (await api('/tasks/' + bread.id)).description;
+      return /<p>pocket:in-order<\/p>/.test(d) && !/pocket:wait/.test(d);
+    });
+    const kept = (await api('/tasks/' + breadRun)).description;
+    if (!/<p>pocket:wait<\/p>/.test(kept) || /pocket:in-order/.test(kept))
+      throw new Error('the checklist started before has ' + kept);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .cl-start`, { timeout: 15000 });
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    await page.click('#start-go');
+    await page.waitForFunction(id => location.hash !== '#/run/' + id && /^#\/run\/\d+$/.test(location.hash), breadRun, {
+      timeout: 30000,
+    });
+    const run = +(await page.evaluate(() => location.hash)).split('/').pop();
+    runs.push(run);
+    const [mix, shape, bake] = (await subtasks(run)).map(x => x.id),
+      row = id => `#run-steps .row[data-id="${id}"]`,
+      done = '#step-done';
+    await page.waitForSelector(`${row(bake)} > button.check.locked use[href="#i-lock"]`, { timeout: 15000 });
+    await page.click(`${row(bake)} .body`);
+    await expect(page.locator(done)).toHaveText('After Shape the loaves');
+    await page.click(`${row(bake)} > button.check`);
+    await said('step', 'Bake can be ticked after Shape the loaves');
+    await page.click(`${row(shape)} .body`);
+    await expect(page.locator(done)).toHaveText('After Mix the dough');
+    await page.click('#step-skip');
+    await until('Shape the loaves was never skipped', async () => (await task(shape)).done);
+    await page.click(`${row(bake)} .body`);
+    await expect(page.locator(done)).toHaveText('After Mix the dough');
+    await page.click(`${row(mix)} > button.check`);
+    await until('Mix the dough was never done', async () => (await task(mix)).done);
+    await expect(page.locator(done)).toHaveText('Done');
+    await page.click(done);
+    await until('Bake was never done', async () => (await task(bake)).done);
   });
 
   await step('asks-on-a-step', async () => {

@@ -101,11 +101,11 @@ A checklist template is a procedure done repeatedly. Starting it creates a check
 
 **Completion record.** Done is a ✅ reaction and skipped is ⏭️, so the web app shows "Done by … at 4:46 PM". Vikunja only lets users remove their own reactions, so un-ticking someone else's step asks first and leaves their reaction in place.
 
-**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. `pocket:ask …` on a step is an ask, and `pocket:answer` ends an answer comment (see [Asks](#asks)). Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
+**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A recurring template is a repeating task there, and ticking it in the web app skips that occurrence. A checklist is a copy named like "Opening up · Oct 4 · #3". Pocket keeps its own records as lines in descriptions. Leave them in place. `pocket:checklists` in a project's description marks the project. `pocket:order 12 15 13` in a template's or checklist's description is the step order. Steps it doesn't list sort last. `pocket:wait` and `pocket:in-order` in a template's or checklist's description are its two switches. `pocket:run` marks a checklist, `pocket:step Preheat T#10m` on a step is the template step it was copied from, and `pocket:added` marks a step inserted or repeated while the checklist was running. `pocket:ask …` on a step is an ask, and `pocket:answer` ends an answer comment (see [Asks](#asks)). Pocket hides any line starting with `pocket:` from the notes and keeps it when the notes are edited.
 
 ## Timed steps
 
-Write the delay in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**". A chip shows what was parsed. To count from a different step, select it in the chip, or write "**20 minutes after** Turn on the espresso machine". Durations that describe the action, like "steam **for** 2 minutes", aren't parsed. To stop the step being ticked before its time, tap the padlock in the chip.
+Write the delay in the step: "Dial in the grinder **in 20 min**", "Take the croissants out **after 18 minutes**". A chip shows what was parsed. To count from a different step, select it in the chip, or write "**20 minutes after** Turn on the espresso machine". Durations that describe the action, like "steam **for** 2 minutes", aren't parsed.
 
 Pocket stores the timer in the step's title using PLC duration syntax, which is also how to enter one in Vikunja's web app:
 
@@ -114,13 +114,13 @@ Pocket stores the timer in the step's title using PLC duration syntax, which is 
 | `Wipe the counters T#20m` | 20 minutes after the previous step is done. For the first step, after the checklist starts. |
 | `Put the croissants in the oven {#croissants}` | No timer. `{#croissants}` names the step. |
 | `Take the croissants out T#18m:croissants` | 18 minutes after the step named "croissants" is done, whatever is done in between. |
-| `Glaze the croissants !T#5m` | 5 minutes after the previous step is done, as with `T#5m`. Pocket doesn't let the step be ticked before then. Skip still works. |
 
 - Units: `d`, `h`, `m`, `s`, `ms`. They combine: `T#1h30m`.
 - A timer must refer to an earlier step, and names must be unique. Pocket checks this on edit, reorder and start.
-- Checklist steps get their titles with `T#`, `!T#` and `{#…}` removed.
-- Vikunja's web app doesn't know `!T#`, so a step can be ticked there before its time.
+- Checklist steps get their titles with `T#` and `{#…}` removed.
 - A step inserted during a checklist has no timer and isn't "the previous step" for the one after it. A step timed from a repeated step counts from whichever copy was done last.
+
+**Waiting and order.** Two switches under a template's steps are off at first. **Wait for step times** stops a timed step being ticked before its time. An hourglass marks the step, and its **Done** counts down. **Steps in order** stops a step being ticked while a step above it is open. A padlock marks the step, and its **Done** names the step to finish first. Skip still works on a locked step, and a step added during a checklist never waits for a time. A checklist keeps the settings it started with. Vikunja's web app doesn't know them, so a step can be ticked there at any time.
 
 ## Asks
 

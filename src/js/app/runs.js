@@ -20,6 +20,7 @@ import {
   parseStep,
   plainRun,
   runParts,
+  runRules,
   plainStep,
   problemText,
   runWithoutDay,
@@ -59,6 +60,8 @@ import {
   startMarksDone,
   waitText,
   tickableAt,
+  tickableAfter,
+  doneAfter,
   waitingFor,
   waitingText,
 } from '../messages.js';
@@ -596,7 +599,8 @@ export default {
     });
     // When each step is due (stepTimes), with the phone's time for a tick still in the outbox.
     const now = serverTime(this.runNow),
-      times = stepTimes(steps.map((s, i) => ({ ...s, due_date: base[i].due_date, updated: base[i].updated })));
+      times = stepTimes(steps.map((s, i) => ({ ...s, due_date: base[i].due_date, updated: base[i].updated }))),
+      rules = runRules(run.description);
     steps.forEach((s, i) => {
       const { time, from, due } = times[i],
         waitsOn =
@@ -607,14 +611,20 @@ export default {
               : `when “${from.title}” is done`;
       const left = due ? due - now : 0,
         soon = Math.abs(left) < 864e5,
-        lock = lockOf(s, times[i], now);
+        lock = lockOf(steps, i, times, rules, now);
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
       s.counting = !s.done && time?.offset != null && !!due && soon; // a countdown: pinned at the top while it runs
       s.dueAt = due ? +due : Infinity;
       s.countText = s.counting ? countText(left) : '';
-      // A step with !T# can't be ticked yet. Its Done button says why, counting down to the second.
-      s.lock = lock && { at: lock.at, from: lock.from?.title ?? null };
-      s.lockText = !lock ? '' : lock.at === null ? waitingFor(lock.from.title) : waitingText(left);
+      // A step that can't be ticked yet (lockOf). Its Done button says why, counting a time down to the second.
+      s.lock = lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
+      s.lockText = !lock
+        ? ''
+        : lock.icon === 'lock'
+          ? doneAfter(lock.from.title)
+          : lock.at === null
+            ? waitingFor(lock.from.title)
+            : waitingText(left);
       s.dueText = waitsOn
         ? 'Due ' + waitsOn
         : s.counting
@@ -838,10 +848,10 @@ export default {
   isStepRow(t, g) {
     return !!g.run || (g.sheet ? this.checklistRole === 'run' : this.role(t) === 'step');
   },
-  /* Whether step `t` can't be ticked yet, at server time `now`: a step with !T# before its time (lockOf). Returns null,
-     or {at: when it can be ticked, or null while it waits on a step, from: that step's title}. On the checklist's screen
-     this is the screen's own reading of the step. Elsewhere, as on Today's card, it is worked out the same way from the
-     checklist's steps as the phone has them. */
+  /* Whether step `t` can't be ticked yet, at server time `now`, under its checklist's settings (lockOf). Returns null,
+     or {icon, at: when it can be ticked, or null while it waits on a step, from: that step's title}. On the checklist's
+     screen this is the screen's own reading of the step. Elsewhere, as on Today's card, it is worked out the same way
+     from the checklist's steps as the phone has them. */
   stepLock(t, now = serverTime(Date.now())) {
     if (!t || t.done || t.pending) return null;
     const v = this.route.name === 'run' && this.view.shownRun?.steps.includes(t.id) ? this.runView : null,
@@ -849,8 +859,10 @@ export default {
     return lock && (lock.at === null || lock.at > now) ? lock : null;
   },
   storedLock(t, now) {
-    const run = this.tasks[this.stepRun(this.tasks[t.id] || t)];
-    if (!run || !parseStep(plainStep(this.tasks[t.id] || t).tpl || '').strict) return null;
+    const run = this.tasks[this.stepRun(this.tasks[t.id] || t)],
+      rules = runRules(run?.description);
+    if (!rules.order && (!rules.wait || parseStep(plainStep(this.tasks[t.id] || t).tpl || '').offset === null))
+      return null;
     const steps = stepsOf(run)
       .map(x => this.tasks[x.id] || x)
       .filter(x => !this.beingDeleted(x.id))
@@ -860,21 +872,23 @@ export default {
         return { ...s, title: parseStep(s.title).title, doneAt, waiting: !!tick };
       });
     const i = steps.findIndex(s => s.id === t.id),
-      lock = i < 0 ? null : lockOf(steps[i], stepTimes(steps)[i], now);
-    return lock && { at: lock.at, from: lock.from?.title ?? null };
+      lock = i < 0 ? null : lockOf(steps, i, stepTimes(steps), rules, now);
+    return lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
   },
-  /* Whether a step's tick shows a padlock. A checklist's screen checks each second (runNow), and Today each minute, or
-     each second near a step's time (stepNow). A row that isn't a step reads no time, so the clock doesn't redraw it. */
+  /* The icon a step's tick shows in place of its tick, 'lock' or 'hourglass', or '' when the step can be ticked. A
+     checklist's screen checks each second (runNow), and Today each minute, or each second near a step's time (stepNow).
+     A row that isn't a step reads no time, so the clock doesn't redraw it. An order lock opens when the step above is
+     ticked, which changes the tasks the lock is read from. */
   rowLock(t, g) {
-    if (!g.run && this.stepRun(t) == null) return false;
-    return !!this.stepLock(t, serverTime(g.run ? this.runNow : this.stepNow()));
+    if (!g.run && this.stepRun(t) == null) return '';
+    return this.stepLock(t, serverTime(g.run ? this.runNow : this.stepNow()))?.icon || '';
   },
   /* A tap on the tick of a step that can't be ticked yet says when it can, and ticks nothing. A list or a sheet says it
      on the step's row. A checklist's screen (`run`) has no messages on its rows, so it says it on the step card. */
   lockedTap(t, run = false) {
     const lock = this.stepLock(t);
     if (lock)
-      this.say(tickableAt(t.title, lock.at, lock.from), {
+      this.say(lock.icon === 'lock' ? tickableAfter(t.title, lock.from) : tickableAt(t.title, lock.at, lock.from), {
         row: run ? null : { id: t.id, stays: true },
         place: ['sheet:top', 'step', 'run'],
       });

@@ -42,9 +42,9 @@
   <div class="step-acts" x-show="!runView.finished && canWrite(runTask.project_id)">
     <!-- The buttons keep the same text while a comment is being written, so they don't change size under the user's
          thumb. A note under the comment says the comment is sent with them. -->
-    <!-- A step with !T# can't be ticked before its time. Until then Done is grey with a padlock, says what it waits for,
-         and a tap does nothing (runView.step.lock). -->
-    <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" :class="{locked: !!runView.step.lock}" :aria-disabled="String(!!runView.step.lock)" @click="runView.step.lock || tickStep(runView.step, 'done')"><svg class="i"><use :href="runView.step.lock ? '#i-lock' : '#i-check'"/></svg><span class="num" x-text="runView.step.lockText || 'Done'"></span></button></template>
+    <!-- A step that can't be ticked yet (runView.step.lock) has a grey Done with the lock's icon, which says what the
+         step waits for. A tap on it does nothing. -->
+    <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" :class="{locked: !!runView.step.lock}" :aria-disabled="String(!!runView.step.lock)" @click="runView.step.lock || tickStep(runView.step, 'done')"><svg class="i"><use :href="'#i-' + (runView.step.lock?.icon || 'check')"/></svg><span class="num" x-text="runView.step.lockText || 'Done'"></span></button></template>
     <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
     <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
   </div>

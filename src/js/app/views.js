@@ -323,11 +323,13 @@ export default {
       const s = this.stepShown(t),
         note = this.stepNote(t),
         { asks, bad } = stepAsks(t.description);
+      // With "Wait for step times" on, an hourglass beside a step's time says the step can't be ticked before it.
       return [
         (s.problem || s.text) && {
           key: 'when',
           cls: 'num' + (s.problem ? ' due overdue' : ''),
           text: s.problem || s.text,
+          ...(!s.problem && s.timed && this.templateRules.wait && { icon: 'hourglass' }),
         },
         asks.length && asksMeta(asks),
         bad.length && { key: 'bad', cls: 'due overdue', text: `“${bad[0].line}”: ${bad[0].why}` },

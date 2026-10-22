@@ -16,8 +16,8 @@ is a new 0.x.y.
 
 ### Added
 
-- A checklist step can be locked until its time with the padlock in its time chip. Until then, Pocket shows its Done
-  greyed out with a countdown, and its tick with a padlock.
+- Two switches on a template, **Wait for step times** and **Steps in order**, stop a checklist's step being ticked
+  before its time, or while a step above it is open.
 - A task's labels show on its row, on a line under the title. Tapping one on Today shows only the tasks with that
   label, until Show all or leaving Today. A task added while Today shows one label gets that label. Elsewhere,
   tapping one searches for the tasks with that label.
@@ -57,8 +57,8 @@ is a new 0.x.y.
 
 ### What Pocket writes into Vikunja
 
-- A template step's title can hold `!T#20m`, a time that the step can't be ticked before. The plugin gives the step
-  its due date as it does for `T#20m`.
+- A template's switches are the lines `pocket:wait` and `pocket:in-order` in its notes, and each checklist gets a copy
+  of them when it starts.
 
 ## 0.2.0 (2026-10-19)
 

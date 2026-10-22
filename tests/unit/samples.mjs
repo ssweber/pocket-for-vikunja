@@ -316,6 +316,14 @@ export const SAMPLES = {
     made: v => v.task(7).description === '<p>Use the probe</p><p>pocket:ask number °C</p><p>Wipe it after</p>',
     cannot: ['partly done'],
   },
+  // A template's "Wait for step times" is turned on, beside its order line.
+  'edit, settings': {
+    op: 'edit',
+    tasks: [task(7, 'Closing', { description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>' })],
+    fields: { op: 'edit', task: 7, rebase: 'rules', rules: { wait: true }, run: null },
+    made: v => v.task(7).description === '<p>Lock the back door too.</p><p>pocket:order 8 9</p><p>pocket:wait</p>',
+    cannot: ['partly done'],
+  },
   // The checklist's second step moves up, in its order line.
   'edit, order': {
     op: 'edit',
@@ -331,7 +339,8 @@ export const SAMPLES = {
     cannot: ['partly done'],
   },
   /* A checklist started from template 7, with its two steps, at the time the template was due, so the template moves
-     on to the next day. In the randomized test, task `t` is the template, with steps 2 and 3 when it is the checklist. */
+     on to the next day. The checklist gets a copy of the template's settings. In the randomized test, task `t` is the
+     template, with steps 2 and 3 when it is the checklist. */
   startRun: {
     labels: [TEMPLATE],
     tasks: [
@@ -339,7 +348,7 @@ export const SAMPLES = {
         labels: [TEMPLATE],
         due_date: D9,
         repeat_after: 86400,
-        description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>',
+        description: '<p>Lock the back door too.</p><p>pocket:in-order</p><p>pocket:order 8 9</p>',
         related_tasks: { subtask: [{ id: 8 }, { id: 9 }] },
       }),
       task(8, 'Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
@@ -371,7 +380,8 @@ export const SAMPLES = {
         run.title.endsWith(' · #1') &&
         !run.labels.length &&
         run.assignees.some(u => u.id === ME.id) &&
-        run.description === '<p>Lock the back door too.</p><p>pocket:run</p><p>pocket:order 102 103</p>' &&
+        run.description ===
+          '<p>Lock the back door too.</p><p>pocket:run</p><p>pocket:in-order</p><p>pocket:order 102 103</p>' &&
         v.task(103).title === 'Lock up' &&
         v.task(103).reminders.length === 1 &&
         v.task(7).due_date !== D9

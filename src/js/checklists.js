@@ -107,6 +107,22 @@ export const withOrder = (html, ids) => withLine(html, ORDER_LINE, ids ? `${ORDE
 export const withRunMark = html => withLine(html, RUN_LINE, 'pocket:run');
 export const withStepLine = (html, title) => withLine(html, STEP_LINE, title === null ? null : 'pocket:step ' + title);
 export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
+/* A template's settings for its checklists, as lines in its description. "pocket:wait" stops a timed step being ticked
+   before its time. "pocket:in-order" stops a step being ticked while a step above it is open. A checklist gets a copy
+   of the lines when it starts and reads only its own, so changing the template changes only checklists started later.
+   "pocket:in-order" is not "pocket:order", which holds the step ids. */
+const WAIT_LINE = /^pocket:wait$/i,
+  IN_ORDER_LINE = /^pocket:in-order$/i;
+export function runRules(html) {
+  const root = parseFragment(html || '');
+  return { wait: !!markLines(root, WAIT_LINE).length, order: !!markLines(root, IN_ORDER_LINE).length };
+}
+// The description with the settings `rules` sets ({wait, order}, either may be left out) written as lines.
+export function withRules(html, rules) {
+  if ('wait' in rules) html = withLine(html, WAIT_LINE, rules.wait ? 'pocket:wait' : null);
+  if ('order' in rules) html = withLine(html, IN_ORDER_LINE, rules.order ? 'pocket:in-order' : null);
+  return html;
+}
 // Any line of Pocket's, including one that a newer Pocket writes and this one does not know. An older copy still
 // installed somewhere must not show such a line as a note, or lose it when the notes are edited.
 const ANY_LINE = /^pocket:\S/i,
@@ -272,29 +288,28 @@ export const STEP_IGNORE = { due: true, repeat: true, project: true, progress: t
      Put the roast in {#roast}    names the step "roast"
      Peel the potatoes T#20m      due 20 minutes after the step before it is done (for the first step, after the run starts)
      Baste the roast T#40m:roast  due 40 minutes after the step named "roast" is done
-     Shape the loaves !T#20m      due as T#20m is, and it can't be ticked before then (`strict`)
    Units are d, h, m, s and ms, and they combine, as in T#1h30m. A step without a time has no due date, and it is simply
    the next step. A run's copies of the steps have these parts removed from their titles, and Pocket's plugin sets
    their due dates as steps are done. */
 const STEP_UNITS = { d: 864e5, h: 36e5, m: 6e4, s: 1e3, ms: 1 },
   STEP_MAX = 365 * 864e5; // a year, the same limit as main.go
-const STEP_TIME = /(^|\s)(!?T#\S*)/gi,
+const STEP_TIME = /(^|\s)(T#\S*)/gi,
   STEP_NAME = /\{#([^}\s]*)\}/g,
   NAME_OK = /^[a-z][\w-]*$/i;
 const sameName = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 export function parseStep(title) {
-  const out = { title: '', offset: null, strict: false, name: null, ref: null, problems: [] };
+  const out = { title: '', offset: null, name: null, ref: null, problems: [] };
   const t = String(title || '')
     .replace(STEP_TIME, (_, sp, tok) => {
-      const m = tok.match(/^(!?)T#(-?)((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::(.*))?$/i);
+      const m = tok.match(/^T#(-?)((?:\d+(?:\.\d+)?(?:ms|d|h|m|s))+)(?::(.*))?$/i);
       if (!m) out.problems.push(`“${tok}” isn't a time (write it like T#20m or T#1h30m)`);
-      else if (m[2]) out.problems.push(`“${tok}”: a step's time can't be negative`);
-      else if (m[4] !== undefined && !NAME_OK.test(m[4]))
+      else if (m[1]) out.problems.push(`“${tok}”: a step's time can't be negative`);
+      else if (m[3] !== undefined && !NAME_OK.test(m[3]))
         out.problems.push(`“${tok}”: a step's name must start with a letter`);
       else if (out.offset !== null) out.problems.push('a step can have only one T# time');
       else {
         const ms = Math.round(
-          [...m[3].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce(
+          [...m[2].matchAll(/(\d+(?:\.\d+)?)(ms|d|h|m|s)/gi)].reduce(
             (n, u) => n + u[1] * STEP_UNITS[u[2].toLowerCase()],
             0,
           ),
@@ -302,8 +317,7 @@ export function parseStep(title) {
         if (!(ms <= STEP_MAX)) out.problems.push(`“${tok}” is longer than a year`);
         else {
           out.offset = ms;
-          out.strict = !!m[1];
-          out.ref = m[4] ?? null;
+          out.ref = m[3] ?? null;
         }
       }
       return sp;
@@ -373,7 +387,7 @@ export const runShows = (steps, now) =>
       const left = s.dueAt - now;
       return (
         `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}` +
-        (s.lock && left > 0 ? ':' + Math.ceil(left / 1e3) : '')
+        (s.lock?.at && left > 0 ? ':' + Math.ceil(left / 1e3) : '')
       );
     })
     .join('');
@@ -443,13 +457,20 @@ export function stepTimes(steps) {
     return { time, from, due };
   });
 }
-/* Whether step `s` of a run can't be ticked yet, from what stepTimes gave it (`at`). A step with !T# can't be ticked
-   before it is due, or while the step it counts from is open. Returns null when it can be ticked, else {at: when it
-   can, or null while it waits on that step, from: that step}. */
-export function lockOf(s, at, now) {
-  if (s.done || !at.time?.strict) return null;
-  if (at.from && !at.from.done) return { at: null, from: at.from };
-  return at.due && +at.due > now ? { at: +at.due, from: at.from } : null;
+/* Whether step `i` of a run can't be ticked yet, under the run's settings (`rules`, runRules). `steps` are the run's
+   steps in order and `times` what stepTimes gave them. With `order`, a step waits while a step above it is open (a
+   skipped step is done), and the nearest such step is named. With `wait`, a timed step waits for the step it counts
+   from, then for its time. A step added during the run has no time, so it never waits for one. Returns null when the
+   step can be ticked, else {icon: 'lock' or 'hourglass', at: when it can be ticked, or null while it waits on a step,
+   from: that step}. */
+export function lockOf(steps, i, times, rules, now) {
+  if (steps[i].done) return null;
+  if (rules.order)
+    for (let j = i - 1; j >= 0; j--) if (!steps[j].done) return { icon: 'lock', at: null, from: steps[j] };
+  const at = times[i];
+  if (!rules.wait || at.time?.offset == null) return null;
+  if (at.from && !at.from.done) return { icon: 'hourglass', at: null, from: at.from };
+  return at.due && +at.due > now ? { icon: 'hourglass', at: +at.due, from: at.from } : null;
 }
 /* A step's time typed as a phrase: "in 20 min", "after an hour", "20 minutes later", "1h 30m after". It is saved as
    T#20m. Instructions like "for 2 minutes" or "rest 10 minutes" aren't read as times. */
@@ -544,11 +565,10 @@ function stepName(title, taken) {
   return name;
 }
 /* Work out what each step being typed is saved as, and how it reads. `rows` are the steps being typed,
-   {key, text, keep, from, strict}. `before` are the template's existing steps, {key, text}.
+   {key, text, keep, from}. `before` are the template's existing steps, {key, text}.
 
    A time typed as a phrase becomes T#…, unless `keep` is set to keep the phrase. `from` is the step the time counts
-   from: null as typed, '' for the step before, or another row's key. `strict` makes the time !T#…: null as typed, or
-   true or false from the padlock in the time chip. A step that another step counts from by key
+   from: null as typed, '' for the step before, or another row's key. A step that another step counts from by key
    gets a name made from its title if it has none, so moving rows doesn't change what a step counts from. `clean`
    removes what quick add reads out of a title (@people, *labels), so the name is made from the title text alone.
 
@@ -566,7 +586,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
   ];
   const parsed = all.map(r => parseStep(r.text)),
     at = new Map(all.map((r, i) => [r.key, i]));
-  const phrase = all.map((r, i) => (r.fixed || /(^|\s)!?T#/i.test(r.text) ? null : readStepPhrase(r.text)));
+  const phrase = all.map((r, i) => (r.fixed || /(^|\s)T#/i.test(r.text) ? null : readStepPhrase(r.text)));
   // In "30 minutes after the first article check", the words that name an earlier step belong to the time phrase. The
   // step counts from that earlier step unless the chip picked another.
   const named = all.map((r, i) => phrase[i] && afterStep(r.text, phrase[i], all.slice(0, i)));
@@ -601,8 +621,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
         stepToken(offset);
     const from = fromOf(r, i);
     if (offset !== null && (from === '' || at.has(from)))
-      t = t.replace(/(^|\s)!?T#\S*/i, (_, sp) => sp + stepToken(offset, from ? names[at.get(from)] : null));
-    if (offset !== null) t = t.replace(/(^|\s)!?T#/i, (_, sp) => sp + ((r.strict ?? parsed[i].strict) ? '!T#' : 'T#'));
+      t = t.replace(/(^|\s)T#\S*/i, (_, sp) => sp + stepToken(offset, from ? names[at.get(from)] : null));
     if (names[i] && !parsed[i].name) t += ` {#${names[i]}}`;
     return t.replace(/\s{2,}/g, ' ').trim();
   });
@@ -619,7 +638,6 @@ export function draftSteps(rows, before = [], clean = t => t) {
       saved: saved[i],
       notes: r.notes || '',
       offset: steps[i].offset,
-      strict: steps[i].strict,
       name: steps[i].name,
       text: infos[i].text,
       lost,
@@ -658,6 +676,7 @@ export function stepInfos(titles) {
     return {
       title: s.title,
       text: text && text[0].toUpperCase() + text.slice(1),
+      timed: !!when,
       problem: problems
         .filter(p => p.i === i)
         .map(p => p.text)

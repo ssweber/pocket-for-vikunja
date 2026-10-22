@@ -7,18 +7,22 @@ import assert from 'node:assert/strict';
 import {
   durText,
   inOrder,
+  lockOf,
   placeBefore,
   plainStep,
   problemText,
   roleOf,
   runParts,
+  runRules,
   runWithoutDay,
   stepFrom,
   stepInfos,
   stepProblems,
   SKIP_MARK,
   stepsOf,
+  stepTimes,
   stepWords,
+  withRules,
   parseStep,
 } from '../../src/js/checklists.js';
 import { runTitle } from '../../src/js/sync.js';
@@ -67,31 +71,124 @@ test('a timed step counts from the previous step, a named earlier step, or the s
   assert.equal(stepFrom([parseStep('First T#5m')], 0), -1, 'the first step counts from the start of the checklist');
 });
 
-test('a step timed with !T# is due as with T#, counts from the same step, and is marked strict', () => {
-  const steps = ['Mix the dough {#dough}', 'Shape the loaves !T#20m', 'Bake !T#40m:dough', 'Cool T#10m'].map(parseStep);
-  assert.deepEqual(
-    steps.map(s => [s.title, s.offset, s.strict]),
-    [
-      ['Mix the dough', null, false],
-      ['Shape the loaves', 20 * 6e4, true],
-      ['Bake', 40 * 6e4, true],
-      ['Cool', 10 * 6e4, false],
-    ],
+/* A checklist's settings are lines in its notes. The order line, "pocket:order", is not "pocket:in-order". Writing a
+   setting leaves the notes and Pocket's other lines as they are. */
+test("a checklist's settings are read from its own lines, and writing one keeps the rest of its notes", () => {
+  assert.deepEqual(runRules('<p>Wear gloves</p><p>pocket:order 3 4</p>'), { wait: false, order: false });
+  assert.deepEqual(runRules('<p>pocket:wait</p><p>pocket:in-order</p>'), { wait: true, order: true });
+  assert.deepEqual(runRules(''), { wait: false, order: false });
+  assert.equal(
+    withRules('<p>Wear gloves</p><p>pocket:order 3 4</p>', { order: true }),
+    '<p>Wear gloves</p><p>pocket:order 3 4</p><p>pocket:in-order</p>',
   );
-  assert.deepEqual(
-    [1, 2, 3].map(i => stepFrom(steps, i)),
-    [0, 0, 2],
-  );
-  assert.deepEqual(stepProblems(['A !T#5m:b', 'B {#b}']).length, 1, 'it must count from an earlier step, as T# must');
+  assert.equal(withRules('<p>pocket:wait</p><p>pocket:in-order</p>', { wait: false }), '<p>pocket:in-order</p>');
+});
+
+/* The rules for when a step can be ticked (lockOf). Mix the dough is done at t0. Shape the loaves is due 20 minutes
+   later, Bake 30 minutes after Mix the dough by name, and Take the loaves out 35 minutes after Bake. */
+const bread = (done = {}) => {
+  const t0 = Date.parse('2026-10-22T10:00:00Z'),
+    NONE = '0001-01-01T00:00:00Z',
+    step = (id, title, tpl, more = {}) => ({
+      id,
+      title,
+      tpl,
+      added: '',
+      done: !!done[id],
+      doneAt: done[id] ? new Date(done[id]).toISOString() : NONE,
+      waiting: false,
+      due_date: NONE,
+      updated: new Date(t0 - 36e5).toISOString(),
+      ...more,
+    });
+  const steps = [
+    step(1, 'Mix the dough', 'Mix the dough {#dough}', { done: true, doneAt: new Date(t0).toISOString() }),
+    step(2, 'Shape the loaves', 'Shape the loaves T#20m'),
+    step(3, 'Bake', 'Bake T#30m:dough'),
+    step(4, 'Take the loaves out', 'Take the loaves out T#35m'),
+  ];
+  return { t0, steps, step };
+};
+const locks = (steps, rules, now) => {
+  const times = stepTimes(steps);
+  return steps.map((s, i) => {
+    const l = lockOf(steps, i, times, rules, now);
+    return l && [l.icon, l.at, l.from.title];
+  });
+};
+
+test('with no settings on, every step can be ticked at any time', () => {
+  const { t0, steps } = bread();
+  assert.deepEqual(locks(steps, { wait: false, order: false }, t0), [null, null, null, null]);
+});
+
+test('"Wait for step times": a timed step waits for the step it counts from, then for its time, with an hourglass', () => {
+  const { t0, steps } = bread();
+  const wait = { wait: true, order: false };
+  assert.deepEqual(locks(steps, wait, t0 + 6e4), [
+    null,
+    ['hourglass', t0 + 20 * 6e4, 'Mix the dough'],
+    ['hourglass', t0 + 30 * 6e4, 'Mix the dough'], // counts from a named step (T#30m:dough)
+    ['hourglass', null, 'Bake'], // Bake is open, so the time isn't known yet
+  ]);
+  assert.deepEqual(locks(steps, wait, t0 + 20 * 6e4).slice(1, 3), [
+    null,
+    ['hourglass', t0 + 30 * 6e4, 'Mix the dough'],
+  ]);
+  steps[1].done = true; // a done step is never locked
+  assert.equal(locks(steps, wait, t0)[1], null);
+});
+
+test('"Steps in order": a step waits for the nearest open step above it, with a padlock, and a skipped step is done', () => {
+  const { t0, steps } = bread();
+  const order = { wait: false, order: true };
+  assert.deepEqual(locks(steps, order, t0), [
+    null,
+    null, // the step above is done, and its time doesn't matter
+    ['lock', null, 'Shape the loaves'],
+    ['lock', null, 'Bake'],
+  ]);
+  steps[2].done = true; // Bake was skipped, which marks it done
+  assert.deepEqual(locks(steps, order, t0).slice(2), [null, ['lock', null, 'Shape the loaves']]);
+});
+
+test('with both on, a step shows the padlock until every step above it is done, then the hourglass until its time', () => {
+  const { t0, steps } = bread();
+  const both = { wait: true, order: true };
+  assert.deepEqual(locks(steps, both, t0 + 6e4)[1], ['hourglass', t0 + 20 * 6e4, 'Mix the dough']);
+  assert.deepEqual(locks(steps, both, t0 + 6e4)[2], ['lock', null, 'Shape the loaves']);
+  steps[1].done = true;
+  assert.deepEqual(locks(steps, both, t0 + 6e4)[2], ['hourglass', t0 + 30 * 6e4, 'Mix the dough']);
+  assert.equal(locks(steps, both, t0 + 30 * 6e4)[2], null, 'at its time the step can be ticked');
+});
+
+test('a step added during a checklist counts where it was put for "Steps in order", and never waits for a time', () => {
+  const { t0, steps, step } = bread();
+  // Check the oven is inserted before Bake, and a repeat of Shape the loaves keeps that step's line.
+  steps.splice(2, 0, step(5, 'Check the oven', null, { added: 'Inserted' }));
+  steps.push(step(6, 'Shape the loaves', 'Shape the loaves T#20m', { added: 'Repeated' }));
+  assert.deepEqual(locks(steps, { wait: true, order: false }, t0).slice(2), [
+    null,
+    ['hourglass', t0 + 30 * 6e4, 'Mix the dough'],
+    ['hourglass', null, 'Bake'],
+    null,
+  ]);
+  steps[1].done = true;
+  assert.deepEqual(locks(steps, { wait: false, order: true }, t0).slice(2), [
+    null,
+    ['lock', null, 'Check the oven'],
+    ['lock', null, 'Bake'],
+    ['lock', null, 'Take the loaves out'],
+  ]);
 });
 
 test("a template's steps are shown with when each is due, its name, and any problem", () => {
   const shown = stepInfos(['Heat the oven T#0m {#oven}', 'Roast T#40m:oven', 'Baste T#20m:gravy', 'Plate']);
   assert.deepEqual(shown, [
-    { title: 'Heat the oven', text: 'Due at the start · named “oven”', problem: '' },
-    { title: 'Roast', text: 'Due 40m after “Heat the oven”', problem: '' },
-    { title: 'Baste', text: '', problem: 'no step is named “gravy”' },
-    { title: 'Plate', text: '', problem: '' },
+    { title: 'Heat the oven', text: 'Due at the start · named “oven”', timed: true, problem: '' },
+    { title: 'Roast', text: 'Due 40m after “Heat the oven”', timed: true, problem: '' },
+    { title: 'Baste', text: '', timed: false, problem: 'no step is named “gravy”' },
+    { title: 'Plate', text: '', timed: false, problem: '' },
   ]);
   assert.equal(
     problemText(stepProblems(['A T#5m:b', 'B {#b}', 'C T#x'])),
@@ -525,42 +622,4 @@ test("a template's step being edited isn't saved when the user's access arrives 
   await app.saveStepEdit(0);
   assert.deepEqual([saves, app.sheet.stepEdit, step.title], [[], null, 'Mop']);
   assert.equal(app.toast.msg, 'Not changed. Only the person who made this template or a project admin can change it.');
-});
-
-/* The padlock in a step's time chip (sheet/step-time.html) sets the row's `strict`, and the step is saved with !T# or
-   T#. The editor shows the time in words, which have no !, so a strict step opens with `strict` set. */
-test("the padlock in a step's time chip writes !T# in the step's title, and a second tap takes the ! out", async () => {
-  const { component } = await import('./fake.mjs'),
-    { default: checklists } = await import('../../src/js/app/checklists.js');
-  const app = component(checklists),
-    steps = [
-      { id: 1, title: 'Mix the dough' },
-      { id: 2, title: 'Shape the loaves !T#20m' },
-    ];
-  Object.assign(app, {
-    subtasks: steps,
-    sheet: { kind: 'task', stepEdit: null },
-    stepParsed: title => ({ title, assignees: [], labels: [], priority: 0 }),
-    keepFocus() {},
-  });
-  const was = document.getElementById;
-  document.getElementById = () => null;
-  try {
-    app.editStep(steps[1]);
-    const e = app.sheet.stepEdit,
-      saved = () => [app.stepEditDraft(1).strict, app.stepEditDraft(1).saved];
-    assert.deepEqual([e.text, e.strict], ['Shape the loaves in 20m', true]);
-    assert.deepEqual(saved(), [true, 'Shape the loaves !T#20m']);
-    e.strict = false; // the padlock is tapped
-    assert.deepEqual(saved(), [false, 'Shape the loaves T#20m']);
-    e.strict = true;
-    assert.deepEqual(saved(), [true, 'Shape the loaves !T#20m']);
-    // A step typed in the box under the template, with the padlock on, is added as !T#.
-    app.sheet.addBox = { key: '+', text: 'Bake in 40 min', keep: false, from: null, strict: true };
-    app.sheet.addRows = [];
-    assert.deepEqual(app.draft('add').info.get('+').saved, 'Bake !T#40m');
-    await new Promise(ok => setTimeout(ok, 60)); // editStep's focus timer
-  } finally {
-    document.getElementById = was;
-  }
 });

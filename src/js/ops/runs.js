@@ -11,9 +11,11 @@ import {
   isTemplateLabel,
   nextAfter,
   notesOnly,
+  runRules,
   vikunjaNext,
   withAdded,
   withOrder,
+  withRules,
   withRunMark,
   withStepLine,
 } from '../checklists.js';
@@ -27,14 +29,14 @@ const duplicate = async (c, from) => (await c.send(`/tasks/${from}/duplicate`, {
 
 /* ---------- starting a checklist ---------- */
 
-/* Copy the template, which becomes the checklist. Its notes come with the copy, but its order line does not, because
-   that line holds the ids of the template's steps. A line is added that marks the copy as a checklist, so it stays
-   one if its template is deleted. */
+/* Copy the template, which becomes the checklist. Its notes and its settings (runRules) come with the copy, but its
+   order line does not, because that line holds the ids of the template's steps. A line is added that marks the copy as
+   a checklist, so it stays one if its template is deleted. */
 async function copyRun(a, c) {
   if (a.taskId) return;
   const t = await duplicate(c, a.template.id);
   sync.claim(t.id, a.id);
-  Object.assign(a, { taskId: t.id, notes: withRunMark(notesOnly(t.description)) });
+  Object.assign(a, { taskId: t.id, notes: withRules(withRunMark(notesOnly(t.description)), runRules(t.description)) });
 }
 /* The checklist is named after its template, the day, and the name typed when it was started. Without a typed name it
    gets its number among the template's checklists: "Startup · Oct 3 · Night shift" or "Startup · Oct 3 · #3".

@@ -397,7 +397,7 @@ export function component(...parts) {
     isRunTask() {
       return false;
     },
-    // A step with !T# that can't be ticked yet (runs.js). Without runs.js, every step can be ticked.
+    // A step that can't be ticked yet (runs.js). Without runs.js, every step can be ticked.
     stepLock() {
       return null;
     },

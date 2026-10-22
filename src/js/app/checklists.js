@@ -16,6 +16,7 @@ import {
   parseStep,
   problemText,
   roleOf,
+  runRules,
   stepInfos,
   stepProblems,
   stepsOf,
@@ -502,6 +503,15 @@ export default {
       ? `This template is due ${on}, then ${repeatWords(t)}. Today lists it from a week before. Starting a checklist on or after the due day moves it to its next date.`
       : `This template is due ${on}, once. Today lists it from a week before. ${startMarksDone(templateName(t.title), true)} Choose Repeats to make it repeat.`;
   },
+  // The open template's settings for its checklists, {wait, order}, read from its notes (runRules).
+  get templateRules() {
+    return this.checklistRole === 'template' ? runRules(this.sheetTask?.description) : { wait: false, order: false };
+  },
+  // Turn one of the open template's settings ('wait' or 'order') on or off. The switch shows the change at once.
+  setTemplateRule(key, on) {
+    const t = this.sheetTask;
+    if (t && this.canEdit) this.act({ op: 'edit', task: t.id, run: null, rebase: 'rules', rules: { [key]: on } });
+  },
   // Whether a due template shows on the user's Today. It shows for its assignees. With no assignees, it shows for
   // anyone who can start it.
   templateFor(t) {
@@ -635,7 +645,7 @@ export default {
 
      Under an existing template, new steps are sent to Vikunja at once (addTemplateSteps). In New template nothing is
      sent until the user taps Create template. Until then each line is a row that exists only on the phone: {id, key,
-     text, keep, from, strict, ignore}. The same row markup draws, edits, moves and removes these rows and a template's saved
+     text, keep, from, ignore}. The same row markup draws, edits, moves and removes these rows and a template's saved
      steps. New lines go after the row the box sits under (sheet.subAt). */
   // The rows in New template, or under an existing template the rows being sent to Vikunja.
   draftRows(which) {
@@ -682,7 +692,7 @@ export default {
   // draftSteps.
   newStepRow(text, more = {}) {
     const key = randomId();
-    return { id: 'new-' + key, key, text, keep: false, from: null, strict: null, ignore: {}, ...more };
+    return { id: 'new-' + key, key, text, keep: false, from: null, ignore: {}, ...more };
   },
   /* Add the box's lines as steps, on Enter or the box's button. A single line keeps its chips (the time and the ones
      tapped off). In New template the lines become rows after the row the box is under, or at the end, and the box
@@ -693,14 +703,11 @@ export default {
       lines = captureLines(b.text || '');
     if (!lines.length) return;
     const one = lines.length === 1,
-      was = { text: b.text, keep: b.keep, from: b.from, strict: b.strict, ignore: b.ignore };
+      was = { text: b.text, keep: b.keep, from: b.from, ignore: b.ignore };
     const made = lines.map(text =>
-      this.newStepRow(
-        text,
-        one ? { keep: !!b.keep, from: b.from ?? null, strict: b.strict ?? null, ignore: b.ignore || {} } : {},
-      ),
+      this.newStepRow(text, one ? { keep: !!b.keep, from: b.from ?? null, ignore: b.ignore || {} } : {}),
     );
-    Object.assign(b, { text: '', keep: false, from: null, strict: null, ignore: {} });
+    Object.assign(b, { text: '', keep: false, from: null, ignore: {} });
     if (which === 'add') {
       this.sheet.addRows = made;
       if (this.draft('add').problem) {
@@ -771,9 +778,7 @@ export default {
       box: { ...newBox(), text: kept?.name || '' },
       rows: (kept?.rows || [])
         .filter(r => r.text?.trim())
-        .map(r =>
-          this.newStepRow(r.text, { keep: !!r.keep, from: null, strict: r.strict ?? null, ignore: r.ignore || {} }),
-        ),
+        .map(r => this.newStepRow(r.text, { keep: !!r.keep, from: null, ignore: r.ignore || {} })),
       add: { ...newStepBox(), text: kept?.add || '' },
       busy: false,
     };
@@ -879,10 +884,8 @@ export default {
         .filter(([, n]) => n)
         .map(([k]) => [k, true]),
     );
-    // A New template row (it has a `key`) is edited in place. The time in words loses its !, so `strict` keeps it.
-    this.sheet.stepEdit = st.key
-      ? st
-      : { id: st.id, text, keep: false, from: null, strict: parseStep(st.title).strict || null, ignore };
+    // A New template row (it has a `key`) is edited in place.
+    this.sheet.stepEdit = st.key ? st : { id: st.id, text, keep: false, from: null, ignore };
     // The box takes the focus when it appears (x-init). If a redraw happened first, pass the focus on now.
     setTimeout(() => {
       const el = document.getElementById('step-edit-' + st.id);
@@ -905,7 +908,7 @@ export default {
     if (e.key) return this.draft('new').info.get(e.key) || null; // a New template row: read together with the other rows there
     const before = this.subtasks.slice(0, i).map(s => ({ key: 'task:' + s.id, text: s.title }));
     const d = draftSteps(
-        [{ key: 'edit', text: e.text, keep: e.keep, from: e.from, strict: e.strict, ignore: e.ignore }],
+        [{ key: 'edit', text: e.text, keep: e.keep, from: e.from, ignore: e.ignore }],
         before,
         this.stepWordsOnly,
       ),

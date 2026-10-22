@@ -332,6 +332,12 @@ const EDITED = {
     dropped: (a, title) => `${it(title)} asks stay as they are.`,
     maybe: (a, title) => still(title, 'have your new asks'),
   },
+  rules: {
+    text: (a, title) => `Settings on ${task(title)}`,
+    refused: title => 'Settings' + on(title),
+    dropped: (a, title) => `${it(title)} settings stay as they are.`,
+    maybe: (a, title) => still(title, 'have your new settings'),
+  },
   order: {
     text: (a, title) => `Moving a step in ${task(title)}`,
     refused: title => 'Moving a step' + (title ? ` in “${named(title)}”` : ''),
@@ -707,8 +713,8 @@ export const createdProject = (title, checklists = false) =>
   checklists ? `Created ${title}, for checklists.` : `Created ${title}`;
 // A timed step's countdown reached zero.
 export const dueNow = title => `“${title}” is due now`;
-/* The Done button of a step with !T#, which can't be ticked yet. Before the step it counts from is done it names that
-   step. Then it counts down `left` ms to the second: "Waiting 19:42", or "Waiting 1:05:00" over an hour. */
+/* The Done button of a step that waits for its time. Before the step it counts from is done it names that step. Then
+   it counts down `left` ms to the second: "Waiting 19:42", or "Waiting 1:05:00" over an hour. */
 export const waitingFor = title => `Waiting for ${title}`;
 export const waitingText = left => {
   const s = Math.max(0, Math.ceil(left / 1000)),
@@ -717,9 +723,12 @@ export const waitingText = left => {
     m = Math.floor((s % 3600) / 60);
   return 'Waiting ' + (h ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`);
 };
-// A tap on the tick of a step with !T# that can't be ticked yet. `at` is when it can, or null while it waits on `from`.
+// A tap on the tick of a step that waits for its time. `at` is when it can be ticked, or null while it waits on `from`.
 export const tickableAt = (title, at, from) =>
   at === null ? waitingFor(from) : `${title} can be ticked at ${fmtTime(new Date(at))}`;
+// The Done button, and a tap on the tick, of a step that waits for `from`, the nearest open step above it.
+export const doneAfter = from => `After ${from}`;
+export const tickableAfter = (title, from) => `${title} can be ticked after ${from}`;
 // The tasks whose due time (`due`) or reminder (`reminded`) just passed, by `titles`, as a screen reader hears them.
 export const dueSaid = (titles, due, reminded) =>
   titles.length === 1

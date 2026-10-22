@@ -23,6 +23,7 @@
   --code-bg: rgba(0, 0, 0, 0.06);
   --shadow-lift: 0 1px 3px rgba(0, 0, 0, 0.14), 0 8px 22px rgba(0, 0, 0, 0.2);
   --danger-ink: #ffffff;
+  --knob: #ffffff; /* an on/off switch's knob, in both themes */
   --r-row: 14px;
   --r-sheet: 22px;
   --r-chip: 999px;
@@ -2449,44 +2450,6 @@ a.sec-act {
   color: var(--muted);
   cursor: pointer;
 }
-/* The padlock in a step's time chip. Its tap area is 44px square, centred on the icon. The button is 34px wide, so
-   with the chip's 5px gap that area meets the step picker and the × without covering them. */
-.chip-lock {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 34px;
-  height: 20px;
-  margin: -2px 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.chip-lock::after {
-  content: '';
-  position: absolute;
-  inset: calc(50% - 22px);
-}
-.chip .chip-lock svg.i {
-  width: 17px;
-  height: 17px;
-}
-.chip-lock[aria-pressed='true'] {
-  color: var(--accent);
-}
-.chip-lock[aria-pressed='true'] svg.i {
-  stroke-width: 2.4;
-}
-/* "Locked until 20m after" with the step picker is wider than a phone's row, so the picker, the padlock and the × go
-   to a second line. */
-.draft-time.locked {
-  flex-wrap: wrap;
-  row-gap: 2px;
-  border-radius: 16px;
-}
 /* A checklist's own row between Back and ⋯ (app.html, RUN_ROW). It sits on the page, not in a card, and is tighter
    than a list's row. Its ring and the first line of its name are level with Back. The name takes two lines at most, so
    the top of the screen is no taller than the name with "For you" under it would be. */
@@ -3792,6 +3755,52 @@ body.sheet-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* A card of on/off switches: a template's settings, and "Use for checklists" in New project. Each row is a label, so
+   a tap anywhere on it flips its switch. */
+.switches .prop {
+  cursor: pointer;
+}
+.switches .prop > svg.i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.switches .v {
+  display: block;
+}
+.switches b {
+  display: block;
+  font-weight: 600;
+}
+.switches .note {
+  display: block;
+  margin: 2px 0 0;
+}
+.switches-note {
+  margin: -6px 14px 14px;
+}
+/* An on/off switch, drawn from a checkbox. The knob is a radial gradient, so the switch needs no extra element. */
+.switch {
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 48px;
+  height: 30px;
+  margin: 0;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--muted) 40%, var(--surface))
+    radial-gradient(circle at 15px 50%, var(--knob) 11.5px, transparent 12.5px);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.switch:checked {
+  background: var(--accent) radial-gradient(circle at 33px 50%, var(--knob) 11.5px, transparent 12.5px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .prop select,
 .prop input[type='datetime-local'] {
