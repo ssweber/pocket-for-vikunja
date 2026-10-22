@@ -20,6 +20,7 @@ import {
   laidUnder,
   loaded,
   noToast,
+  outboxOf,
   placeLine,
   placeSays,
   rowLine,
@@ -1908,6 +1909,10 @@ try {
     await page.fill('#step-note', 'Written offline');
     await page.click('#step-note-form button');
     await page.waitForSelector('#step-extra .comment:has-text("Written offline"):has-text("Waiting for a connection")');
+    // The note shows before it is saved on the phone. A reload sooner than that loses it.
+    await expect
+      .poll(async () => (await outboxOf(page)).some(e => e.op === 'note' && e.html.includes('Written offline')))
+      .toBe(true);
     await page.reload(); // as if the phone closed the app
     await page.waitForSelector('#run-steps .row:nth-of-type(1) .check.wait', { timeout: 15000 });
     await page.waitForSelector('#step-title:text-is("Warm up the press")');

@@ -66,6 +66,23 @@ export async function synced(page, { timeout = 20000, settle = 250 } = {}) {
   }
 }
 
+/* What is waiting in the outbox, as IndexedDB holds it. A change shows on screen before Pocket has finished writing it
+   to IndexedDB. A test that reloads the page, as if the phone closed Pocket, first waits until the change is here. */
+export const outboxOf = p =>
+  p.evaluate(
+    () =>
+      new Promise(ok => {
+        const r = indexedDB.open('pocket');
+        r.onsuccess = () => {
+          const q = r.result.transaction('outbox').objectStore('outbox').getAll();
+          q.onsuccess = () => {
+            r.result.close();
+            ok(q.result);
+          };
+        };
+      }),
+  );
+
 // Signs in with a username and password on Pocket's sign-in screen at `url`, then waits for the first list to load.
 export async function signIn(page, url, user, password) {
   await page.goto(url);

@@ -11,7 +11,7 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright'; // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
+import { expect, hintSeen, outboxOf, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN,
@@ -72,21 +72,6 @@ const attached = async n => {
   return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : [];
 };
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online'))); // makes Pocket retry now
-// What is waiting in the outbox, as IndexedDB holds it.
-const outboxOf = p =>
-  p.evaluate(
-    () =>
-      new Promise(ok => {
-        const r = indexedDB.open('pocket');
-        r.onsuccess = () => {
-          const q = r.result.transaction('outbox').objectStore('outbox').getAll();
-          q.onsuccess = () => {
-            r.result.close();
-            ok(q.result);
-          };
-        };
-      }),
-  );
 const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
 
 try {
