@@ -117,6 +117,8 @@ Each of these is rare, or its fix would change what the user sees and needs deci
   `related_tasks.copiedto` lists the copy, but telling it from a teammate's start would be a guess.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step once it has sent a
   request and waits. The row's × still cancels a step.
+- Pocket shows a change as waiting a few milliseconds before it has written it to IndexedDB. If Pocket is closed in
+  between while offline, the change is lost although it was shown.
 - `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
   whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 
