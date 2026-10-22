@@ -544,12 +544,13 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click('#btn-refresh');
     await page.waitForSelector('#btn-refresh:not([disabled])');
-    // On Today a row is one line: small priority bars, then a short due time, and the project's dot at the right of
-    // the title. The tick's ring does not show the priority. Counts are not shown. A screen reader still announces the
-    // priority, the due time in words and the project. The task's label is on a line of its own, 20px under it.
+    // On Today a row's title is one line, cut with "…". The line under it has the due day and time, the priority
+    // bars, the project and the counts, as on a project's list. The tick's ring does not show the priority. The
+    // task's label is on a line of its own, 20px under it.
     const R = page.locator(row);
-    await expect(R).toHaveClass(/\bone-line\b/);
-    await expect(R.locator('.when > .bars.p3 ~ .due')).toHaveText(/\S/);
+    await expect(R).toHaveClass(/\bclamp\b/);
+    await expect(R.locator('.meta > .due')).toHaveText(/^Tomorrow \S/);
+    await expect(R.locator('.meta .bars.p3')).toHaveCount(1);
     const ring = await R.locator('> .check').evaluate(el => getComputedStyle(el).borderTopColor);
     const plain = await page.evaluate(() => {
       const b = document.createElement('button');
@@ -560,16 +561,13 @@ try {
       return c;
     });
     if (ring !== plain) throw new Error(`the tick's ring colour is ${ring}, not ${plain}`);
-    await expect(R.locator('.when .dot')).toHaveCount(1);
-    await expect(R.locator('.meta')).toHaveCount(0);
-    const said = await R.locator('.title .sr').allTextContents();
-    if (!said.some(s => /Priority: High/.test(s) && /Due |Late: /.test(s)))
-      throw new Error('a screen reader hears ' + JSON.stringify(said));
+    await expect(R.locator('.meta .dot')).toHaveCount(1);
+    await expect(R.locator('.meta [aria-label="Comments"]')).toHaveText('1');
+    await expect(R.locator('.when')).toHaveCount(0);
     await expect(R.locator('> .labs > .lab')).toHaveText([label]);
-    if ((await R.evaluate(el => el.offsetHeight)) > 77)
-      throw new Error(
-        'a row on Today is more than a line and its labels: ' + (await R.evaluate(el => el.offsetHeight)),
-      );
+    // The title is one line, however long it is. The line under it wraps when it is full, as on a project's list.
+    const tall = await R.locator('.title').evaluate(el => el.offsetHeight);
+    if (tall > 24) throw new Error('the title on Today is more than a line: ' + tall);
     // On the project's list the row has a second line with the priority bars, the comment count and the attachment count.
     await page.evaluate(
       id => {
@@ -1730,7 +1728,7 @@ try {
       ticked = await make(`Pocket smoke repeat ticked ${stamp}`, { due_date: todayAt(23), repeat_after: 86400 });
     madeFrom.push(ticked);
     const week = title => page.locator(`div:has(> .sec:has-text("Next 7 days")) ${rowOf(title)}`),
-      due = title => page.locator(`${rowOf(title)} .when .due`).textContent();
+      due = title => page.locator(`${rowOf(title)} .meta .due`).textContent();
     const shownDone = async (title, was) => {
       await expect(page.locator(rowOf(title))).toHaveClass(/\bdone\b/);
       await expect(page.locator(rowOf(title))).toHaveClass(/\bleaving\b/);
@@ -3948,9 +3946,9 @@ try {
         page.locator(`${rowOf(theirs.title)} .claim[aria-disabled=true] .av`),
         "the other assignee's picture isn't shown",
       ).toBeVisible();
-    // Under Today the row shows no time, and only the project's dot at its right. The project's list says Today.
-    await expect(page.locator(`.sec.today ~ .list ${D} .when .dot`)).toHaveCount(1);
-    await expect(page.locator(`${D} .when .due`)).toHaveCount(0);
+    // Under Today the row shows no time, only the project. The project's list says Today.
+    await expect(page.locator(`.sec.today ~ .list ${D} .meta .dot`)).toHaveCount(1);
+    await expect(page.locator(`${D} .meta .due`)).toHaveCount(0);
     // Sliding sets the progress, and no one is assigned.
     await page.locator(F).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await slideProgress(F, 25, async () => {
@@ -4625,7 +4623,7 @@ try {
       reminders: [{ reminder: todayAt(8) }],
     });
     const R = page.locator(rowOf(r.title)),
-      due = () => R.locator('.when .due').textContent();
+      due = () => R.locator('.meta .due').textContent();
     try {
       await toastGone();
       await refreshToday();
@@ -4885,7 +4883,7 @@ try {
     };
     const R = `#view .row[data-id="${r.id}"]`,
       rowTitle = page.locator(`${R} > .body .title > span:not(.sr)`).first(),
-      bars = page.locator(`${R} .when .bars`);
+      bars = page.locator(`${R} .meta .bars`);
     try {
       await toastGone();
       await refreshToday();
@@ -6387,9 +6385,10 @@ ${footName('Hooks')}`);
       // space, whereas a plain row next to the card has one.
       await expect(card.locator('.card-open > .dot')).toHaveCount(1);
       await expect(line.locator('.dot')).toHaveCount(0);
-      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .dot`)).toHaveCount(1);
-      // Due times are written short, "11p" where the phone writes "11:00 PM", and "11:59p" for "11:59 PM". This applies
-      // to the card's header, its row and a plain row. A screen reader announces the time in full.
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .meta .dot`)).toHaveCount(1);
+      // On a card, due times are written short, "11p" where the phone writes "11:00 PM", and "11:59p" for "11:59 PM".
+      // This applies to the card's header and its row. A plain row has the time in full. A screen reader announces the
+      // time in full.
       const clock = (p, h, m) =>
         p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), todayAt(h, m));
       const [at23, at2359] = [await clock(page, 23), await clock(page, 23, 59)];
@@ -6397,9 +6396,7 @@ ${footName('Hooks')}`);
         throw new Error(`${at23} and ${at2359} shorten to ${shortTime(at23)} and ${shortTime(at2359)}`);
       await expect(card.locator('.card-head .due')).toHaveText(shortTime(at2359));
       await expect(line.locator('.when .due')).toHaveText(shortTime(at2359));
-      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .due`)).toHaveText(
-        shortTime(at2359),
-      );
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .meta .due`)).toHaveText(at2359);
       await expect(card.locator('.card-head .sr')).toContainText('Today ' + at2359);
       await expect(line.locator('.title')).toContainText('Today ' + at2359);
       // On a phone with a 24-hour clock, the time is written the way that phone writes it, such as "23:59".
@@ -6466,28 +6463,15 @@ ${footName('Hooks')}`);
       if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
       if (Object.values(zones.widths).some(w => w < 48) || zones.height < 48)
         throw new Error('a touch target is under 48px: ' + JSON.stringify(zones));
-      // Today's assignee slot is as wide as "+ me" needs, 74px with 8px of padding before it, on a card's row and a plain
-      // row alike. That way whatever comes before it, a time or a dot, ends in one vertical line down the list.
-      const slotOf = R =>
-        R.evaluate(el => {
-          const c = el.querySelector(':scope > .claim'),
-            s = getComputedStyle(c),
-            w = el.querySelector('.when');
-          return {
-            min: s.minWidth,
-            before: s.paddingLeft,
-            width: c.getBoundingClientRect().width,
-            when: w ? Math.round((el.getBoundingClientRect().right - w.getBoundingClientRect().right) * 2) / 2 : null,
-          };
-        });
-      const slots = [await slotOf(line), await slotOf(page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`))];
-      for (const s of slots)
-        if (s.min !== '74px' || s.before !== '8px' || s.width < 74 || s.width > 84)
-          throw new Error("Today's slot isn't 74px, with 8px before it: " + JSON.stringify(slots));
-      if (slots[0].when === null || slots[0].when !== slots[1].when)
-        throw new Error(
-          "the time on a card's row and the dot on a plain row don't end in one line: " + JSON.stringify(slots),
-        );
+      // A card's assignee slot is as wide as "+ me" needs, 74px with 8px of padding before it. That way the times
+      // before it end in one vertical line down the card.
+      const slot = await line.evaluate(el => {
+        const c = el.querySelector(':scope > .claim'),
+          s = getComputedStyle(c);
+        return { min: s.minWidth, before: s.paddingLeft, width: c.getBoundingClientRect().width };
+      });
+      if (slot.min !== '74px' || slot.before !== '8px' || slot.width < 74 || slot.width > 84)
+        throw new Error("A card's slot isn't 74px, with 8px before it: " + JSON.stringify(slot));
       const rowTick = await page
         .locator(`.item > .row:has(.title:has-text("${Q.title}"))`)
         .evaluate(
@@ -6935,7 +6919,7 @@ ${footName('Hooks')}`);
     ).json();
     createdProjects.push(proj.id);
     await make(long, { due_date: todayAt(23) }, proj.id);
-    // Finds elements on screen that reach past the right edge. It skips text inside a one-line title, which is cut short.
+    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line.
     const past = () =>
       page.evaluate(() => {
         const w = document.documentElement.clientWidth;
@@ -6944,7 +6928,7 @@ ${footName('Hooks')}`);
             el =>
               el.offsetParent !== null &&
               el.getBoundingClientRect().right > w + 1 &&
-              !el.parentElement.closest('.one-line .title, .card-title'),
+              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title'),
           )
           .map(
             el =>

@@ -3285,7 +3285,7 @@ try {
       location.hash = '#/today';
     });
     const row = `#view .row:has(> .body .title:has-text("${DAILY}"))`;
-    await page.waitForSelector(`${row} .title .sr:has-text("Checklist. Tap to start.")`, {
+    await page.waitForSelector(`${row} .meta:has-text("Checklist. Tap to start.")`, {
       state: 'attached',
       timeout: 15000,
     });

@@ -103,7 +103,7 @@ export const soonestFirst = tasks => [
      an order.
    - `reschedule`: holding a row on Today moves it to another date (app/throw.js), because Today is ordered by date.
      Search results have no order, so holding a row there does nothing.
-   - `line`: Today's rows are a single line (rowWhen, app/views.js).
+   - `clamp`: Today cuts each title to one line, so every row is the same height and the screen fits more rows.
    - `cards`: a task with open subtasks or steps is a stacked card (cardOf, app/cards.js). Cards are collapsed on
      Today ('today') and in search ('found'), and open on a project's list ('list'). A list of done tasks has none.
    A list's options live on its group `g`. Each row copies them onto its element for the gesture code (rowGestures).
@@ -112,7 +112,7 @@ export const screenRows = name =>
   ({
     project: { cards: 'list', delete: true, reorder: true },
     search: { cards: 'found', delete: true },
-    today: { cards: 'today', line: true, delete: true, reschedule: true },
+    today: { cards: 'today', clamp: true, delete: true, reschedule: true },
   })[name] || {};
 /* Options for a task's own row at the top of its sheet (sheet/task-card.html). The task can be deleted from there,
    which closes the sheet, but it can't be moved. `own` makes the row's tick, swipe and title act on the sheet's task.

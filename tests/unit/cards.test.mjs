@@ -15,6 +15,7 @@ import {
   rowGestures,
   RUN_ROW,
   saved,
+  screenRows,
   todayGroups,
 } from '../../src/js/lists.js';
 import { positionOrder } from '../../src/js/order.js';
@@ -287,7 +288,7 @@ const today = (...more) => {
   ])
     app.row(task(id, { title, related_tasks: under(10) }));
   app.view.cards = { 10: { when: null, made: null, focus: null } };
-  return { app, parent, g: { cards: 'today', line: true } };
+  return { app, parent, g: { cards: 'today' } };
 };
 
 test('subtasks added from Today’s box go where the box was, under the header or under the nudged row', () => {
@@ -473,7 +474,7 @@ test('in search, an open task with open subtasks is a collapsed card, and the su
   const c = app.cardOf(parent, g);
   assert.deepEqual(
     [c.step.title, c.peek.title, c.g.line, c.g.delete],
-    ['Chairs', 'Tables', undefined, true],
+    ['Chairs', 'Tables', false, true],
     'the card’s rows keep their second line, as search rows do',
   );
   assert.equal(app.cardOf({ ...parent, done: true }, g), null, 'a done task is not a card');
@@ -951,7 +952,7 @@ test('the one-time hint goes on a card’s top row only', () => {
   );
 });
 
-test('a row on Today shows a short due time and the project dot on one line, and a screen reader hears the rest', c => {
+test('a card’s row on Today shows a short due time and the project dot on one line, and a screen reader hears the rest', c => {
   c.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) }); // so 11:30pm is later today
   const { app } = today();
   app.route = { name: 'today' };
@@ -993,10 +994,10 @@ test('a row on Today shows a short due time and the project dot on one line, and
     null,
     'under Today a task with no time shows nothing',
   );
-  assert.match(
+  assert.doesNotMatch(
     app.rowWhen(u, { line: true, depth: {}, key: 'today' }).said,
-    /^Due Today/,
-    'a screen reader still hears the date',
+    /Due/,
+    'a screen reader hears the day from the heading, as on a list row',
   );
   assert.equal(
     app.rowWhen(t, { line: true, depth: {}, key: 'today' }).due.text,
@@ -1022,6 +1023,31 @@ test('a row on Today shows a short due time and the project dot on one line, and
   assert.equal(app.rowMeta(soon, { depth: {} }).find(m => m.key === 'due').text, 'in 11m');
   assert.equal(app.cardHead(u, { key: 'today' }).due, null, 'a card’s heading follows the same rule');
   assert.equal(app.cardHead(u, { key: 'week' }).due.text, 'Today');
+});
+
+// Today's rows are a project's list rows with the title cut to one line. A card's rows stay one line, so a collapsed
+// card keeps its height while its steps are ticked.
+test('Today cuts its titles to one line, and only a card’s rows on Today are a single line', () => {
+  assert.deepEqual([screenRows('today').clamp, screenRows('today').line], [true, undefined]);
+  assert.equal(screenRows('project').clamp, undefined, 'a project’s list wraps its titles');
+  const { app, parent } = today();
+  assert.equal(app.cardOf(parent, { cards: 'today' }).g.line, true);
+});
+
+test('under the Today heading a row shows its due time alone, and under the others the day and time', c => {
+  c.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 14, 12) });
+  const { app } = today();
+  app.route = { name: 'today' };
+  const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const due = (t, key) =>
+    app.rowMeta(app.row(task(t.id, { project_id: 5, ...t })), { depth: {}, key }).find(x => x.key === 'due');
+  const later = due({ id: 30, due_date: at(14, 17) }, 'today'),
+    time = fmtTime(new Date(at(14, 17)));
+  assert.deepEqual([later.text, later.label], [time, 'Due Today ' + time], 'a screen reader still hears the day');
+  assert.equal(due({ id: 31, due_date: at(14) }, 'today'), undefined, 'a task with no time shows no due date');
+  assert.equal(due({ id: 32, due_date: at(13, 17) }, 'overdue').text, 'Yesterday ' + fmtTime(new Date(at(13, 17))));
+  assert.equal(due({ id: 33, due_date: at(17, 12) }, 'week').text, dueInfo(at(17, 12)).label);
+  assert.equal(due({ id: 34, due_date: at(14) }, 'overdue').text, 'Today', 'only the Today heading gives the day');
 });
 
 test('a checklist card’s heading shows its name without the start day, and the due time at the right, like a task’s', t => {
@@ -2254,7 +2280,7 @@ test('on Today, a task closed in the web app stays the card of its open subtask,
     task(61, { title: 'Lights', due_date: local(16, 9), related_tasks: under(60) }),
     task(62, { title: 'Chairs', done: true, related_tasks: under(60) }),
   ];
-  const g = { cards: 'today', line: true, key: 'week' };
+  const g = { cards: 'today', key: 'week' };
   for (const [kind, f, change, want] of [
     ['its subtask is done', { assignees: [me] }, { done: true }, [['donetoday', [60]]]],
     ['its subtask moves past this week', {}, { due_date: local(25, 9) }, []],
@@ -2316,7 +2342,7 @@ test('a task ticked on Today over a repeating subtask stays its card, done, and 
   app.change(w => w.read(structuredClone(list), TASK, started()));
   for (const x of list) app.row(structuredClone(x));
   const key = dayGroup(soon),
-    g = { cards: 'today', line: true, key },
+    g = { cards: 'today', key },
     p = app.tasks[10];
   Object.assign(app.view, { groups: todayGroups(), cards: { 10: { when: soon, made: null, focus: null } } });
   app.view.groups.find(x => x.key === key).tasks.push(p);

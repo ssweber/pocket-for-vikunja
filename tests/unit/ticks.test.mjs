@@ -152,7 +152,7 @@ test('when the batch clears, the subtasks closed with a parent on Today go to Do
   );
   assert.deepEqual(app.leaving, {});
   Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {} });
-  const card = app.cardOf(app.tasks[10], { cards: 'today', line: true, key: 'overdue' });
+  const card = app.cardOf(app.tasks[10], { cards: 'today', key: 'overdue' });
   assert.deepEqual(
     [card?.head, card?.rows.map(s => s.id)],
     ['Done, but 1 subtask is still open', [13]],

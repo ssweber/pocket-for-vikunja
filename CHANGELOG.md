@@ -38,6 +38,8 @@ is a new 0.x.y.
 - "Move all to today" and "Open project" are easier to tap, and their headings are no taller than the others.
 - Copy as a Markdown list includes each task's notes. Pasting the copy into an add box brings the notes back.
 - On Today, a checklist step's countdown counts the seconds in its last minute, as the checklist's screen does.
+- Today's rows show the title on one line, cut with "…" at its end, with the time, project and counts on a line under
+  it, as a project's list does. Cards keep their one-line rows.
 
 ### Fixed
 

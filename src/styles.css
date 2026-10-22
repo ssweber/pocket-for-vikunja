@@ -675,14 +675,15 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 .row.own .title {
   font-weight: 650;
 }
-/* A one-line row (Today): the title is cut short with "…", with the due time and the project's dot at its right. A
-   card's rows leave the dot to the card's header. A screen reader hears the full text (rowWhen). */
+/* Today cuts a title to one line with "…" at its end (.clamp). A card's row on Today is a single line (.one-line),
+   with the due time and the project's dot at the right of its title, and a screen reader hears the rest (rowWhen). A
+   card's rows leave the dot to the card's header. */
 .row.one-line .title-line {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
-.row.one-line .title {
+.row:is(.one-line, .clamp) .title {
   position: relative;
   flex: 1;
   min-width: 0;
@@ -692,7 +693,7 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   overflow-wrap: normal;
 }
 /* Screen-reader text stays at the start of the title, not past where the title was cut short */
-.row.one-line .title .sr,
+.row:is(.one-line, .clamp) .title .sr,
 .card-open > .sr {
   left: 0;
 }
@@ -1177,8 +1178,8 @@ button.check::after {
 .row > .claim {
   margin: -8px -8px -12px 0;
 }
-/* On a one-line row (Today) the slot has a fixed width with its content against the right edge, so the times and dots
-   to its left line up down the list whether it holds "+ me" or a picture. It is as wide as "+ me" needs, plus 8px of
+/* On a card's one-line row the slot has a fixed width with its content against the right edge, so the times and dots
+   to its left line up down the card whether it holds "+ me" or a picture. It is as wide as "+ me" needs, plus 8px of
    padding on the left, so the title gets the rest. Its touch target is still as tall as the row and well over 48px
    wide. */
 .row.one-line > .claim:not(:has(~ .icon-btn)) {

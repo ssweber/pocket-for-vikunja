@@ -19,7 +19,7 @@
      every kind where that condition can be true. -->
 <!-- A collapsed card's top row (.step-line) doesn't fold with the batch. The next row slides up into its place
      (cardEntered). -->
-<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits || !!waiting.dues[t.id], fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line}" :data-id="t.id" :data-gestures="rowGestures(g)"
+<div class="row" :class="g.run ? {done: t.done, current: t.i === g.at} : g.step ? {step: true, editing: sheet.stepEdit?.id === t.id} : g.own || g.top ? {done: t.done, own: true} : {done: t.done, leaving: !!leaving[t.id], deleted: leaving[t.id] === 'deleted', pending: t.pending, waits: t.waits || !!waiting.dues[t.id], fresh: !g.sheet && flashed.fresh[t.id], 'came-due': !g.sheet && flashed.due[t.id], arrived: !g.sheet && flashed.arrived[t.id], sub: g.depth[t.id], 'cl-run': isRunTask(t), lined: !!lines[t.id], aimed: !g.sheet && lit[t.id] && capW === 'under', 'step-line': !!g.card && !g.card.open && g.card.step.id === t.id, 'one-line': !!g.line, clamp: !!g.clamp}" :data-id="t.id" :data-gestures="rowGestures(g)"
      x-style="g.run ? {'--pct': t.done ? 0 : t.pct / 100} : {'--pct': t.done ? 0 : shownPct(t) / 100, '--depth': Math.min(g.depth[t.id] || 0, 3)}"
      x-effect="!g.sheet && !g.run && !g.own && !g.top && lit[t.id] && watchCursor($el)" x-init="g.card && cardEntered($el, g.card, t)"
      @click.capture="tapGap(t, g, $event)" @contextmenu="rowMenu(t, $event)" @keydown.shift.f10="rowMenu(t, $event)"
@@ -57,8 +57,8 @@
     <!-- only run sheet -->
     <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template>
     <!-- /only -->
-    <!-- On a one-line row (g.line), rowWhen gives what is shown at the right of the title. It is calculated once per
-         row, like the slot. -->
+    <!-- On a card's one-line row (g.line), rowWhen gives what is shown at the right of the title. It is calculated
+         once per row, like the slot. -->
     <!-- only top list card own -->
     <template x-for="w in !g.sheet && !g.run ? [g.line ? rowWhen(t, g) : null] : []" :key="0"><div class="title-line"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t) && !rowRing(t, g)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template><template x-if="w?.said"><span class="sr" x-text="', ' + w.said"></span></template><template x-if="g.own && canEdit"><span class="sr">, tap to change the title</span></template></div>
       <!-- At the right of a one-line row's title: small priority bars, the short due date and the project's dot. A

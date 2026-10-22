@@ -408,7 +408,17 @@ export default {
         label: left.late ? 'Late: ' + left.text : 'Due ' + left.text,
         countdown: left,
       });
-    else if (due) out.push({ key: 'due', cls: 'due num ' + due.cls, text: due.label });
+    else if (due && g?.key === 'today' && due.diff === 0) {
+      // Under the Today heading the time alone, since the heading gives the day. A task with no time shows none.
+      const at = due.label.replace(/^Today ?/, '');
+      if (at)
+        out.push({
+          key: 'due',
+          cls: 'due num ' + due.cls,
+          text: at,
+          label: dueRowSaid(due.cls === 'overdue', due.label),
+        });
+    } else if (due) out.push({ key: 'due', cls: 'due num ' + due.cls, text: due.label });
     if (g?.sheet) return out;
     if (t.priority)
       out.push({ key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label });

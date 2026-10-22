@@ -56,7 +56,7 @@ with no upgrade path. `!T#` in a title is then just text.
 The approved picture is `scratchpad/ui-today-rows/today-list-rows.png`, with one change the user asked for after it:
 the title is one line, not wrapped. Start from `scratchpad/ui-today-rows/inject.mjs`.
 
-- [ ] **C1.** Today's rows become the row a project's list uses, with the title on one line that takes the row's
+- [x] **C1.** Today's rows become the row a project's list uses, with the title on one line that takes the row's
       full width, cut with "…" only at its end. Nothing sits beside the title. A project's list still wraps its
       titles. A line under the title shows the time (the time alone where the day heading gives the day), the project's dot and
       name, "↳ parent", the checklist a step belongs to, ↻ and the counts. Labels stay on their own line. Cards keep
