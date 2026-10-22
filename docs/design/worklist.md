@@ -94,7 +94,7 @@ needs real access (403, code 7003). So Pocket offers the user's `bot-claude` on 
 - [x] **E3.** A draft issue for Vikunja, `docs/design/upstream-bot-search.md`, like the other drafts: own bots should
       still pass the project-access condition. Add it to the roadmap's list of drafts, and note there that E2 can go
       once Vikunja fixes it.
-- [ ] **E4. The `@` suggestions say where the task goes.** Decided with the user: the least surprising choice. In a
+- [x] **E4. The `@` suggestions say where the task goes.** Decided with the user: the least surprising choice. In a
       box that can move the task to another project (quick add on Today, a project's add box), a person who can't
       see the box's project is still offered, last, with the one project the task would move to, as in
       "Claude @bot-claude · Pocket". Picking them gives the same project chip as today. With no single project that

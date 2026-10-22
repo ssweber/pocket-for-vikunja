@@ -1244,7 +1244,11 @@ try {
       const to = shared[0],
         homeTitle = projects.find(p => p.id === home)?.title,
         t = `Pocket smoke auto project ${stamp}`;
-      await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE}`);
+      // The @ suggestion names the project the task moves to, and taking it gives that project's chip.
+      await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE.slice(0, 2)}`);
+      await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("@${ASSIGNEE} · ${to.title}")`, {
+        timeout: 15000,
+      });
       const auto = `#cap-chips .chip[data-kind=autoProject]:has-text("${to.title}")`;
       await page.waitForSelector(auto, { timeout: 15000 });
       await page.click(auto); // undo the automatic project: the default project returns, with a warning

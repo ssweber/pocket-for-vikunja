@@ -354,18 +354,32 @@ export default {
     const blocked = known.filter(n => sees(target, n) === false);
     if (!blocked.length) return out;
     if (one && !p.project && w === 'cap') {
-      const fits = [];
-      for (const proj of this.projects)
-        if (proj.id > 0 && proj.id !== target) {
-          const v = known.map(n => sees(proj.id, n));
-          if (v.includes(undefined)) return out; // not looked up yet
-          if (v.every(Boolean)) fits.push(proj);
-        }
-      if (fits.length === 1) out.auto = fits[0];
+      const fit = this.oneFit(target, known);
+      if (fit === undefined) return out; // not looked up yet
+      out.auto = fit;
     }
     if (!out.auto || this.box(w).ignore?.autoProject)
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
+  },
+  // The one project other than `target` that all `names` can see. Null when there is none or more than one, and
+  // undefined while someone's access to a project hasn't been looked up.
+  oneFit(target, names) {
+    const fits = [];
+    for (const proj of this.projects)
+      if (proj.id > 0 && proj.id !== target) {
+        const v = names.map(n => this.access[proj.id + ':' + n.toLowerCase()]);
+        if (v.includes(undefined)) return undefined;
+        if (v.every(Boolean)) fits.push(proj);
+      }
+    return fits.length === 1 ? fits[0] : null;
+  },
+  /* Only quick add moves a task to the project its @usernames can see, and only for one line with no +project, while
+     that chip is on. The task in any other box stays in the box's project. */
+  boxMoves(w) {
+    return (
+      w === 'cap' && this.boxLines(w).length === 1 && !this.boxParsed(w).project && !this.box(w).ignore?.autoProject
+    );
   },
   async checkAccess(w) {
     if (!this.accessQuery(w)) return;
@@ -435,9 +449,11 @@ export default {
     }
     return null;
   },
-  /* People with access to the target project come first, then others who share your projects. Only projects you can
-     add tasks to are suggested. A word that already matches a person, label or project exactly gets no suggestions,
-     so its parsed chip shows instead. */
+  /* In a box that can move the task (boxMoves), people who keep it where it is going come first. After them come the
+     people who move it, each with the project it moves to, and then those no single project fits. Any other box offers
+     only the people who can see its project. Someone whose access hasn't been looked up yet counts as able to see it.
+     Only projects you can add tasks to are suggested. A word that already matches a person, label or project exactly
+     gets no suggestions, so its parsed chip shows instead. */
   suggestions(w) {
     const tk = this.boxToken(w);
     if (!tk) return null;
@@ -478,24 +494,42 @@ export default {
           action: () => this.useSuggestion(w, tk, p.title),
         }));
     } else {
-      const pid = this.boxParsed(w).project?.id || this.boxHome(w);
+      const p = this.boxParsed(w),
+        target = p.project?.id || this.boxHome(w),
+        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
+      // The people already named, without the word being typed.
+      const named = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false),
+        typing = named.findIndex(n => n.toLowerCase() === q);
+      if (typing >= 0) named.splice(typing, 1);
+      // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no single
+      // project fits them all.
+      const goes = ns => (ns.some(n => sees(target, n) === false) ? this.oneFit(target, ns)?.id || null : target);
+      const moves = this.boxMoves(w),
+        now = moves ? goes(named) : target;
       out = (this.people || [])
-        .map(x => ({ x, s: score(x.user.username, x.user.name), away: !x.pids.has(pid) }))
+        .filter(x => moves || sees(target, x.user.username) !== false)
+        .map(x => {
+          const to = moves ? goes([...named, x.user.username]) : target;
+          return { x, to, s: score(x.user.username, x.user.name), rank: !to ? 2 : to === now ? 0 : 1 };
+        })
         .filter(y => y.s < 9)
         .sort(
           (a, b) =>
-            a.away - b.away ||
+            a.rank - b.rank ||
             a.s - b.s ||
             (a.x.user.name || a.x.user.username).localeCompare(b.x.user.name || b.x.user.username),
         )
-        .map(({ x: { user: u } }) => ({
-          key: 's' + u.id,
-          kind: 'suggest',
-          cls: 'suggest',
-          text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username,
-          hint: 'Assign ' + (u.name || u.username),
-          action: () => this.useSuggestion(w, tk, u.username),
-        }));
+        .map(({ x: { user: u }, to }) => {
+          const away = to && to !== target && this.projById.get(to)?.title;
+          return {
+            key: 's' + u.id,
+            kind: 'suggest',
+            cls: 'suggest',
+            text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username + (away ? ' · ' + away : ''),
+            hint: 'Assign ' + (u.name || u.username) + (away ? ' and add the task to ' + away : ''),
+            action: () => this.useSuggestion(w, tk, u.username),
+          };
+        });
     }
     // The first suggestion shows ↵ because Enter accepts it.
     if (out.length) Object.assign(out[0], { text: out[0].text + '  ↵', hint: out[0].hint + ', or press Enter' });

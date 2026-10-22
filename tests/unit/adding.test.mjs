@@ -1725,6 +1725,77 @@ test('typing +project suggests the projects you can add to, Enter takes the firs
   assert.equal(app.suggestions('sub'), null);
 });
 
+/* Typing @ offers people. Café (5) is the default project, which carol can see and the bot can't. The bot can see only
+   Garden (6), so quick add would move the task there. */
+const offering = () => {
+  const app = boxes(),
+    el = { value: '', focus() {}, setSelectionRange() {} },
+    garden = { id: 6, title: 'Garden' },
+    person = (id, username, name, pids) => ({ user: { id, username, name }, pids: new Set(pids) });
+  app.projects = [...app.projects, garden];
+  app.projById.set(6, garden);
+  app.people = [person(2, 'carol', 'Carol', [5]), person(3, 'bot-claude', 'Claude', [6])];
+  Object.assign(app.access, { '5:carol': true, '6:carol': false, '5:bot-claude': false, '6:bot-claude': true });
+  Object.assign(app.userKnown, { carol: true, 'bot-claude': true });
+  app.boxEl = () => el;
+  Object.defineProperty(app, 'sheetTask', { value: app.sheet.task });
+  const type = (w, text) => Object.assign(app.box(w), { text, focus: true, caret: text.length });
+  return { app, type };
+};
+const hintsOf = (app, w) => app.chips(w).map(c => c.hint);
+
+test("in quick add, typing @ offers someone who can't see the project last, with the project the task moves to", () => {
+  const { app, type } = offering();
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+  assert.deepEqual(hintsOf(app, 'cap'), ['Assign Carol, or press Enter', 'Assign Claude and add the task to Garden']);
+  // Taking the suggestion gives the chip of the project the task moves to.
+  app.chips('cap')[1].action();
+  assert.equal(app.cap.text, 'Water the beans @bot-claude ');
+  app.cap.focus = false;
+  assert.deepEqual(chipsOf(app, 'cap'), ['Garden', '@bot-claude']);
+  // Once the task goes to Garden, the bot comes first, and carol would leave it with no single project.
+  type('cap', 'Water the beans @bot-claude @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Claude @bot-claude · Garden  ↵', 'Carol @carol']);
+});
+
+test('in quick add, someone who could move the task to more than one project is offered last with no project', () => {
+  const { app, type } = offering(),
+    shed = { id: 7, title: 'Shed' };
+  app.projects.push(shed);
+  app.projById.set(7, shed);
+  Object.assign(app.access, { '7:carol': false, '7:bot-claude': true });
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+  app.chips('cap')[1].action();
+  app.cap.focus = false;
+  assert.ok(chipsOf(app, 'cap').includes("@bot-claude can't see Café"));
+  // A project whose people haven't loaded yet leaves the project out too.
+  delete app.access['7:bot-claude'];
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+});
+
+test("a box that can't move the task offers only the people who can see its project", () => {
+  const { app, type } = offering();
+  type('sub', 'Stake the beans @');
+  assert.deepEqual(chipsOf(app, 'sub'), ['Carol @carol  ↵']);
+  // A typed +project, or the moved project's chip tapped off, keeps the task where it is.
+  type('cap', 'Water the beans +Garden @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Claude @bot-claude  ↵']);
+  app.cap.ignore = { autoProject: true };
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵']);
+  // So does a pasted list.
+  app.cap.ignore = {};
+  type('cap', 'Water the beans\nPick the peas @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵']);
+  // Someone whose access to the project hasn't been looked up yet is offered.
+  delete app.access['5:bot-claude'];
+  type('sub', 'Stake the beans @');
+  assert.deepEqual(chipsOf(app, 'sub'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+});
+
 test('a label Vikunja does not have yet says so on its chip, once the labels have loaded', () => {
   const app = boxes();
   app.cap.text = 'Call the bank *urgent *urg';

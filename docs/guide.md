@@ -77,6 +77,7 @@ Behaviour you might not expect:
 A user can only be assigned a task in a project they can access.
 
 - **`@user` without a `+project`.** If your default project isn't shared with that user but exactly one of your projects is, Pocket picks that one and shows a chip. Otherwise a chip warns before you send.
+- **Typing `@` suggests people.** In quick add, someone who can't see the project comes last, with the project the task would move to. A subtask, step or template box suggests only the people who can see its project.
 - **+ me** appears only in shared projects. In a private project the slot is empty.
 - **To assign someone else**, hold **+ me** or your own picture, then tap them in the menu.
 - **Assignment never marks anything done.** Completion is recorded for whoever ticks it.

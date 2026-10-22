@@ -42,6 +42,8 @@ is a new 0.x.y.
   it, as a project's list does. Cards keep their one-line rows.
 - Holding a task on Today shows a ring in the date chips' middle that follows the thumb and slides onto the date it
   picks, also near a screen edge, where the chips are pushed in.
+- In quick add, an `@` suggestion for someone who can't see the project names the project the task would move to. A
+  subtask, step or template box suggests only the people who can see its project.
 
 ### Fixed
 
