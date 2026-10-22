@@ -77,3 +77,20 @@ The approved picture is `scratchpad/ui-thumb/thumb-ring.png`. Start from `scratc
       As pictured: a 44 px ring in the accent colour with a light tint, in the chip's text colour on a lit chip,
       drawn over the chip's background and under its text. It follows the finger with no transition, and slides
       120 ms only when a chip lights or unlights. In `src/`, take a chip's position from the layout, not the DOM.
+
+## E. Bots offered on projects they can't see
+
+Vikunja 2.7.1's `GET /projects/{id}/users/search` returns every bot the caller owns for every project the caller can
+read (`ownBotCond` in `pkg/user/users_project.go` skips the project-access condition), while assigning the bot
+needs real access (403, code 7003). So Pocket offers the user's `bot-claude` on their private Inbox, and gives Inbox a
+"+ me" slot. Evidence and a reproduction are in `scratchpad/people-bug/`.
+
+- [ ] **E1.** Vikunja's 403 with code 7003 ("This user does not have access to the project") ends an assign op: drop
+      it with a clear message instead of keeping it to retry (`assign.refusal`, `src/js/ops/people.js`).
+- [ ] **E2.** Don't trust the search for a user whose `bot_owner_id` is the signed-in user. Count such a bot on a
+      project only if it is directly shared on it or on a parent (`GET /projects/{id}/users`), in `loadPeople` and
+      `canSee`. Make the extra requests only when the search returned an own bot. A bot with access only through a
+      team is missed, and E1 covers it.
+- [ ] **E3.** A draft issue for Vikunja, `docs/design/upstream-bot-search.md`, like the other drafts: own bots should
+      still pass the project-access condition. Add it to the roadmap's list of drafts, and note there that E2 can go
+      once Vikunja fixes it.
