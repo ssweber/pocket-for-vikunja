@@ -4449,6 +4449,9 @@ try {
       await toastGone();
       await refreshToday();
       await page.waitForSelector(`.sec.today ~ .list ${rowOf(t)}`, { timeout: 15000 });
+      // The load can scroll the page. Rows then stay where they are until 3 seconds after the scroll stops, and the
+      // highlight is gone before the row reaches Overdue. So wait for the scroll to stop before moving the clock.
+      await page.evaluate(() => Alpine.$data(document.body).untouched());
       // Move the page's clock past the due time instead of waiting for it. Vikunja stores the time in whole seconds, so
       // the task can be due up to a second before `due`.
       await page.clock.fastForward(
