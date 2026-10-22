@@ -6087,14 +6087,17 @@ ${footName('Hooks')}`);
       navigator.share = undefined;
     });
     // The Markdown list uses quick add's syntax, so pasting it back recreates the task. The task is a heading without
-    // a percentage, because the percentage is worked out from the subtasks. Each subtask is a line.
+    // a percentage, because the percentage is worked out from the subtasks. Its notes follow " // ", with each more
+    // line of them indented under it. Each subtask is a line.
     await (await menu()).getByRole('menuitem', { name: 'Copy as a Markdown list' }).click();
     await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
     await expect
       .poll(clip)
       .toBe(
         [
-          `## Pack the van ${stamp}`,
+          `## Pack the van ${stamp} // Bring the long cable`,
+          '  //',
+          '  // Keys in the office',
           '- [x] Load chairs',
           '- [ ] Tables (50%)',
           `- [ ] Sound system @${me.username}`,
@@ -6146,7 +6149,9 @@ ${footName('Hooks')}`);
       .toBe(
         [
           `# PocketSmokeShare${stamp} · 5 open · 1 done`,
-          `- [ ] Pack the van ${stamp}`,
+          `- [ ] Pack the van ${stamp} // Bring the long cable`,
+          '  //',
+          '  // Keys in the office',
           '  - [ ] Tables (50%)',
           `  - [ ] Sound system @${me.username}`,
           '  - [ ] Lights',
@@ -6162,8 +6167,8 @@ ${footName('Hooks')}`);
     await expect.poll(clip).toBe(await page.evaluate(() => window.shared[0].text));
   });
   /* A copied task can be pasted back. Its Markdown, pasted into quick add's box, makes the same task again with the
-     same subtasks, including whether each is done, how far along it is and who is assigned. The percentage is not
-     written in the copy, so it is worked out again as 38%. */
+     same subtasks, including whether each is done, how far along it is and who is assigned, and the same notes. The
+     percentage is not written in the copy, so it is worked out again as 38%. */
   await step('a-tasks-copy-pasted-into-quick-add-makes-the-same-tasks', async () => {
     if (!vanCopy) throw new Error("no copy to paste: the step before didn't get that far");
     const title = `Pack the van ${stamp}`;
@@ -6201,6 +6206,9 @@ ${footName('Hooks')}`);
     try {
       if ((await shape(twin.id)) !== (await shape(vanId)))
         throw new Error(`the copy's subtasks ${await shape(twin.id)}, the original's ${await shape(vanId)}`);
+      const notes = (await get(twin.id)).description;
+      if (notes !== '<p>Bring the long cable</p><p>Keys in the office</p>')
+        throw new Error("the copy's notes: " + notes);
       await expect.poll(async () => Math.round((await get(twin.id)).percent_done * 100)).toBe(38);
     } finally {
       for (const t of made) await api('/tasks/' + t.id, { method: 'DELETE' });

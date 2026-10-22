@@ -4,10 +4,11 @@
    can't bring back the record of who did and who skipped each step. Both are built from data, never from HTML, so
    the unit tests check every rule here.
 
-   An item is {title, done, pct, due, people, by, skipped, priority, labels, repeat, items, subs, ring}:
+   An item is {title, done, pct, due, people, by, skipped, priority, labels, repeat, notes, items, subs, ring}:
    - `pct` is its own progress, 0–100.
    - `people` are the users assigned, and `by` the users who did a step.
    - `labels` are label names, and `repeat` is {after, mode} as Vikunja keeps it.
+   - `notes` is the task's notes as plain text, for the Markdown copy only.
    - `items` are the subtasks or steps under it.
    - `subs` is {done, total}, for when `items` leaves out the done ones.
    - `ring` is a parent's calculated progress, {pct, done, total}. */
@@ -203,8 +204,8 @@ const named = w => (/\s/.test(w) ? (w.includes('"') ? `'${w}'` : `"${w}"`) : w);
 const isParent = it => !!(it.ring || (it.items || []).length || it.subs?.total);
 /* An item as one line in quick add's syntax, after `lead` (its heading's #s, or its bullet and checkbox). The line
    holds the title, then "(50%)" when the item has progress of its own, then people, priority, labels and repeat with
-   the user's own prefixes, then the due date last. With quick add turned off, the line has only the title and the
-   progress.
+   the user's own prefixes, then the due date, then " // " and the first line of the notes. With quick add turned off,
+   the line has only the title, the progress and the notes.
 
    A title that quick add would read dates, people or labels out of is put in quotes, so quick add leaves it alone:
    - [ ] "Lunch friday" @user 2026-10-16. Quotes are added only when needed, so most lines have none. To decide, the
@@ -227,9 +228,11 @@ function quickLine(it, lead, { mode, dueTime }, head = false) {
         repeatPhrase(it.repeat),
         dueStamp(it.due, dueTime),
       ];
-  const line = title => lead + [title, own ? `(${own}%)` : '', ...words].filter(Boolean).join(' ');
+  const notes = (it.notes || '').split('\n')[0],
+    line = title =>
+      lead + [title, own ? `(${own}%)` : '', ...words].filter(Boolean).join(' ') + (notes ? ' // ' + notes : '');
   if (!P) return line(it.title);
-  const said = (title, done, figure, who, priority, tags, repeat, due) =>
+  const said = (title, done, figure, who, priority, tags, repeat, due, note) =>
     JSON.stringify([
       title,
       !!done,
@@ -239,8 +242,9 @@ function quickLine(it, lead, { mode, dueTime }, head = false) {
       tags,
       repeatPhrase(repeat),
       repeat && !due ? '' : dueStamp(due, dueTime),
+      note,
     ]);
-  const want = said(it.title, it.done, own, people, prio, labels, it.repeat, it.due);
+  const want = said(it.title, it.done, own, people, prio, labels, it.repeat, it.due, notes);
   const comesBack = title => {
     const l = readList(line(title) + (head ? '\n- x' : ''), { colon: head }).lines[0],
       p = l && parseCapture(l.text, [], { mode, dueTime });
@@ -256,26 +260,36 @@ function quickLine(it, lead, { mode, dueTime }, head = false) {
           p.labels,
           p.repeat && { after: p.repeat.after, mode: p.repeat.mode },
           p.dueFromRepeat ? null : p.due?.toISOString(),
+          p.notes,
         )
     );
   };
   const quotes = it.title.includes('"') ? ["'", '"'] : ['"', "'"];
   return line([it.title, ...quotes.map(q => q + it.title + q)].find(comesBack) ?? it.title);
 }
+/* The lines of an item's notes after the first, which quickLine writes. Each is indented one level deeper than the
+   item and starts with "//", so pasting reads it as more notes for the item, not as a subtask (readList). */
+const moreNotes = (it, depth) =>
+  (it.notes || '')
+    .split('\n')
+    .slice(1)
+    .map(l => ('  '.repeat(depth + 1) + '// ' + l).trimEnd());
 // Each item as a Markdown task line, "- [x]" done or "- [ ]" open, with its subtasks indented two spaces.
 const mdLines = (items, depth, opts) =>
   items.flatMap(it => [
     quickLine(it, '  '.repeat(depth) + `- [${it.done ? 'x' : ' '}] `, opts),
+    ...moreNotes(it, depth),
     ...mdLines(it.items || [], depth + 1, opts),
   ]);
 /* A task or a project as a Markdown list that can be pasted back. Pasted into Pocket's add box, it makes the same
-   tasks, with the same done state, nesting, people, labels, priority, dates, repeats and progress (share.test.mjs
-   reads each one back).
+   tasks, with the same done state, nesting, people, labels, priority, dates, repeats, progress and notes
+   (share.test.mjs reads each one back).
 
    A task is a heading, "## Pack the van @user !3 2026-10-16" ("## [x]" when done), then its subtasks one per line,
    with nothing collapsed. A project is "# Café · 12 open · 5 done", then its open tasks with their open subtasks.
-   When pasted back, the heading is not made into a task. It is read as the list's name. Notes, comments, photos and a project's done
-   tasks are not copied, so pasting never makes them.
+   When pasted back, the heading is not made into a task. It is read as the list's name. Comments, photos and a
+   project's done tasks are not copied, so pasting never makes them. A task's notes follow " // " on its line, and a
+   note with several lines continues on lines of its own under it (moreNotes).
 
    `opts` is {mode, dueTime}. `mode` is the user's Quick Add Magic mode ("disabled" for no prefixes), and `dueTime` is
    their default due time.
@@ -290,5 +304,9 @@ export function markdownText(doc, { mode = 'vikunja', dueTime = '12:00' } = {}) 
       `# ${doc.title} · ${num(doc.open)} open` + (doc.doneCount ? ` · ${num(doc.doneCount)} done` : ''),
       ...mdLines(items, 0, opts),
     ].join('\n');
-  return [quickLine(doc, `## ${doc.done ? '[x] ' : ''}`, opts, true), ...mdLines(items, 0, opts)].join('\n');
+  return [
+    quickLine(doc, `## ${doc.done ? '[x] ' : ''}`, opts, true),
+    ...moreNotes(doc, 0),
+    ...mdLines(items, 0, opts),
+  ].join('\n');
 }

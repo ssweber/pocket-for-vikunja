@@ -16,7 +16,7 @@ report.
 - [x] **A3. Adding while Today is narrowed to a label.** The new task gets that label, so it shows where the user is
       looking. The add box shows the label as a chip, as if `*label` were typed, and tapping the chip leaves it off,
       as with any other chip.
-- [ ] **A4. Copy as a Markdown list includes notes.** Always, with no separate menu item. A task's notes go after
+- [x] **A4. Copy as a Markdown list includes notes.** Always, with no separate menu item. A task's notes go after
       `//` on its line. A note with several lines continues on lines under the task, indented one level deeper and
       starting with `// `. Pasting reads such a line as more notes for the line above, not as a subtask, so the copy
       round-trips. `pocket:` lines are left out (so asks aren't copied), and the notes are plain text. Copy progress

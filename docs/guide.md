@@ -31,7 +31,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 | `every day`, `every other week`, `every month`, `weekly` | Repeat. Vikunja can't repeat on weekdays only or on specific days, so `every weekday` stays in the title and a chip says so. |
 | `(50%)` or `50%` at the end | Progress. `100%` is done. Pocket only. |
 | `x ` or `[x] ` at the start | Done already. Pocket only. A capital `X` works too. |
-| `Order bags // the brown ones` | Notes, from the text after the first ` // `. Nothing in the notes is read. Slashes without a space on both sides, as in `http://`, stay in the title. Editing a template's step that has notes adds the new notes after them. Pocket only. |
+| `Order bags // the brown ones` | Notes, from the text after the first ` // `. Nothing in the notes is read. Slashes without a space on both sides, as in `http://`, stay in the title. A line under it that is indented and starts with `//` adds a line to the notes. Editing a template's step that has notes adds the new notes after them. Pocket only. |
 
 **Undoing a parse.** Tap a chip to keep those words in the title. Wrap the whole text in quotes to turn parsing off: `"Friday night jazz poster"`. Quotes at the start hold the title and leave the rest to parse: `"Lunch friday" @user tomorrow`.
 
@@ -67,7 +67,7 @@ Behaviour you might not expect:
 - **Tap a label on Today to see only the tasks with it.** Tap **Show all**, or leave Today, to see every task again. A task added while Today shows one label gets that label. Tap the label's chip in the add box to leave it off. Today shows only what is due this week. To find every open task with a label, wherever it is due, search for `*errands`. Search lists them by project. Typing `*` offers your labels. Tapping a label anywhere else searches for it too.
 - **Done today lists what you did today**, folded at the bottom of Today. Tap **Copy** to copy it as text. Vikunja doesn't record who ticked a task, so Pocket adds your ✅ to each task you tick. Done today shows tasks with your ✅, tasks assigned to you, tasks in projects only you can see, and checklists you started. A task ticked in Vikunja's web app gets no ✅. A repeating task stays open when ticked, so it never appears.
 - **Copy beside ⋯** copies a project's, a checklist's or a task's progress as text. **Share as text** in the **⋯** menu sends the same text through the phone's share sheet.
-- **Copy as a Markdown list** round-trips. Pasted into Pocket's add box, it makes the tasks again. Notes, comments and attachments aren't included.
+- **Copy as a Markdown list** round-trips. Pasted into Pocket's add box, it makes the tasks again, with their notes. Comments and attachments aren't included.
 - **Every swipe and hold has an equivalent in the ⋯ menu**, for keyboard and screen-reader use. Right-click a row to open its task menu. Press Shift+F10 on a focused row to open the same menu.
 - **Press Alt+Up or Alt+Down on a task or in an add box** to move the box through the rows. The text stays in the box. Hold and drag a task to reorder it.
 - **Press Alt+Left in the project add box** to add a task at that position. Press Alt+Right to add a subtask instead.

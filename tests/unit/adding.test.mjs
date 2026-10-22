@@ -1647,6 +1647,23 @@ test('a pasted list gets one chip counting the lines with notes, and tapping it 
   assert.deepEqual(chipsOf(app, 'ins'), ['2 steps', 'Notes on 2 steps']);
 });
 
+test('an indented line starting with // under a pasted line is more of its notes, marked in the box with them', () => {
+  const app = boxes();
+  app.cap.text = '- [ ] Tables // Two\n  //\n  // Ask first\n  - [ ] Legs';
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 task + 1 subtask', 'Café', 'Notes on 1 task']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Tables', 'Two\n\nAsk first'],
+    ['Legs', ''],
+  ]);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:// Two\n  //\n  // Ask first']);
+  tap(app, 'cap', 'Notes on');
+  assert.deepEqual(
+    notesOfLines(app, 'cap')[0],
+    ['Tables // Two // // Ask first', ''],
+    'tapped off, they stay in the title',
+  );
+});
+
 test('a line’s notes are sent as its description, in the request that makes it, as one paragraph', async t => {
   t.after(clear);
   const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]),

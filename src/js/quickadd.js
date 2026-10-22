@@ -153,10 +153,19 @@ const HELD = /^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/;
 /* The text after the first " // " in a line is the task's notes, and is not read for dates or people. The spaces on
    both sides keep "http://" and "a//b" in the title, and a quoted title at the start keeps its slashes too. Returns
    {at (the index of the space before the slashes), notes}, or null when nothing follows the slashes. Pocket reads
-   notes in every Quick Add Magic mode, as it reads a percentage. */
+   notes in every Quick Add Magic mode, as it reads a percentage. A line can hold more lines of notes, each starting
+   with "//" (readList), and the notes leave out those slashes. */
 export function notesOf(line) {
   const at = line.indexOf(' // ', line.match(HELD)?.[0].length ?? 0),
-    notes = at < 0 ? '' : line.slice(at + 4).trim();
+    notes =
+      at < 0
+        ? ''
+        : line
+            .slice(at + 4)
+            .split(/\r?\n/)
+            .map((l, i) => (i ? l.replace(/^\s*\/\/ ?/, '') : l).trimEnd())
+            .join('\n')
+            .trim();
   return notes ? { at, notes } : null;
 }
 /* Returns {title, project, projectMiss, labels, assignees, mid, priority, due, dueLabel, dueFromRepeat, repeat, pct,
@@ -618,6 +627,8 @@ const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/,
    with fewer #s. A single #, as in "# Café · 12 open · 5 done", names the whole list, as a project's copy starts. It
    is left out of the tasks. */
 const HEADING = /^(#{1,6})\s+/;
+// A line of notes under a task, as a task's Markdown copy writes one (share.js): "//", then a space and the text.
+const MORE_NOTES = /^\/\/(?=\s|$)/;
 /* Read a box's text as a list. Returns {lines, ticked, one, first, names}.
    - `lines` has one entry per line that becomes a task, in order: {text (the line without its markers), at (where the
      text starts in the box's text), done, mark ([start, end] of the text that marked the line done), under (the
@@ -640,12 +651,16 @@ const HEADING = /^(#{1,6})\s+/;
    task and keeps the first line's colon.
 
    `steps` is for a checklist's steps, where a step is done by doing it. A ticked line is left out, an x is part of the
-   text, and so is a heading's #. */
+   text, and so is a heading's #.
+
+   A line that starts with "//" and is indented more than the line above it holds more notes for that line. It joins
+   that line's text, newline and all, so the notes keep their lines (notesOf) and the box's positions still match. */
 export function readList(text, { steps = false, done = true, nest = false, flat = false, colon = false } = {}) {
-  const rows = [];
+  const rows = [],
+    all = String(text || '');
   let at = 0,
     ticked = 0;
-  for (const raw of String(text || '').split('\n')) {
+  for (const raw of all.split('\n')) {
     let i = raw.length - raw.trimStart().length;
     const indent = [...raw.slice(0, i)].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0);
     const take = re => {
@@ -654,6 +669,14 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
       return m;
     };
     take(QUOTE_MARKS);
+    const prev = rows.at(-1),
+      end = at + raw.trimEnd().length;
+    if (prev?.text && indent > prev.indent && MORE_NOTES.test(raw.slice(i))) {
+      const more = all.slice(prev.end, end);
+      Object.assign(prev, { text: prev.text + more, kept: prev.kept + more, typed: prev.typed + more, end });
+      at += raw.length + 1;
+      continue;
+    }
     const hash = i,
       level = steps ? 0 : take(HEADING)?.[1].length || 0;
     // A list's name is never marked done. The text after its # is the name.
@@ -678,6 +701,7 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
       indent,
       typed: raw.slice(hash).trim(),
       typedAt: at + hash,
+      end,
     });
     at += raw.length + 1;
   }
@@ -715,7 +739,8 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
     );
     (r.level ? heads : above).push({ level: r.level, indent: r.indent, k: lines.length - 1 });
   }
-  const led = colon && lines.length > 1 && /\S:$/.test(lines[0].text),
+  // A colon at the end of the line's notes is part of the notes.
+  const led = colon && lines.length > 1 && !notesOf(lines[0].text) && /\S:$/.test(lines[0].text),
     first = led || lines.some(l => l.under === 0);
   if (led && !flat) lines[0].text = lines[0].text.slice(0, -1).trimEnd();
   for (const [i, l] of lines.entries())

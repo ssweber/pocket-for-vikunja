@@ -6,6 +6,7 @@ import { parseStep, stepsOf } from '../checklists.js';
 import { positionOrder } from '../order.js';
 import { pctOf, workedOut } from '../progress.js';
 import { COPIED } from '../messages.js';
+import { notesText } from '../ops/index.js';
 import { doneTodayText, markdownText, shareText } from '../share.js';
 import { copyOf } from './tasks.js';
 
@@ -57,14 +58,15 @@ export default {
       items: subs.map(s => this.shareItem(s, seen)),
     };
   },
-  /* The other things a Markdown copy writes for a task (share.js, quickWords): priority, label names and repeat.
+  /* The other things a Markdown copy writes for a task (share.js, quickLine): priority, label names, repeat and notes.
      `full` is the full task object, if Pocket has one, because Vikunja returns a task's subtasks without their
-     labels. */
+     labels. The notes are plain text, without Pocket's own lines, so a step's asks aren't copied. */
   shareWords(t, full = t) {
     return {
       priority: t.priority || 0,
       labels: (t.labels || full.labels || []).map(l => l.title),
       repeat: { after: t.repeat_after || 0, mode: t.repeat_mode || 0 },
+      notes: notesText(t.description == null ? full : t),
     };
   },
   /* A parent's progress as its ring shows it (ringOf). It gives the percentage in the text and a bar with one segment
