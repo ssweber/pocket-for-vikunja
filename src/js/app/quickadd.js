@@ -1,6 +1,6 @@
 // Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
 import { app, colorOf, esc, userCache } from '../util.js';
-import { api, items, NetError, sharedToken } from '../api.js';
+import { allPages, api, items, NetError, sharedToken } from '../api.js';
 import { inBatches, readStepPhrase, STEP_IGNORE } from '../checklists.js';
 import { parentIds, saved } from '../lists.js';
 import { clearOf, listViewOf, placeAfter, placeFirst } from '../order.js';
@@ -28,6 +28,36 @@ let cursorIO = null,
 const inSight = new WeakMap();
 // Cache each box's parsed text and inputs so its chips, highlights and submission share the same parse.
 const reads = new Map();
+/* Vikunja's user search lists every bot the user owns on every project, but Vikunja assigns a bot only where it has
+   access: it owns the project or a parent, or one of them is shared with it directly. botSees walks up the parents as
+   Vikunja does. It returns null when it can't read a project on the way, and then the search's answer stands. A bot
+   that sees a project only through a team is missed. */
+// Each project's direct shares, as a set of user ids, read at most once per call of sharesOf.
+const sharesOf = () => {
+  const got = new Map();
+  return pid => {
+    if (!got.has(pid))
+      got.set(
+        pid,
+        allPages(`/projects/${pid}/users`)
+          .then(list => new Set(list.map(u => u.id)))
+          .catch(() => null),
+      );
+    return got.get(pid);
+  };
+};
+async function botSees(app, pid, bot, shares) {
+  const seen = new Set();
+  while (pid && !seen.has(pid)) {
+    seen.add(pid);
+    const p = app.projById.get(pid),
+      ids = p && (await shares(pid));
+    if (!ids) return null;
+    if (p.owner?.id === bot.id || ids.has(bot.id)) return true;
+    pid = p.parent_project_id;
+  }
+  return false;
+}
 
 export default {
   /* Every add box shares the same parsing, chips and suggestions. `w` names the box: cap adds tasks, sub and under add
@@ -367,11 +397,14 @@ export default {
         userCache.set(k, u);
         this.userKnown[k] = true;
       }
-      return (this.access[key] = !!u);
+      return (this.access[key] = !!u && (!this.ownBot(u) || (await botSees(this, pid, u, sharesOf())) !== false));
     } catch (e) {
       if (e instanceof NetError) throw e;
       return null;
     }
+  },
+  ownBot(u) {
+    return !!this.user && u.bot_owner_id === this.user.id;
   },
   async userExists(name) {
     const k = name.toLowerCase();
@@ -497,6 +530,16 @@ export default {
                 .catch(() => null);
       const lists = await inBatches(projs, 4, get),
         byName = new Map();
+      // Take the user's own bots off the projects they can't see (botSees). Most users own no bot, and ask nothing more.
+      if (lists.some(l => l?.some(u => this.ownBot(u)))) {
+        const shares = sharesOf();
+        await inBatches(Object.keys(projs), 4, async i => {
+          const sees = await Promise.all(
+            (lists[i] || []).map(u => !this.ownBot(u) || botSees(this, projs[i].id, u, shares)),
+          );
+          if (lists[i]) lists[i] = lists[i].filter((u, k) => sees[k] !== false);
+        });
+      }
       // Drop the old access entries of every project that loaded, so a removed share doesn't stay allowed.
       const loaded = new Set(projs.filter((p, i) => lists[i]).map(p => p.id));
       for (const key of Object.keys(this.access)) if (loaded.has(+key.split(':')[0])) delete this.access[key];

@@ -58,6 +58,8 @@ is a new 0.x.y.
   comments.
 - Date chips left open on Today no longer close by themselves when a moved row's gap leaves at the bottom of the
   page. Rows wait until the chips close.
+- Your own bots are offered only on projects shared with them, and an assignment Vikunja refuses because the person
+  can't see the project leaves the Outbox and says so.
 
 ### What Pocket writes into Vikunja
 

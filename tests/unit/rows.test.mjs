@@ -1376,6 +1376,84 @@ test('who can see each project is loaded, kept on the phone and loaded again lat
   );
 });
 
+/* Vikunja's search lists the user's own bots on every project, but Vikunja assigns a bot only where it owns the
+   project or a parent, or one of them is shared with it directly. Project 1 is the user's Inbox, 2 is shared with the
+   bot, 4 is under 3, which is shared with the bot, 5 is the bot's own, and 6's shares can't be read. */
+test("the user's own bot counts only on the projects it can see, and no more is asked when the search lists none", async () => {
+  const me = { id: 1, username: 'alex' },
+    bob = { id: 2, username: 'bob' },
+    bot = { id: 5, username: 'bot-claude', name: 'Claude', bot_owner_id: 1 },
+    projects = [
+      { id: 1, owner: me },
+      { id: 2, owner: me },
+      { id: 3, owner: me },
+      { id: 4, owner: me, parent_project_id: 3 },
+      { id: 5, owner: bot },
+      { id: 6, owner: bob },
+    ],
+    shared = { 1: [], 2: [bot], 3: [bot], 4: [], 5: [] },
+    asked = [];
+  let search = [me, bot];
+  const app = component(quickadd, claims);
+  Object.assign(app, {
+    user: me,
+    projects,
+    projById: new Map(projects.map(p => [p.id, p])),
+    access: {},
+    userKnown: {},
+    people: null,
+    seenBy: {},
+  });
+  globalThis.fetch = async url => {
+    const path = new URL(url).pathname.replace(/^\/api\/v2/, ''),
+      pid = +path.match(/projects\/(\d+)\//)[1];
+    asked.push(path);
+    if (path.endsWith('/search')) return new Response(JSON.stringify({ items: search }), { status: 200 });
+    return pid in shared
+      ? new Response(JSON.stringify({ items: shared[pid], total_pages: 1 }), { status: 200 })
+      : new Response('{"code":7002}', { status: 403 });
+  };
+  await app.loadPeople(true);
+  assert.deepEqual(app.seenBy, { 1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }, 'the Inbox counts as only the user');
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6].map(pid => app.access[pid + ':bot-claude']),
+    [false, true, true, true, true, true],
+    "the bot sees what is shared with it, a project under one, its own, and one whose shares can't be read",
+  );
+  assert.equal(app.onlyYou(1), true, 'so the Inbox shows no claim slot');
+  assert.deepEqual(
+    asked.filter(p => !p.endsWith('/search')),
+    [
+      '/projects/1/users',
+      '/projects/2/users',
+      '/projects/3/users',
+      '/projects/4/users',
+      '/projects/5/users',
+      '/projects/6/users',
+    ],
+    "each project's shares are read once",
+  );
+
+  Object.assign(app, { access: {} });
+  asked.length = 0;
+  assert.deepEqual(
+    [await app.canSee(1, 'Bot-Claude'), await app.canSee(4, 'bot-claude')],
+    [false, true],
+    '@bot-claude typed in an add box is checked the same way',
+  );
+  assert.equal(app.userKnown['bot-claude'], true, 'the bot is still known to exist');
+
+  search = [me, bob];
+  asked.length = 0;
+  await app.loadPeople(true);
+  assert.equal(await app.canSee(1, 'bob'), true);
+  assert.deepEqual(
+    asked.filter(p => !p.endsWith('/search')),
+    [],
+    'without an own bot in the search, no shares are read',
+  );
+});
+
 /* Holding a row or card on Today shows its dates around the touch point (app/throw.js). A card's row holds its card.
    A task that Move all to today leaves where it is shows every date dimmed, with a line saying why. A task the user
    can't change shows nothing. */

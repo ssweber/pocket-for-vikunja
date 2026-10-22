@@ -87,7 +87,7 @@ needs real access (403, code 7003). So Pocket offers the user's `bot-claude` on 
 
 - [x] **E1.** Vikunja's 403 with code 7003 ("This user does not have access to the project") ends an assign op: drop
       it with a clear message instead of keeping it to retry (`assign.refusal`, `src/js/ops/people.js`).
-- [ ] **E2.** Don't trust the search for a user whose `bot_owner_id` is the signed-in user. Count such a bot on a
+- [x] **E2.** Don't trust the search for a user whose `bot_owner_id` is the signed-in user. Count such a bot on a
       project only if it is directly shared on it or on a parent (`GET /projects/{id}/users`), in `loadPeople` and
       `canSee`. Make the extra requests only when the search returned an own bot. A bot with access only through a
       team is missed, and E1 covers it.

@@ -26,6 +26,7 @@ import {
   laidUnder,
   loaded,
   noToast,
+  outboxOf,
   placeLine,
   placeSays,
   rowLine,
@@ -4020,6 +4021,78 @@ try {
     await page.evaluate(() => {
       location.hash = '#/today';
     });
+  });
+  /* Vikunja's user search lists the user's own bots on every project, but Vikunja assigns a bot only where it has
+     access. So a project shared with no one has no "+ me", even when the user owns a bot, and a project shared with the
+     bot offers it. When the share is removed after Pocket loaded it, Vikunja refuses the assignment, and the change
+     leaves the Outbox with the reason. An API token can't make bots, so this step signs in. */
+  await step('your-own-bot-is-offered-only-where-it-can-see', async () => {
+    const session = (
+      await (
+        await fetch(SERVER + '/api/v2/login', {
+          method: 'POST',
+          headers: json,
+          body: JSON.stringify({ username: USER, password: PASSWORD }),
+        })
+      ).json()
+    ).token;
+    const bots = (path, init = {}) =>
+      fetch(SERVER + '/api/v2/user/bots' + path, {
+        ...init,
+        headers: { ...json, Authorization: 'Bearer ' + session },
+      });
+    const made = await bots('', {
+      method: 'POST',
+      body: JSON.stringify({ username: `bot-pocket-smoke-${stamp}`, name: 'Smoke bot' }),
+    });
+    if (!made.ok) return; // a Vikunja without bots
+    const bot = await made.json();
+    const proj = await (
+      await api('/projects', {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ title: `PocketSmokeBot${stamp}` }),
+      })
+    ).json();
+    createdProjects.push(proj.id);
+    const a = await make(`Pocket smoke bot ${stamp}`, { due_date: todayAt(21) }, proj.id),
+      A = rowOf(a.title),
+      menu = page.locator('.people-menu'),
+      item = menu.getByRole('menuitemcheckbox').filter({ hasText: '@' + bot.username });
+    try {
+      await toastGone();
+      await page.evaluate(() => {
+        location.hash = '#/today';
+      });
+      await page.reload(); // reload so Pocket loads who can see each project
+      await expect(page.locator(A)).toBeVisible({ timeout: 15000 });
+      await expect(page.locator(`${A} .claim`), 'your bot gives a project shared with no one "+ me"').toHaveCount(0, {
+        timeout: 20000,
+      });
+      await api(`/projects/${proj.id}/users`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ username: bot.username, permission: 1 }),
+      });
+      await page.reload();
+      await loaded(page);
+      const box = await steady(page.locator(`${A} > .claim`));
+      await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 28));
+      await page.mouse.down();
+      await later(700);
+      await page.mouse.up();
+      await expect(item, 'a project shared with your bot offers it').toBeVisible();
+      await api(`/projects/${proj.id}/users/${bot.username}`, { method: 'DELETE' });
+      refused.add(`${SERVER}/api/v1/plugins/pocket/v2/tasks/${a.id}/assignees/bulk`);
+      await item.click();
+      await toast(page, `Smoke bot can't see the task's project`);
+      await synced(page);
+      const left = await outboxOf(page);
+      if (left.length) throw new Error('the refused change stays in the Outbox: ' + JSON.stringify(left));
+      if ((await get(a.id)).assignees?.length) throw new Error('the bot was assigned');
+    } finally {
+      await bots('/' + bot.id, { method: 'DELETE' });
+    }
   });
   /* The one-time hint appears on a phone that has never swiped a row. It sits on the first row that takes a swipe for
      its progress and is drawn with that row, so no row moves when it appears. It also leaves without moving any row,
