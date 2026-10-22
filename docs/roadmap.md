@@ -64,12 +64,8 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Waiting for the user's answer.**
-   - The new texts for `!T#`, labels and notes in the Outbox. "Adding notes on" should read "Adding notes to".
-   - A padlock on a template's step list for a `!T#` step. Partial progress from a locked step's sheet isn't blocked.
-     Today's padlock can stay up to a minute after the step unlocks.
-   - The label chips under search are under 44 px tall.
-   - A task added while Today is narrowed to a label, without the label, isn't shown.
+1. **The worklist** in `docs/design/worklist.md`: small fixes, waiting and order as template settings in place of
+   `!T#`, the list row on Today, and showing the thumb while dragging to a date.
 2. **Small fixes.**
    - On a project only you can see, four rows showed "+ me" for about half a second after the first sheet opened
      (found by `tests/leaks.mjs`).
