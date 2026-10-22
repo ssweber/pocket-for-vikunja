@@ -24,6 +24,8 @@ is a new 0.x.y.
 - Searching for `*errands` lists every open task with that label, by project. Typing `*` offers the labels.
 - Text after ` // ` in an add box becomes the notes of the task or step, with a chip that shows them. This works in
   every add box, the step editor and a pasted list.
+- Tapping the chip that counts a pasted list's lines, such as **3 tasks**, adds one task instead. Its first line is
+  the task, and the other lines are its notes.
 - Holding **+ me**, or your own picture, on a task opens a menu of the people who can see its project. Tapping one
   assigns them, or unassigns them if they're ticked.
 

@@ -1562,6 +1562,38 @@ try {
       if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
     }
   });
+  /* Tapping the chip that counts a list's lines makes the list one task. The first line is the task, read as usual, and
+     the other lines follow its own notes, with their line breaks. A date in them is not read. */
+  await step('the-count-chip-makes-a-list-one-task-with-the-other-lines-as-notes', async () => {
+    const t = `Pocket smoke fold ${stamp}`,
+      R = `#view ${rowOf(t)}`,
+      chip = page.locator('#cap-chips .chip[data-kind=fold]');
+    await toastGone();
+    await refreshToday();
+    await page.fill('#in-capture', `${t} !2 // kitchen\nthe tap drips tomorrow\nask about the boiler`);
+    await expect(chip).toHaveText('3 tasks');
+    await chip.click();
+    await expect(chip).toHaveText('1 task + notes');
+    await expect(page.locator('#cap-nest')).toHaveCount(0);
+    await expect.poll(capMarks).toBe('priority:!2,notes:// kitchen\nthe tap drips tomorrow\nask about the boiler');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
+    await synced(page);
+    const made = await taskTitled(t);
+    try {
+      if (
+        made?.description !== '<p>kitchen<br>the tap drips tomorrow<br>ask about the boiler</p>' ||
+        made.priority !== 2 ||
+        made.due_date !== '0001-01-01T00:00:00Z'
+      )
+        throw new Error(
+          'the task in Vikunja is ' +
+            JSON.stringify(made && { description: made.description, priority: made.priority, due: made.due_date }),
+        );
+    } finally {
+      if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
+    }
+  });
   /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 will be added as done"). Tapping the
      chip leaves those lines out and says so, as Pocket did before. Tapping again brings them back. When added, they are
      done subtasks under the first line. Its ring counts them from the start and the parent's progress is written with

@@ -25,7 +25,6 @@ import {
   templateName,
   templateTitle,
 } from '../checklists.js';
-import { captureLines } from '../quickadd.js';
 import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import {
@@ -700,7 +699,7 @@ export default {
      a problem, which its chip shows. The box stays, emptied and focused. */
   sendSteps(which) {
     const b = this.stepBox(which),
-      lines = captureLines(b.text || '');
+      lines = this.boxLines(which + ':+');
     if (!lines.length) return;
     const one = lines.length === 1,
       was = { text: b.text, keep: b.keep, from: b.from, ignore: b.ignore };

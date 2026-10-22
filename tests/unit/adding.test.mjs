@@ -1594,7 +1594,7 @@ test("a checklist's add box leaves out a ticked line without a chip to tap, and 
     app.chips('ins').map(c => [c.text, c.kind]),
     [
       ['1 line is already ticked, so it is left out', undefined],
-      ['2 steps', undefined],
+      ['2 steps', 'fold'],
     ],
   );
   assert.deepEqual(linesOf(app, 'ins'), [
@@ -1692,6 +1692,86 @@ test('a line’s notes are sent as its description, in the request that makes it
     ['POST', '/projects/5/tasks', { title: 'Load chairs', description: '<p>the folding ones</p>' }],
   ]);
   assert.equal(v.task(101).description, '<p>the &lt;brown&gt; ones &amp; lids</p>');
+});
+
+test('tapping the count chip makes the first line the task and the other lines its notes, and tapping it again makes a list', () => {
+  const app = boxes(),
+    hint = text => app.chips('cap').find(c => c.text === text)?.hint;
+  app.cap.text = 'Call the plumber\nthe tap drips tomorrow @user\nask about the boiler';
+  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café']);
+  assert.equal(hint('3 tasks'), 'Tap to make the first line the task and the rest its notes');
+  tap(app, 'cap', '3 tasks');
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 task + notes', 'Café'], 'nothing in the notes is read');
+  assert.equal(hint('1 task + notes'), 'Tap to add each line as a task');
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Call the plumber', 'the tap drips tomorrow @user\nask about the boiler'],
+  ]);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:the tap drips tomorrow @user\nask about the boiler']);
+  tap(app, 'cap', '1 task + notes');
+  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Call the plumber', ''],
+    ['the tap drips @user', ''],
+    ['ask about the boiler', ''],
+  ]);
+});
+
+test("a folded list's first line is read as usual, and its own notes come before the other lines", () => {
+  const app = boxes();
+  app.cap.text = 'Call the plumber +café !2 // kitchen\nthe tap drips\nask about the boiler';
+  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', 'Notes on 1 task']);
+  tap(app, 'cap', 'Notes on');
+  tap(app, 'cap', '3 tasks');
+  assert.deepEqual(
+    chipsOf(app, 'cap'),
+    ['1 task + notes', 'Café', 'Priority 2'],
+    'folding reads notes again after their chip was tapped off, and shows no notes chip',
+  );
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Call the plumber', 'kitchen\nthe tap drips\nask about the boiler']]);
+  assert.deepEqual(marksOf(app, 'cap'), [
+    'project:+café',
+    'priority:!2',
+    'notes:// kitchen\nthe tap drips\nask about the boiler',
+  ]);
+});
+
+test('a folded indented list keeps its indents and checkboxes in the notes, and they reach Vikunja', async t => {
+  t.after(clear);
+  const app = boxes();
+  app.cap.text = '- [ ] Groceries:\n  - milk\n    - oat milk\n  - [x] eggs';
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '1 task + 3 subtasks', 'Café']);
+  tap(app, 'cap', '1 task + 3 subtasks');
+  assert.deepEqual(
+    chipsOf(app, 'cap'),
+    ['1 task + notes', 'Café'],
+    'the ticked line is notes now, so no chip counts it, and the ↳ Under first line chip has one line',
+  );
+  assert.equal(app.capLines.length, 1);
+  const [p] = app.boxParsedLines('cap');
+  assert.deepEqual([p.title, p.notes, p.done], ['Groceries:', '- milk\n  - oat milk\n- [x] eggs', false]);
+  const v = fakeVikunja([]),
+    send = adding(t);
+  await send.sendLines(addLines([{ raw: '', p: packParsed(p), under: null }], { pid: 5 }).map(f => send.actEntry(f)));
+  assert.deepEqual(sent(v)[0], [
+    'POST',
+    '/projects/5/tasks',
+    { title: 'Groceries:', description: '<p>- milk<br>&nbsp;&nbsp;- oat milk<br>- [x] eggs</p>' },
+  ]);
+});
+
+test('a subtask box and a checklist box fold too, into one subtask or one step', () => {
+  const app = boxes();
+  app.sheet.sub.text = 'Load chairs\n\nthe folding ones';
+  tap(app, 'sub', '2 subtasks');
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 subtask + notes']);
+  assert.deepEqual(notesOfLines(app, 'sub'), [['Load chairs', 'the folding ones']]);
+  app.runInsert.text = 'Wipe the counter\nwith the blue cloth\nthen dry it';
+  assert.equal(app.chips('ins')[0].hint, 'Tap to make the first line the step and the rest its notes');
+  tap(app, 'ins', '3 steps');
+  assert.deepEqual(chipsOf(app, 'ins'), ['1 step + notes']);
+  assert.deepEqual(notesOfLines(app, 'ins'), [['Wipe the counter', 'with the blue cloth\nthen dry it']]);
+  tap(app, 'ins', '1 step + notes');
+  assert.deepEqual(chipsOf(app, 'ins'), ['3 steps']);
 });
 
 test('typing +project suggests the projects you can add to, Enter takes the first, and a subtask box suggests none', () => {

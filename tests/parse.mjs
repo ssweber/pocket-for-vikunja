@@ -1035,6 +1035,26 @@ add({
   notes: 'and the steps',
   ...notes('a percentage before the notes is at the end of the title'),
 });
+// A list folded into one task (readList's fold) is one line holding the other lines.
+add({
+  text: 'Call the plumber tomorrow\nthe tap drips friday @bob',
+  title: 'Call the plumber',
+  date: '2021-6-25',
+  notes: 'the tap drips friday @bob',
+  ...notes('in a folded list with no " // ", the notes start at the line break, and nothing after it is read'),
+});
+add({
+  text: 'Call the plumber // kitchen\n  the tap drips\n  // ask about the boiler',
+  title: 'Call the plumber',
+  notes: 'kitchen\n  the tap drips\nask about the boiler',
+  ...notes('after " // ", the other lines keep their indent, and a line starting with // loses its slashes'),
+});
+add({
+  text: 'Groceries\n\n    - milk\n        - oat milk\n    - eggs\n',
+  title: 'Groceries',
+  notes: '- milk\n    - oat milk\n- eggs',
+  ...notes('the notes lose the indent all their lines share, and the blank lines around them'),
+});
 add({
   text: 'Sweep the floor // and the steps',
   mode: 'disabled',
@@ -1141,6 +1161,23 @@ addRead(
   [['[x] Call Sam', false]],
   'with the chip off, a checkbox stays in the title but its bullet is removed',
   { done: false },
+);
+// A folded list is one task: its first line read as if alone, with the other lines after it as typed.
+addRead(
+  '\n- [x] Call Sam:\n  - [ ] the tap\n## boiler\n',
+  [['Call Sam:\n  - [ ] the tap\n## boiler', true]],
+  'folded, the first line keeps its done marker and colon, and the other lines stay as typed',
+  { fold: true },
+);
+addRead('# Café\nTables', [['# Café\nTables', false]], "folded, a # line is the task's title as typed", {
+  fold: true,
+});
+addRead('Call Sam', [['Call Sam', false]], 'a single line folds into itself', { fold: true });
+addRead(
+  '[x] Wipe\nMop',
+  [['Mop', false]],
+  "in the steps box, a ticked first line can't be the task, so the list is read as usual",
+  { fold: true, steps: true },
 );
 
 // ---------- parents in a pasted list ----------

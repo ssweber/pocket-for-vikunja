@@ -35,7 +35,7 @@ Pocket uses the syntax of Vikunja's [Quick Add Magic](https://vikunja.io/help/qu
 
 **Undoing a parse.** Tap a chip to keep those words in the title. Wrap the whole text in quotes to turn parsing off: `"Friday night jazz poster"`. Quotes at the start hold the title and leave the rest to parse: `"Lunch friday" @user tomorrow`.
 
-**Pasting a list.** Each line becomes a task. The whole list goes to one project, the first `+project` found. Lines under a `## ` heading, lines indented more than the previous line, and lines after a first line ending in a colon (`Groceries:`) become subtasks. The **↳ Under first line** chip makes everything a subtask of the first line. Ticked lines arrive done. Tap the chip to leave them out instead.
+**Pasting a list.** Each line becomes a task. The whole list goes to one project, the first `+project` found. Lines under a `## ` heading, lines indented more than the previous line, and lines after a first line ending in a colon (`Groceries:`) become subtasks. The **↳ Under first line** chip makes everything a subtask of the first line. Ticked lines arrive done. Tap the chip to leave them out instead. To add one task instead of a list, tap the chip that counts the lines, such as **3 tasks**. The first line becomes the task, read as usual, and the other lines become its notes, as typed. This works in every box that takes a list.
 
 **Differences from Vikunja's parser.** The same text usually makes the same task in both. Pocket differs on purpose here:
 

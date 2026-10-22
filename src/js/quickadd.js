@@ -154,18 +154,25 @@ const HELD = /^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/;
    both sides keep "http://" and "a//b" in the title, and a quoted title at the start keeps its slashes too. Returns
    {at (the index of the space before the slashes), notes}, or null when nothing follows the slashes. Pocket reads
    notes in every Quick Add Magic mode, as it reads a percentage. A line can hold more lines of notes, each starting
-   with "//" (readList), and the notes leave out those slashes. */
+   with "//" (readList), and the notes leave out those slashes.
+
+   A list folded into one task (readList's `fold`) is one line holding the other lines. When its first line has no
+   " // ", its notes start at the line break (`at`). The notes lose the indent all their lines share, so a list
+   indented under the first line starts at the left. */
 export function notesOf(line) {
-  const at = line.indexOf(' // ', line.match(HELD)?.[0].length ?? 0),
-    notes =
-      at < 0
-        ? ''
-        : line
-            .slice(at + 4)
-            .split(/\r?\n/)
-            .map((l, i) => (i ? l.replace(/^\s*\/\/ ?/, '') : l).trimEnd())
-            .join('\n')
-            .trim();
+  const from = line.match(HELD)?.[0].length ?? 0,
+    nl = line.indexOf('\n', from),
+    slashes = line.indexOf(' // ', from),
+    at = nl >= 0 && (slashes < 0 || slashes > nl) ? nl : slashes;
+  if (at < 0) return null;
+  const [head, ...more] = line.slice(at).split(/\r?\n/),
+    lines = [head.slice(4).trim(), ...more.map(l => l.trimEnd())],
+    cut = Math.min(...lines.filter(Boolean).map(l => l.length - l.trimStart().length)),
+    notes = lines
+      .map((l, i) => (i ? l.slice(cut).replace(/^\s*\/\/ ?/, '') : l))
+      .join('\n')
+      .replace(/^\s*\n/, '')
+      .trimEnd();
   return notes ? { at, notes } : null;
 }
 /* Returns {title, project, projectMiss, labels, assignees, mid, priority, due, dueLabel, dueFromRepeat, repeat, pct,
@@ -654,10 +661,25 @@ const MORE_NOTES = /^\/\/(?=\s|$)/;
    text, and so is a heading's #.
 
    A line that starts with "//" and is indented more than the line above it holds more notes for that line. It joins
-   that line's text, newline and all, so the notes keep their lines (notesOf) and the box's positions still match. */
-export function readList(text, { steps = false, done = true, nest = false, flat = false, colon = false } = {}) {
+   that line's text, newline and all, so the notes keep their lines (notesOf) and the box's positions still match.
+
+   `fold` makes the box one task. Its first line is read as if it were alone in the box, and the other lines join its
+   text as they were typed, to become its notes (notesOf). `folded` is then true. */
+export function readList(
+  text,
+  { steps = false, done = true, nest = false, flat = false, colon = false, fold = false } = {},
+) {
   const rows = [],
     all = String(text || '');
+  if (fold) {
+    const head = all.match(/^\s*.*/)[0],
+      list = readList(head, { steps, done }),
+      l = list.lines[0];
+    if (l && all.slice(head.length).trim()) {
+      l.text = all.slice(l.at).trimEnd();
+      return { ...list, folded: true };
+    }
+  }
   let at = 0,
     ticked = 0;
   for (const raw of all.split('\n')) {

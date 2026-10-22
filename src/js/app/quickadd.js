@@ -145,12 +145,13 @@ export default {
     const r = this.boxRead(w);
     if (r.list) return r.list;
     const b = this.box(w),
-      cap = w === 'cap';
+      cap = w === 'cap',
+      fold = !!b.ignore?.fold;
     return (r.list = readList(
       b.text,
       this.readsDone(w)
-        ? { done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap }
-        : { steps: true },
+        ? { done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap, fold }
+        : { steps: true, fold },
     ));
   },
   /* A pasted list keeps the nesting it was written with. Turning the Under first line chip off flattens the list, and
@@ -291,7 +292,8 @@ export default {
     const base = this.boxBase(w),
       out = [];
     if (!base.due && !base.project) return out;
-    const ph = this.isStepBox(w) && readStepPhrase(line),
+    const nt = notesOf(line),
+      ph = this.isStepBox(w) && readStepPhrase(nt ? line.slice(0, nt.at) : line),
       rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, { ...this.parseOpts, ignore: {} });
     if (base.due && (raw.due || raw.repeat))
@@ -758,6 +760,21 @@ export default {
               },
             ]
           : [];
+    /* The chip that counts a list's lines folds the list into one task: the first line, with the other lines as its
+       notes (readList's `fold`). Tapping it again unfolds the list. Folding reads notes again if their chip was tapped
+       off, or the other lines would join the title. */
+    const folded = !!list.folded,
+      count = text => ({
+        key: 'n',
+        kind: 'fold',
+        text,
+        hint: folded
+          ? `Tap to add each line as a ${what}`
+          : `Tap to make the first line the ${what} and the rest its notes`,
+        action: () => {
+          b.ignore = { ...b.ignore, fold: !folded, notes: false };
+        },
+      });
     // The label Today is narrowed to, as if it were typed. Tapping it leaves the label off.
     const only = this.boxOnly(w),
       onlyChip = () =>
@@ -773,18 +790,19 @@ export default {
             ]
           : [];
     if (n > 1 && !cap) {
-      out.push({ key: 'n', text: `${n} ${what}s` }, ...onlyChip(), ...listWarn(), ...notesChip());
+      out.push(count(`${n} ${what}s`), ...onlyChip(), ...listWarn(), ...notesChip());
       return out;
     }
     if (n > 1) {
       // A line under another line counts as a subtask, as in "1 task + 3 subtasks".
       const subs = list.lines.filter(l => l.under !== null).length;
-      out.push({
-        key: 'n',
-        text: subs
-          ? `${n - subs} task${n - subs === 1 ? '' : 's'} + ${subs} subtask${subs === 1 ? '' : 's'}`
-          : `${n} tasks`,
-      });
+      out.push(
+        count(
+          subs
+            ? `${n - subs} task${n - subs === 1 ? '' : 's'} + ${subs} subtask${subs === 1 ? '' : 's'}`
+            : `${n} tasks`,
+        ),
+      );
       const { project, miss } = this.parseList(this.capLines);
       const to = this.projById.get(project?.id || this.defaultProjectId());
       if (to) out.push({ key: 'p', color: colorOf(to.hex_color), text: to.title });
@@ -803,6 +821,7 @@ export default {
     // The chips come from the full parse. A chip the user tapped off stays visible, so it can be tapped on again.
     const all = this.boxParsed(w, true);
     const { auto, warn } = this.accessHints(w);
+    if (folded) out.push(count(`1 ${what} + notes`));
     if (all.project)
       out.push({
         key: 'p',
@@ -902,8 +921,9 @@ export default {
         cls: 'warn',
         text: `${this.projById.get(to)?.title || 'This project'} is read only. You can't add tasks to it.`,
       });
-    // The notes, after the other chips. A step that has notes keeps them, and gets these after them (saveStepEdit).
-    if (all.notes)
+    // The notes, after the other chips. A step that has notes keeps them, and gets these after them (saveStepEdit). A
+    // folded list's chip already says it has notes.
+    if (all.notes && !folded)
       out.push({
         key: 'notes',
         kind: 'notes',
@@ -1373,10 +1393,10 @@ export default {
     // A step's time ("in 20 min") is read separately and marked like the rest, unless its chip was tapped off. It is
     // not read from the notes.
     const b = this.box(w),
-      nt = !b.ignore?.notes && notesOf(b.text),
-      ph =
-        this.isStepBox(w) && !b.keep && !b.text.includes('\n') && readStepPhrase(nt ? b.text.slice(0, nt.at) : b.text);
-    if (ph) out.push({ kind: 'due', start: ph.index, end: ph.index + ph.length });
+      [one, more] = this.boxList(w).lines,
+      nt = !more && !b.ignore?.notes && notesOf(one.text),
+      ph = this.isStepBox(w) && !b.keep && !more && readStepPhrase(nt ? one.text.slice(0, nt.at) : one.text);
+    if (ph) out.push({ kind: 'due', start: one.at + ph.index, end: one.at + ph.index + ph.length });
     return out.sort((a, b) => a.start - b.start);
   },
   // The HTML drawn behind the input, so the highlights line up with the typed words.

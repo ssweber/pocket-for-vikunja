@@ -1907,6 +1907,39 @@ test('in New template, each line from the add box becomes a step row after the r
   assert.equal(app.stepShown(till).title, 'Count the till !4');
 });
 
+test("in New template, a folded list becomes one step whose notes are the other lines, and a time in them isn't read", () => {
+  const app = component(checklists, quickadd, sheet);
+  Object.assign(app, {
+    user: { settings: { frontend_settings: {} } },
+    projects: [],
+    sheet: {
+      kind: 'newtpl',
+      subAt: null,
+      stepEdit: null,
+      newTpl: { rows: [], project: { id: 7 }, add: { text: '', keep: false, from: null, ignore: {} } },
+    },
+    labels: [],
+    projById: new Map(),
+    canWrite: () => true,
+  });
+  const box = app.sheet.newTpl.add;
+  box.text = 'Preheat the oven in 10 min\nto 230°C\nfan off after 5 min';
+  app.tapChip('new:+', app.chips('new:+')[0]);
+  assert.deepEqual(
+    app.chips('new:+').map(c => c.text),
+    ['1 step + notes'],
+  );
+  assert.deepEqual(
+    app.marks('new:+').map(m => m.kind + ':' + box.text.slice(m.start, m.end)),
+    ['due:in 10 min', 'notes:to 230°C\nfan off after 5 min'],
+  );
+  app.sendSteps('new');
+  const [row] = app.sheet.newTpl.rows;
+  assert.equal(app.sheet.newTpl.rows.length, 1);
+  assert.equal(app.stepShown(row).title, 'Preheat the oven');
+  assert.deepEqual(app.draft('new').added, ['Preheat the oven T#10m // to 230°C\nfan off after 5 min']);
+});
+
 test('a finished checklist under Checklists shows when it finished, how many steps were skipped and how many comments it has', () => {
   const app = component(views, claims),
     at = '2026-10-13T18:40:00Z',
