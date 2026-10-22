@@ -1796,6 +1796,55 @@ test("a box that can't move the task offers only the people who can see its proj
   assert.deepEqual(chipsOf(app, 'sub'), ['Carol @carol  ↵', 'Claude @bot-claude']);
 });
 
+// canSee as Vikunja would answer it from `table`, recording each lookup. A pair missing from the table is refused.
+const lookups = (app, table) => {
+  const calls = [];
+  app.canSee = async (pid, n) => {
+    const key = pid + ':' + n;
+    calls.push(key);
+    if (key in table) app.access[key] = table[key];
+    return key in table ? table[key] : null;
+  };
+  return calls;
+};
+
+test('typing @ looks up access to a project made since people loaded, so the suggestion names where the task goes', async () => {
+  const { app, type } = offering();
+  delete app.access['6:carol'];
+  delete app.access['6:bot-claude'];
+  const calls = lookups(app, { '6:carol': false, '6:bot-claude': true });
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+  // Only the bot moves the task, so carol's access to Garden isn't needed. A known entry isn't asked again.
+  assert.deepEqual(calls, ['6:bot-claude']);
+  type('cap', 'Water the beans @c');
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(calls, ['6:bot-claude']);
+});
+
+test("typing @ asks for each missing entry once, even when Vikunja refuses it, and a box that can't move the task looks up only its project", async () => {
+  const { app, type } = offering();
+  delete app.access['5:bot-claude'];
+  delete app.access['6:bot-claude'];
+  const calls = lookups(app, {});
+  type('cap', 'Water the beans @');
+  await app.lookUpSuggested('cap');
+  type('cap', 'Water the beans @c');
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(calls, ['5:bot-claude']);
+  // A subtask stays in its parent's project, so only that project is looked up, and someone who can't see it goes.
+  const { app: other, type: typeIn } = offering();
+  delete other.access['5:bot-claude'];
+  delete other.access['6:bot-claude'];
+  const asked = lookups(other, { '5:bot-claude': false });
+  typeIn('sub', 'Stake the beans @');
+  await other.lookUpSuggested('sub');
+  assert.deepEqual(asked, ['5:bot-claude']);
+  assert.deepEqual(chipsOf(other, 'sub'), ['Carol @carol  ↵']);
+});
+
 test('a label Vikunja does not have yet says so on its chip, once the labels have loaded', () => {
   const app = boxes();
   app.cap.text = 'Call the bank *urgent *urg';

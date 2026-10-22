@@ -20,6 +20,7 @@ import { seats, seatUnder } from './seat.js';
 
 let peopleLoading = null; // loadPeople() while it runs
 let peopleAt = 0; // when it last loaded, this session
+const asked = new WeakMap(); // the access entries lookUpSuggested has asked for, by the `access` object they go in
 const PEOPLE_AGE = 10 * 6e4; // reload project access after this interval
 // Track the target row's visibility and a fallback row until a newly added target has appeared on screen.
 let cursorIO = null,
@@ -494,18 +495,12 @@ export default {
           action: () => this.useSuggestion(w, tk, p.title),
         }));
     } else {
-      const p = this.boxParsed(w),
-        target = p.project?.id || this.boxHome(w),
+      const { target, named, moves } = this.suggestFor(w, q),
         sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
-      // The people already named, without the word being typed.
-      const named = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false),
-        typing = named.findIndex(n => n.toLowerCase() === q);
-      if (typing >= 0) named.splice(typing, 1);
       // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no single
       // project fits them all.
       const goes = ns => (ns.some(n => sees(target, n) === false) ? this.oneFit(target, ns)?.id || null : target);
-      const moves = this.boxMoves(w),
-        now = moves ? goes(named) : target;
+      const now = moves ? goes(named) : target;
       out = (this.people || [])
         .filter(x => moves || sees(target, x.user.username) !== false)
         .map(x => {
@@ -523,6 +518,7 @@ export default {
           const away = to && to !== target && this.projById.get(to)?.title;
           return {
             key: 's' + u.id,
+            who: u.username,
             kind: 'suggest',
             cls: 'suggest',
             text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username + (away ? ' · ' + away : ''),
@@ -534,6 +530,44 @@ export default {
     // The first suggestion shows ↵ because Enter accepts it.
     if (out.length) Object.assign(out[0], { text: out[0].text + '  ↵', hint: out[0].hint + ', or press Enter' });
     return out.length ? out.slice(0, 6) : null;
+  },
+  // For an @ word `q`: the box's project, the people already named without `q`, and whether the box can move the task.
+  suggestFor(w, q) {
+    const p = this.boxParsed(w),
+      named = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false),
+      typing = named.findIndex(n => n.toLowerCase() === q);
+    if (typing >= 0) named.splice(typing, 1);
+    return { target: p.project?.id || this.boxHome(w), named, moves: this.boxMoves(w) };
+  },
+  /* An @ suggestion can name the project the task moves to only once the person's access to every project is known.
+     loadPeople doesn't know about a project made since it ran. So while an @ word is typed, look up the missing
+     entries of the people suggested and those already named, four at a time. Each is asked once, so a refused search
+     isn't sent again at the next letter. */
+  async lookUpSuggested(w) {
+    for (;;) {
+      const tk = this.boxToken(w),
+        sg = tk?.kind === 'assignee' && this.suggestions(w);
+      if (!sg) return;
+      const { target, named, moves } = this.suggestFor(w, tk.q.toLowerCase()),
+        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()],
+        people = sg.map(s => s.who);
+      if (!asked.has(this.access)) asked.set(this.access, new Set());
+      const done = asked.get(this.access),
+        ask = new Map();
+      const need = (pid, n) => {
+        const key = pid + ':' + n.toLowerCase();
+        if (!(key in this.access) && !done.has(key)) ask.set(key, [pid, n]);
+      };
+      for (const n of [...named, ...people]) need(target, n);
+      // Someone who can't see the box's project moves the task, to the one project they all can see (oneFit).
+      if (moves)
+        for (const ns of people.map(n => [...named, n]))
+          if (ns.some(m => sees(target, m) === false))
+            for (const proj of this.projects) if (proj.id > 0 && proj.id !== target) ns.forEach(m => need(proj.id, m));
+      if (!ask.size) return;
+      ask.forEach((x, key) => done.add(key));
+      await inBatches([...ask.values()], 4, ([pid, n]) => this.canSee(pid, n));
+    }
   },
   useSuggestion(w, tk, name) {
     const b = this.box(w),
