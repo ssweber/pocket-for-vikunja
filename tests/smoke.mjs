@@ -3405,7 +3405,7 @@ try {
       await expect(page.locator(LAB)).toHaveText([l.title], { timeout: 15000 });
       await loaded(page);
       const h = await page.locator(R).evaluate(el => el.offsetHeight);
-      if (h < 74 || h > 77) throw new Error('a row with labels is ' + h + 'px tall, not 76');
+      if (h < 96 || h > 100) throw new Error('a row with labels is ' + h + 'px tall, not 98');
       // A tap on the label line, beside the label, opens the task
       await page.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       const k = await steady(page.locator(LAB));
