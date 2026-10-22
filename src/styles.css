@@ -1783,6 +1783,37 @@ button.ring::after {
 .throw.open .throw-date {
   display: block;
 }
+/* The ring stands for the thumb, which near a screen edge sits over a chip it doesn't point at (throwRing). It is drawn
+   over a chip's background but under its text, so a lit chip stays readable. The chips make no stacking context, so
+   their text and the ring share the one .throw makes. */
+.throw-t > * {
+  position: relative;
+  z-index: 2;
+}
+.throw-ring {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+.throw-ring.slide {
+  transition: transform 120ms ease-out;
+}
+.throw-ring.on {
+  border-color: var(--accent-ink);
+  background: none;
+}
+.throw.open .throw-ring {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .throw-ring.slide {
+    transition: none;
+  }
+}
 .throw-why {
   position: absolute;
   width: max-content;

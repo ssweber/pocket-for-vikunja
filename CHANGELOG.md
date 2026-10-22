@@ -40,6 +40,8 @@ is a new 0.x.y.
 - On Today, a checklist step's countdown counts the seconds in its last minute, as the checklist's screen does.
 - Today's rows show the title on one line, cut with "…" at its end, with the time, project and counts on a line under
   it, as a project's list does. Cards keep their one-line rows.
+- Holding a task on Today shows a ring in the date chips' middle that follows the thumb and slides onto the date it
+  picks, also near a screen edge, where the chips are pushed in.
 
 ### Fixed
 

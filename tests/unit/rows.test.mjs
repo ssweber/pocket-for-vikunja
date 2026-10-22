@@ -1429,7 +1429,8 @@ test('holding a row on Today shows its dates, but a repeating task, a template o
 });
 
 /* Runs a hold on a fake screen. holdToSlide (app/progress.js) drives the row's gesture (rowGesture, throwOf in
-   app/throw.js). throwView stands in for what is drawn, and `seen` records what it is told to show. When the dates are
+   app/throw.js). throwView stands in for what is drawn, and `seen` records what it is told to show. `rings` records
+   each move of the ring that stands for the thumb, as [dx, dy, the date it sits on]. When the dates are
    left open to tap, `tap(id)` taps a date and `pickDay(day)` picks one in the phone's date picker. `moved` records
    the reschedule the hold ends in. `touch(x, y)` touches the row and waits until the hold registers. `to(x, y)`
    moves the touch, `up()` releases it, and `away()` is the phone cancelling the touch (pointercancel). `felt`
@@ -1442,6 +1443,7 @@ function heldOnToday(c) {
   const app = component(progress, throwing),
     t = { id: 1, title: 'Call the plumber', project_id: 1, due_date: new Date(2026, 9, 6, 9).toISOString() };
   const seen = [],
+    rings = [],
     moved = [],
     felt = [],
     on = {},
@@ -1478,6 +1480,7 @@ function heldOnToday(c) {
       seen.push(['drawn', why, px, py]);
       return {
         light: p => seen.push(['lit', p?.id ?? null]),
+        ring: (dx, dy, p) => rings.push([dx, dy, p?.id ?? null]),
         close: () => seen.push(['closed']),
         open: (pick, picked) => {
           seen.push(['open']);
@@ -1519,6 +1522,7 @@ function heldOnToday(c) {
     app,
     t,
     seen,
+    rings,
     moved,
     felt,
     tap: id => tap(id),
@@ -1531,6 +1535,7 @@ function heldOnToday(c) {
       x0 = x;
       y0 = y;
       seen.length = 0;
+      rings.length = 0;
       felt.length = 0;
       fire(on.pointerdown, { clientX: x, clientY: y, ...(target && { target }) });
       c.mock.timers.tick(HOLD_MS);
@@ -1567,6 +1572,15 @@ test('holding a row on Today draws its dates around the touch, and releasing on 
       [12, 6],
     ],
     'dragging right highlights Tomorrow and the phone vibrates',
+  );
+  assert.deepEqual(
+    h.rings,
+    [
+      [10, 2, null],
+      [20, 4, null],
+      [30, 4, 'tomorrow'],
+    ],
+    'the ring moves with the touch until Tomorrow lights, then sits on Tomorrow',
   );
   h.to(60, 10);
   assert.equal(h.seen.length, 2, 'dragging further the same way changes nothing and does not vibrate');
@@ -1632,6 +1646,7 @@ test('holding a row on Today never highlights or picks a date that changes nothi
     [['lit', null], [12]],
     'for a task due later today, dragging towards Today highlights nothing and does not vibrate',
   );
+  assert.deepEqual(h.rings.at(-1), [-40, 0, null], 'the ring stays with the touch, off the dimmed Today');
   h.up();
   assert.deepEqual(h.moved, [], 'releasing there moves nothing');
   h.t.repeat_after = 86400;

@@ -3641,6 +3641,22 @@ try {
           throw new Error(
             `${where}the chips didn't move onto the screen: their middle is ${midX},${midY}, the touch is ${at.x},${at.y}`,
           );
+        // The ring that stands for the thumb starts in the clear middle, away from the touch. Moving 30px towards the
+        // screen's middle lights the chip that way, and the ring slides onto that chip, not to where the touch is.
+        const ringAt = () =>
+            page.locator('.throw-ring').evaluate(async el => {
+              await Promise.all(el.getAnimations().map(a => a.finished.catch(() => {})));
+              const r = el.getBoundingClientRect();
+              return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)];
+            }),
+          side = top ? today : tomorrow;
+        if (JSON.stringify(await ringAt()) !== JSON.stringify([Math.round(midX), Math.round(midY)]))
+          throw new Error(`${where}the ring starts at ${await ringAt()}, not in the middle at ${midX},${midY}`);
+        await page.mouse.move(at.x + (top ? -30 : 30), at.y, { steps: 4 });
+        await expect(dateChip(top ? 'today' : 'tomorrow')).toHaveClass(/\bon\b/);
+        await expect
+          .poll(ringAt, { message: where + 'the ring is not on the lit chip' })
+          .toEqual([Math.round((side.l + side.r) / 2), Math.round((side.t + side.b) / 2)]);
         await page.mouse.move(at.x + 2, at.y + (top ? -40 : 40), { steps: 4 });
         await expect(dateChip(top ? 'week' : 'none')).toHaveClass(/\bon\b/);
         await page.mouse.move(at.x + 2, at.y + 2, { steps: 4 });

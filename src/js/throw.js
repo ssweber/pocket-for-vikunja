@@ -26,6 +26,7 @@ export const THROW = {
   // Sizes in px. The chips sit around a clear middle, where the touch is.
   chip: { w: 100, h: 60 }, // each chip, at least 56 each way for gloves
   mid: { w: 88, h: 56 }, // the clear middle, as tall as a one-line row, which shows through it
+  ring: 44, // the ring in the middle that stands for the thumb (throwRing)
   gap: 6, // between the middle and each chip
   why: 56, // space above the top chip for the message saying why a task can't move
   margin: 8, // kept clear of the screen's edges, the header and the add box
@@ -84,6 +85,14 @@ export function throwLayout(targets, { x, y, width, height, top = 0, bottom = he
     targets: targets.map(t => ({ ...t, x: at[t.at][0], y: at[t.at][1], w: chip.w, h: chip.h })),
     why: why ? { x: width / 2 - cx, y: -down - gap, w: width - 2 * margin } : null,
   };
+}
+
+/* Where the ring that stands for the thumb sits, relative to the middle of layout `lay`. Near an edge the chips are
+   pushed in, so the thumb can sit over a chip that isn't the one it points at. The ring starts in the middle, moves as
+   far as the touch has moved (dx, dy), and sits on date `p`'s chip while that chip is highlighted. */
+export function throwRing(lay, dx, dy, p = null) {
+  const t = p && lay.targets.find(x => x.id === p.id);
+  return t ? { x: t.x, y: t.y } : { x: dx, y: dy };
 }
 
 // The direction of a move (dx, dy): sideways when it is at least as far sideways as vertical.

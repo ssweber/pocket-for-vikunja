@@ -68,7 +68,7 @@ the title is one line, not wrapped. Start from `scratchpad/ui-today-rows/inject.
 
 The approved picture is `scratchpad/ui-thumb/thumb-ring.png`. Start from `scratchpad/ui-thumb/inject.mjs`.
 
-- [ ] **D1.** Holding a row near the right edge of the screen pushes the date chips left so they fit
+- [x] **D1.** Holding a row near the right edge of the screen pushes the date chips left so they fit
       (`throwLayout` clamps the middle to x 158–232 on a 390 px screen). The thumb then sits over the Tomorrow chip,
       but the selection is measured from where the hold started, so nothing is selected and moving left selects
       Today. Draw a ring in the clear middle that stands for the thumb. It starts in the middle, moves with the finger

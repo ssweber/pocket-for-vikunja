@@ -12,6 +12,7 @@ import {
   throwFlick,
   throwLayout,
   throwPick,
+  throwRing,
   throwTargets,
 } from '../throw.js';
 import { isSet, repeats } from '../dates.js';
@@ -41,7 +42,8 @@ let shut = null; // closes the chips open to tap (only one set is open at a time
    whether the user flicks to one or taps it. Screen readers and Tab skip them until chipsOpen. They hold text only,
    never HTML.
    Pick a date… sits in the middle, under the touch, and shows only once the chips are open to tap. Beneath it is the
-   date input whose picker it opens. `from` is the first day offered, and `at` is the day the picker opens on. */
+   date input whose picker it opens. `from` is the first day offered, and `at` is the day the picker opens on.
+   The ring that stands for the thumb (throwRing) starts in the middle too, and is hidden once the chips are open. */
 export function chipsEl(lay, why = null, { from = '', at = '' } = {}) {
   const set = el('div', 'throw');
   set.setAttribute('aria-hidden', 'true');
@@ -68,6 +70,9 @@ export function chipsEl(lay, why = null, { from = '', at = '' } = {}) {
     put(x, lay, { x: 0, y: 0, ...lay.mid });
     set.append(x);
   }
+  const ring = el('i', 'throw-ring');
+  put(ring, lay, { x: 0, y: 0, w: THROW.ring, h: THROW.ring });
+  set.append(ring);
   if (why) {
     const p = el('p', 'throw-why', THROW_STAYS[why]);
     Object.assign(p.style, {
@@ -211,10 +216,12 @@ export default {
         if (moves.length > 12) moves.shift();
         const p = throwPick(targets, dx, dy, !!on);
         if (p) out = true;
-        if (p?.id === on?.id) return;
-        on = p;
-        v.light(can(p));
-        if (can(p)) haptic('tick');
+        if (p?.id !== on?.id) {
+          on = p;
+          v.light(can(p));
+          if (can(p)) haptic('tick');
+        }
+        v.ring(dx, dy, can(on));
       },
       end(commit) {
         if (!v) return;
@@ -251,7 +258,7 @@ export default {
       this.$nextTick(() => this.rowEl(t.id)?.querySelector('.card-open, .body')?.focus({ preventScroll: true }));
   },
   /* Draw the date chips for task `t` around the touch at (x, y), and lift `held` (a row or a card) in place
-     (.throw-from). Returns {light(p), close(), open(pick, picked)}. `open` leaves the chips open to tap. It calls
+     (.throw-from). Returns {light(p), ring(dx, dy, p), close(), open(pick, picked)}. `open` leaves the chips open to tap. It calls
      pick(id) with the date tapped, or picked(day) with the day chosen in the phone's picker.
      The chips are centred on the strip the touch is on (the row, or a card's header or row). The chips above and below
      cover the neighbouring rows, and the held row shows between them. They stay clear of the header and the add box
@@ -289,7 +296,11 @@ export default {
         );
       set.querySelector('.throw-why')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: THROW.ms });
     }
-    let menu = null;
+    /* The ring follows the touch with no transition, or it would lag behind the thumb. It slides (.slide) only for
+       THROW.ms after a chip lights or unlights, onto the chip or back to the touch. */
+    const ring = set.querySelector('.throw-ring');
+    let menu = null,
+      slid = 0;
     const close = () => {
       menu?.close();
       if (shut === close) shut = null;
@@ -298,6 +309,16 @@ export default {
     };
     return {
       light: p => chipsLight(set, p),
+      ring(dx, dy, p) {
+        if (!!p !== ring.classList.contains('on')) {
+          ring.classList.add('slide');
+          clearTimeout(slid);
+          slid = setTimeout(() => ring.classList.remove('slide'), THROW.ms);
+        }
+        ring.classList.toggle('on', !!p);
+        const r = throwRing(lay, dx, dy, p);
+        ring.style.transform = `translate(${r.x}px, ${r.y}px)`;
+      },
       close,
       /* Leave the chips open to tap (tapMenu). A dimmed date does nothing. Pick a date… opens the phone's picker
          straight from the tap, because a phone allows that only from a tap (as the sheet's Due does: propTap).
