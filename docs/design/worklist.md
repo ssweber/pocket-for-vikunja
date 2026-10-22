@@ -32,7 +32,7 @@ The approved picture is `scratchpad/ui-tplwait/template-waits.png`. Start from `
 Replaces `!T#`. It was never released, so remove it, its per-step lock toggle in the step editor and its guide line,
 with no upgrade path. `!T#` in a title is then just text.
 
-- [ ] **B1.** Two switches on a template, both off by default. Off is today's behaviour: nothing is locked.
+- [x] **B1.** Two switches on a template, both off by default. Off is today's behaviour: nothing is locked.
   - **Wait for step times:** a step with a `T#` time can't be ticked before its time, including `T#18m:name`.
     An hourglass marks it. The Done button is dimmed and counts down, as it does for `!T#` now.
   - **Steps in order:** a step can't be ticked while any step above it is open (not done, not skipped). A padlock
