@@ -738,6 +738,16 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   padding-bottom: 36px;
   margin-bottom: -34px;
 }
+/* The "+ me" slot ends where the labels' line starts. The body also covers the 22px under the slot, out to the row's
+   right edge, so a tap there opens the task. That strip starts where the tick's touch target ends. */
+.row:has(> .labs) > button.body::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: calc(max(var(--row-inset), 14px) + var(--tick) + 12px);
+  height: 22px;
+}
 /* Positioned, so the label is drawn over the title's line it overlaps, and takes taps there */
 .lab {
   position: relative;

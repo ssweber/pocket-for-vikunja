@@ -3413,6 +3413,42 @@ try {
       await expect(page.locator('#sheet')).toBeVisible();
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
+      // Beside the labels, from the label out to the row's right edge under the "+ me" slot, a tap reaches the body.
+      // The spot at the edge is 14px in, since the last row's corner is cut round by the list's 14px radius.
+      const missed = sel =>
+        page.locator(sel).evaluate(row => {
+          const k = row.querySelector(':scope > .labs > .lab:last-child').getBoundingClientRect(),
+            r = row.getBoundingClientRect(),
+            body = row.querySelector(':scope > button.body');
+          return [k.right + 4, r.right - 14]
+            .flatMap(x => [r.bottom - 11, r.bottom - 2].map(y => [x, y]))
+            .map(([x, y]) => [x, y, document.elementFromPoint(x, y)])
+            .filter(([, , el]) => !body.contains(el))
+            .map(([x, y, el]) => [
+              Math.round(x - r.left),
+              Math.round(y - r.top),
+              el && el.tagName + '.' + [...el.classList].join('.'),
+              row.className,
+              Math.round(r.width) + 'x' + Math.round(r.height),
+            ]);
+        });
+      const besideOpens = async sel => {
+        await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        await steady(page.locator(sel));
+        const off = await missed(sel);
+        if (off.length)
+          throw new Error(sel + ': beside the labels, a tap at ' + JSON.stringify(off) + ' misses the body');
+      };
+      await besideOpens(R);
+      // The same holds on the project's list, where the rows have other rows above and below them
+      await page.evaluate(id => {
+        location.hash = '#/project/' + id;
+      }, a.project_id);
+      await expect(page.locator(`#view ${rowOf(b.title)} > .labs > .lab`)).toHaveText([l.title], { timeout: 15000 });
+      for (const t of [a, b]) await besideOpens(`#view ${rowOf(t.title)}`);
+      await page.click('nav.tabs a[data-tab=today]');
+      await expect(page.locator(LAB)).toBeVisible();
+      await page.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
       await swipeRow(page, R, 50, { from: '> .labs > .lab' });
       await synced(page);
       if (Math.round((await get(a.id)).percent_done * 100) !== 50)
