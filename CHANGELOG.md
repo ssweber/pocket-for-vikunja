@@ -37,6 +37,7 @@ is a new 0.x.y.
 - A screen with nothing saved on the phone shows grey rows while it loads, instead of "Loading…".
 - "Move all to today" and "Open project" are easier to tap, and their headings are no taller than the others.
 - Copy as a Markdown list includes each task's notes. Pasting the copy into an add box brings the notes back.
+- On Today, a checklist step's countdown counts the seconds in its last minute, as the checklist's screen does.
 
 ### Fixed
 

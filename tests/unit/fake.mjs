@@ -336,6 +336,7 @@ export function component(...parts) {
     waiting: noneWaiting(),
     opsOn: {},
     slideClaim: {},
+    stepClock: 0,
     dropping: [],
     failed: [],
     notify(msg, action) {

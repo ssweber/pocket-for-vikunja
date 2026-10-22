@@ -863,9 +863,11 @@ export default {
       lock = i < 0 ? null : lockOf(steps[i], stepTimes(steps)[i], now);
     return lock && { at: lock.at, from: lock.from?.title ?? null };
   },
-  // Whether a step's tick shows a padlock. Today checks once a minute (rowNow), a checklist's screen each second.
+  /* Whether a step's tick shows a padlock. A checklist's screen checks each second (runNow), and Today each minute, or
+     each second near a step's time (stepNow). A row that isn't a step reads no time, so the clock doesn't redraw it. */
   rowLock(t, g) {
-    return !!this.stepLock(t, serverTime(g.run ? this.runNow : this.rowNow()));
+    if (!g.run && this.stepRun(t) == null) return false;
+    return !!this.stepLock(t, serverTime(g.run ? this.runNow : this.stepNow()));
   },
   /* A tap on the tick of a step that can't be ticked yet says when it can, and ticks nothing. A list or a sheet says it
      on the step's row. A checklist's screen (`run`) has no messages on its rows, so it says it on the step card. */

@@ -236,11 +236,19 @@ test('a checklist card’s top row stays on the ticked step until it leaves, the
   assert.deepEqual(asked, [null, 1]);
 });
 
-test('a checklist step’s countdown is shown to the minute, within a day', () => {
+test('a checklist step’s countdown is shown to the minute within a day, or to the second in its last minute', () => {
   const now = Date.parse(at(8, 9));
   assert.deepEqual(countdown(now + 65 * 6e4 + 1000, now), { text: 'in 1h 6m', late: false });
   assert.deepEqual(countdown(now - 12.5 * 6e4, now), { text: '12m late', late: true });
   assert.deepEqual(countdown(now + 1000, now), { text: 'in 1m', late: false }, 'never “in 0s”');
+  assert.deepEqual(
+    [countdown(now + 50e3, now, true), countdown(now - 12e3, now, true)],
+    [
+      { text: 'in 50s', late: false },
+      { text: '12s late', late: true },
+    ],
+    'where the row redraws each second, the last minute counts seconds, as a checklist’s screen does',
+  );
   assert.equal(
     countdown(now + 864e5 * 2, now),
     null,
@@ -1430,6 +1438,41 @@ test('on Today a step with !T# shows a padlock, and a tap on its tick says when 
   app.tasks[51].done = false;
   app.tickRow(b, g, null);
   assert.equal(app.toast.msg, 'Waiting for A', 'before A is done, the tap names A');
+});
+
+/* Today's rows read the time once a minute (rowNow). Within a minute of a step's time, before or after, tickSteps moves
+   the time its step rows read (stepNow) each second, so the countdown counts seconds and the padlock opens on time. */
+test('on Today a step within a minute of its time counts down to the second and unlocks on time', c => {
+  const t0 = Date.now();
+  c.mock.timers.enable({ apis: ['Date'], now: t0 });
+  const app = Object.defineProperties(runScreen('!T#30m'), Object.getOwnPropertyDescriptors(alerts)),
+    due = Date.parse(app.tasks[51].done_at) + 30 * 6e4,
+    b = app.tasks[52],
+    g = { depth: {} };
+  b.due_date = new Date(due).toISOString();
+  b.related_tasks.parenttask = [{ id: 50, title: 'Opening up' }];
+  Object.assign(app, {
+    route: { name: 'today' },
+    stepRun: t => ([51, 52, 53, 54].includes(t.id) ? 50 : null),
+    checklistIds: new Set(),
+    groupedAt: t0,
+  });
+  app.tasks[50].related_tasks = { subtask: [51, 52, 53, 54].map(id => ({ id })) };
+  app.view.groups = [{ key: 'today', tasks: [b, app.tasks[53]] }];
+  globalThis.document.visibilityState = 'visible';
+  const at = ms => {
+    c.mock.timers.setTime(ms);
+    app.tickSteps();
+    return [app.rowMeta(b, g).find(m => m.key === 'due').text, app.rowLock(b, g), app.stepClock];
+  };
+  assert.deepEqual(at(due - 90e3), ['in 29m', true, 0], 'further off, the rows keep the minute Today was grouped');
+  assert.deepEqual(at(due - 50e3), ['in 50s', true, due - 50e3]);
+  assert.deepEqual(at(due - 1e3), ['in 1s', true, due - 1e3]);
+  assert.deepEqual(at(due), ['in 0s', false, due], 'the padlock opens at the step’s time');
+  assert.deepEqual(at(due + 6e4), ['1m late', false, due + 6e4]);
+  assert.equal(at(due + 61e3)[2], due + 6e4, 'a minute after, Today is back to once a minute');
+  app.groupedAt = due + 90e3;
+  assert.equal(app.rowMeta(b, g).find(m => m.key === 'due').text, '1m late');
 });
 
 /* A change shows sending words only once it has waited WAIT_MS without an answer (markSlow), or at once offline, so a

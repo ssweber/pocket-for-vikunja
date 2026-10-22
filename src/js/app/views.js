@@ -304,6 +304,11 @@ export default {
   rowNow() {
     return (this.route.name === 'today' && this.groupedAt) || Date.now();
   },
+  // The time a step's countdown and padlock read. On Today it moves each second while a step is within a minute of its
+  // time (tickSteps), so only step rows redraw then.
+  stepNow() {
+    return this.route.name === 'today' ? Math.max(this.rowNow(), this.stepClock) : this.rowNow();
+  },
   /* Build metadata for each row context. Sheet subtasks show due dates, while the sheet's own row omits details
      already shown elsewhere in the sheet. A checklist's top row uses its assignee slot. Checklist steps show how
      they were added, their comments and their timing. One-line rows omit extra labels and counts. */
@@ -386,9 +391,13 @@ export default {
     // A done task stays on the open list while it has open subtasks. Show a message that says why.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id))
       out.push({ key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length) });
-    // A checklist step that is not done and is due within a day shows a countdown to the minute. On Today, rowNow
-    // redraws it once a minute.
-    const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), this.rowNow());
+    // A checklist step that is not done and is due within a day shows a countdown. On Today, stepNow redraws it each
+    // second in its last minute, so it counts that minute to the second.
+    const left =
+      due &&
+      !t.done &&
+      this.stepRun(t) &&
+      countdown(+new Date(t.due_date), this.stepNow(), this.route.name === 'today');
     if (left)
       out.push({
         key: 'due',

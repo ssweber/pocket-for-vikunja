@@ -188,6 +188,7 @@ export default () => ({
   runG: { depth: {}, run: true, at: null, locked: false },
   todayDay: 0, // the day Today's groups were loaded for (alerts.js)
   groupedAt: 0, // when Today's tasks were last grouped, for the heading's date
+  stepClock: 0, // the time Today's step countdowns and padlocks read, moved each second near a step's time (tickSteps)
   avatars: saved.get('avatars') || {}, // username -> {url, at}: people's pictures (claims.js)
 
   init() {
@@ -270,6 +271,7 @@ export default () => ({
     setInterval(() => {
       if (this.route.name === 'run' && document.visibilityState === 'visible') this.clock = Date.now();
       this.tickRun();
+      this.tickSteps();
     }, 1000);
     setInterval(() => this.tickToday(), 60000);
     // Reload the visible run every 20 seconds to show steps completed by teammates.

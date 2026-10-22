@@ -21,7 +21,7 @@ report.
       starting with `// `. Pasting reads such a line as more notes for the line above, not as a subtask, so the copy
       round-trips. `pocket:` lines are left out (so asks aren't copied), and the notes are plain text. Copy progress
       and Done today's Copy stay without notes. Update the guide's line that says notes aren't included.
-- [ ] **A5. Today counts the last minute by the second.** Today's rows redraw once a minute (`rowNow`). While a step
+- [x] **A5. Today counts the last minute by the second.** Today's rows redraw once a minute (`rowNow`). While a step
       on Today is less than a minute from its time (a countdown or a lock), Today redraws each second, so a countdown
       reads "in 50s", not "in 1m", and a locked step unlocks on time. Back to once a minute when none is.
 

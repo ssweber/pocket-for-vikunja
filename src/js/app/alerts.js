@@ -100,6 +100,25 @@ export default {
     } catch {}
   },
 
+  /* Runs every second. While a step on Today is within a minute of its time, or of the time its padlock opens, Today's
+     step rows read the time each second (stepNow). So a countdown reads "in 50s" and a padlock opens on time. Otherwise
+     they read it once a minute, as the other rows do. */
+  tickSteps() {
+    if (this.route.name !== 'today' || document.visibilityState !== 'visible' || this.view.loading) return;
+    const now = Date.now(),
+      there = serverTime(now),
+      near = (at, t) => Math.abs(at - t) <= 6e4;
+    for (const t of this.view.groups.filter(g => g.key !== 'donetoday').flatMap(g => g.tasks))
+      for (const s of this.isRunTask(t) ? this.cardSubs(t, true) : this.stepRun(t) != null ? [t] : []) {
+        if (s.done) continue;
+        const at = this.stepLock(s, there)?.at;
+        if ((isSet(s.due_date) && near(+new Date(s.due_date), now)) || (at && near(at, there))) {
+          this.stepClock = now;
+          return;
+        }
+      }
+  },
+
   /* ---------- a checklist's countdowns ---------- */
   // Runs every second. A countdown on the checklist on screen chimes once when it reaches zero. The screen stays on
   // while a countdown runs.
