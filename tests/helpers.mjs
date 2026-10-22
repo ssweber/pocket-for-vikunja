@@ -199,7 +199,24 @@ export async function finger(page) {
     // finger's does. Chrome sometimes drops a tap sent before then, so the tap opens nothing.
     await page.waitForTimeout(Math.max(0, t0 + n * every + 8 - Date.now()));
   };
-  return { touch, touchDrag };
+  /* Playwright's own Chromium (no BROWSER_CHANNEL) sometimes makes no click from a tap, about one tap in ten late in
+     smoke.mjs. No mousedown or click reaches the page then, so Pocket never sees the tap. tap() sends the tap again
+     when no click arrives within a second, up to three times. */
+  const tap = async (x, y) => {
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => {
+        window.__tapped = false;
+        addEventListener('click', () => (window.__tapped = true), { capture: true, once: true });
+      });
+      await touch('touchStart', x, y);
+      await touch('touchEnd', x, y);
+      try {
+        return void (await page.waitForFunction(() => window.__tapped, null, { polling: 50, timeout: 1000 }));
+      } catch {}
+    }
+    throw new Error('three taps made no click');
+  };
+  return { touch, touchDrag, tap };
 }
 
 /* The layer a swiped row uncovers (lay, app/progress.js). The layer stays still under the row. It is placed in the

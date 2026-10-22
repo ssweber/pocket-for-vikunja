@@ -2627,7 +2627,7 @@ try {
      hides the phone's keyboard. A drag from the sheet's bar follows the touch and closes the sheet, whether or not a
      field has focus. When nothing is being typed in, a drag from anywhere at the sheet's top does the same. A date
      field that kept the focus does not block it. If the phone cancels the touch mid-drag, the sheet goes back up. */
-  const { touch, touchDrag } = await finger(page);
+  const { tap, touch, touchDrag } = await finger(page);
   await step('a-touch-in-a-text-field-never-slides-the-sheet-and-its-bar-always-does', async () => {
     const t = await make(`Pocket smoke sheet slide ${stamp}`, {
       due_date: todayAt(23),
@@ -5729,8 +5729,7 @@ ${footName('Hooks')}`);
     await expect(page.locator('#view .aimed')).toHaveCount(0);
     // A tap with a touch still opens the sheet. Closing the sheet leaves the box where it is, at the bottom.
     const b = await steady(page.locator(Fuel + ' > .body'));
-    await touch('touchStart', b.x + b.width / 2, b.y + b.height / 2);
-    await touch('touchEnd', 0, 0);
+    await tap(b.x + b.width / 2, b.y + b.height / 2);
     await page.waitForSelector('#sheet .row.own');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
