@@ -127,7 +127,7 @@ export async function steady(locator, timeout = 5000) {
    `touch(type, x, y, at)` sends one touchStart, touchMove, touchEnd or touchCancel. Each carries its time (`at`, in ms),
    as events from a phone do, because Chrome delays passing them on. The test therefore decides how fast the touch moves.
    `touchDrag(sel, by, n, every, hold, {check, cancel})` touches the middle of `sel`, moves `by` px down in `n` moves
-   `every` ms apart, then releases. It really waits `hold` ms before moving. `check` runs before the release, while the
+   `every` ms apart, then releases, and returns once the release's time has passed. It really waits `hold` ms before moving. `check` runs before the release, while the
    touch is still down and after the page has received the last move. Chrome gives the page touch moves one frame at a
    time, later than the test sends them, so a check that nothing moved would otherwise pass before the page could react.
    `cancel` ends the touch with touchcancel instead of a release, as the phone does when its own gesture or a call
@@ -178,6 +178,9 @@ export async function finger(page) {
     } finally {
       await touch(cancel ? 'touchCancel' : 'touchEnd', x, y + by, t0 + n * every + 8);
     }
+    // The release is stamped ahead of the clock. Waiting until its time makes the next touch come after it, as a
+    // finger's does. Chrome sometimes drops a tap sent before then, so the tap opens nothing.
+    await page.waitForTimeout(Math.max(0, t0 + n * every + 8 - Date.now()));
   };
   return { touch, touchDrag };
 }
