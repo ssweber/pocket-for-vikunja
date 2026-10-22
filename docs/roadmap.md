@@ -64,15 +64,13 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **The worklist** in `docs/design/worklist.md`: small fixes, waiting and order as template settings in place of
-   `!T#`, the list row on Today, and showing the thumb while dragging to a date.
-2. **Small fixes.**
+1. **Small fixes.**
    - On a project only you can see, four rows showed "+ me" for about half a second after the first sheet opened
      (found by `tests/leaks.mjs`).
    - `a-row-thrown-at-two-dates-offline-sends-one-request` in `tests/offline.mjs` failed once in four runs on
      MySQL. The two date changes, 0.5 seconds apart, stayed two entries in the Outbox instead of merging into one.
      Find out whether a second change can miss the first while the first is still being saved.
-3. **What the phone keeps.** `pocket.saved.templates` keeps templates deleted in Vikunja.
+2. **What the phone keeps.** `pocket.saved.templates` keeps templates deleted in Vikunja.
    `pocket.saved.people.<project>` and `drafts` keep entries for deleted projects and tasks. The service worker keeps
    library files from older versions until its cache name changes. Each is small.
 
