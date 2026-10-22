@@ -941,8 +941,19 @@ button.check::after {
   margin: 0 -2px 0 2px;
   align-self: center;
 }
-.search-chips {
-  margin: 10px 0 4px;
+/* Each label offered under search has a 44px tap area around its 30px chip. Wrapped lines are 15px apart, so their
+   areas don't overlap, and the margins leave room for the part of each area outside the chip. */
+.chips.search-chips {
+  row-gap: 15px;
+  margin-bottom: 8px;
+}
+.search-chips .chip {
+  position: relative;
+}
+.search-chips .chip::after {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 22px) -3px;
 }
 .only-bar {
   display: flex;

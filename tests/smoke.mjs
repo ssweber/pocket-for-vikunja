@@ -3463,7 +3463,16 @@ try {
       await found();
       // Typing * offers the labels that match what follows. Tapping one searches for it.
       await page.fill('#in-search', '*' + l.title.slice(0, 8));
-      await page.locator('.search-chips .chip', { hasText: '*' + l.title }).click();
+      const chip = page.locator('.search-chips .chip', { hasText: '*' + l.title });
+      // A tap 21px above or below the chip's middle still reaches it, so its tap area is 44px tall.
+      const reach = await chip.evaluate(c => {
+        const r = c.getBoundingClientRect(),
+          x = r.left + r.width / 2,
+          y = r.top + r.height / 2;
+        return [y - 21, y + 21].map(at => c.contains(document.elementFromPoint(x, at)));
+      });
+      if (reach.includes(false)) throw new Error('a label under search has a tap area under 44px: ' + reach);
+      await chip.click();
       await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
       await found();
       await page.fill('#in-search', `*nolabel${stamp}`);
