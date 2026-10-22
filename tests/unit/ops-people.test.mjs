@@ -139,6 +139,17 @@ test('a person or a label on a task deleted in Vikunja since is dropped, and the
   assert.equal(lastSaid(app).msg, "Adding label floor to “Mop the floor” couldn't be saved: The task does not exist.");
 });
 
+test("a person who can't see the task's project is not kept to send again, and the sender says why", async t => {
+  const { v, app } = listed(t, [task(2)]);
+  v.strangers.add(BOB.id);
+  const r = await app.addAssignee(app.tasks[2], BOB);
+  assert.deepEqual([r.status, sync.all(1).length, ids(v.task(2).assignees)], ['error', 0, []]);
+  assert.equal(
+    lastSaid(app).msg,
+    "Assigning Bob to “Mop the floor” couldn't be saved: Bob can't see the task's project.",
+  );
+});
+
 test('the Undo of a change cancelled in the Outbox, or dropped when Vikunja refused it, sends nothing', async t => {
   const { v, app } = listed(t, [task(2), task(3, { title: 'Lock up' })]);
   noConnection(app, v);

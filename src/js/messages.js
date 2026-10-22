@@ -646,6 +646,8 @@ export const OP_WORDS = {
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names =>
   `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;
+// Why Vikunja refused to assign person `u`.
+export const cantSeeProject = u => `${u.name || u.username} can't see the task's project`;
 export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, so the step stays done';
 /* The plugin's relay answers 409 with Idempotency-Unknown when it can't tell whether Vikunja made a change. Pocket
    can't tell either, and only the user can check. So the change waits in the Outbox, and Try again sends it as a new

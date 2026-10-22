@@ -120,7 +120,7 @@ export function fakeVikunja(tasks = []) {
     const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]),
       source = req.path.match(/^\/tasks\/(\d+)\/duplicate$/);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
-      noAccess = () => reply({ message: 'The user does not have access to the project.' }, 403);
+      noAccess = () => reply({ code: 7003, message: 'The user does not have access to the project.' }, 403);
     let res;
     const no = v.refuses(req);
     if (no) res = reply({ message: `HTTP ${no} from Vikunja` }, no);
