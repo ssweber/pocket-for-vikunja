@@ -25,7 +25,9 @@ report.
       on Today is less than a minute from its time (a countdown or a lock), Today redraws each second, so a countdown
       reads "in 50s", not "in 1m", and a locked step unlocks on time. Back to once a minute when none is.
 
-## B. Waiting and order as template settings, picture first
+## B. Waiting and order as template settings, approved
+
+The approved picture is `scratchpad/ui-tplwait/template-waits.png`. Start from `scratchpad/ui-tplwait/inject.mjs`.
 
 Replaces `!T#`. It was never released, so remove it, its per-step lock toggle in the step editor and its guide line,
 with no upgrade path. `!T#` in a title is then just text.
@@ -43,17 +45,28 @@ with no upgrade path. `!T#` in a title is then just text.
   - A step added during a checklist counts where it was put for "Steps in order". It has no time, so it never waits.
   - Today redraws when a lock opens: at the step's time, or as soon as the step above it is ticked.
   - Per template only. Finer control (per checklist, by label) only if asked later.
+  - As pictured: the switches sit in their own card under the template's steps, above Details. Each row shows its
+    mark and a line saying what it does, and the whole row is the tap area. A line under the card says a checklist
+    keeps the settings it started with. The lines are `pocket:wait` and `pocket:in-order`. An order lock's Done
+    reads "After <the nearest open step above>". The hourglass is the new `i-hourglass`.
+  - The new switch replaces the control for "Use for checklists" in New project, so Pocket has one on/off control.
 
-## C. Today uses the list row, picture first
+## C. Today uses the list row, approved
 
-- [ ] **C1.** Today's rows become the row a project's list uses: the title wraps instead of being cut with "…", and a
-      line under it shows the time (the time alone where the day heading gives the day), the project's dot and
+The approved picture is `scratchpad/ui-today-rows/today-list-rows.png`, with one change the user asked for after it:
+the title is one line, not wrapped. Start from `scratchpad/ui-today-rows/inject.mjs`.
+
+- [ ] **C1.** Today's rows become the row a project's list uses, with the title on one line that takes the row's
+      full width, cut with "…" only at its end. Nothing sits beside the title. A project's list still wraps its
+      titles. A line under the title shows the time (the time alone where the day heading gives the day), the project's dot and
       name, "↳ parent", the checklist a step belongs to, ↻ and the counts. Labels stay on their own line. Cards keep
-      their fixed lines, so they don't jump while their steps are ticked. Remove what only the one-line row used
-      (the `line` option, `rowWhen`, the one-line CSS, the fixed-width claim slot), unless something else still needs
-      it. The date chips' clear middle (`THROW.mid`) is sized to a one-line row. Check it still fits the held row.
+      their fixed lines, so they don't jump while their steps are ticked. Cards' rows still use the one-line row, so
+      `line` becomes a card-only option. Remove what nothing uses any more. On a row taller than 112 px the date
+      chips centre on the touch, not the row. The user accepted that.
 
-## D. Where the thumb is while dragging to a date, picture first
+## D. Where the thumb is while dragging to a date, approved
+
+The approved picture is `scratchpad/ui-thumb/thumb-ring.png`. Start from `scratchpad/ui-thumb/inject.mjs`.
 
 - [ ] **D1.** Holding a row near the right edge of the screen pushes the date chips left so they fit
       (`throwLayout` clamps the middle to x 158–232 on a 390 px screen). The thumb then sits over the Tomorrow chip,
@@ -61,4 +74,6 @@ with no upgrade path. `!T#` in a title is then just text.
       Today. Draw a ring in the clear middle that stands for the thumb. It starts in the middle, moves with the finger
       by the same distance, and slides onto a chip when that chip lights. It moves only by `transform`, appears with
       the chips and goes on release. When the chips are open as a menu (released without moving), there is no ring.
-      The picture shows a hold at the right edge and one in the middle of the screen.
+      As pictured: a 44 px ring in the accent colour with a light tint, in the chip's text colour on a lit chip,
+      drawn over the chip's background and under its text. It follows the finger with no transition, and slides
+      120 ms only when a chip lights or unlights. In `src/`, take a chip's position from the layout, not the DOM.
