@@ -76,8 +76,9 @@ template for every list, with the parts a given list does not show left in it.
    `pocket.saved.people.<project>` and `drafts` keep entries for deleted projects and tasks. The service worker keeps
    library files from older versions until its cache name changes. Each is small.
 
-The four drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
-`upstream-plugin-permissions.md`, `upstream-comment-cap.md`) are ready to send whenever the user chooses.
+The five drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
+`upstream-plugin-permissions.md`, `upstream-comment-cap.md`, `upstream-bot-search.md`) are ready to send whenever the
+user chooses. Once Vikunja fixes the bot search, delete `botSees` and its extra requests from `src/js/app/quickadd.js`.
 
 ## Before anyone else uses Pocket
 

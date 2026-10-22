@@ -91,6 +91,6 @@ needs real access (403, code 7003). So Pocket offers the user's `bot-claude` on 
       project only if it is directly shared on it or on a parent (`GET /projects/{id}/users`), in `loadPeople` and
       `canSee`. Make the extra requests only when the search returned an own bot. A bot with access only through a
       team is missed, and E1 covers it.
-- [ ] **E3.** A draft issue for Vikunja, `docs/design/upstream-bot-search.md`, like the other drafts: own bots should
+- [x] **E3.** A draft issue for Vikunja, `docs/design/upstream-bot-search.md`, like the other drafts: own bots should
       still pass the project-access condition. Add it to the roadmap's list of drafts, and note there that E2 can go
       once Vikunja fixes it.
