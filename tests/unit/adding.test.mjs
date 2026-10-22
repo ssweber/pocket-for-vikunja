@@ -1716,6 +1716,77 @@ test('a label Vikunja does not have yet says so on its chip, once the labels hav
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg · new label']);
 });
 
+const ERRANDS = { id: 1, title: 'errands', hex_color: 'e5a50a' };
+const labelsOfLines = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.labels, p.tags?.map(l => l.id)]);
+test('while Today is narrowed to a label, its add boxes give each line that label, with a chip that leaves it off', () => {
+  const app = boxes();
+  Object.assign(app, { route: { name: 'today' }, only: ERRANDS });
+  app.cap.text = 'Buy stamps';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['errands'], [1]]]);
+  assert.deepEqual(labelsOfLines(app, 'under'), [['Buy stamps', ['errands'], [1]]], 'the box under a row too');
+  tap(app, 'cap', '*errands');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '~*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', [], undefined]]);
+  tap(app, 'cap', '*errands');
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['errands'], [1]]], 'tapped again, the label is back');
+  // The label typed by hand has its own chip, and the line gets it once.
+  app.cap.text = 'Buy stamps *Errands';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*Errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['Errands'], undefined]]);
+  app.cap.text = 'Buy stamps\nPost the parcel';
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks', 'Café', '*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [
+    ['Buy stamps', ['errands'], [1]],
+    ['Post the parcel', ['errands'], [1]],
+  ]);
+  // Only Today is narrowed, and a sheet's box adds to the task in the sheet.
+  app.sheet.sub.text = 'Buy stamps';
+  assert.deepEqual(labelsOfLines(app, 'sub'), [['Buy stamps', [], undefined]]);
+  app.route = { name: 'project', id: 5 };
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks', 'Café']);
+  assert.deepEqual(labelsOfLines(app, 'cap')[0], ['Buy stamps', [], undefined]);
+});
+
+test('a task added while Today is narrowed to a label shows there at once, and Vikunja gives it the label', async t => {
+  t.after(clear);
+  const v = fakeVikunja(),
+    app = adding(t);
+  v.labels.push({ ...ERRANDS });
+  Object.assign(app, {
+    route: { name: 'today' },
+    only: ERRANDS,
+    labels: [ERRANDS],
+    cardAdded: {},
+    loadLabels: views.loadLabels,
+    projects: [{ id: 5, title: 'Café' }],
+    projById: new Map([[5, { id: 5, title: 'Café' }]]),
+    defaultProjectId: () => 5,
+    $refs: {},
+    flash() {},
+  });
+  Object.assign(app.cap, newBox());
+  const today = () => app.listGroups.flatMap(g => g.tasks.map(x => [x.title, x.labels.map(l => l.title)]));
+  v.trouble = () => 'offline';
+  app.cap.text = 'Buy stamps';
+  await app.submitCapture();
+  assert.deepEqual(today(), [['Buy stamps', ['errands']]], 'the waiting row has the label, so it shows');
+  v.trouble = () => null;
+  app.offline = false;
+  await app.sendActs(sync.all(1).at(-1).id);
+  assert.deepEqual(
+    v.task(101).labels.map(l => l.title),
+    ['errands'],
+  );
+  app.cap.text = 'Post the parcel';
+  await app.submitCapture();
+  assert.deepEqual(
+    [v.task(102).labels.map(l => l.title), today().at(-1)],
+    [['errands'], ['Post the parcel', ['errands']]],
+    'sent at once, the task shows with its label',
+  );
+});
+
 /* A list's box (footBox, app/sheet.js). At the bottom of the list its label says what the box takes. Under a row, the
    label says what one line makes, and `rest` is the label the box has at the bottom. This holds for a task's subtasks,
    a template's steps and a checklist's steps. */

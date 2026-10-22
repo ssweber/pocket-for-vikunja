@@ -308,6 +308,7 @@ export const packParsed = p => ({
   done: !!p.done,
   pct: p.pct || 0,
   ...(p.notes && { notes: p.notes }),
+  ...(p.tags && { tags: p.tags }),
 });
 export const unpackParsed = p => ({ ...p, due: p.due ? new Date(p.due) : null });
 export const randomId = () =>

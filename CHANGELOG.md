@@ -19,7 +19,8 @@ is a new 0.x.y.
 - A checklist step can be locked until its time with the padlock in its time chip. Until then, Pocket shows its Done
   greyed out with a countdown, and its tick with a padlock.
 - A task's labels show on its row, on a line under the title. Tapping one on Today shows only the tasks with that
-  label, until Show all or leaving Today. Elsewhere, tapping one searches for the tasks with that label.
+  label, until Show all or leaving Today. A task added while Today shows one label gets that label. Elsewhere,
+  tapping one searches for the tasks with that label.
 - Searching for `*errands` lists every open task with that label, by project. Typing `*` offers the labels.
 - Text after ` // ` in an add box becomes the notes of the task or step, with a chip that shows them. This works in
   every add box, the step editor and a pasted list.

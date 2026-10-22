@@ -282,7 +282,7 @@ export const add = {
       position: p.position || 0,
       due_date: p.due || ZERO,
       project_id: p.project?.id || a.pid,
-      labels: [],
+      labels: p.tags || [], // the labels Pocket knows the line gets (onlyLabel, app/quickadd.js)
       assignees: [],
       repeat_after: p.repeat?.after || 0,
       repeat_mode: p.repeat?.mode || 0,

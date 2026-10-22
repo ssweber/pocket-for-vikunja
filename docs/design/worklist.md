@@ -13,7 +13,7 @@ report.
       read "Adding notes to …", like the row above it.
 - [x] **A2. Label chips under search** are under 44 px tall. Give each a 44 px tap area without making the bar look
       taller than it needs to.
-- [ ] **A3. Adding while Today is narrowed to a label.** The new task gets that label, so it shows where the user is
+- [x] **A3. Adding while Today is narrowed to a label.** The new task gets that label, so it shows where the user is
       looking. The add box shows the label as a chip, as if `*label` were typed, and tapping the chip leaves it off,
       as with any other chip.
 - [ ] **A4. Copy as a Markdown list includes notes.** Always, with no separate menu item. A task's notes go after

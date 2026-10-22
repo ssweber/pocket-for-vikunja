@@ -84,6 +84,11 @@ export default {
   readsDone(w) {
     return w === 'cap' || this.isSubBox(w);
   },
+  /* The label Today is narrowed to, which each line typed in quick add's box or a box under a row on Today gets, so
+     the new task shows there. Null elsewhere. */
+  boxOnly(w) {
+    return (w === 'cap' || w === 'under') && this.route.name === 'today' ? this.only : null;
+  },
   /* The cache for one box, keyed by its text, the chips tapped off, nesting, quick add mode and due time. Chips,
      highlights and sending ask for the same data many times while rendering, so each part is parsed once, when first
      read. */
@@ -97,6 +102,7 @@ export default {
         this.quickAddMode,
         this.dueTime,
         JSON.stringify(this.boxBase(w)),
+        this.boxOnly(w)?.title,
       ].join('\0');
     const had = reads.get(w);
     if (had && had.key === key && had.projects === this.projects) return had;
@@ -184,10 +190,19 @@ export default {
     const parents = new Set(list.map(l => l.under));
     return (r.lines = parsed.map((p, i) => ({
       ...p,
+      ...this.onlyLabel(w, p, i ? p : this.boxParsed(w, true)),
       done: !!list[i]?.done,
       under: list[i]?.under ?? null,
       ...(parents.has(i) && { pct: 0 }),
     })));
+  },
+  /* Line `p` with the label Today is narrowed to (boxOnly) added, and in `tags` for its waiting row. A line whose full
+     parse `all` names the label already leaves that to the label's own chip. */
+  onlyLabel(w, p, all) {
+    const l = this.boxOnly(w),
+      has = list => list.some(x => x.toLowerCase() === l.title.toLowerCase());
+    if (!l || this.box(w).ignore?.only || has(all.labels)) return {};
+    return { labels: [...p.labels, l.title], tags: [{ id: l.id, title: l.title, hex_color: l.hex_color }] };
   },
   // Each item keeps its original text (with the done marker) and parent index, so a rejected entry can go back into
   // the box.
@@ -632,8 +647,22 @@ export default {
               },
             ]
           : [];
+    // The label Today is narrowed to, as if it were typed. Tapping it leaves the label off.
+    const only = this.boxOnly(w),
+      onlyChip = () =>
+        only && (off('only') || this.boxParsedLines(w).some(p => p.tags))
+          ? [
+              {
+                key: 'only',
+                kind: 'only',
+                text: (this.prefixes?.label ?? '*') + only.title,
+                off: off('only'),
+                hint: off('only') ? 'Tap to use this' : `Today shows only ${only.title}. Tap to leave the label off`,
+              },
+            ]
+          : [];
     if (n > 1 && !cap) {
-      out.push({ key: 'n', text: `${n} ${what}s` }, ...listWarn(), ...notesChip());
+      out.push({ key: 'n', text: `${n} ${what}s` }, ...onlyChip(), ...listWarn(), ...notesChip());
       return out;
     }
     if (n > 1) {
@@ -657,7 +686,7 @@ export default {
           text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(miss)}”`,
           action: () => this.createProject(miss),
         });
-      out.push(...listWarn(), ...notesChip());
+      out.push(...onlyChip(), ...listWarn(), ...notesChip());
       return out;
     }
     // The chips come from the full parse. A chip the user tapped off stays visible, so it can be tapped on again.
@@ -741,6 +770,7 @@ export default {
         off: off('labels'),
       }),
     );
+    out.push(...onlyChip());
     all.assignees.forEach((u, i) =>
       out.push({ key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees') }),
     );
