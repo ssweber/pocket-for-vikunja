@@ -316,7 +316,7 @@ export const SAMPLES = {
     made: v => v.task(7).description === '<p>Use the probe</p><p>pocket:ask number °C</p><p>Wipe it after</p>',
     cannot: ['partly done'],
   },
-  // A template's "Wait for step times" is turned on, beside its order line.
+  // A template's "Enforce step times" is turned on, beside its order line.
   'edit, settings': {
     op: 'edit',
     tasks: [task(7, 'Closing', { description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>' })],

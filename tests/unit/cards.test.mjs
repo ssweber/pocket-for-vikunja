@@ -1402,7 +1402,7 @@ test("time passing recalculates a checklist only when a countdown's text changes
   assert.deepEqual([app.runView.steps[1].late, app.runView.steps[1].countText], [true, '2s late']);
 });
 
-/* With "Wait for step times" on, B (30 minutes after A) can't be ticked before its time. Its Done button is grey and
+/* With "Enforce step times" on, B (30 minutes after A) can't be ticked before its time. Its Done button is grey and
    counts down to the second, and a tap on it does nothing. Skip still works. At zero, tickRun redraws the checklist and
    B can be ticked. Before A is done, the button names A. */
 test('a step that waits for its time: Done counts down to the second, Skip works, and zero unlocks it', async c => {
@@ -1517,9 +1517,9 @@ test('on Today a step within a minute of its time counts down to the second and 
   assert.equal(app.rowMeta(b, g).find(m => m.key === 'due').text, '1m late');
 });
 
-/* With "Steps in order" on, C can't be ticked while B, the step above it, is open. Done is grey and names B, a tap on
+/* With "Enforce step order" on, C can't be ticked while B, the step above it, is open. Done is grey and names B, a tap on
    C's tick says so, and Skip still works. Ticking or skipping B opens C at once. */
-test('with "Steps in order", Done names the nearest open step above, Skip works, and ticking that step unlocks it', async () => {
+test('with "Enforce step order", Done names the nearest open step above, Skip works, and ticking that step unlocks it', async () => {
   const app = runScreen('T#30m', IN_ORDER),
     acts = [];
   Object.assign(app, {
@@ -1532,7 +1532,7 @@ test('with "Steps in order", Done names the nearest open step above, Skip works,
   assert.deepEqual(
     [b.lock, c.lock, c.lockText, d.lockText],
     [null, { icon: 'lock', at: null, from: 'B' }, 'After B', 'After C'],
-    'B has no time lock, because only "Steps in order" is on, and D names C, the nearest open step',
+    'B has no time lock, because only "Enforce step order" is on, and D names C, the nearest open step',
   );
   assert.equal(await app.tickStep(c, 'done'), false, 'Done does nothing');
   app.tickRow(c, app.runRows);

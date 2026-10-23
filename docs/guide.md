@@ -121,7 +121,7 @@ Pocket stores the timer in the step's title using PLC duration syntax, which is 
 - Checklist steps get their titles with `T#` and `{#…}` removed.
 - A step inserted during a checklist has no timer and isn't "the previous step" for the one after it. A step timed from a repeated step counts from whichever copy was done last.
 
-**Waiting and order.** Two switches under a template's steps are off at first. **Wait for step times** stops a timed step being ticked before its time. An hourglass marks the step, and its **Done** counts down. **Steps in order** stops a step being ticked while a step above it is open. A padlock marks the step, and its **Done** names the step to finish first. Skip still works on a locked step, and a step added during a checklist never waits for a time. A checklist keeps the settings it started with. Vikunja's web app doesn't know them, so a step can be ticked there at any time.
+**Waiting and order.** Two switches under a template's steps are off at first. **Enforce step times** stops a timed step being ticked before its time. An hourglass marks the step, and its **Done** counts down. **Enforce step order** stops a step being ticked while a step above it is open. A padlock marks the step, and its **Done** names the step to finish first. Skip still works on a locked step, and a step added during a checklist never waits for a time. A checklist keeps the settings it started with. Vikunja's web app doesn't know them, so a step can be ticked there at any time.
 
 ## Asks
 

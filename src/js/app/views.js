@@ -328,7 +328,7 @@ export default {
       const s = this.stepShown(t),
         note = this.stepNote(t),
         { asks, bad } = stepAsks(t.description);
-      // With "Wait for step times" on, an hourglass beside a step's time says the step can't be ticked before it.
+      // With "Enforce step times" on, an hourglass beside a step's time says the step can't be ticked before it.
       return [
         (s.problem || s.text) && {
           key: 'when',

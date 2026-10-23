@@ -122,7 +122,7 @@ test('with no settings on, every step can be ticked at any time', () => {
   assert.deepEqual(locks(steps, { wait: false, order: false }, t0), [null, null, null, null]);
 });
 
-test('"Wait for step times": a timed step waits for the step it counts from, then for its time, with an hourglass', () => {
+test('"Enforce step times": a timed step waits for the step it counts from, then for its time, with an hourglass', () => {
   const { t0, steps } = bread();
   const wait = { wait: true, order: false };
   assert.deepEqual(locks(steps, wait, t0 + 6e4), [
@@ -139,7 +139,7 @@ test('"Wait for step times": a timed step waits for the step it counts from, the
   assert.equal(locks(steps, wait, t0)[1], null);
 });
 
-test('"Steps in order": a step waits for the nearest open step above it, with a padlock, and a skipped step is done', () => {
+test('"Enforce step order": a step waits for the nearest open step above it, with a padlock, and a skipped step is done', () => {
   const { t0, steps } = bread();
   const order = { wait: false, order: true };
   assert.deepEqual(locks(steps, order, t0), [
@@ -162,7 +162,7 @@ test('with both on, a step shows the padlock until every step above it is done, 
   assert.equal(locks(steps, both, t0 + 30 * 6e4)[2], null, 'at its time the step can be ticked');
 });
 
-test('a step added during a checklist counts where it was put for "Steps in order", and never waits for a time', () => {
+test('a step added during a checklist counts where it was put for "Enforce step order", and never waits for a time', () => {
   const { t0, steps, step } = bread();
   // Check the oven is inserted before Bake, and a repeat of Shape the loaves keeps that step's line.
   steps.splice(2, 0, step(5, 'Check the oven', null, { added: 'Inserted' }));

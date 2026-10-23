@@ -2603,7 +2603,7 @@ try {
       throw new Error('the template or a step is still there');
   });
 
-  /* "Wait for step times", turned on by tapping its row in the template's sheet, writes pocket:wait in the template's
+  /* "Enforce step times", turned on by tapping its row in the template's sheet, writes pocket:wait in the template's
      notes, and an hourglass shows beside each step's time. In a checklist started then, Shape the loaves waits for Mix
      the dough, then for its time. Its Done button counts down, and its tick on the checklist's screen and on Today's
      card shows the hourglass. A tap on the tick says when it can be ticked, a tap on Done does nothing, and a swipe
@@ -2636,7 +2636,7 @@ try {
     const hourglass = '#d-subtasks .row:nth-of-type(2) .meta use[href="#i-hourglass"]';
     await expect(page.locator('#d-wait')).not.toBeChecked({ timeout: 15000 });
     await expect(page.locator(hourglass)).toHaveCount(0);
-    await page.click('#d-rules b:text-is("Wait for step times")'); // the whole row flips the switch
+    await page.click('#d-rules b:text-is("Enforce step times")'); // the whole row flips the switch
     await expect(page.locator('#d-wait')).toBeChecked();
     await expect(page.locator(hourglass)).toHaveCount(1);
     await until('the template never got its pocket:wait line', async () =>
@@ -2703,7 +2703,7 @@ try {
     await until('Shape the loaves was never done', async () => (await task(shape)).done);
   });
 
-  /* "Steps in order" turned on, and "Wait for step times" off, in the same template. The checklist started before keeps
+  /* "Enforce step order" turned on, and "Enforce step times" off, in the same template. The checklist started before keeps
      the settings it started with. In a new one, Bake's Done names Shape the loaves, the nearest open step above it, and
      a tap on its tick says so. Skipping Shape the loaves leaves Mix the dough to finish first, and once that is done,
      Bake is ticked as any step, with no wait for its time. */
@@ -2713,8 +2713,8 @@ try {
       location.hash = '#/checklists';
     });
     await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .body`, { timeout: 15000 });
-    await page.click('#d-rules b:text-is("Steps in order")');
-    await page.click('#d-rules b:text-is("Wait for step times")');
+    await page.click('#d-rules b:text-is("Enforce step order")');
+    await page.click('#d-rules b:text-is("Enforce step times")');
     await expect(page.locator('#d-order')).toBeChecked();
     await expect(page.locator('#d-wait')).not.toBeChecked();
     await expect(page.locator('#d-subtasks .meta use[href="#i-hourglass"]')).toHaveCount(0);

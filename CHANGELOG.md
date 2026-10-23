@@ -18,7 +18,7 @@ is a new 0.x.y.
 
 ### Added
 
-- Two switches on a template, **Wait for step times** and **Steps in order**, stop a checklist's step being ticked
+- Two switches on a template, **Enforce step times** and **Enforce step order**, stop a checklist's step being ticked
   before its time, or while a step above it is open ([guide](docs/guide.md#timed-steps)).
 - A task's labels show under its title, and tapping one on Today shows only the tasks with that label
   ([guide](docs/guide.md#tasks)).
