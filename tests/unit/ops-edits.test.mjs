@@ -6,7 +6,8 @@ import { sender, reached, noConnection, lastSaid, settle } from './ops-helpers.m
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
-import { started, TASK } from '../../src/js/app/tasks.js';
+import { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { taskDrafts } from '../../src/js/util.js';
 import sheet from '../../src/js/app/sheet.js';
@@ -173,6 +174,29 @@ test('an Undo leaves a field a teammate changed since, and says so on the row', 
   assert.equal(v.task(7).description, '<p>Blue cloth</p>', 'and notes that are still the edit’s go back');
 });
 
+/* A template's two switches flipped offline wait as one edit, which writes both settings into the notes Vikunja has
+   when it is sent. The notes and the order line written meanwhile stay. */
+test("a template's switches flipped offline are sent as one edit, on the notes Vikunja has then", async t => {
+  const { v, app } = listed(t, [{ id: 7, title: 'Bread', description: '<p>Use the big bowl</p>' }]);
+  noConnection(app, v);
+  await app.act(edit(7, { rebase: 'rules', rules: { wait: true } }));
+  await app.act(edit(7, { rebase: 'rules', rules: { order: true } }));
+  await app.act(edit(7, { rebase: 'rules', rules: { wait: false } }));
+  assert.deepEqual(
+    sync.all(1).map(e => e.rules),
+    [{ wait: false, order: true }],
+  );
+  assert.equal(
+    app.tasks[7].description,
+    '<p>Use the big bowl</p><p>pocket:in-order</p>',
+    'the switches show it at once',
+  );
+  v.task(7).description = '<p>Use the big bowl</p><p>pocket:order 9 8</p>';
+  v.trouble = () => null;
+  await app.flush();
+  assert.deepEqual(sent(v), [{ description: '<p>Use the big bowl</p><p>pocket:order 9 8</p><p>pocket:in-order</p>' }]);
+});
+
 test('an edit names the field it changes in the Outbox, when Vikunja refuses it, and when it is cancelled', () => {
   const words = a => [OPS.edit.text(a, 'Wipe the till'), OPS.edit.refused(a, 'Wipe the till'), OPS.edit.dropped(a, '')];
   assert.deepEqual(
@@ -181,18 +205,22 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       words({ set: { priority: 3 } }),
       words({ set: { priority: 0 } })[0],
       words({ rebase: 'notes' }),
+      words({ rebase: 'addNotes' }),
       words({ rebase: 'reminders' }),
       words({ rebase: 'order' }),
       words({ rebase: 'asks' }),
+      words({ rebase: 'rules' }),
     ],
     [
       ['Renaming “Wipe the till” to “Wipe the counter”', 'Renaming “Wipe the till”', '“it” keeps its title.'],
       ['Priority: High on “Wipe the till”', 'Priority on “Wipe the till”', '“it” keeps its priority.'],
       'No priority on “Wipe the till”',
       ['Notes on “Wipe the till”', 'Notes on “Wipe the till”', '“it” notes stay as they are.'],
+      ['Adding notes to “Wipe the till”', 'Adding notes to “Wipe the till”', '“it” notes stay as they are.'],
       ['Reminders on “Wipe the till”', 'Reminders on “Wipe the till”', '“it” reminders stay as they are.'],
       ['Moving a step in “Wipe the till”', 'Moving a step in “Wipe the till”', '“it” steps stay in their order.'],
       ['Asks on “Wipe the till”', 'Asks on “Wipe the till”', '“it” asks stay as they are.'],
+      ['Settings on “Wipe the till”', 'Settings on “Wipe the till”', '“it” settings stay as they are.'],
     ],
   );
 });

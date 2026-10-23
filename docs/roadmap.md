@@ -64,15 +64,19 @@ template for every list, with the parts a given list does not show left in it.
 
 ## Next, in order
 
-1. **Upgrading stored data**, the first item under "Before anyone else uses Pocket".
-2. **For 0.3.0: filtering by label.** Rows don't show their labels today, so that comes first. Then:
-   - Tapping a label on a row narrows Today to it. A bar at the top states the rule ("Only *errands · Show all"), and
-     clearing it, or leaving Today, shows everything again. One label at a time.
-   - Typing `*errands` in search lists every open task with that label, wherever it is due, grouped by project.
-3. **A long press on "+ me"** offers the project's other people. A feature, so it is discussed first.
+1. **Small fixes.**
+   - On a project only you can see, four rows showed "+ me" for about half a second after the first sheet opened
+     (found by `tests/leaks.mjs`).
+   - `a-row-thrown-at-two-dates-offline-sends-one-request` in `tests/offline.mjs` failed once in four runs on
+     MySQL. The two date changes, 0.5 seconds apart, stayed two entries in the Outbox instead of merging into one.
+     Find out whether a second change can miss the first while the first is still being saved.
+2. **What the phone keeps.** `pocket.saved.templates` keeps templates deleted in Vikunja.
+   `pocket.saved.people.<project>` and `drafts` keep entries for deleted projects and tasks. The service worker keeps
+   library files from older versions until its cache name changes. Each is small.
 
-The two drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`) are ready to
-send whenever the user chooses.
+The five drafts for Vikunja in `docs/design/` (`upstream-idempotency-key.md`, `upstream-task-updated.md`,
+`upstream-plugin-permissions.md`, `upstream-comment-cap.md`, `upstream-bot-search.md`) are ready to send whenever the
+user chooses. Once Vikunja fixes the bot search, delete `botSees` and its extra requests from `src/js/app/quickadd.js`.
 
 ## Before anyone else uses Pocket
 
@@ -80,16 +84,10 @@ send whenever the user chooses.
   never drops the outbox, and give each entry and saved screen a format version. Show an entry Pocket can't read in
   the Outbox with Cancel. Today such an entry breaks the Outbox's list (`op.text`) and the sender (`stagesOf`), and a
   start or a step that an older Pocket saved before they were ops is dropped unsent.
-- **Limit what's saved on the phone.** Drop avatars not refreshed in 30 days. When localStorage is full, delete the
-  oldest saved screen and try again.
 - **Deleted tasks.** In `docs/design/upstream-task-updated.md`, ask Vikunja for a way to learn which tasks were
   deleted, such as the ids deleted since a time, a soft-delete flag a filter can see, or a table of deleted ids kept
   for a set time. If Vikunja declines, build a change log in the plugin from Vikunja's task events. It can't replace
   a checklist's reload, because Vikunja sends no events for labels or reactions.
-- **`Retry-After` and `default_due_time`.** Honour a 429's `Retry-After`, which the relay must pass on too. Accept
-  `default_due_time` only as `HH:MM`.
-- **Test tools.** A `STEP=<regex>` filter for `smoke.mjs`, and a leak check (DOM nodes, Alpine effects, timers) after
-  opening the sheet and switching screens many times.
 - **To discuss with the user first.** Screen readers (`aria-live` off `#view`, group titles as headings, rows as
   lists). Back restoring the scroll position. A step added under a template waits as a row at the end of its sheet,
   not after the step the box was under, until Vikunja has made it.
@@ -118,6 +116,8 @@ Each of these is rare, or its fix would change what the user sees and needs deci
   `related_tasks.copiedto` lists the copy, but telling it from a teammate's start would be a guess.
 - The Outbox offers no Cancel for a start, an added step, Make template or a template's step once it has sent a
   request and waits. The row's × still cancels a step.
+- Pocket shows a change as waiting a few milliseconds before it has written it to IndexedDB. If Pocket is closed in
+  between while offline, the change is lost although it was shown.
 - `hiddenRows` reads every task's waiting ops, so a sheet's subtask list and a screen's groups are worked out again
   whenever an op is queued or answered. The rows don't redraw. Measure before changing it.
 

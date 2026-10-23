@@ -272,7 +272,7 @@ test('the asks editor says what keeps a row from being saved', () => {
 test("a checklist step's row shows its asks until one is answered, then its answers, amber outside the range, and what a done step left unrecorded", () => {
   const { asks } = asksOf(['pocket:ask Temp: number °C 0..5', 'pocket:ask Seal: yes-no']);
   assert.deepEqual(askMeta({ asks, answers: {}, done: false }), [
-    { key: 'asks', cls: 'note-mark', icon: 'comment', text: 'Asks: Temp, Seal' },
+    { key: 'asks', cls: 'note-mark', icon: 'notes', text: 'Asks: Temp, Seal' },
   ]);
   assert.deepEqual(askMeta({ asks, answers: { temp: { text: '7 °C', off: true } }, done: false }), [
     { key: 'ans0', cls: 'ans off', text: 'Temp 7 °C' },

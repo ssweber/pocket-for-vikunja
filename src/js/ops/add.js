@@ -10,12 +10,13 @@
    Pocket uses neither of Vikunja's bulk creates. PUT /tasks/bulk and POST /projects/{project}/tasks/bulk are each all
    or nothing, and the second ignores `position` and `labels`. */
 import { passing } from '../api.js';
+import { textToHtml } from '../html.js';
 import { DONE_MARK, patiently } from '../checklists.js';
 import { OP_WORDS } from '../messages.js';
 import { removeAssignees } from '../quickadd.js';
 import { ALREADY, sync, unpackParsed, uuid7 } from '../sync.js';
 import { ZERO } from '../util.js';
-import { opsId } from '../app/tasks.js';
+import { opsId } from '../tasks.js';
 import { figureOf } from './stages.js';
 
 const settle = (e, problem) => {
@@ -64,6 +65,7 @@ async function prepare(a, c) {
   if (parsed.due) body.due_date = parsed.due.toISOString();
   if (parsed.due && parsed.remind) body.reminders = [{ relative_to: 'due_date', relative_period: 0 }]; // the 🔔 chip sets a reminder at the due time
   if (parsed.priority) body.priority = parsed.priority;
+  if (parsed.notes) body.description = textToHtml(parsed.notes); // the text after " // ", as one paragraph
   if (parsed.position) body.position = parsed.position; // its position in its project's List view
   if (parsed.repeat) {
     body.repeat_after = parsed.repeat.after;
@@ -280,7 +282,7 @@ export const add = {
       position: p.position || 0,
       due_date: p.due || ZERO,
       project_id: p.project?.id || a.pid,
-      labels: [],
+      labels: p.tags || [], // the labels Pocket knows the line gets (onlyLabel, app/quickadd.js)
       assignees: [],
       repeat_after: p.repeat?.after || 0,
       repeat_mode: p.repeat?.mode || 0,

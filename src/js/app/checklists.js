@@ -9,12 +9,14 @@ import {
   comesRound,
   draftSteps,
   endedOf,
+  inBatches,
   isChecklistDesc,
   isTemplateLabel,
   notesOnly,
   parseStep,
   problemText,
   roleOf,
+  runRules,
   stepInfos,
   stepProblems,
   stepsOf,
@@ -23,7 +25,6 @@ import {
   templateName,
   templateTitle,
 } from '../checklists.js';
-import { captureLines } from '../quickadd.js';
 import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import {
@@ -48,7 +49,8 @@ import {
 import { renderSeq } from './views.js';
 import { newBox, newStepBox } from './core.js';
 import { addLines, lineOf, movedSteps, personOf, startsIn, tagOf } from '../ops/index.js';
-import { copyOf, putting, started, TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, putting, started } from './tasks.js';
+import { TASK, TASK_COUNT, TASK_REACTIONS_COMMENTS } from '../tasks.js';
 
 /* How many days back Checklists shows finished checklists. Older ones are in the project's Done. */
 export const FINISHED_DAYS = 7;
@@ -434,10 +436,11 @@ export default {
                 ['order_by', 'desc'],
                 ['expand', 'reactions'],
                 ['expand', 'comments'],
+                ['expand', 'comment_count'],
               ]),
           )
-            .then(list => Promise.all(list.map(allComments)))
-            .then(putting(TASK_REACTIONS_COMMENTS, at)),
+            .then(list => inBatches(list, 4, allComments))
+            .then(putting([...TASK_REACTIONS_COMMENTS, 'comment_count'], at)),
         ]);
         // The steps' fresh copies go to the store too, since a finished checklist's ring counts its steps from there. That
         // includes its open steps, or a step done on this phone and undone elsewhere would still count as done.
@@ -498,6 +501,15 @@ export default {
     return repeats(t)
       ? `This template is due ${on}, then ${repeatWords(t)}. Today lists it from a week before. Starting a checklist on or after the due day moves it to its next date.`
       : `This template is due ${on}, once. Today lists it from a week before. ${startMarksDone(templateName(t.title), true)} Choose Repeats to make it repeat.`;
+  },
+  // The open template's settings for its checklists, {wait, order}, read from its notes (runRules).
+  get templateRules() {
+    return this.checklistRole === 'template' ? runRules(this.sheetTask?.description) : { wait: false, order: false };
+  },
+  // Turn one of the open template's settings ('wait' or 'order') on or off. The switch shows the change at once.
+  setTemplateRule(key, on) {
+    const t = this.sheetTask;
+    if (t && this.canEdit) this.act({ op: 'edit', task: t.id, run: null, rebase: 'rules', rules: { [key]: on } });
   },
   // Whether a due template shows on the user's Today. It shows for its assignees. With no assignees, it shows for
   // anyone who can start it.
@@ -687,7 +699,7 @@ export default {
      a problem, which its chip shows. The box stays, emptied and focused. */
   sendSteps(which) {
     const b = this.stepBox(which),
-      lines = captureLines(b.text || '');
+      lines = this.boxLines(which + ':+');
     if (!lines.length) return;
     const one = lines.length === 1,
       was = { text: b.text, keep: b.keep, from: b.from, ignore: b.ignore };
@@ -894,7 +906,11 @@ export default {
     if (!e?.text.trim()) return null;
     if (e.key) return this.draft('new').info.get(e.key) || null; // a New template row: read together with the other rows there
     const before = this.subtasks.slice(0, i).map(s => ({ key: 'task:' + s.id, text: s.title }));
-    const d = draftSteps([{ key: 'edit', text: e.text, keep: e.keep, from: e.from }], before, this.stepWordsOnly),
+    const d = draftSteps(
+        [{ key: 'edit', text: e.text, keep: e.keep, from: e.from, ignore: e.ignore }],
+        before,
+        this.stepWordsOnly,
+      ),
       info = d.info.get('edit');
     const titles = this.subtasks.map((s, k) =>
       k === i ? info.saved : (d.renames.find(r => r.key === 'task:' + s.id)?.title ?? s.title),
@@ -959,7 +975,8 @@ export default {
     const todo = d
       ? this.subtasks.map((s, k) => ({ s, was: s.title, title: d.titles[k] })).filter(x => x.title !== x.was)
       : [];
-    if (!todo.length && !drops.length) {
+    const notes = d?.notes || '';
+    if (!todo.length && !drops.length && !notes) {
       this.sheet.stepEdit = null;
       return;
     }
@@ -1002,6 +1019,8 @@ export default {
         add: true,
         was: was(st.labels, tagOf),
       })),
+      // Notes typed after " // " go at the end of the step's notes, so its asks stay.
+      ...(notes ? [{ op: 'edit', task: e.id, rebase: 'addNotes', text: notes }] : []),
       // The people and labels the user tapped off.
       ...drops.map(k => {
         const id = +k.slice(1);

@@ -3,7 +3,7 @@
 import { ApiError } from '../api.js';
 import { changedSince } from '../messages.js';
 import { sync } from '../sync.js';
-import { TASK } from '../app/tasks.js';
+import { TASK } from '../tasks.js';
 import { DONE_MARK, placeBefore, SKIP_MARK, stepOrder, stepsOf, withOrder } from '../checklists.js';
 import { figurePatch } from '../progress.js';
 import { plainReminders, reminderKey } from '../dates.js';

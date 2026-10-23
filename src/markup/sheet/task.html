@@ -136,6 +136,23 @@
       </div>
       </div></template>
 
+      <!-- A template's settings for its checklists (templateRules), under the steps they apply to. A checklist copies
+           them when it starts. -->
+      <template x-if="checklistRole === 'template'"><div id="d-rules">
+        <div class="card switches">
+          <label class="prop"><svg class="i"><use href="#i-hourglass"/></svg><span class="v"><b>Enforce step times</b>
+            <span class="note">A timed step can't be ticked before its time.</span></span>
+            <input type="checkbox" class="switch" id="d-wait" :checked="templateRules.wait" :disabled="!canEdit" @change="setTemplateRule('wait', $event.target.checked)"></label>
+          <label class="prop"><svg class="i"><use href="#i-lock"/></svg><span class="v"><b>Enforce step order</b>
+            <span class="note">A step can't be ticked until every step above it is done or skipped.</span></span>
+            <input type="checkbox" class="switch" id="d-order" :checked="templateRules.order" :disabled="!canEdit" @change="setTemplateRule('order', $event.target.checked)"></label>
+          <template x-for="line in placeLines('sheet:rules')" :key="line.n">
+            <!-- include markup/place-line.html -->
+          </template>
+        </div>
+        <p class="note switches-note">A checklist keeps the settings it started with.</p>
+      </div></template>
+
       <div class="h3">Details</div>
       <div class="card">
         <div class="prop sel"><span class="k">Project</span><span class="v">

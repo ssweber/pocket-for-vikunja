@@ -59,7 +59,7 @@ const plus = (n, from = REF) => {
 };
 const cases = [];
 // c: {text, now?, dueTime?, ignore?, title?, date? ('Y-M-D' | null | 'any'), time? ('H:M'), repeat? ({after, mode} | null),
-//     labels?, assignees?, project?, priority?, pct?, pocket?, why?}
+//     labels?, assignees?, project?, priority?, pct?, notes?, pocket?, why?}
 const add = c => cases.push(c);
 
 // ---------- general ----------
@@ -975,6 +975,94 @@ add({
   ...extra('the percentage works with Todoist’s prefixes'),
 });
 
+// ---------- notes after " // " ----------
+const notes = why => ({ pocket: true, why });
+add({
+  text: 'Order paper bags +shop // the brown ones, 500 count',
+  title: 'Order paper bags',
+  project: 'shop',
+  notes: 'the brown ones, 500 count',
+  marked: ['project:+shop', 'notes:// the brown ones, 500 count'],
+  ...notes('the text after " // " is the notes, and the +project before it is at the end of the title'),
+});
+add({
+  text: 'Call the plumber // tomorrow @bob *urgent !3',
+  title: 'Call the plumber',
+  date: null,
+  assignees: [],
+  labels: [],
+  priority: 0,
+  notes: 'tomorrow @bob *urgent !3',
+  ...notes('nothing in the notes is read'),
+});
+add({
+  text: 'Check http://example.com tomorrow',
+  title: 'Check http://example.com',
+  date: '2021-6-25',
+  notes: '',
+  ...notes('the slashes in a link have no space around them'),
+});
+add({ text: 'Label shelf a//b', title: 'Label shelf a//b', notes: '', ...notes('a path keeps its slashes') });
+add({ text: '//x marks', title: '//x marks', notes: '', ...notes('slashes at the start have no space before them') });
+add({ text: 'Buy milk //', title: 'Buy milk //', notes: '', ...notes('slashes with nothing after them stay') });
+add({ text: 'Buy milk //   ', title: 'Buy milk //', notes: '', ...notes('slashes with only spaces after them stay') });
+add({
+  text: 'Bake // 230°C // 35 minutes',
+  title: 'Bake',
+  notes: '230°C // 35 minutes',
+  ...notes('only the first " // " splits'),
+});
+add({
+  text: 'Bake tomorrow !2 // 230°C',
+  ignore: { notes: true },
+  title: 'Bake // 230°C',
+  date: '2021-6-25',
+  priority: 2,
+  notes: '',
+  ...notes('with its chip tapped off, the notes stay in the title, and the words before them are read'),
+});
+add({
+  text: '"Read a // b" tomorrow // the blog post',
+  title: 'Read a // b',
+  date: '2021-6-25',
+  notes: 'the blog post',
+  ...notes('slashes inside a quoted title stay in it'),
+});
+add({
+  text: 'Sweep the floor 50% // and the steps',
+  title: 'Sweep the floor',
+  pct: 50,
+  notes: 'and the steps',
+  ...notes('a percentage before the notes is at the end of the title'),
+});
+// A list folded into one task (readList's fold) is one line holding the other lines.
+add({
+  text: 'Call the plumber tomorrow\nthe tap drips friday @bob',
+  title: 'Call the plumber',
+  date: '2021-6-25',
+  notes: 'the tap drips friday @bob',
+  ...notes('in a folded list with no " // ", the notes start at the line break, and nothing after it is read'),
+});
+add({
+  text: 'Call the plumber // kitchen\n  the tap drips\n  // ask about the boiler',
+  title: 'Call the plumber',
+  notes: 'kitchen\n  the tap drips\nask about the boiler',
+  ...notes('after " // ", the other lines keep their indent, and a line starting with // loses its slashes'),
+});
+add({
+  text: 'Groceries\n\n    - milk\n        - oat milk\n    - eggs\n',
+  title: 'Groceries',
+  notes: '- milk\n    - oat milk\n- eggs',
+  ...notes('the notes lose the indent all their lines share, and the blank lines around them'),
+});
+add({
+  text: 'Sweep the floor // and the steps',
+  mode: 'disabled',
+  title: 'Sweep the floor',
+  notes: 'and the steps',
+  ...notes('notes are read with quick add off, as a percentage is'),
+});
+
 // ---------- pasted lists: list markers removed, one task per line ----------
 const lists = [];
 const addList = (text, lines, why) => lists.push({ text, lines, why });
@@ -1074,6 +1162,23 @@ addRead(
   'with the chip off, a checkbox stays in the title but its bullet is removed',
   { done: false },
 );
+// A folded list is one task: its first line read as if alone, with the other lines after it as typed.
+addRead(
+  '\n- [x] Call Sam:\n  - [ ] the tap\n## boiler\n',
+  [['Call Sam:\n  - [ ] the tap\n## boiler', true]],
+  'folded, the first line keeps its done marker and colon, and the other lines stay as typed',
+  { fold: true },
+);
+addRead('# Café\nTables', [['# Café\nTables', false]], "folded, a # line is the task's title as typed", {
+  fold: true,
+});
+addRead('Call Sam', [['Call Sam', false]], 'a single line folds into itself', { fold: true });
+addRead(
+  '[x] Wipe\nMop',
+  [['Mop', false]],
+  "in the steps box, a ticked first line can't be the task, so the list is read as usual",
+  { fold: true, steps: true },
+);
 
 // ---------- parents in a pasted list ----------
 // addNest(text, the text of each line, the index of each line's parent among the lines (or null), why, options,
@@ -1119,7 +1224,7 @@ addNest(
   '## Pack the van\n- Load chairs\n## Set the hall\n- Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, null, null, null],
-  'with ↳ Under first line off, every line is a separate task',
+  'with flat, every line is a separate task',
   { flat: true },
   true,
 );
@@ -1127,14 +1232,14 @@ addNest(
   '## Pack the van\n- Load chairs\n## Set the hall\n- Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, 0, 0, 2],
-  'with ↳ Under first line on, the first line is the parent of every line with no parent',
+  'with nest, the first line is the parent of every line with no parent',
   { nest: true },
 );
 addNest(
   'Pack the van\n- Load chairs\n- Tables',
   ['Pack the van', 'Load chairs', 'Tables'],
   [null, 0, 0],
-  'with ↳ Under first line on, a list with no markers goes under its first line',
+  'with nest, a list with no markers goes under its first line',
   { nest: true },
   false,
 );
@@ -1187,7 +1292,7 @@ addNest(
   'Pack the van\n  Load chairs\nSet the hall\n  Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, null, null, null],
-  'with ↳ Under first line off, every line is a separate task',
+  'with flat, every line is a separate task',
   { flat: true },
   true,
 );
@@ -1195,7 +1300,7 @@ addNest(
   'Order cups\nPack the van\n  Load chairs',
   ['Order cups', 'Pack the van', 'Load chairs'],
   [null, 0, 1],
-  'with ↳ Under first line on and no parent in the text, the first line is the parent of the lines with no parent',
+  'with nest and no parent in the text, the first line is the parent of the lines with no parent',
   { nest: true },
   false,
 );
@@ -1246,7 +1351,7 @@ addNest(
   'Groceries:\n- milk',
   ['Groceries:', 'milk'],
   [null, null],
-  'with ↳ Under first line off, the lines are separate tasks and the colon stays in the title',
+  'with flat, the lines are separate tasks and the colon stays in the title',
   { colon: true, flat: true },
   true,
 );
@@ -1376,6 +1481,7 @@ const steps = [
   ['Overflow T#999999999999999999999d', 'Overflow', null, null, null, 1],
   ['Nbsp\u00a0T#20m', 'Nbsp', 20 * 6e4, null, null, 0],
   ['Two names {#a} {#b}', 'Two names', null, 'a', null, 1],
+  ['Shape the loaves !T#20m', 'Shape the loaves !T#20m', null, null, null, 0], // T# needs a space before it
 ];
 // stepProblems on a template's steps: [titles, the text each problem message contains]
 const templates = [
@@ -1407,6 +1513,18 @@ const phrases = [
 ];
 // Rows of steps written in Pocket and saved: [rows, steps already in the template, titles to add, steps to rename, whether there is a problem]
 const drafts = [
+  // A step's notes are not read for its time, and follow the saved title. With the chip tapped off they stay in it.
+  [
+    [
+      { key: 'a', text: 'Proof the loaves in 40 min // cover with a damp cloth' },
+      { key: 'b', text: 'Bake // 230°C, in 35 min' },
+      { key: 'c', text: 'Cool // on a rack', ignore: { notes: true } },
+    ],
+    [],
+    ['Proof the loaves T#40m // cover with a damp cloth', 'Bake // 230°C, in 35 min', 'Cool // on a rack'],
+    [],
+    false,
+  ],
   [
     [
       { key: 'a', text: 'Put the roast in' },
@@ -1566,6 +1684,7 @@ const results = await page.evaluate(
         project: r.project?.title ?? r.projectMiss,
         priority: r.priority,
         pct: r.pct,
+        notes: r.notes,
         marks: r.marks,
       };
     }),
@@ -1772,7 +1891,7 @@ const ended = await page.evaluate(() => {
 // being set up as a checklist, never comes round. A run line makes a checklist, and a step or added
 // line makes a checklist's step (the rest of the roles are in tests/unit/checklists.test.mjs). Also covered are the
 // template's name without "TEMPLATE: ", its repeat in words, and the date Vikunja moves it to when it is ticked, as
-// checked on Vikunja 2.7.
+// checked on Vikunja 2.7.1.
 const rounds = await page.evaluate(() => {
   const L = [{ title: 'template' }],
     due = '2026-09-15T19:09:31Z',
@@ -1809,6 +1928,9 @@ const rounds = await page.evaluate(() => {
     at(vikunjaNext({ due_date: due, repeat_after: 86400 }, now)), // every day, 3 weeks late: the next 19:09 after now
     at(vikunjaNext({ due_date: '2026-10-07T18:09:31Z', repeat_after: 86400 }, now)), // ticked early: still one day later
     at(vikunjaNext({ due_date: due, repeat_mode: 1 }, now)), // every month: one month later
+    at(vikunjaNext({ due_date: '2027-01-31T18:09:31Z', repeat_mode: 1 }, now)), // the 31st: February's last day
+    at(vikunjaNext({ due_date: '2028-01-31T18:09:31Z', repeat_mode: 1 }, now)), // in a leap year, Feb 29
+    at(vikunjaNext({ due_date: '2027-02-28T18:09:31Z', repeat_mode: 1 }, now)), // then on from the 28th
     at(vikunjaNext({ due_date: '2026-07-06T18:09:31Z', repeat_mode: 1 }, now)), // every month, still late after one month
     at(nextAfter({ repeat_mode: 1 }, Date.parse('2026-08-06T18:09:31Z'), now)), // Pocket moves it past now
     at(vikunjaNext({ due_date: due, repeat_after: 86400, repeat_mode: 2 }, now)),
@@ -1828,7 +1950,7 @@ cases.forEach((c, i) => {
     if (!r.date) bad.push('no date');
   } else if ('date' in c && r.date !== c.date) bad.push(`date ${r.date}`);
   if ('time' in c && r.time !== c.time) bad.push(`time ${r.time}`);
-  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct'])
+  for (const k of ['repeat', 'labels', 'assignees', 'project', 'priority', 'pct', 'notes'])
     if (k in c && !same(r[k], c[k])) bad.push(`${k} ${JSON.stringify(r[k])}`);
   const marked = r.marks.map(m => m.kind + ':' + c.text.slice(m.start, m.end));
   if ('marked' in c && !same(marked, c.marked)) bad.push(`marked ${JSON.stringify(marked)}`);
@@ -2019,6 +2141,9 @@ const roundsWant = [
   '2026-10-06T19:09:31.000Z',
   '2026-10-08T18:09:31.000Z',
   '2026-10-15T19:09:31.000Z',
+  '2027-02-28T18:09:31.000Z',
+  '2028-02-29T18:09:31.000Z',
+  '2027-03-28T18:09:31.000Z',
   '2026-08-06T18:09:31.000Z',
   '2026-11-06T18:09:31.000Z',
   '2026-10-07T18:09:31.000Z',

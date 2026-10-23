@@ -17,7 +17,7 @@ import cards from '../../src/js/app/cards.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
 import { todayGroups } from '../../src/js/lists.js';
-import { photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
+import { busyText, photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
 import { packParsed, sync } from '../../src/js/sync.js';
 import { parseCapture } from '../../src/js/quickadd.js';
@@ -788,9 +788,10 @@ test('a photo Vikunja keeps refusing waits in an entry of its own, and the lines
 
 /* An add box says "Saved offline" only when Pocket is offline. Lines or photos that wait for a busy Vikunja say what
    the Outbox says, because Pocket stays online and sends them again by itself. */
+const AT = Date.UTC(2026, 9, 21, 15, 42); // the time Pocket next sends
 for (const [why, trouble, said] of [
   ['offline', () => 'offline', "Saved offline. They go to Vikunja when you're back online."],
-  ['busy', r => (r.method === 'POST' ? 429 : null), 'Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+  ['busy', r => (r.method === 'POST' ? 429 : null), busyText(AT)],
 ])
   test(`lines that wait say why they wait (${why})`, async t => {
     t.after(clear);
@@ -798,7 +799,7 @@ for (const [why, trouble, said] of [
       app = adding(t);
     v.trouble = trouble;
     const r = await send(app, entry([line('Pack the van'), line('Load chairs')]));
-    assert.deepEqual([r.status, waitText(r, 2)], ['offline', said]);
+    assert.deepEqual([r.status, waitText(r, 2, 0, AT)], ['offline', said]);
   });
 test('a photo that waits for a busy Vikunja says so, not that it goes once back online', async t => {
   t.after(clear);
@@ -808,8 +809,8 @@ test('a photo that waits for a busy Vikunja says so, not that it goes once back 
   v.trouble = r => (r.path.endsWith('/attachments') ? 503 : null);
   const r = shown(app, await app.sendLines(withPhoto(app, e), [photo()]));
   assert.deepEqual(
-    [r.status, r.ids, photosLater('Van', 1, r.reached)],
-    ['offline', [101], 'Added to Van. Waiting for Vikunja. Pocket tries again every 30 seconds.'],
+    [r.status, r.ids, photosLater('Van', 1, r.reached, AT)],
+    ['offline', [101], 'Added to Van. ' + busyText(AT)],
   );
 });
 
@@ -1076,7 +1077,18 @@ const boxes = () => {
   app.sheet = { task: { id: 9, project_id: 5, title: 'Pack the van' }, sub: newBox() };
   return app;
 };
-const chipsOf = (app, w) => app.chips(w).map(c => (c.off ? '~' : '') + c.text);
+const chipsOf = (app, w) =>
+  app
+    .chips(w)
+    .filter(c => c.kind !== 'shape')
+    .map(c => (c.off ? '~' : '') + c.text);
+// The ways to add a box's lines (listShapes), with ● on the one picked
+const waysOf = (app, w) => app.listShapes(w).map(c => (c.pressed ? '●' : '') + c.text);
+const pick = (app, w, text) =>
+  app.tapChip(
+    w,
+    app.listShapes(w).find(c => c.text === text),
+  );
 const marksOf = (app, w) => app.marks(w).map(m => m.kind + ':' + app.box(w).text.slice(m.start, m.end));
 const linesOf = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.done]);
 const tap = (app, w, text) =>
@@ -1119,7 +1131,8 @@ test('a line marked as done shows a Done chip and a marked marker, and tapping t
 test('a list with lines marked as done shows one chip that counts them, and tapping it leaves them out or adds them back', () => {
   const app = boxes();
   app.cap.text = 'Groceries\n- [x] Eggs\n- [ ] Milk tomorrow\nx Bread';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 done', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●4 tasks', '1 task + 3 subtasks', '1 task + notes']);
   assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'due:tomorrow', 'done:x']);
   assert.deepEqual(linesOf(app, 'cap'), [
     ['Groceries', false],
@@ -1127,18 +1140,20 @@ test('a list with lines marked as done shows one chip that counts them, and tapp
     ['Milk', false],
     ['Bread', true],
   ]);
-  tap(app, 'cap', 'will be added as done');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 already ticked, left out', '2 tasks', 'Café']);
+  tap(app, 'cap', '2 done');
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 already ticked, left out', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks', '1 task + 1 subtask', '1 task + notes']);
   assert.deepEqual(marksOf(app, 'cap'), ['due:tomorrow']);
   assert.deepEqual(linesOf(app, 'cap'), [
     ['Groceries', false],
     ['Milk', false],
   ]);
   tap(app, 'cap', 'left out');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 done', 'Café']);
   // A subtask box reads them the same way.
   app.sheet.sub.text = '[x] Load chairs\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '2 subtasks']);
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 done']);
+  assert.deepEqual(waysOf(app, 'sub'), ['●2 subtasks', '1 subtask + notes']);
   assert.deepEqual(linesOf(app, 'sub'), [
     ['Load chairs', true],
     ['Tables', false],
@@ -1146,10 +1161,11 @@ test('a list with lines marked as done shows one chip that counts them, and tapp
 });
 
 const under = (app, w) => app.boxParsedLines(w).map(p => p.under);
-test('a pasted list with headings makes each heading a task with its lines as subtasks, and ↳ Under first line turns that off', () => {
+test('a pasted list with headings makes each heading a task with its lines as subtasks, and offers the other ways to add it', () => {
   const app = boxes();
   app.cap.text = '## Pack the van (38%)\n- Load chairs\n- [x] Tables\n## Set the hall\n- Lights (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 done', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks + 3 subtasks', '5 tasks', '1 task + 4 subtasks', '1 task + notes']);
   assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3]);
   assert.deepEqual(
     app.boxParsedLines('cap').map(p => [p.title, p.pct]),
@@ -1162,33 +1178,47 @@ test('a pasted list with headings makes each heading a task with its lines as su
     ],
     "a parent's percentage is dropped",
   );
-  assert.equal(app.nestOn, true, 'the first line is a parent as the list is written');
-  app.tapNest();
-  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null, null, null]]);
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '5 tasks', 'Café']);
-  app.tapNest();
-  assert.deepEqual(
-    [app.nestOn, under(app, 'cap')],
-    [true, [null, 0, 0, null, 3]],
-    'tapping again restores the list as written',
-  );
-  // A list with no markers does not nest until the user taps ↳ Under first line.
+  pick(app, 'cap', '5 tasks');
+  assert.deepEqual(under(app, 'cap'), [null, null, null, null, null]);
+  assert.deepEqual(waysOf(app, 'cap'), ['2 tasks + 3 subtasks', '●5 tasks', '1 task + 4 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + 4 subtasks');
+  assert.deepEqual(under(app, 'cap'), [null, 0, 0, 0, 3], 'every line without a parent goes under the first');
+  pick(app, 'cap', '2 tasks + 3 subtasks');
+  assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3], 'the list as written is back');
+  // A list with no markers is a task per line. Every line its own task is the same, so it is left out.
   app.cap = newBox();
   app.cap.text = 'Pack the van\nLoad chairs\nTables';
-  assert.deepEqual([app.nestOn, chipsOf(app, 'cap')], [false, ['3 tasks', 'Café']]);
-  app.tapNest();
+  assert.deepEqual(waysOf(app, 'cap'), ['●3 tasks', '1 task + 2 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + 2 subtasks');
+  assert.deepEqual([waysOf(app, 'cap')[1], under(app, 'cap')], ['●1 task + 2 subtasks', [null, 0, 0]]);
+  pick(app, 'cap', '3 tasks');
+  assert.deepEqual(under(app, 'cap'), [null, null, null]);
+});
+
+test('a list longer than five lines draws its first five and shows how many tasks each way makes', () => {
+  const app = boxes();
+  app.cap.text = 'Pack the van\n  Chairs\n  Tables\nLights\nCables\nTape\nBins';
   assert.deepEqual(
-    [app.nestOn, chipsOf(app, 'cap'), under(app, 'cap')],
-    [true, ['1 task + 2 subtasks', 'Café'], [null, 0, 0]],
+    app.listShapes('cap').map(c => [c.text, c.depths, c.count, c.notes]),
+    [
+      ['5 tasks + 2 subtasks', [0, 1, 1, 0, 0], '5+2', false],
+      ['7 tasks', [0, 0, 0, 0, 0], '7', false],
+      ['1 task + 6 subtasks', [0, 1, 1, 1, 1], '1+6', false],
+      ['1 task + notes', [0], null, true],
+    ],
   );
-  app.tapNest();
-  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null]]);
+  app.cap.text = 'Pack the van\nChairs';
+  assert.deepEqual(
+    app.listShapes('cap').map(c => c.count),
+    [null, null, null],
+    'a short list is all in its picture',
+  );
 });
 
 test("in a subtask box, a heading's lines go under the heading, and the heading goes under the open task", () => {
   const app = boxes();
   app.sheet.sub.text = '## Chairs\n- Stack them\n- [x] Count them\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '4 subtasks']);
+  assert.deepEqual([chipsOf(app, 'sub'), waysOf(app, 'sub')], [['1 done'], ['●4 subtasks', '1 subtask + notes']]);
   assert.deepEqual(
     app.boxItems('sub').map(x => [x.raw, x.under]),
     [
@@ -1214,14 +1244,14 @@ test("a checklist project's subtask box leaves a date in the title, and a @user 
 test('a pasted list with indented lines puts each under the nearest line above it that is indented less', () => {
   const app = boxes();
   app.cap.text = 'Pack the van (38%)\n  Load chairs (50%)\n    Stack them\n  Tables\nSet the hall';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
+  assert.equal(waysOf(app, 'cap')[0], '●2 tasks + 3 subtasks');
   assert.deepEqual(under(app, 'cap'), [null, 0, 1, 0, null]);
   assert.deepEqual(
     app.boxParsedLines('cap').map(p => p.pct),
     [0, 0, 0, 0, 0],
     'a percentage on a line with lines under it is dropped',
   );
-  assert.equal(app.nestOn, true);
   // In a subtask box, a line goes under the line above it, which goes under the open task.
   app.sheet.sub.text = 'Chairs\n  Stack them\nTables';
   assert.deepEqual(
@@ -1237,11 +1267,8 @@ test('a pasted list with indented lines puts each under the nearest line above i
 test("a pasted copy of a project treats its # heading as the list's name, leaves it out, and shows a chip saying so", () => {
   const app = boxes();
   app.cap.text = '# Café · 3 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), [
-    'The # line is the list’s name, so it is left out',
-    '2 tasks + 1 subtask',
-    'Café',
-  ]);
+  assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name, so it is left out', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks + 1 subtask', '3 tasks', '1 task + 2 subtasks', '1 task + notes']);
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]),
     [
@@ -1250,18 +1277,21 @@ test("a pasted copy of a project treats its # heading as the list's name, leaves
       ['Tables', 1, 50],
     ],
   );
-  assert.equal(app.nestOn, false, 'the first task line is not a parent');
   // Alone in the box, a # line names no list. It is a task, as typed.
   app.cap.text = '# of chairs we need';
   assert.deepEqual([chipsOf(app, 'cap'), linesOf(app, 'cap')], [['Café'], [['# of chairs we need', false]]]);
 });
 
-test('in quick add, a first line ending with a colon is the parent of the other lines without its colon, unless ↳ Under first line is off', () => {
+test('in quick add, a first line ending with a colon is the parent of the other lines without its colon, unless every line is picked to be a task', () => {
   const app = boxes();
   app.cap.text = 'Groceries:\nmilk\n- [x] eggs';
   assert.deepEqual(
-    [chipsOf(app, 'cap'), app.nestOn],
-    [['1 will be added as done', '1 task + 2 subtasks', 'Café'], true],
+    [chipsOf(app, 'cap'), waysOf(app, 'cap')],
+    [
+      ['1 done', 'Café'],
+      ['●1 task + 2 subtasks', '3 tasks', '1 task + notes'],
+    ],
+    'every line under the first is the list as written, so it is left out',
   );
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under]),
@@ -1271,8 +1301,8 @@ test('in quick add, a first line ending with a colon is the parent of the other 
       ['eggs', 0],
     ],
   );
-  app.tapNest();
-  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '3 tasks', 'Café'], false]);
+  pick(app, 'cap', '3 tasks');
+  assert.deepEqual(waysOf(app, 'cap'), ['1 task + 2 subtasks', '●3 tasks', '1 task + notes']);
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under]),
     [
@@ -1281,7 +1311,7 @@ test('in quick add, a first line ending with a colon is the parent of the other 
       ['eggs', null],
     ],
   );
-  // A subtask box has no ↳ Under first line to tap off, so the colon stays in the title there.
+  // A subtask box doesn't make the first line a parent for its colon, so the colon stays in the title there.
   app.sheet.sub.text = 'Groceries:\nmilk';
   assert.deepEqual(
     app.boxItems('sub').map(x => [x.p.title, x.under]),
@@ -1592,14 +1622,183 @@ test("a checklist's add box leaves out a ticked line without a chip to tap, and 
   assert.deepEqual(
     app.chips('ins').map(c => [c.text, c.kind]),
     [
+      ['2 steps', 'shape'],
+      ['1 step + notes', 'shape'],
       ['1 line is already ticked, so it is left out', undefined],
-      ['2 steps', undefined],
     ],
   );
   assert.deepEqual(linesOf(app, 'ins'), [
     ['x Wipe the counter', false],
     ['Lock up', false],
   ]);
+});
+
+const notesOfLines = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.notes]);
+test('the text after " // " is marked and shown as notes after the other chips, and tapping the chip keeps it in the title', () => {
+  const app = boxes();
+  app.cap.text = 'Order paper bags +café // the brown ones, 500 count tomorrow';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', 'Notes: the brown ones, 500 count tomorrow']);
+  assert.deepEqual(marksOf(app, 'cap'), ['project:+café', 'notes:// the brown ones, 500 count tomorrow']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Order paper bags', 'the brown ones, 500 count tomorrow']]);
+  tap(app, 'cap', 'Notes:');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '~Notes: the brown ones, 500 count tomorrow']);
+  assert.deepEqual(
+    marksOf(app, 'cap'),
+    ['project:+café', 'due:tomorrow'],
+    'with the chip off, the notes are read as part of the title',
+  );
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Order paper bags café // the brown ones, 500 count', '']]);
+  // A link or a path has no spaces around its slashes, so it stays in the title.
+  app.cap = newBox();
+  app.cap.text = 'Check http://example.com and a//b';
+  assert.deepEqual([chipsOf(app, 'cap'), marksOf(app, 'cap')], [['Café'], []]);
+});
+
+test('a pasted list reads every line’s notes, and has no chip to keep them in the titles', () => {
+  const app = boxes();
+  app.cap.text = 'Order paper bags // the brown ones\nOrder till rolls\nOrder labels // white';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:// the brown ones', 'notes:// white']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Order paper bags', 'the brown ones'],
+    ['Order till rolls', ''],
+    ['Order labels', 'white'],
+  ]);
+  // A notes chip tapped off while the box had one line doesn't carry over to the list.
+  app.cap = newBox();
+  app.cap.text = 'Order paper bags // the brown ones';
+  tap(app, 'cap', 'Notes:');
+  app.cap.text += '\nOrder labels // white';
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Order paper bags', 'the brown ones'],
+    ['Order labels', 'white'],
+  ]);
+  // A subtask box and a checklist's box read them too.
+  app.sheet.sub.text = 'Load chairs // the folding ones\nTables';
+  assert.deepEqual(chipsOf(app, 'sub'), []);
+  assert.deepEqual(notesOfLines(app, 'sub'), [
+    ['Load chairs', 'the folding ones'],
+    ['Tables', ''],
+  ]);
+  app.runInsert.text = 'Wipe the counter // with the blue cloth\nMop // both rooms';
+  assert.deepEqual(chipsOf(app, 'ins'), []);
+});
+
+test('an indented line starting with // under a pasted line is more of its notes, marked in the box with them', () => {
+  const app = boxes();
+  app.cap.text = '- [ ] Tables // Two\n  //\n  // Ask first\n  - [ ] Legs';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Tables', 'Two\n\nAsk first'],
+    ['Legs', ''],
+  ]);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:// Two\n  //\n  // Ask first']);
+});
+
+test('a line’s notes are sent as its description, in the request that makes it, as one paragraph', async t => {
+  t.after(clear);
+  const v = fakeVikunja([{ id: 9, title: 'Pack the van', project_id: 5 }]),
+    app = adding(t),
+    p = parseCapture('Order paper bags // the <brown> ones & lids', []);
+  assert.deepEqual(
+    packParsed(p).notes,
+    'the <brown> ones & lids',
+    'the notes are kept with the line, so a line sent later still has them',
+  );
+  v.trouble = () => 'offline';
+  const e = entry([
+    { raw: 'Order paper bags', p: packParsed(p), under: null },
+    line('Load chairs', { notes: 'the folding ones' }, 0),
+  ]);
+  assert.equal((await send(app, e)).status, 'offline');
+  v.trouble = () => null;
+  v.requests.length = 0;
+  await resend(app, e);
+  assert.deepEqual(sent(v).slice(0, 2), [
+    [
+      'POST',
+      '/projects/5/tasks',
+      { title: 'Order paper bags', description: '<p>the &lt;brown&gt; ones &amp; lids</p>' },
+    ],
+    ['POST', '/projects/5/tasks', { title: 'Load chairs', description: '<p>the folding ones</p>' }],
+  ]);
+  assert.equal(v.task(101).description, '<p>the &lt;brown&gt; ones &amp; lids</p>');
+});
+
+test('picking 1 task + notes makes the first line the task and the other lines its notes, and picking 3 tasks makes a list again', () => {
+  const app = boxes();
+  app.cap.text = 'Call the plumber\nthe tap drips tomorrow @user\nask about the boiler';
+  assert.deepEqual(waysOf(app, 'cap'), ['●3 tasks', '1 task + 2 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + notes');
+  assert.deepEqual(
+    [chipsOf(app, 'cap'), waysOf(app, 'cap')],
+    [['Café'], ['3 tasks', '1 task + 2 subtasks', '●1 task + notes']],
+    'nothing in the notes is read',
+  );
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Call the plumber', 'the tap drips tomorrow @user\nask about the boiler'],
+  ]);
+  assert.deepEqual(marksOf(app, 'cap'), ['notes:the tap drips tomorrow @user\nask about the boiler']);
+  pick(app, 'cap', '3 tasks');
+  assert.equal(waysOf(app, 'cap')[0], '●3 tasks');
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Call the plumber', ''],
+    ['the tap drips @user', ''],
+    ['ask about the boiler', ''],
+  ]);
+});
+
+test("a folded list's first line is read as usual, and its own notes come before the other lines", () => {
+  const app = boxes();
+  app.cap.text = 'Call the plumber +café !2 // kitchen';
+  tap(app, 'cap', 'Notes:');
+  app.cap.text += '\nthe tap drips\nask about the boiler';
+  pick(app, 'cap', '1 task + notes');
+  assert.deepEqual(
+    chipsOf(app, 'cap'),
+    ['Café', 'Priority 2'],
+    'folding reads notes again after their chip was tapped off, and shows no notes chip',
+  );
+  assert.deepEqual(notesOfLines(app, 'cap'), [['Call the plumber', 'kitchen\nthe tap drips\nask about the boiler']]);
+  assert.deepEqual(marksOf(app, 'cap'), [
+    'project:+café',
+    'priority:!2',
+    'notes:// kitchen\nthe tap drips\nask about the boiler',
+  ]);
+});
+
+test('a folded indented list keeps its indents and checkboxes in the notes, and they reach Vikunja', async t => {
+  t.after(clear);
+  const app = boxes();
+  app.cap.text = '- [ ] Groceries:\n  - milk\n    - oat milk\n  - [x] eggs';
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 done', 'Café']);
+  pick(app, 'cap', '1 task + notes');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café'], 'the ticked line is notes now, so no chip counts it');
+  assert.equal(app.capLines.length, 1);
+  const [p] = app.boxParsedLines('cap');
+  assert.deepEqual([p.title, p.notes, p.done], ['Groceries:', '- milk\n  - oat milk\n- [x] eggs', false]);
+  const v = fakeVikunja([]),
+    send = adding(t);
+  await send.sendLines(addLines([{ raw: '', p: packParsed(p), under: null }], { pid: 5 }).map(f => send.actEntry(f)));
+  assert.deepEqual(sent(v)[0], [
+    'POST',
+    '/projects/5/tasks',
+    { title: 'Groceries:', description: '<p>- milk<br>&nbsp;&nbsp;- oat milk<br>- [x] eggs</p>' },
+  ]);
+});
+
+test('a subtask box and a checklist box fold too, into one subtask or one step', () => {
+  const app = boxes();
+  app.sheet.sub.text = 'Load chairs\n\nthe folding ones';
+  pick(app, 'sub', '1 subtask + notes');
+  assert.deepEqual(waysOf(app, 'sub'), ['2 subtasks', '●1 subtask + notes']);
+  assert.deepEqual(notesOfLines(app, 'sub'), [['Load chairs', 'the folding ones']]);
+  app.runInsert.text = 'Wipe the counter\nwith the blue cloth\nthen dry it';
+  pick(app, 'ins', '1 step + notes');
+  assert.deepEqual(waysOf(app, 'ins'), ['3 steps', '●1 step + notes']);
+  assert.deepEqual(notesOfLines(app, 'ins'), [['Wipe the counter', 'with the blue cloth\nthen dry it']]);
+  pick(app, 'ins', '3 steps');
+  assert.deepEqual(waysOf(app, 'ins'), ['●3 steps', '1 step + notes']);
 });
 
 test('typing +project suggests the projects you can add to, Enter takes the first, and a subtask box suggests none', () => {
@@ -1633,12 +1832,203 @@ test('typing +project suggests the projects you can add to, Enter takes the firs
   assert.equal(app.suggestions('sub'), null);
 });
 
+/* Typing @ offers people. Café (5) is the default project, which carol can see and the bot can't. The bot can see only
+   Garden (6), so quick add would move the task there. */
+const offering = () => {
+  const app = boxes(),
+    el = { value: '', focus() {}, setSelectionRange() {} },
+    garden = { id: 6, title: 'Garden' },
+    person = (id, username, name, pids) => ({ user: { id, username, name }, pids: new Set(pids) });
+  app.projects = [...app.projects, garden];
+  app.projById.set(6, garden);
+  app.people = [person(2, 'carol', 'Carol', [5]), person(3, 'bot-claude', 'Claude', [6])];
+  Object.assign(app.access, { '5:carol': true, '6:carol': false, '5:bot-claude': false, '6:bot-claude': true });
+  Object.assign(app.userKnown, { carol: true, 'bot-claude': true });
+  app.boxEl = () => el;
+  Object.defineProperty(app, 'sheetTask', { value: app.sheet.task });
+  const type = (w, text) => Object.assign(app.box(w), { text, focus: true, caret: text.length });
+  return { app, type };
+};
+const hintsOf = (app, w) => app.chips(w).map(c => c.hint);
+
+test("in quick add, typing @ offers someone who can't see the project last, with the project the task moves to", () => {
+  const { app, type } = offering();
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+  assert.deepEqual(hintsOf(app, 'cap'), ['Assign Carol, or press Enter', 'Assign Claude and add the task to Garden']);
+  // Taking the suggestion gives the chip of the project the task moves to.
+  app.chips('cap')[1].action();
+  assert.equal(app.cap.text, 'Water the beans @bot-claude ');
+  app.cap.focus = false;
+  assert.deepEqual(chipsOf(app, 'cap'), ['Garden', '@bot-claude']);
+  // Once the task goes to Garden, the bot comes first, and carol would leave it with no single project.
+  type('cap', 'Water the beans @bot-claude @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Claude @bot-claude · Garden  ↵', 'Carol @carol']);
+});
+
+test('in quick add, someone who could move the task to more than one project is offered last with no project', () => {
+  const { app, type } = offering(),
+    shed = { id: 7, title: 'Shed' };
+  app.projects.push(shed);
+  app.projById.set(7, shed);
+  Object.assign(app.access, { '7:carol': false, '7:bot-claude': true });
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+  app.chips('cap')[1].action();
+  app.cap.focus = false;
+  assert.ok(chipsOf(app, 'cap').includes("@bot-claude can't see Café"));
+  // A project whose people haven't loaded yet leaves the project out too.
+  delete app.access['7:bot-claude'];
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+});
+
+test("a box that can't move the task offers only the people who can see its project", () => {
+  const { app, type } = offering();
+  type('sub', 'Stake the beans @');
+  assert.deepEqual(chipsOf(app, 'sub'), ['Carol @carol  ↵']);
+  // A typed +project, or the moved project's chip tapped off, keeps the task where it is.
+  type('cap', 'Water the beans +Garden @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Claude @bot-claude  ↵']);
+  app.cap.ignore = { autoProject: true };
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵']);
+  // So does a pasted list.
+  app.cap.ignore = {};
+  type('cap', 'Water the beans\nPick the peas @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵']);
+  // Someone whose access to the project hasn't been looked up yet is offered.
+  delete app.access['5:bot-claude'];
+  type('sub', 'Stake the beans @');
+  assert.deepEqual(chipsOf(app, 'sub'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+});
+
+// canSee as Vikunja would answer it from `table`, recording each lookup. A pair missing from the table is refused.
+const lookups = (app, table) => {
+  const calls = [];
+  app.canSee = async (pid, n) => {
+    const key = pid + ':' + n;
+    calls.push(key);
+    if (key in table) app.access[key] = table[key];
+    return key in table ? table[key] : null;
+  };
+  return calls;
+};
+
+test('typing @ looks up access to a project made since people loaded, so the suggestion names where the task goes', async () => {
+  const { app, type } = offering();
+  delete app.access['6:carol'];
+  delete app.access['6:bot-claude'];
+  const calls = lookups(app, { '6:carol': false, '6:bot-claude': true });
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+  // Only the bot moves the task, so carol's access to Garden isn't needed. A known entry isn't asked again.
+  assert.deepEqual(calls, ['6:bot-claude']);
+  type('cap', 'Water the beans @c');
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(calls, ['6:bot-claude']);
+});
+
+test("typing @ asks for each missing entry once, even when Vikunja refuses it, and a box that can't move the task looks up only its project", async () => {
+  const { app, type } = offering();
+  delete app.access['5:bot-claude'];
+  delete app.access['6:bot-claude'];
+  const calls = lookups(app, {});
+  type('cap', 'Water the beans @');
+  await app.lookUpSuggested('cap');
+  type('cap', 'Water the beans @c');
+  await app.lookUpSuggested('cap');
+  assert.deepEqual(calls, ['5:bot-claude']);
+  // A subtask stays in its parent's project, so only that project is looked up, and someone who can't see it goes.
+  const { app: other, type: typeIn } = offering();
+  delete other.access['5:bot-claude'];
+  delete other.access['6:bot-claude'];
+  const asked = lookups(other, { '5:bot-claude': false });
+  typeIn('sub', 'Stake the beans @');
+  await other.lookUpSuggested('sub');
+  assert.deepEqual(asked, ['5:bot-claude']);
+  assert.deepEqual(chipsOf(other, 'sub'), ['Carol @carol  ↵']);
+});
+
 test('a label Vikunja does not have yet says so on its chip, once the labels have loaded', () => {
   const app = boxes();
   app.cap.text = 'Call the bank *urgent *urg';
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg']);
   Object.assign(app, { labels: [{ id: 1, title: 'Urgent' }], labelsLoaded: true });
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg · new label']);
+});
+
+const ERRANDS = { id: 1, title: 'errands', hex_color: 'e5a50a' };
+const labelsOfLines = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.labels, p.tags?.map(l => l.id)]);
+test('while Today is narrowed to a label, its add boxes give each line that label, with a chip that leaves it off', () => {
+  const app = boxes();
+  Object.assign(app, { route: { name: 'today' }, only: ERRANDS });
+  app.cap.text = 'Buy stamps';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['errands'], [1]]]);
+  assert.deepEqual(labelsOfLines(app, 'under'), [['Buy stamps', ['errands'], [1]]], 'the box under a row too');
+  tap(app, 'cap', '*errands');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '~*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', [], undefined]]);
+  tap(app, 'cap', '*errands');
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['errands'], [1]]], 'tapped again, the label is back');
+  // The label typed by hand has its own chip, and the line gets it once.
+  app.cap.text = 'Buy stamps *Errands';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*Errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['Errands'], undefined]]);
+  app.cap.text = 'Buy stamps\nPost the parcel';
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*errands']);
+  assert.deepEqual(labelsOfLines(app, 'cap'), [
+    ['Buy stamps', ['errands'], [1]],
+    ['Post the parcel', ['errands'], [1]],
+  ]);
+  // Only Today is narrowed, and a sheet's box adds to the task in the sheet.
+  app.sheet.sub.text = 'Buy stamps';
+  assert.deepEqual(labelsOfLines(app, 'sub'), [['Buy stamps', [], undefined]]);
+  app.route = { name: 'project', id: 5 };
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
+  assert.deepEqual(labelsOfLines(app, 'cap')[0], ['Buy stamps', [], undefined]);
+});
+
+test('a task added while Today is narrowed to a label shows there at once, and Vikunja gives it the label', async t => {
+  t.after(clear);
+  const v = fakeVikunja(),
+    app = adding(t);
+  v.labels.push({ ...ERRANDS });
+  Object.assign(app, {
+    route: { name: 'today' },
+    only: ERRANDS,
+    labels: [ERRANDS],
+    cardAdded: {},
+    loadLabels: views.loadLabels,
+    projects: [{ id: 5, title: 'Café' }],
+    projById: new Map([[5, { id: 5, title: 'Café' }]]),
+    defaultProjectId: () => 5,
+    $refs: {},
+    flash() {},
+  });
+  Object.assign(app.cap, newBox());
+  const today = () => app.listGroups.flatMap(g => g.tasks.map(x => [x.title, x.labels.map(l => l.title)]));
+  v.trouble = () => 'offline';
+  app.cap.text = 'Buy stamps';
+  await app.submitCapture();
+  assert.deepEqual(today(), [['Buy stamps', ['errands']]], 'the waiting row has the label, so it shows');
+  v.trouble = () => null;
+  app.offline = false;
+  await app.sendActs(sync.all(1).at(-1).id);
+  assert.deepEqual(
+    v.task(101).labels.map(l => l.title),
+    ['errands'],
+  );
+  app.cap.text = 'Post the parcel';
+  await app.submitCapture();
+  assert.deepEqual(
+    [v.task(102).labels.map(l => l.title), today().at(-1)],
+    [['errands'], ['Post the parcel', ['errands']]],
+    'sent at once, the task shows with its label',
+  );
 });
 
 /* A list's box (footBox, app/sheet.js). At the bottom of the list its label says what the box takes. Under a row, the

@@ -1,4 +1,4 @@
-    <!-- A project's sheet. Using a project for checklists gives everyone it is shared with a Checklists tab. -->
+    <!-- A project's sheet. Using a project for checklists puts it on the Checklists tab of everyone it is shared with. -->
     <template x-if="sheet.kind === 'project' && sheet.project"><div>
       <div class="d-title"><h2 x-text="sheet.project.title"></h2></div>
       <!-- Share or copy the project's open tasks, or open its page in Vikunja. Anyone who can see the project can do
@@ -15,7 +15,7 @@
         <input id="p-name" x-model="sheet.projEdit.name" autocomplete="off" enterkeyhint="done" @keydown.enter.prevent="$el.blur()" @change="renameProject()"></label></template>
       <template x-if="sheet.projEdit?.perm >= 1"><div class="card cl-card" id="p-checklist">
         <template x-if="!isChecklistProject(sheet.project)"><div>
-          <p>Use this project for checklists. A checklist is started from a template and worked through step by step, again and again. Everyone the project is shared with gets a Checklists tab in Pocket.</p>
+          <p>Use this project for checklists. A checklist is started from a template and worked through step by step, again and again. Everyone the project is shared with sees it on the Checklists tab in Pocket.</p>
           <button class="btn block" id="p-use-checklists" :disabled="sheet.checklistBusy" @click="setChecklists(sheet.project, true)">Use for checklists</button>
         </div></template>
         <template x-if="isChecklistProject(sheet.project)"><div>

@@ -1,12 +1,14 @@
 // Tests for moving a task's date on Today and Move all (src/js/app/actions.js), against a fake Vikunja: the row moves
-// at once, the change waits offline, and Undo puts the date back.
+// at once, the change waits offline, and Undo puts the date back. Each test runs the clock and the timers itself, so
+// the flush that a change made offline starts doesn't run partway through a test.
 import './browser.mjs';
 import { collected, DAY, fingers, patches } from './actions-helpers.mjs';
 import { fakeVikunja, component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks, { started, TASK } from '../../src/js/app/tasks.js';
+import tasks, { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import acts, { undosKept } from '../../src/js/app/acts.js';
 import outbox from '../../src/js/app/outbox.js';
@@ -20,7 +22,7 @@ import views, { renderSeq } from '../../src/js/app/views.js';
 import { startOfDay } from '../../src/js/dates.js';
 
 test('Move all to today moves each overdue task to today at its time, or with no time if that time has passed', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
     { id: 1, title: 'Morning one', due_date: at(5, 9) },
@@ -41,7 +43,7 @@ test('Move all to today moves each overdue task to today at its time, or with no
   assert.equal(v.task(2).due_date, at(6, 18, 30));
 });
 test("Move all to today moves a done card's overdue subtask and leaves the done task's date alone", async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
     { id: 10, title: 'Pack the van', done: true, due_date: at(5, 9), related_tasks: { subtask: [{ id: 11 }] } },
@@ -78,7 +80,7 @@ const overdueApp = t => {
   });
 };
 test('Move all made offline shows its message at once, and moves each task once when the connection is back', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
     { id: 1, title: 'Morning one', due_date: at(5, 9) },
@@ -138,7 +140,7 @@ test('Move all made offline shows its message at once, and moves each task once 
    outbox, as Move all to today's are. The row shows at its new place at once, and leaves a gap where it was, with an
    Undo that restores the date and time the task had, until the batch clears (leaveGap). There is no screen here. The
    gaps are read from the rows Today would draw (listBase). The outbox, and the batch, are emptied after each test. */
-const onToday = (c, list, cardsBy = {}, apis = ['Date']) => {
+const onToday = (c, list, cardsBy = {}, apis = ['Date', 'setTimeout']) => {
   c?.mock.timers.enable({ apis, now: new Date(2026, 9, 7, 14, 20) });
   const v = fakeVikunja(list),
     app = component(tasks, actions, cards, alerts, sending, acts, outbox, leaving);
@@ -255,6 +257,30 @@ test('the gap leaves with the batch, and stays while a finger is down', async c 
   await new Promise(setImmediate);
   assert.deepEqual([rows('week'), rows('today'), app.leaving], [[], [1], {}], 'then it leaves');
 });
+test('the gap stays while date chips are open, and leaves 3 seconds after they close', async c => {
+  const { app, rows } = onToday(
+    c,
+    [{ id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() }],
+    {},
+    ['Date', 'setTimeout'],
+  );
+  app.view.groups[4].tasks.push(app.tasks[1]);
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => [];
+  c.after(() => (was ? (document.querySelectorAll = was) : delete document.querySelectorAll));
+  await moveTo(app, app.tasks[1], new Date(), 'Today');
+  app.holdBatch(true); // another row's chips open (throwView, app/throw.js)
+  c.mock.timers.tick(10000);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), ['Moved to Today'], 'the gap stays while the chips are open');
+  app.holdBatch(false);
+  c.mock.timers.tick(2999);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), ['Moved to Today'], 'and for 3 seconds after they close');
+  c.mock.timers.tick(1);
+  await new Promise(setImmediate);
+  assert.deepEqual(rows('week'), [], 'then it leaves');
+});
 test('Undo puts the task back in Next 7 days where its gap was, and takes it out of Today', async c => {
   const { v, app, at, rows } = onToday(c, [
     { id: 1, title: 'Order milk', due_date: new Date(2026, 9, 9, 9).toISOString() },
@@ -284,6 +310,27 @@ test('a row thrown 10 days ahead leaves a gap naming the day, and the task is on
   assert.deepEqual(app.toasts, [{}], 'nothing is said beside the add box');
   await tapGap(app, 1);
   assert.deepEqual([v.task(1).due_date, rows('week')], [at(10, 16), [1]], 'Undo brings the task back to its gap');
+});
+test('a row thrown 10 days ahead offline goes back to its group when Cancel in the Outbox takes the move back', async c => {
+  const { app, rows } = onToday(c, [
+    { id: 1, title: 'Call the plumber', due_date: new Date(2026, 9, 10, 16).toISOString() },
+  ]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(views));
+  Object.assign(app, { render() {}, todayDay: +startOfDay() });
+  app.view.route = location.hash;
+  app.view.groups[4].tasks.push(app.tasks[1]);
+  app.keepScreen('today', { ...app.view, at: new Date().toISOString() }, false);
+  const was = document.querySelectorAll;
+  document.querySelectorAll = () => [];
+  c.after(() => (was ? (document.querySelectorAll = was) : delete document.querySelectorAll));
+  app.offline = true;
+  await moveTo(app, app.tasks[1], new Date(2026, 9, 17), 'Sat 17');
+  await app.clearBatch(true);
+  assert.deepEqual(rows('week'), [], 'the gap leaves with the batch');
+  await app.dropAct(sync.all(1)[0].id);
+  assert.deepEqual([rows('week'), app.tasks[1].due_date], [[1], new Date(2026, 9, 10, 16).toISOString()]);
+  app.showSaved({ name: 'today' }, app.keptScreen('today'));
+  assert.deepEqual(rows('week'), [1], 'Today as saved on the phone lists it too');
 });
 test('a move Vikunja refuses puts the row back in Next 7 days with Try again, and leaves no gap', async c => {
   const { v, app, at, key, rows } = onToday(c, [
@@ -504,7 +551,7 @@ test('Undo of a move that replaced an earlier one puts the row, or the card, whe
   );
 });
 test('a task moved again after Move all keeps its new date when Move all is undone, and the message counts it', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
     { id: 1, title: 'Morning one', due_date: at(5, 9) },
@@ -544,7 +591,7 @@ test('a task moved again after Move all keeps its new date when Move all is undo
   );
 });
 test('Undo of Move all shows the old dates at once, while the moves are still being sent', async t => {
-  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 9, 7, 14, 20) });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: new Date(2026, 9, 7, 14, 20) });
   const at = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
   const v = fakeVikunja([
     { id: 1, title: 'Morning one', due_date: at(5, 9) },

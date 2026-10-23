@@ -428,7 +428,8 @@ export default {
      Holding still lifts the row, and the phone vibrates. A lifted row can only be dragged up or down (`reorder`:
      start(y), move(dy, y), end(commit)). Nothing scrolls or swipes until release, and a sideways move drops the row
      without changing anything. A hold with `reorder.lift` (the dates on Today, throw.js) starts at once with lift(x,
-     y), and then follows the touch in any direction with move(dy, y, x).
+     y), and then follows the touch in any direction with move(dy, y, x). In a claim slot, holding opens the people
+     menu instead (whoHold).
      A touch that starts in a text field belongs to the field (inTextField). A touch on a row beside a focused field is
      still a gesture, because swiping while the add box is focused is the fast way to work. */
   holdToSlide(area, find) {
@@ -472,9 +473,10 @@ export default {
       if (g || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       swallowClick = false; // a new press, so its click must not be swallowed
       // A touch in a text field, such as a title being edited in a row, belongs to the field and is never a gesture.
-      let s = inTextField(e.target) ? null : find(e.target);
+      let s = inTextField(e.target) ? null : this.whoHold(e.target, find(e.target));
       if (!s || away.has(s.slide || s.el)) return;
       if (s.swipe?.base) s = { el: s.el, slide: s.slide, swipe: s.swipe, width: s.width }; // a row open on Delete can be swiped or tapped closed, but not held, and its progress is 0%
+      if (s.reorder?.from && !s.reorder.from(e.target, e.clientX)) s = { ...s, reorder: null }; // held outside the part of the row that picks a date
       g = { s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait' };
       // After HOLD_MS the row lifts. On a project's list the whole card lifts. On Today the dates appear at once.
       if (s.reorder)
@@ -610,6 +612,16 @@ export default {
       },
       true,
     );
+  },
+  /* What a press on `target` holds, given the gestures `s` its row allows (holdToSlide). In a claim slot that can be
+     tapped, holding opens the people menu (whoMenu) in place of the row's own hold, so the date chips or a drag never
+     start there. A tap is still a tap, and a swipe from the slot still swipes the row. */
+  whoHold(target, s) {
+    const claim = target.closest('.claim:not(.restore)'),
+      slot = claim && Alpine.$data(claim).slot;
+    if (!slot?.can) return s;
+    const reorder = { lift: () => this.whoMenu(slot, claim), move() {}, end() {} };
+    return { ...(s || { el: claim.closest('.row') || claim }), reorder };
   },
   // Set up the gestures on the main screen's rows: swipe for progress or Delete, hold to move. A checklist step works
   // the same way, through the outbox.
@@ -786,14 +798,17 @@ export default {
       return (r.finish || swipe || reorder) && r;
     }
     if (!slides) return (swipe || reorder) && { el: row, swipe, reorder };
+    // A step that can't be ticked yet (stepLock) springs back from a swipe right, and its progress stays as it is.
+    const locked = !t.done && !!this.stepLock(t);
     return {
       el: row,
       swipe,
       reorder,
       start: t.done ? 100 : pctOf(t),
       width: row.clientWidth,
+      springs: locked,
       finish: pct => {
-        if (pct === null) return;
+        if (pct === null || locked) return;
         // The claim is queued after the progress, so unassigning yourself next cancels it in the outbox (fold).
         const claimed = this.claimOnSlide(sheet ? this.subSlot(t) : this.rowSlot(t, {}));
         const setting = this.setProgress(t, pct, sheet ? null : row, { sub: sheet || undefined });
@@ -1049,13 +1064,16 @@ export default {
       s = v?.steps.find(x => String(x.id) === row.dataset.id);
     if (!s || s.pending || v.finished || !this.canWrite(this.runTask.project_id) || target.closest('.step-del'))
       return null;
+    // A step that can't be ticked yet springs back from a swipe right, as on any list.
+    const locked = !s.done && !!this.stepLock(s);
     return {
       el: row,
       start: s.done ? 100 : s.pct,
       width: row.clientWidth,
       swipe: s.added && !s.done ? swipeOf(row, () => this.swipeDeleteStep(s, row), s.title) : null,
+      springs: locked,
       finish: pct => {
-        if (pct === null) return;
+        if (pct === null || locked) return;
         const claimed = this.claimOnSlide(s.slot); // queued after the progress, as for a task
         const setting = this.stepProgress(s, pct);
         claimed(true);
@@ -1096,7 +1114,7 @@ export default {
       width: row.clientWidth,
       springs: true,
       finish: pct => {
-        if (pct !== null) this.setSheetProgress(pct);
+        if (pct !== null && !this.stepLock(t)) this.setSheetProgress(pct);
       },
     };
   },

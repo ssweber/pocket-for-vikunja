@@ -11,13 +11,15 @@ import {
   isTemplateLabel,
   nextAfter,
   notesOnly,
+  runRules,
   vikunjaNext,
   withAdded,
   withOrder,
+  withRules,
   withRunMark,
   withStepLine,
 } from '../checklists.js';
-import { TASK } from '../app/tasks.js';
+import { TASK } from '../tasks.js';
 import { LINE } from './add.js';
 import { cancelledStages, figureOf, notFound, now, patch, place, remove, unadd, unplace } from './stages.js';
 
@@ -27,14 +29,14 @@ const duplicate = async (c, from) => (await c.send(`/tasks/${from}/duplicate`, {
 
 /* ---------- starting a checklist ---------- */
 
-/* Copy the template, which becomes the checklist. Its notes come with the copy, but its order line does not, because
-   that line holds the ids of the template's steps. A line is added that marks the copy as a checklist, so it stays
-   one if its template is deleted. */
+/* Copy the template, which becomes the checklist. Its notes and its settings (runRules) come with the copy, but its
+   order line does not, because that line holds the ids of the template's steps. A line is added that marks the copy as
+   a checklist, so it stays one if its template is deleted. */
 async function copyRun(a, c) {
   if (a.taskId) return;
   const t = await duplicate(c, a.template.id);
   sync.claim(t.id, a.id);
-  Object.assign(a, { taskId: t.id, notes: withRunMark(notesOnly(t.description)) });
+  Object.assign(a, { taskId: t.id, notes: withRules(withRunMark(notesOnly(t.description)), runRules(t.description)) });
 }
 /* The checklist is named after its template, the day, and the name typed when it was started. Without a typed name it
    gets its number among the template's checklists: "Startup · Oct 3 · Night shift" or "Startup · Oct 3 · #3".
@@ -235,9 +237,9 @@ async function copy(a, c) {
 /* The step starts not done, with no due date, and doesn't repeat or remind. It is done when someone does it. It is
    marked "pocket:added", and a repeated step also keeps the "pocket:step" line of the step it repeats (`tpl`). A
    repeated step's title is its template step's title without T#. An inserted step's title is the one quick add sent,
-   without @people. */
+   without @people, and it keeps the notes quick add sent. */
 async function mark(a, c) {
-  const notes = copiedNotes(a.notes ?? ''),
+  const notes = copiedNotes(a.notes ?? a.body?.description ?? ''),
     body = {
       ...((a.from || a.tpl != null) && { title: a.title }),
       done: false,

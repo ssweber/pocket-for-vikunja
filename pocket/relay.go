@@ -20,14 +20,15 @@
 // connect to Vikunja, isn't stored, so the request can be sent again. Vikunja changes nothing for a request that fails
 // that way.
 //
-// Vikunja's rate limit sees a relayed write twice. With ratelimit.kind: user, it counts against its user once as it
-// reaches the relay and once as the relay forwards it. With ip, every forwarded request reaches /api/v2 from Vikunja's
-// own machine, as 127.0.0.1, so they all count against that one address.
+// Vikunja's rate limit sees a relayed write twice, once as it reaches the relay and once as the relay forwards it to
+// /api/v2. Vikunja counts plugin routes and /api/v2 separately, so the forward can get a 429 that the first request
+// didn't. With ratelimit.kind: ip, every forwarded request reaches /api/v2 from Vikunja's own machine, as 127.0.0.1,
+// so they all count against that one address.
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
-// main.go doesn't, and uses main.go's imports for the rest (net/http, strconv, strings, time, db, log, plugins,
-// echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
+// main.go doesn't, and uses main.go's imports for the rest (io, net/http, strconv, strings, sync, time, db, log,
+// plugins, echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
 //go:build ignore
 
 package main
@@ -38,7 +39,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
 	"net"
 
 	"code.vikunja.io/api/pkg/user"
@@ -52,6 +52,7 @@ const (
 	relayRunning = 2 * time.Minute     // a first request still pending after this never finished
 	relayTimeout = 90 * time.Second    // how long a forwarded request may take
 	relayMaxBody = 50 << 20            // attachments go through the relay too
+	relayPrune   = time.Minute         // how often old answers are deleted, at most
 )
 
 type relay struct{}
@@ -81,6 +82,23 @@ func (r *relay) Migrations() []*xormigrate.Migration {
 			_, err := tx.Exec("DROP TABLE pocket_relay")
 			return err
 		},
+	}, {
+		// A server that has the table ran the migration above already, and never runs it again. So the index comes in
+		// a migration of its own.
+		ID:          "pocket-20261021-relay-created",
+		Description: "Pocket: index pocket_relay by the time each key was claimed, which old answers are deleted by.",
+		Migrate: func(tx *xorm.Engine) error {
+			_, err := tx.Exec("CREATE INDEX pocket_relay_created ON pocket_relay (created)")
+			return err
+		},
+		Rollback: func(tx *xorm.Engine) error {
+			drop := "DROP INDEX pocket_relay_created"
+			if tx.DriverName() == "mysql" {
+				drop += " ON pocket_relay"
+			}
+			_, err := tx.Exec(drop)
+			return err
+		},
 	}}
 }
 
@@ -107,6 +125,15 @@ type relayRow struct {
 }
 
 func relayWrite(c *echo.Context) error {
+	// A write may reach only /api/v2. Vikunja's router doesn't resolve "..", so such a path finds no route today, but
+	// the relay doesn't rely on that. Echo has decoded the path, so %2e%2e and %2f arrive here as ".." and "/". The
+	// answer is 400, not 404, which Pocket reads as a deleted task.
+	rest := c.Param("*")
+	for _, seg := range strings.Split(rest, "/") {
+		if seg == ".." {
+			return echo.NewHTTPError(http.StatusBadRequest, "the path can't have a .. segment")
+		}
+	}
 	// The draft's value is a structured-field string, so it may come quoted.
 	key := strings.Trim(strings.TrimSpace(c.Request().Header.Get("Idempotency-Key")), `"`)
 	if len(key) < 16 || len(key) > 255 {
@@ -132,7 +159,7 @@ func relayWrite(c *echo.Context) error {
 	if len(body) > relayMaxBody {
 		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "the body is too large")
 	}
-	target := "/api/v2/" + c.Param("*")
+	target := "/api/v2/" + rest
 	if q := c.Request().URL.RawQuery; q != "" {
 		target += "?" + q
 	}
@@ -140,15 +167,17 @@ func relayWrite(c *echo.Context) error {
 	fp := hex.EncodeToString(sum[:])
 
 	// Claim the key. The primary key lets only one request do so. Any other gets the row the first one wrote.
-	if claimed, err := relayClaim(u.ID, key, fp); err != nil {
-		return err
-	} else if !claimed {
+	if claimErr := relayClaim(u.ID, key, fp); claimErr != nil {
 		row, ok, err := relayGet(u.ID, key)
 		if err != nil {
 			return err
 		}
-		if !ok { // the first request failed in a way that can be retried, and released the key in the meantime
-			return relayBusy(c, false)
+		// No request holds the key, so the claim failed for another reason, such as a database error. A 409 would tell
+		// the phone to wait for a request that isn't running. After a 500, Pocket sends the write again a few times and
+		// then tells the user. The request that held the key may also have released it in the meantime, after an error.
+		if !ok {
+			log.Errorf("pocket: relay couldn't claim key %q: %s", key, claimErr)
+			return echo.NewHTTPError(http.StatusInternalServerError, "the relay couldn't store the Idempotency-Key")
 		}
 		if row.Fingerprint != fp {
 			return echo.NewHTTPError(http.StatusUnprocessableEntity, "this Idempotency-Key was used for a different request")
@@ -165,7 +194,7 @@ func relayWrite(c *echo.Context) error {
 
 	// The phone may hang up while this runs. The forward doesn't use the request's context, so it finishes and its
 	// answer is stored for the retry.
-	code, ct, out, sent, err := relayForward(c.Request(), target, body)
+	code, h, out, sent, err := relayForward(c.Request(), target, body)
 	if err != nil && !sent {
 		relayRelease(u.ID, key)
 		log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
@@ -178,10 +207,15 @@ func relayWrite(c *echo.Context) error {
 		log.Errorf("pocket: relay lost Vikunja's answer for key %q: %s", key, err)
 		return relayUnknown(c, relayLost)
 	}
+	ct := h.Get("Content-Type")
 	// A 5xx, or a 408 or 429 (Vikunja busy or rate-limited), says nothing was changed, and Pocket sends it again. So
 	// does a 401: the session ended after the relay's own check. Kept, it would sign the user out on every retry.
+	// Vikunja's Retry-After goes back with it, so Pocket waits as long as Vikunja's rate limit asks.
 	if code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code == http.StatusUnauthorized {
 		relayRelease(u.ID, key)
+		if ra := h.Get("Retry-After"); ra != "" {
+			c.Response().Header().Set("Retry-After", ra)
+		}
 		return relayAnswer(c, code, ct, out)
 	}
 	if err := relayStore(u.ID, key, code, ct, out); err != nil {
@@ -230,15 +264,15 @@ func relayAnswer(c *echo.Context, code int, ct string, body []byte) error {
 	return err
 }
 
-// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user. sent is false only
-// when the request never reached Vikunja.
-func relayForward(in *http.Request, target string, body []byte) (int, string, []byte, bool, error) {
+// relayForward sends the request to Vikunja itself, at the address it listens on, as the same user, and returns its
+// status, headers and body. sent is false only when the request never reached Vikunja.
+func relayForward(in *http.Request, target string, body []byte) (int, http.Header, []byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), relayTimeout)
 	defer cancel()
 	base, transport := relayTarget()
 	req, err := http.NewRequestWithContext(ctx, in.Method, base+target, bytes.NewReader(body))
 	if err != nil {
-		return 0, "", nil, false, err
+		return 0, nil, nil, false, err
 	}
 	for _, h := range []string{"Authorization", "Content-Type", "Accept", "Accept-Language", "User-Agent"} {
 		if v := in.Header.Get(h); v != "" {
@@ -247,14 +281,14 @@ func relayForward(in *http.Request, target string, body []byte) (int, string, []
 	}
 	res, err := (&http.Client{Transport: transport}).Do(req)
 	if err != nil {
-		return 0, "", nil, !relayNotConnected(err), err
+		return 0, nil, nil, !relayNotConnected(err), err
 	}
 	defer res.Body.Close()
 	out, err := io.ReadAll(res.Body)
 	if err != nil {
-		return 0, "", nil, true, err
+		return 0, nil, nil, true, err
 	}
-	return res.StatusCode, res.Header.Get("Content-Type"), out, true, nil
+	return res.StatusCode, res.Header, out, true, nil
 }
 
 // relayNotConnected says whether an error from the forward came from dialing Vikunja, such as a refused connection or
@@ -288,19 +322,11 @@ func relayTarget() (string, *http.Transport) {
 	return "http://" + net.JoinHostPort(host, port), t
 }
 
-func relayClaim(userID int64, key, fp string) (bool, error) {
-	s := db.NewSession()
-	defer s.Close()
+// relayClaim stores a pending row for the key. Its error doesn't say why: the key may be taken, or the database may
+// have failed. relayGet tells them apart.
+func relayClaim(userID int64, key, fp string) error {
 	now := time.Now()
-	// Old answers go as new keys come in. The table stays small, so a scan is cheap. A phone whose clock is fast can
-	// send a key for up to relayAhead after relayKeep has passed on the server, so its answer is kept that long.
-	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
-		_ = s.Rollback()
-		return false, err
-	}
-	if err := s.Commit(); err != nil {
-		return false, err
-	}
+	relayPruneOld(now)
 	t := db.NewSession()
 	defer t.Close()
 	_, err := t.Exec("INSERT INTO pocket_relay (user_id, op_key, fingerprint, state, code, content_type, body, created) VALUES (?, ?, ?, ?, 0, '', '', ?)",
@@ -309,11 +335,39 @@ func relayClaim(userID int64, key, fp string) (bool, error) {
 		err = t.Commit()
 	}
 	if err != nil {
-		// Taken already, most likely. relayGet decides.
 		_ = t.Rollback()
-		return false, nil
 	}
-	return true, nil
+	return err
+}
+
+var (
+	relayPruned   time.Time // when relayPruneOld last deleted old answers
+	relayPrunedMu sync.Mutex
+)
+
+// relayPruneOld deletes old answers as new keys come in, at most once every relayPrune. Before every write, it would
+// double the write locks a write takes on SQLite. A phone whose clock is fast can send a key for up to relayAhead
+// after relayKeep has passed on the server, so its answer is kept that long.
+func relayPruneOld(now time.Time) {
+	relayPrunedMu.Lock()
+	due := now.Sub(relayPruned) >= relayPrune
+	if due {
+		relayPruned = now
+	}
+	relayPrunedMu.Unlock()
+	if !due {
+		return
+	}
+	s := db.NewSession()
+	defer s.Close()
+	if _, err := s.Exec("DELETE FROM pocket_relay WHERE created < ?", now.Add(-relayKeep-relayAhead).Unix()); err != nil {
+		_ = s.Rollback()
+		log.Errorf("pocket: relay couldn't delete old answers: %s", err)
+		return
+	}
+	if err := s.Commit(); err != nil {
+		log.Errorf("pocket: relay couldn't delete old answers: %s", err)
+	}
 }
 
 func relayGet(userID int64, key string) (relayRow, bool, error) {

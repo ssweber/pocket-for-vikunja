@@ -1,17 +1,26 @@
 // Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
 import { app, colorOf, esc, userCache } from '../util.js';
-import { api, items, NetError, sharedToken } from '../api.js';
+import { allPages, api, items, NetError, sharedToken } from '../api.js';
 import { inBatches, readStepPhrase, STEP_IGNORE } from '../checklists.js';
 import { parentIds, saved } from '../lists.js';
 import { clearOf, listViewOf, placeAfter, placeFirst } from '../order.js';
 import { inTextField, NUDGE_TICK } from '../progress.js';
 import { haptic } from '../haptics.js';
-import { parseCapture, projectName, QUICK_ADD_PREFIXES, readList } from '../quickadd.js';
+import {
+  dueTimeOf,
+  labelsMatching,
+  notesOf,
+  parseCapture,
+  projectName,
+  QUICK_ADD_PREFIXES,
+  readList,
+} from '../quickadd.js';
 import { sync } from '../sync.js';
 import { seats, seatUnder } from './seat.js';
 
 let peopleLoading = null; // loadPeople() while it runs
 let peopleAt = 0; // when it last loaded, this session
+const asked = new WeakMap(); // the access entries lookUpSuggested has asked for, by the `access` object they go in
 const PEOPLE_AGE = 10 * 6e4; // reload project access after this interval
 // Track the target row's visibility and a fallback row until a newly added target has appeared on screen.
 let cursorIO = null,
@@ -20,6 +29,36 @@ let cursorIO = null,
 const inSight = new WeakMap();
 // Cache each box's parsed text and inputs so its chips, highlights and submission share the same parse.
 const reads = new Map();
+/* Vikunja's user search lists every bot the user owns on every project, but Vikunja assigns a bot only where it has
+   access: it owns the project or a parent, or one of them is shared with it directly. botSees walks up the parents as
+   Vikunja does. It returns null when it can't read a project on the way, and then the search's answer stands. A bot
+   that sees a project only through a team is missed. */
+// Each project's direct shares, as a set of user ids, read at most once per call of sharesOf.
+const sharesOf = () => {
+  const got = new Map();
+  return pid => {
+    if (!got.has(pid))
+      got.set(
+        pid,
+        allPages(`/projects/${pid}/users`)
+          .then(list => new Set(list.map(u => u.id)))
+          .catch(() => null),
+      );
+    return got.get(pid);
+  };
+};
+async function botSees(app, pid, bot, shares) {
+  const seen = new Set();
+  while (pid && !seen.has(pid)) {
+    seen.add(pid);
+    const p = app.projById.get(pid),
+      ids = p && (await shares(pid));
+    if (!ids) return null;
+    if (p.owner?.id === bot.id || ids.has(bot.id)) return true;
+    pid = p.parent_project_id;
+  }
+  return false;
+}
 
 export default {
   /* Every add box shares the same parsing, chips and suggestions. `w` names the box: cap adds tasks, sub and under add
@@ -76,6 +115,11 @@ export default {
   readsDone(w) {
     return w === 'cap' || this.isSubBox(w);
   },
+  /* The label Today is narrowed to, which each line typed in quick add's box or a box under a row on Today gets, so
+     the new task shows there. Null elsewhere. */
+  boxOnly(w) {
+    return (w === 'cap' || w === 'under') && this.route.name === 'today' ? this.only : null;
+  },
   /* The cache for one box, keyed by its text, the chips tapped off, nesting, quick add mode and due time. Chips,
      highlights and sending ask for the same data many times while rendering, so each part is parsed once, when first
      read. */
@@ -89,10 +133,11 @@ export default {
         this.quickAddMode,
         this.dueTime,
         JSON.stringify(this.boxBase(w)),
+        this.boxOnly(w)?.title,
       ].join('\0');
     const had = reads.get(w);
     if (had && had.key === key && had.projects === this.projects) return had;
-    const r = { key, projects: this.projects, list: null, first: null, firstAll: null, lines: null };
+    const r = { key, projects: this.projects, list: null, first: null, firstAll: null, lines: null, shapes: null };
     reads.set(w, r);
     return r;
   },
@@ -100,27 +145,14 @@ export default {
     const r = this.boxRead(w);
     if (r.list) return r.list;
     const b = this.box(w),
-      cap = w === 'cap';
+      cap = w === 'cap',
+      fold = !!b.ignore?.fold;
     return (r.list = readList(
       b.text,
       this.readsDone(w)
-        ? { done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap }
-        : { steps: true },
+        ? { done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap, fold }
+        : { steps: true, fold },
     ));
-  },
-  /* A pasted list keeps the nesting it was written with. Turning the Under first line chip off flattens the list, and
-     turning it on again restores the nesting. A list with no written nesting gets the first line as the parent when
-     the chip is on. Only quick add has this chip. A subtask box keeps a trailing colon in the title. */
-  get nestOn() {
-    return this.cap.nest || (!this.cap.flat && this.boxList('cap').first);
-  },
-  tapNest() {
-    const c = this.cap;
-    if (this.nestOn) {
-      if (c.nest) c.nest = false;
-      else c.flat = true;
-    } else if (c.flat) c.flat = false;
-    else c.nest = true;
   },
   boxLines(w) {
     return this.boxList(w).lines.map(l => l.text);
@@ -130,7 +162,7 @@ export default {
   },
   // The user's Vikunja settings: "default due time" and Quick Add Magic mode (vikunja, todoist or disabled).
   get dueTime() {
-    return this.user?.settings?.frontend_settings?.default_due_time || '12:00';
+    return dueTimeOf(this.user?.settings?.frontend_settings?.default_due_time);
   },
   get quickAddMode() {
     return this.user?.settings?.frontend_settings?.quick_add_magic_mode || 'vikunja';
@@ -149,8 +181,14 @@ export default {
     const base = this.boxBase(w);
     return (r[k] = parseCapture(this.boxLines(w)[0] || '', this.projects, {
       ...this.parseOpts,
-      ignore: all ? base : { ...base, ...this.box(w).ignore },
+      ignore: all ? base : { ...base, ...this.boxIgnore(w) },
     }));
+  },
+  /* What the user tapped off in box `w`. A list has no notes chip, so it reads every line's notes, even after the
+     chip of its first line was tapped off before the second line was typed. */
+  boxIgnore(w) {
+    const { notes, ...rest } = this.box(w).ignore || {};
+    return notes && this.boxList(w).lines.length > 1 ? rest : this.box(w).ignore;
   },
   get parsed() {
     return this.boxParsed('cap');
@@ -174,10 +212,19 @@ export default {
     const parents = new Set(list.map(l => l.under));
     return (r.lines = parsed.map((p, i) => ({
       ...p,
+      ...this.onlyLabel(w, p, i ? p : this.boxParsed(w, true)),
       done: !!list[i]?.done,
       under: list[i]?.under ?? null,
       ...(parents.has(i) && { pct: 0 }),
     })));
+  },
+  /* Line `p` with the label Today is narrowed to (boxOnly) added, and in `tags` for its waiting row. A line whose full
+     parse `all` names the label already leaves that to the label's own chip. */
+  onlyLabel(w, p, all) {
+    const l = this.boxOnly(w),
+      has = list => list.some(x => x.toLowerCase() === l.title.toLowerCase());
+    if (!l || this.box(w).ignore?.only || has(all.labels)) return {};
+    return { labels: [...p.labels, l.title], tags: [{ id: l.id, title: l.title, hex_color: l.hex_color }] };
   },
   // Each item keeps its original text (with the done marker) and parent index, so a rejected entry can go back into
   // the box.
@@ -198,11 +245,10 @@ export default {
       const p =
         i === 0 && first
           ? first
-          : parseCapture(
-              raw,
-              this.projects,
-              owner >= 0 ? { ...this.parseOpts, ignore: { project: true } } : this.parseOpts,
-            );
+          : parseCapture(raw, this.projects, {
+              ...this.parseOpts,
+              ignore: owner >= 0 ? { project: true } : {},
+            });
       if (owner < 0 && (p.project || p.projectMiss)) owner = i;
       return p;
     });
@@ -235,7 +281,8 @@ export default {
     const base = this.boxBase(w),
       out = [];
     if (!base.due && !base.project) return out;
-    const ph = this.isStepBox(w) && readStepPhrase(line),
+    const nt = notesOf(line),
+      ph = this.isStepBox(w) && readStepPhrase(nt ? line.slice(0, nt.at) : line),
       rest = ph ? line.slice(0, ph.index) + line.slice(ph.index + ph.length) : line;
     const raw = parseCapture(rest, this.projects, { ...this.parseOpts, ignore: {} });
     if (base.due && (raw.due || raw.repeat))
@@ -299,18 +346,32 @@ export default {
     const blocked = known.filter(n => sees(target, n) === false);
     if (!blocked.length) return out;
     if (one && !p.project && w === 'cap') {
-      const fits = [];
-      for (const proj of this.projects)
-        if (proj.id > 0 && proj.id !== target) {
-          const v = known.map(n => sees(proj.id, n));
-          if (v.includes(undefined)) return out; // not looked up yet
-          if (v.every(Boolean)) fits.push(proj);
-        }
-      if (fits.length === 1) out.auto = fits[0];
+      const fit = this.oneFit(target, known);
+      if (fit === undefined) return out; // not looked up yet
+      out.auto = fit;
     }
     if (!out.auto || this.box(w).ignore?.autoProject)
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
+  },
+  // The one project other than `target` that all `names` can see. Null when there is none or more than one, and
+  // undefined while someone's access to a project hasn't been looked up.
+  oneFit(target, names) {
+    const fits = [];
+    for (const proj of this.projects)
+      if (proj.id > 0 && proj.id !== target) {
+        const v = names.map(n => this.access[proj.id + ':' + n.toLowerCase()]);
+        if (v.includes(undefined)) return undefined;
+        if (v.every(Boolean)) fits.push(proj);
+      }
+    return fits.length === 1 ? fits[0] : null;
+  },
+  /* Only quick add moves a task to the project its @usernames can see, and only for one line with no +project, while
+     that chip is on. The task in any other box stays in the box's project. */
+  boxMoves(w) {
+    return (
+      w === 'cap' && this.boxLines(w).length === 1 && !this.boxParsed(w).project && !this.box(w).ignore?.autoProject
+    );
   },
   async checkAccess(w) {
     if (!this.accessQuery(w)) return;
@@ -342,11 +403,14 @@ export default {
         userCache.set(k, u);
         this.userKnown[k] = true;
       }
-      return (this.access[key] = !!u);
+      return (this.access[key] = !!u && (!this.ownBot(u) || (await botSees(this, pid, u, sharesOf())) !== false));
     } catch (e) {
       if (e instanceof NetError) throw e;
       return null;
     }
+  },
+  ownBot(u) {
+    return !!this.user && u.bot_owner_id === this.user.id;
   },
   async userExists(name) {
     const k = name.toLowerCase();
@@ -377,9 +441,11 @@ export default {
     }
     return null;
   },
-  /* People with access to the target project come first, then others who share your projects. Only projects you can
-     add tasks to are suggested. A word that already matches a person, label or project exactly gets no suggestions,
-     so its parsed chip shows instead. */
+  /* In a box that can move the task (boxMoves), people who keep it where it is going come first. After them come the
+     people who move it, each with the project it moves to, and then those no single project fits. Any other box offers
+     only the people who can see its project. Someone whose access hasn't been looked up yet counts as able to see it.
+     Only projects you can add tasks to are suggested. A word that already matches a person, label or project exactly
+     gets no suggestions, so its parsed chip shows instead. */
   suggestions(w) {
     const tk = this.boxToken(w);
     if (!tk) return null;
@@ -395,19 +461,15 @@ export default {
       Math.min(...names.map(n => (n || '').toLowerCase()).map(n => (n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9)));
     let out;
     if (tk.kind === 'label') {
-      out = this.labels
-        .map(l => ({ l, s: score(l.title) }))
-        .filter(x => x.s < 9)
-        .sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
-        .map(({ l }) => ({
-          key: 's' + l.id,
-          kind: 'suggest',
-          cls: 'suggest',
-          color: colorOf(l.hex_color),
-          text: tk.prefix + l.title,
-          hint: 'Use this label',
-          action: () => this.useSuggestion(w, tk, l.title),
-        }));
+      out = labelsMatching(this.labels, q).map(l => ({
+        key: 's' + l.id,
+        kind: 'suggest',
+        cls: 'suggest',
+        color: colorOf(l.hex_color),
+        text: tk.prefix + l.title,
+        hint: 'Use this label',
+        action: () => this.useSuggestion(w, tk, l.title),
+      }));
     } else if (tk.kind === 'project') {
       out = this.projects
         .filter(p => this.canWrite(p.id))
@@ -424,28 +486,79 @@ export default {
           action: () => this.useSuggestion(w, tk, p.title),
         }));
     } else {
-      const pid = this.boxParsed(w).project?.id || this.boxHome(w);
+      const { target, named, moves } = this.suggestFor(w, q),
+        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
+      // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no single
+      // project fits them all.
+      const goes = ns => (ns.some(n => sees(target, n) === false) ? this.oneFit(target, ns)?.id || null : target);
+      const now = moves ? goes(named) : target;
       out = (this.people || [])
-        .map(x => ({ x, s: score(x.user.username, x.user.name), away: !x.pids.has(pid) }))
+        .filter(x => moves || sees(target, x.user.username) !== false)
+        .map(x => {
+          const to = moves ? goes([...named, x.user.username]) : target;
+          return { x, to, s: score(x.user.username, x.user.name), rank: !to ? 2 : to === now ? 0 : 1 };
+        })
         .filter(y => y.s < 9)
         .sort(
           (a, b) =>
-            a.away - b.away ||
+            a.rank - b.rank ||
             a.s - b.s ||
             (a.x.user.name || a.x.user.username).localeCompare(b.x.user.name || b.x.user.username),
         )
-        .map(({ x: { user: u } }) => ({
-          key: 's' + u.id,
-          kind: 'suggest',
-          cls: 'suggest',
-          text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username,
-          hint: 'Assign ' + (u.name || u.username),
-          action: () => this.useSuggestion(w, tk, u.username),
-        }));
+        .map(({ x: { user: u }, to }) => {
+          const away = to && to !== target && this.projById.get(to)?.title;
+          return {
+            key: 's' + u.id,
+            who: u.username,
+            kind: 'suggest',
+            cls: 'suggest',
+            text: (u.name ? u.name + ' ' : '') + tk.prefix + u.username + (away ? ' · ' + away : ''),
+            hint: 'Assign ' + (u.name || u.username) + (away ? ' and add the task to ' + away : ''),
+            action: () => this.useSuggestion(w, tk, u.username),
+          };
+        });
     }
     // The first suggestion shows ↵ because Enter accepts it.
     if (out.length) Object.assign(out[0], { text: out[0].text + '  ↵', hint: out[0].hint + ', or press Enter' });
     return out.length ? out.slice(0, 6) : null;
+  },
+  // For an @ word `q`: the box's project, the people already named without `q`, and whether the box can move the task.
+  suggestFor(w, q) {
+    const p = this.boxParsed(w),
+      named = p.assignees.filter(n => this.userKnown[n.toLowerCase()] !== false),
+      typing = named.findIndex(n => n.toLowerCase() === q);
+    if (typing >= 0) named.splice(typing, 1);
+    return { target: p.project?.id || this.boxHome(w), named, moves: this.boxMoves(w) };
+  },
+  /* An @ suggestion can name the project the task moves to only once the person's access to every project is known.
+     loadPeople doesn't know about a project made since it ran. So while an @ word is typed, look up the missing
+     entries of the people suggested and those already named, four at a time. Each is asked once, so a refused search
+     isn't sent again at the next letter. */
+  async lookUpSuggested(w) {
+    for (;;) {
+      const tk = this.boxToken(w),
+        sg = tk?.kind === 'assignee' && this.suggestions(w);
+      if (!sg) return;
+      const { target, named, moves } = this.suggestFor(w, tk.q.toLowerCase()),
+        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()],
+        people = sg.map(s => s.who);
+      if (!asked.has(this.access)) asked.set(this.access, new Set());
+      const done = asked.get(this.access),
+        ask = new Map();
+      const need = (pid, n) => {
+        const key = pid + ':' + n.toLowerCase();
+        if (!(key in this.access) && !done.has(key)) ask.set(key, [pid, n]);
+      };
+      for (const n of [...named, ...people]) need(target, n);
+      // Someone who can't see the box's project moves the task, to the one project they all can see (oneFit).
+      if (moves)
+        for (const ns of people.map(n => [...named, n]))
+          if (ns.some(m => sees(target, m) === false))
+            for (const proj of this.projects) if (proj.id > 0 && proj.id !== target) ns.forEach(m => need(proj.id, m));
+      if (!ask.size) return;
+      ask.forEach((x, key) => done.add(key));
+      await inBatches([...ask.values()], 4, ([pid, n]) => this.canSee(pid, n));
+    }
   },
   useSuggestion(w, tk, name) {
     const b = this.box(w),
@@ -476,6 +589,16 @@ export default {
                 .catch(() => null);
       const lists = await inBatches(projs, 4, get),
         byName = new Map();
+      // Take the user's own bots off the projects they can't see (botSees). Most users own no bot, and ask nothing more.
+      if (lists.some(l => l?.some(u => this.ownBot(u)))) {
+        const shares = sharesOf();
+        await inBatches(Object.keys(projs), 4, async i => {
+          const sees = await Promise.all(
+            (lists[i] || []).map(u => !this.ownBot(u) || botSees(this, projs[i].id, u, shares)),
+          );
+          if (lists[i]) lists[i] = lists[i].filter((u, k) => sees[k] !== false);
+        });
+      }
       // Drop the old access entries of every project that loaded, so a removed share doesn't stay allowed.
       const loaded = new Set(projs.filter((p, i) => lists[i]).map(p => p.id));
       for (const key of Object.keys(this.access)) if (loaded.has(+key.split(':')[0])) delete this.access[key];
@@ -553,8 +676,60 @@ export default {
     if (c.action) c.action();
     else if (c.kind) b.ignore = { ...b.ignore, [c.kind]: !b.ignore?.[c.kind] };
   },
-  /* Build the chips under a box from what it parsed. Only quick add shows photos and the list-nesting chip, and a
-     subtask box shows no project chip. */
+  /* The ways a box's lines can be added, as a segmented control (chips.html): the nesting as typed, every line its own
+     task, every line under the first, or one task with the other lines as its notes. Each is drawn as the tasks it
+     makes, a bar for each, shifted right by its depth. As typed comes first, so the pressed way starts the row until
+     the user picks another. A way that makes the same tasks as one before it is left out. Only quick add reads nesting,
+     so the other boxes offer the first and the last. */
+  listShapes(w) {
+    const r = this.boxRead(w);
+    if (r.shapes) return r.shapes;
+    const b = this.box(w),
+      cap = w === 'cap',
+      what = cap ? 'task' : this.isSubBox(w) ? 'subtask' : 'step',
+      read = o =>
+        readList(b.text, this.readsDone(w) ? { done: !b.ignore?.done, colon: cap, ...o } : { steps: true, ...o }),
+      now = this.boxList(w),
+      plural = (k, x) => `${k} ${x}${k === 1 ? '' : 's'}`,
+      ways = (cap ? [{}, { flat: true }, { nest: true }] : [{}]).map(o => ({ o, list: read(o) }));
+    if (ways[0].list.lines.length < 2) return (r.shapes = []);
+    const shape = list => JSON.stringify(list.lines.map(l => l.under)),
+      seen = new Set(),
+      shapes = ways.filter(({ list }) => !seen.has(shape(list)) && seen.add(shape(list)));
+    const way = (key, text, pressed, set, depths, count = null) => ({
+      key: 'shape-' + key,
+      kind: 'shape',
+      text,
+      pressed,
+      depths,
+      count,
+      notes: !!set.fold,
+      action: () => {
+        if (cap) Object.assign(b, { nest: !!set.nest, flat: !!set.flat });
+        b.ignore = { ...b.ignore, fold: !!set.fold, ...(set.fold && { notes: false }) };
+      },
+    });
+    return (r.shapes = [
+      ...shapes.map(({ o, list }, i) => {
+        const n = list.lines.length,
+          subs = list.lines.filter(l => l.under !== null).length,
+          depth = [];
+        list.lines.forEach((l, k) => (depth[k] = l.under === null ? 0 : depth[l.under] + 1));
+        // The picture shows the first five lines. A longer list also shows its count, as "12" or "1+11".
+        return way(
+          i,
+          cap && subs ? `${plural(n - subs, 'task')} + ${plural(subs, 'subtask')}` : plural(n, what),
+          !now.folded && shape(now) === shape(list),
+          o,
+          depth.slice(0, 5),
+          n <= 5 ? null : subs ? `${n - subs}+${subs}` : String(n),
+        );
+      }),
+      way('fold', `1 ${what} + notes`, !!now.folded, { fold: true }, [0]),
+    ]);
+  },
+  /* Build the chips under a box from what it parsed. Only quick add shows photos, and a subtask box shows no project
+     chip. */
   chips(w) {
     const b = this.box(w),
       cap = w === 'cap';
@@ -578,6 +753,7 @@ export default {
     const list = this.boxList(w),
       ticked = list.ticked,
       left = !!b.ignore?.done;
+    photos.push(...this.listShapes(w));
     // A # line is the list's name, as at the top of a copied project. It is left out, and a chip says so.
     if (list.names.length)
       photos.push({
@@ -598,7 +774,7 @@ export default {
       photos.push({
         key: 'tk',
         kind: 'done',
-        text: left ? `${ticked} already ticked, left out` : `${ticked} will be added as done`,
+        text: left ? `${ticked} already ticked, left out` : `${ticked} done`,
         hint: left
           ? `Tap to add ${ticked === 1 ? 'it' : 'them'} as done`
           : `Tap to leave ${ticked === 1 ? 'this line' : 'these lines'} out`,
@@ -606,24 +782,31 @@ export default {
     const parsed = this.boxParsed(w),
       p = cap && this.projById.get(parsed.project?.id || this.defaultProjectId()),
       out = [],
-      n = list.lines.length;
+      n = list.lines.length,
+      off = k => !!b.ignore?.[k];
     out.push(...photos);
-    // For a pasted list, show how many tasks there are, which project they go to, and a warning for each user who
-    // can't see that project.
+    // For a pasted list, show which project its tasks go to, and a warning for each user who can't see that project.
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({ key: 'w' + i, cls: 'warn', text }));
+    const folded = !!list.folded;
+    // The label Today is narrowed to, as if it were typed. Tapping it leaves the label off.
+    const only = this.boxOnly(w),
+      onlyChip = () =>
+        only && (off('only') || this.boxParsedLines(w).some(p => p.tags))
+          ? [
+              {
+                key: 'only',
+                kind: 'only',
+                text: (this.prefixes?.label ?? '*') + only.title,
+                off: off('only'),
+                hint: off('only') ? 'Tap to use this' : `Today shows only ${only.title}. Tap to leave the label off`,
+              },
+            ]
+          : [];
     if (n > 1 && !cap) {
-      out.push({ key: 'n', text: `${n} ${this.isSubBox(w) ? 'subtasks' : 'steps'}` }, ...listWarn());
+      out.push(...onlyChip(), ...listWarn());
       return out;
     }
     if (n > 1) {
-      // A line under another line counts as a subtask, as in "1 task + 3 subtasks".
-      const subs = list.lines.filter(l => l.under !== null).length;
-      out.push({
-        key: 'n',
-        text: subs
-          ? `${n - subs} task${n - subs === 1 ? '' : 's'} + ${subs} subtask${subs === 1 ? '' : 's'}`
-          : `${n} tasks`,
-      });
       const { project, miss } = this.parseList(this.capLines);
       const to = this.projById.get(project?.id || this.defaultProjectId());
       if (to) out.push({ key: 'p', color: colorOf(to.hex_color), text: to.title });
@@ -636,12 +819,11 @@ export default {
           text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(miss)}”`,
           action: () => this.createProject(miss),
         });
-      out.push(...listWarn());
+      out.push(...onlyChip(), ...listWarn());
       return out;
     }
     // The chips come from the full parse. A chip the user tapped off stays visible, so it can be tapped on again.
-    const all = this.boxParsed(w, true),
-      off = k => !!b.ignore?.[k];
+    const all = this.boxParsed(w, true);
     const { auto, warn } = this.accessHints(w);
     if (all.project)
       out.push({
@@ -721,6 +903,7 @@ export default {
         off: off('labels'),
       }),
     );
+    out.push(...onlyChip());
     all.assignees.forEach((u, i) =>
       out.push({ key: 'a' + i, kind: 'assignees', text: this.prefixes.assignee + u, off: off('assignees') }),
     );
@@ -741,7 +924,21 @@ export default {
         cls: 'warn',
         text: `${this.projById.get(to)?.title || 'This project'} is read only. You can't add tasks to it.`,
       });
+    // The notes, after the other chips. A step that has notes keeps them, and gets these after them (saveStepEdit). A
+    // folded list's chip already says it has notes.
+    if (all.notes && !folded)
+      out.push({
+        key: 'notes',
+        kind: 'notes',
+        text: (this.stepHasNotes(w) ? 'Adds to the notes: ' : 'Notes: ') + all.notes,
+        off: off('notes'),
+      });
     return out;
+  },
+  // Whether the step being edited in box `w` already has notes.
+  stepHasNotes(w) {
+    const st = w === 'edit' && this.subtasks.find(s => s.id === this.sheet.stepEdit?.id);
+    return !!st && !!this.stepNote(st);
   },
 
   /* ---------- what quick add's box adds to, on a project's list ---------- */
@@ -1196,10 +1393,13 @@ export default {
       for (const m of parsed[k]?.marks || [])
         if (!(m.kind === 'assignees' && stays(m.name))) out.push({ ...m, start: m.start + l.at, end: m.end + l.at });
     });
-    // A step's time ("in 20 min") is read separately and marked like the rest, unless its chip was tapped off.
-    const ph =
-      this.isStepBox(w) && !this.box(w).keep && !this.box(w).text.includes('\n') && readStepPhrase(this.box(w).text);
-    if (ph) out.push({ kind: 'due', start: ph.index, end: ph.index + ph.length });
+    // A step's time ("in 20 min") is read separately and marked like the rest, unless its chip was tapped off. It is
+    // not read from the notes.
+    const b = this.box(w),
+      [one, more] = this.boxList(w).lines,
+      nt = !more && !b.ignore?.notes && notesOf(one.text),
+      ph = this.isStepBox(w) && !b.keep && !more && readStepPhrase(nt ? one.text.slice(0, nt.at) : one.text);
+    if (ph) out.push({ kind: 'due', start: one.at + ph.index, end: one.at + ph.index + ph.length });
     return out.sort((a, b) => a.start - b.start);
   },
   // The HTML drawn behind the input, so the highlights line up with the typed words.

@@ -26,6 +26,8 @@ export const THROW = {
   // Sizes in px. The chips sit around a clear middle, where the touch is.
   chip: { w: 100, h: 60 }, // each chip, at least 56 each way for gloves
   mid: { w: 88, h: 56 }, // the clear middle, as tall as a one-line row, which shows through it
+  ring: 44, // the ring in the middle that stands for the thumb, which moves as far as the touch
+  slot: 66, // the width of a row's "+ me" slot, where a hold doesn't pick a date even on a row without one (throwSpan)
   gap: 6, // between the middle and each chip
   why: 56, // space above the top chip for the message saying why a task can't move
   margin: 8, // kept clear of the screen's edges, the header and the add box
@@ -85,6 +87,15 @@ export function throwLayout(targets, { x, y, width, height, top = 0, bottom = he
     why: why ? { x: width / 2 - cx, y: -down - gap, w: width - 2 * margin } : null,
   };
 }
+
+/* Where on a row a hold picks a date, from the rects of the row, its tick and its "+ me" slot (either may be missing).
+   It is the part between the tick and the slot. The tick and the slot keep their own touches, and the thumb stays
+   away from the screen's edges, so the chips are rarely pushed in. A row without a slot leaves the slot's width out
+   anyway, so the part is the same on every row. */
+export const throwSpan = (row, tick, slot) => ({
+  left: tick ? tick.right : row.left,
+  right: slot ? slot.left : row.right - THROW.slot,
+});
 
 // The direction of a move (dx, dy): sideways when it is at least as far sideways as vertical.
 const way = (dx, dy) => (Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'up' : 'down');

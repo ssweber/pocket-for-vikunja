@@ -259,6 +259,12 @@ export default {
       );
     this.hint.at = null;
   },
+  /* Hold all the batch timers while date chips are open to tap (app/throw.js), as for a finger. A gap leaving would
+     shorten the page, and at its bottom the scroll that causes closes the chips. */
+  holdBatch(on) {
+    const { batch, tops, hint } = of(this);
+    for (const b of [batch, tops, hint]) b[on ? 'down' : 'up']('chips');
+  },
   /* Pause all the batch timers while a pointer is down or any list or sheet is scrolling. The wait restarts when
      both stop. */
   initBatch() {

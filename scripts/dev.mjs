@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const VERSION = process.env.VIKUNJA_VERSION || '2.7.0';
+const VERSION = process.env.VIKUNJA_VERSION || '2.7.1';
 const PORT = process.env.PORT || '3456',
   SSO_PORT = process.env.SSO_PORT || '8080';
 const NAME = 'pocket-dev',
@@ -255,6 +255,7 @@ if (process.argv.includes('--test')) {
     'tests/session.mjs',
     'tests/offline.mjs',
     'tests/checklists.mjs',
+    'tests/leaks.mjs',
     'tests/steptimes.mjs',
     'tests/relay.mjs',
   ].map(test => {

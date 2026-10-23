@@ -34,7 +34,9 @@ the same key, without running the write again. As the draft describes:
 - the same key with a different method, path or body: `422 Unprocessable Content`;
 - the same key after the first request finished: the first response, whether it succeeded or failed.
 
-Keys could be kept for a configurable time, such as 24 hours, and the expiry documented as the draft asks.
+Keys could be kept for a configurable time, and the expiry documented as the draft asks. A client that only retries
+within minutes needs hours. A client that queues writes while offline needs longer than it can stay offline, because
+its key is made when the user acts, not when the request is sent. Pocket's relay keeps keys for 30 days.
 
 An expired key looks like a new one, so a client retrying late would make the duplicate the header exists to
 prevent. A client can send a UUIDv7 key, which holds the time it was made. Vikunja could then refuse a key older than

@@ -6,6 +6,9 @@
 //   npm run test:local        (starts a local Vikunja with the plugin, and runs everything against it)
 //
 // The other user must share ASSIGNEE_PROJECT. Deletes the tasks and the project it makes.
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const {
   VIKUNJA_USER: USER,
@@ -54,6 +57,30 @@ async function send(url, method, token, body, headers = {}) {
     text,
   };
 }
+// fetch resolves ".." and "%2e%2e" in a URL before it sends it, as a browser does. This sends the path as written.
+const rawPost = (path, token, body, key) =>
+  new Promise((ok, no) => {
+    const url = new URL(RELAY + path);
+    const r = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+      {
+        host: url.hostname,
+        port: url.port,
+        method: 'POST',
+        path: new URL(RELAY).pathname + path,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+          'Idempotency-Key': `"${key}"`,
+        },
+      },
+      res => {
+        res.resume();
+        res.on('end', () => ok(res.statusCode));
+      },
+    );
+    r.on('error', no);
+    r.end(JSON.stringify(body));
+  });
 const v2 = (method, path, token, body) => send(SERVER + '/api/v2' + path, method, token, body);
 const relay = (method, path, token, body, key) =>
   send(RELAY + path, method, token, body, key ? { 'Idempotency-Key': `"${key}"` } : {});
@@ -239,6 +266,28 @@ try {
   check('neither made a task', (await titled(me, title8)).length === 0);
   const v4 = keep(await relay('POST', `/projects/${team.id}/tasks`, me, { title: title8 }, crypto.randomUUID()));
   check("a key that isn't a UUIDv7 gets 400", v4.status === 400, brief(v4));
+  // A write reaches only /api/v2. Echo decodes %2e%2e and %2f before the relay sees the path.
+  const title9 = `Relay dots ${run}`,
+    dots = [];
+  for (const p of ['..', '%2e%2e', '%2E%2e', 'x%2f..%2fx'])
+    dots.push(await rawPost(`/projects/0/${p}/${team.id}/tasks`, me, { title: title9 }, newKey()));
+  check(
+    'a path with a .. segment gets 400',
+    dots.every(s => s === 400),
+    dots.join(' '),
+  );
+  check('a path with a .. segment makes no task', (await titled(me, title9)).length === 0);
+  // A key with a byte that isn't UTF-8 makes MySQL refuse the INSERT, though the SELECT after it works. That stands
+  // for any database error while the relay claims a key. The phone sends a 500 again a few times. A 409 would tell it
+  // to wait for good. SQLite stores the key, and the task is made.
+  const unstored = keep(
+    await relay('POST', `/projects/${team.id}/tasks`, me, { title: `Relay bad key ${run}` }, newKey() + ':\xff'),
+  );
+  check(
+    "a key the database can't store gets 500, not 409",
+    unstored.status === 500 || unstored.status === 201,
+    brief(unstored),
+  );
   const staged = keep(
     await relay('POST', `/projects/${team.id}/tasks`, me, { title: `Relay staged ${run}` }, newKey() + ':2:1'),
   );

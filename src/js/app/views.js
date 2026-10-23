@@ -1,11 +1,11 @@
 // Projects and labels, the screens and their lists, search, moving overdue tasks, and New project.
 import { collapseRows, colorOf, PRIOS, raw, store, TZ } from '../util.js';
 import { askMeta, asksMeta, stepAsks } from '../asks.js';
-import { allPages, api, ApiError, errText, LOADED, NetError, partOf, why } from '../api.js';
+import { allPages, api, ApiError, errText, NetError, partOf, why } from '../api.js';
 import { addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay } from '../dates.js';
-import { CHECKLIST_MARK, comesRound, DONE_MARK, templateName } from '../checklists.js';
+import { CHECKLIST_MARK, comesRound, DONE_MARK, hasNotes, isTemplateLabel, templateName } from '../checklists.js';
 import { currentRoute } from '../routing.js';
-import { projectName } from '../quickadd.js';
+import { labelsMatching, projectName } from '../quickadd.js';
 import {
   batchMs,
   DONE_PART,
@@ -18,7 +18,9 @@ import {
   opened,
   OWN_META,
   parentIds,
+  projectGroups,
   saved,
+  searchedLabel,
   soonestFirst,
   TODAY_DAYS,
   todayGroups,
@@ -40,7 +42,8 @@ import { waitingPositions } from '../ops/index.js';
 import { haptic } from '../haptics.js';
 import { tickFeel } from '../progress.js';
 import { shared } from './core.js';
-import { droppedSince, putting, started, TASK_COUNT, TASK_COUNT_REACTIONS } from './tasks.js';
+import { droppedSince, putting, started } from './tasks.js';
+import { TASK_COUNT, TASK_COUNT_REACTIONS } from '../tasks.js';
 
 export let renderSeq = 0;
 // Stop every screen load still on its way from showing or saving what it brings, as a user signs out.
@@ -54,6 +57,7 @@ let behindTimer,
   // The open subtasks on Today's cards when the screen last loaded or regrouped (cardKids), so one that leaves its card
   // gets a row (regroupPlan). `at` is the screen they were on.
   kids = { at: '', ids: new Set() };
+const NO_LABELS = Object.freeze([]); // one object for every row without labels, so the row has nothing to redraw
 const PRELOAD_AGE = 60e3; // skip background reloads for copies newer than this
 // The projects whose Done section is open, remembered on this phone: project id -> true, and `today` for Done today.
 const doneOpen = {
@@ -186,11 +190,24 @@ export default {
     });
   },
   get emptyText() {
+    if (this.route.name === 'today' && this.only)
+      return {
+        title: `Nothing due this week has *${this.only.title}.`,
+        body: 'Search finds the tasks due later or with no date.',
+      };
     if (this.route.name === 'today')
       return {
         title: 'Nothing due this week.',
         body: `Today is ${this.todayDate}. Add a task below — try “Call the plumber tomorrow !3”.`,
       };
+    const name = this.route.name === 'search' && searchedLabel(this.searchQ.trim());
+    if (typeof name === 'string') {
+      const known = this.labels.find(l => l.title.toLowerCase() === name.toLowerCase());
+      if (known) return { title: `No open task has *${known.title}.`, body: 'Search by label shows open tasks only.' };
+      return !name || !this.labelsLoaded || this.searchLabels.length
+        ? { title: 'Search by label.', body: 'Tap a label, or type its name after the *.' }
+        : { title: `No label is called “${name}”.`, body: 'Leave out the * to search titles and notes.' };
+    }
     if (this.route.name === 'search')
       return this.searchQ.trim()
         ? {
@@ -208,9 +225,16 @@ export default {
   rowTitle(t) {
     return this.role(t) === 'template' ? templateName(t.title) : t.title;
   },
+  // Whether a row shows the notes icon after its title. The sheet's own row and a checklist's top row have their notes
+  // below them. A checklist's step shows its notes on its card, and a template's step shows their first line.
+  rowNotes(t, g) {
+    return !g.own && !g.top && !g.run && !g.step && hasNotes(t.description);
+  },
   // Send a row's tick to the action for its place: a checklist step, the sheet's own task, a sheet subtask or a list
-  // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once.
+  // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once. A step that can't be ticked
+  // yet says when it can instead (lockedTap).
   tickRow(t, g, row) {
+    if (!t.done && this.lockedTap(t, !!g.run)) return;
     if (g.run) return this.tickStep(t, t.done ? 'undone' : 'done');
     haptic(tickFeel(t.done));
     if (g.own) return this.sheetDone();
@@ -257,9 +281,38 @@ export default {
       said: said.join(', '),
     };
   },
+  // The labels on a row's own line under the title, without `template`. A checklist's steps show none.
+  rowLabels(t) {
+    return t.labels?.length && this.stepRun(t) == null ? t.labels.filter(l => !isTemplateLabel(l)) : NO_LABELS;
+  },
+  // Tapping a label on Today narrows Today to it. Elsewhere it searches for the label.
+  tapLabel(l) {
+    if (this.route.name === 'today') this.narrowToday(l);
+    else this.searchLabel(l.title);
+  },
+  labelSaid(l) {
+    return (this.route.name === 'today' ? 'Show only ' : 'Search for ') + l.title;
+  },
+  /* Show only the tasks with label `l` on Today, or every task with null. One label at a time. Leaving Today shows
+     every task again (render). The page goes to its top, where the bar says what Today shows. */
+  narrowToday(l) {
+    this.only = l && { id: l.id, title: l.title, hex_color: l.hex_color };
+    if (l && scrollY) scrollTo(0, 0);
+  },
+  // Open search for the tasks with label `title`, without the keyboard, which would cover them.
+  searchLabel(title) {
+    if (this.route.name !== 'search') this.searchFrom = location.hash || '#/today';
+    this.searchQ = '*' + title;
+    this.go('#/search');
+  },
   // Use Today's grouping minute for due text so its rows redraw only once a minute.
   rowNow() {
     return (this.route.name === 'today' && this.groupedAt) || Date.now();
+  },
+  // The time a step's countdown and padlock read. On Today it moves each second while a step is within a minute of its
+  // time (tickSteps), so only step rows redraw then.
+  stepNow() {
+    return this.route.name === 'today' ? Math.max(this.rowNow(), this.stepClock) : this.rowNow();
   },
   /* Build metadata for each row context. Sheet subtasks show due dates, while the sheet's own row omits details
      already shown elsewhere in the sheet. A checklist's top row uses its assignee slot. Checklist steps show how
@@ -275,11 +328,13 @@ export default {
       const s = this.stepShown(t),
         note = this.stepNote(t),
         { asks, bad } = stepAsks(t.description);
+      // With "Enforce step times" on, an hourglass beside a step's time says the step can't be ticked before it.
       return [
         (s.problem || s.text) && {
           key: 'when',
           cls: 'num' + (s.problem ? ' due overdue' : ''),
           text: s.problem || s.text,
+          ...(!s.problem && s.timed && this.templateRules.wait && { icon: 'hourglass' }),
         },
         asks.length && asksMeta(asks),
         bad.length && { key: 'bad', cls: 'due overdue', text: `“${bad[0].line}”: ${bad[0].why}` },
@@ -343,9 +398,13 @@ export default {
     // A done task stays on the open list while it has open subtasks. Show a message that says why.
     if (!g?.sheet && t.done && g?.heads?.includes(t.id))
       out.push({ key: 'head', text: headText(g.tasks.filter(x => !x.done && parentIds(x).includes(t.id)).length) });
-    // A checklist step that is not done and is due within a day shows a countdown to the minute. On Today, rowNow
-    // redraws it once a minute.
-    const left = due && !t.done && this.stepRun(t) && countdown(+new Date(t.due_date), this.rowNow());
+    // A checklist step that is not done and is due within a day shows a countdown. On Today, stepNow redraws it each
+    // second in its last minute, so it counts that minute to the second.
+    const left =
+      due &&
+      !t.done &&
+      this.stepRun(t) &&
+      countdown(+new Date(t.due_date), this.stepNow(), this.route.name === 'today');
     if (left)
       out.push({
         key: 'due',
@@ -354,7 +413,17 @@ export default {
         label: left.late ? 'Late: ' + left.text : 'Due ' + left.text,
         countdown: left,
       });
-    else if (due) out.push({ key: 'due', cls: 'due num ' + due.cls, text: due.label });
+    else if (due && g?.key === 'today' && due.diff === 0) {
+      // Under the Today heading the time alone, since the heading gives the day. A task with no time shows none.
+      const at = due.label.replace(/^Today ?/, '');
+      if (at)
+        out.push({
+          key: 'due',
+          cls: 'due num ' + due.cls,
+          text: at,
+          label: dueRowSaid(due.cls === 'overdue', due.label),
+        });
+    } else if (due) out.push({ key: 'due', cls: 'due num ' + due.cls, text: due.label });
     if (g?.sheet) return out;
     if (t.priority)
       out.push({ key: 'prio', prio: t.priority, text: '', label: 'Priority: ' + PRIOS[t.priority].label });
@@ -373,9 +442,10 @@ export default {
       if (tp && this.route.name !== 'project') out.push({ key: 'p', color: colorOf(tp.hex_color), text: tp.title });
       return out;
     }
-    // Avoid repeating the card's project on its step rows, except when a step belongs to another project.
+    // Avoid repeating the project of a card, or of a group in search by label, except on a row in another project.
     const p =
       (!card || card.project !== t.project_id) &&
+      g?.project !== t.project_id &&
       (this.route.name === 'today' || this.route.name === 'search') &&
       this.projById.get(t.project_id);
     // Name the checklist on Today and search step rows, so steps with the same name can be told apart. Project lists
@@ -390,8 +460,6 @@ export default {
     // Name an absent parent so an isolated subtask can be identified.
     const up = !card && !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({ key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title });
-    for (const l of (t.labels || []).slice(0, 3))
-      out.push({ key: 'l' + l.id, color: colorOf(l.hex_color), text: l.title, extra: true });
     if (repeats(t)) out.push({ key: 'rep', text: '↻', label: 'Repeats' });
     // Show the count of done subtasks. A task with a ring (a checklist or an open parent) shows it in the ring (rowRing).
     const subs = t.related_tasks?.subtask || [];
@@ -454,6 +522,7 @@ export default {
     // Keep the same route object when refreshing a screen. Every row reads it, so replacing an unchanged route
     // would recompute the whole list after every send or refresh.
     if (JSON.stringify(raw(this.route)) !== JSON.stringify(r)) this.route = r;
+    if (r.name !== 'today') this.only = null;
     if (r.name !== 'run') this.runFrom = location.hash || '#/today';
     if (r.name !== 'run' && r.name !== 'project') this.projectFrom = location.hash || '#/today';
     const seq = ++renderSeq;
@@ -510,7 +579,7 @@ export default {
           this.regroupSoon();
           return;
         }
-        const s = this.keptScreen(viewKey(r)); // a checklist's saved copy is used only after a failed load
+        const s = this.keptScreen(viewKey(r));
         if (s && (r.name !== 'run' || s.shownRun)) {
           this.showSaved(r, s);
           return;
@@ -592,13 +661,19 @@ export default {
   drawn(g) {
     return g.fold && !g.open ? [] : drawnOf(raw(g.cards ? g.items : g.tasks), g.before, this.drawTo);
   },
-  /* Today, a project and Checklists open from the screen saved on the phone while they reload, including background
-     loads. Each account has its own. */
+  /* Today, a project, Checklists and a checklist open from the screen saved on the phone while they reload, including
+     background loads. Each account has its own. */
   savedView(r) {
-    if (!['today', 'project', 'checklists'].includes(r.name) || !this.user || saved.get('user')?.id !== this.user.id)
+    if (
+      !['today', 'project', 'checklists', 'run'].includes(r.name) ||
+      !this.user ||
+      saved.get('user')?.id !== this.user.id
+    )
       return null;
     const s = this.keptScreen(viewKey(r));
-    return s && (r.name !== 'project' || s.project?.id === r.id) ? s : null;
+    return s && (r.name !== 'project' || s.project?.id === r.id) && (r.name !== 'run' || s.shownRun?.id === r.id)
+      ? s
+      : null;
   },
   // Show a saved screen's ids as the store's rows. Keep the project's current Done toggle, and load Done tasks
   // separately because the saved screen keeps only their count.
@@ -606,6 +681,7 @@ export default {
     this.rowsOf(s.steps);
     if (s.shownRun) this.rowsOf([s.shownRun.id, ...s.shownRun.steps]);
     const open = r.name === 'project' && !!doneOpen.all()[r.id];
+    for (const g of s.groups || []) this.rowsOf((g.left || []).map(l => l.id)); // rows a Cancel can put back (offList)
     const groups = keptGroups(s.groups || []).map(g => ({
       ...g,
       loading: false,
@@ -625,7 +701,7 @@ export default {
       cards: s.cards || {},
       project: project || null,
       checklists,
-      shownRun: s.shownRun || null,
+      shownRun: s.shownRun ? this.savedRun(r, s.shownRun) : null,
       savedAt: s.at,
       listView: s.listView || null,
     });
@@ -788,6 +864,14 @@ export default {
         const k = skip(t) ? g.key : this.belongsIn(now(t), g.key);
         if (k !== undefined && k !== g.key) out.push({ t, from: g, to: groups.find(x => x.key === k) || null });
       }
+    // A row that left while an op waited goes back once it belongs in its group again, as after a Cancel (offList).
+    // `from` is the list it left for, whose count goes down.
+    for (const g of groups)
+      for (const l of g.left || []) {
+        const t = this.tasks[l.id];
+        if (t && !listed.has(t.id) && !skip(t) && this.belongsIn(now(t), g.key) === g.key)
+          out.push({ t, from: groups.find(x => x.key === l.to) || null, to: g });
+      }
     if (this.route.name === 'today' && kids.at === this.view.route) {
       const on = this.cardKids();
       for (const id of kids.ids) {
@@ -821,12 +905,14 @@ export default {
     const r = this.route,
       today = r.name === 'today',
       cards = today && this.keepCards(),
-      plan = this.regroupPlan();
+      plan = this.regroupPlan(),
+      off = this.offList(plan);
     for (const { t, from, to } of plan) {
       // A done task kept above its open subtasks was counted in Done as it was ticked (makeHead).
-      const head = !!from?.heads?.includes(t.id);
+      const head = !!from?.heads?.includes(t.id),
+        i = from ? from.tasks.indexOf(t) : -1;
       if (from) {
-        from.tasks.splice(from.tasks.indexOf(t), 1);
+        if (i >= 0) from.tasks.splice(i, 1);
         if (head) from.heads = from.heads.filter(id => id !== t.id);
         if (typeof from.count === 'number') from.count = Math.max(0, from.count - 1);
       }
@@ -840,7 +926,7 @@ export default {
       kids = { at: this.view.route, ids: this.cardKids() };
       this.setBadge(this.view.groups.find(g => g.key === 'overdue')?.tasks.length || 0);
     }
-    if (!plan.length && !cards) return;
+    if (!plan.length && !cards && !off) return;
     // A row that has just come due keeps that highlight (tickToday).
     const moved = plan.filter(p => p.to && !this.flashed?.due?.[p.t.id]).map(p => p.t.id);
     if (moved.length) this.flash(moved, 'arrived');
@@ -860,6 +946,32 @@ export default {
       );
     // A task back on a project's open list goes to its place in the List view, which a load reads.
     if (r.name === 'project' && plan.some(p => p.to?.key === 'open')) this.render();
+  },
+  /* Record in each group's `left` the rows that leave it, while an op waits on their task, for a list the screen
+     hasn't loaded or for none. The screen is saved without those rows, so without the record a Cancel made offline
+     would lose them until the next load. regroupPlan puts a recorded row back once it belongs in the group again. A
+     record is kept while its row is off the screen's lists and an op still waits on its task. Returns whether any
+     group's `left` changed. */
+  offList(plan) {
+    const listed = this.listedIds(),
+      going = plan.filter(
+        p => p.from?.tasks.includes(p.t) && (!p.to || p.to.loaded === false) && this.opsOf(p.t.id).length,
+      ),
+      back = new Set(plan.filter(p => !p.from?.tasks.includes(p.t)).map(p => p.t.id)),
+      out = new Set(going.map(p => p.t.id));
+    let changed = false;
+    for (const g of this.view.groups) {
+      const was = g.left || [],
+        left = [
+          ...was.filter(l => !back.has(l.id) && !out.has(l.id) && !listed.has(l.id) && this.opsOf(l.id).length),
+          ...going.filter(p => p.from === g).map(p => ({ id: p.t.id, to: p.to?.key ?? null })),
+        ];
+      if (JSON.stringify(left) === JSON.stringify(was)) continue;
+      changed = true;
+      if (left.length) g.left = left;
+      else delete g.left;
+    }
+    return changed;
   },
   // Keep each card's dates on Today as todayDates gives them, and make a card of a row that has open subtasks now.
   // Returns whether anything changed.
@@ -1240,7 +1352,9 @@ export default {
     const p = this.view.project;
     if (!p || this.route.name !== 'project') return;
     const groups = keptGroups(this.view.groups),
-      ids = groups.flatMap(g => g.tasks.map(t => t.id)).filter(id => id in this.positions);
+      ids = groups
+        .flatMap(g => [...g.tasks.map(t => t.id), ...(g.left || []).map(l => l.id)])
+        .filter(id => id in this.positions);
     this.keepScreen(viewKey(this.route), {
       groups,
       project: p,
@@ -1250,20 +1364,25 @@ export default {
     });
   },
   /* Check for a newer Pocket alongside refreshes. Reload only when no drafts or actions would be lost, otherwise
-     try on the next refresh or return. The server answers the version check in a few bytes. */
+     try on the next refresh or return. The server answers in a few bytes when its page has this copy's build id. */
   async updateIfNew() {
-    if (!LOADED || !this.signedIn || this.screen !== 'app') return;
-    let res;
+    const build = document.querySelector('meta[name="pocket-build"]')?.content;
+    if (!build || !this.signedIn || this.screen !== 'app') return;
+    let page;
     try {
       // eslint-disable-next-line no-restricted-globals -- Pocket's own page, not Vikunja's API
-      res = await fetch(new URL('.', location.href), {
+      const res = await fetch(new URL('.', location.href), {
         cache: 'no-store',
-        headers: { 'If-Modified-Since': LOADED.toUTCString() },
+        headers: { 'If-None-Match': `W/"${build}"` },
       });
+      page = res.status === 200 ? await res.text() : '';
     } catch {
-      return;
-    } // offline, so there is nothing to check
-    if (res.status !== 200) return;
+      return; // offline, so there is nothing to check
+    }
+    // A 200 can be the page this copy already runs. sw.js answers with its saved copy when the network fails or the
+    // server sends an error.
+    const id = page.match(/<meta name="pocket-build" content="(\w+)">/)?.[1];
+    if (!id || id === build) return;
     const busy =
       this.sheet.open ||
       this.cap.text.trim() ||
@@ -1330,21 +1449,34 @@ export default {
     this.back(this.searchFrom && this.searchFrom !== '#/search' ? this.searchFrom : '#/today');
   },
   /* Search titles, notes or task numbers. Show open tasks soonest first and page completed matches newest first.
-     Exclude templates and their steps. Load open subtasks, assignees and positions for collapsed parent cards. */
+     Exclude templates and their steps. Load open subtasks, assignees and positions for collapsed parent cards.
+     A search starting with * is for a label (searchedLabel): it uses Vikunja's label filter and shows open tasks
+     only, grouped by project (projectGroups). Every label with that name counts, as one made by a teammate. */
   async loadSearch(seq) {
-    const s = this.searchQ.trim();
+    const s = this.searchQ.trim(),
+      name = searchedLabel(s)?.toLowerCase();
     if (!s) {
       this.view.groups = [];
       return;
     }
-    const open = new URLSearchParams({ q: s, filter: 'done = false', filter_timezone: TZ, expand: 'comment_count' });
+    const ids = name != null && (await this.loadLabels()).filter(l => l.title.toLowerCase() === name).map(l => l.id);
+    if (seq !== renderSeq) return;
+    if (ids && !ids.length) {
+      this.view.groups = [];
+      return;
+    }
+    const open = new URLSearchParams({
+      ...(ids ? { filter: `labels in ${ids.join(', ')} && done = false` } : { q: s, filter: 'done = false' }),
+      filter_timezone: TZ,
+      expand: 'comment_count',
+    });
     const again = s === searched ? this.view.groups.find(g => g.key === 'done')?.tasks.length || 0 : 0;
     const [opened, found] = await Promise.all([
       allPages('/tasks?' + open).then(putting(TASK_COUNT)),
-      this.foundDone(s, 0, Math.max(FOUND_PART, again)),
+      ids ? null : this.foundDone(s, 0, Math.max(FOUND_PART, again)),
     ]);
     if (seq !== renderSeq) return;
-    const finished = found.list;
+    const finished = found?.list || [];
     searched = s;
     const parents = opened.filter(t => openSubs(t).length && this.role(t) !== 'template');
     const read = parents.length
@@ -1354,18 +1486,33 @@ export default {
     for (const t of read.steps) this.row(t);
     Object.assign(this.positions, read.positions);
     if (!(await this.lifted(seq))) return;
-    this.view.groups = this.keepMarked([
-      { key: 'open', cls: '', title: 'Open', tasks: soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t)) },
-      {
-        key: 'done',
-        cls: '',
-        title: 'Done',
-        per: FOUND_PART,
-        skip: found.skip,
-        count: counted(found, found.skip, null),
-        tasks: found.tasks.map(t => this.row(t)),
-      },
-    ]);
+    const rows = soonestFirst(this.withoutTemplates(opened)).map(t => this.row(t));
+    this.view.groups = this.keepMarked(
+      ids
+        ? projectGroups(rows, name, this.projById)
+        : [
+            { key: 'open', cls: '', title: 'Open', tasks: rows },
+            {
+              key: 'done',
+              cls: '',
+              title: 'Done',
+              per: FOUND_PART,
+              skip: found.skip,
+              count: counted(found, found.skip, null),
+              tasks: found.tasks.map(t => this.row(t)),
+            },
+          ],
+    );
+  },
+  // The labels offered as chips while a search starts with *, at most 12, without template (labelsMatching)
+  get searchLabels() {
+    const name = this.route.name === 'search' ? searchedLabel(this.searchQ.trim()) : null;
+    return name === null
+      ? []
+      : labelsMatching(
+          this.labels.filter(l => !isTemplateLabel(l)),
+          name,
+        ).slice(0, 12);
   },
 
   /* Load n completed search matches from index from, returning {tasks, list, total, skip} like doneTasks. */

@@ -153,25 +153,25 @@ npm install
 npm run dev
 ```
 
-This starts a throwaway Vikunja 2.7.0 at `http://127.0.0.1:3456` on Postgres, with the plugin loaded from `pocket/`,
+This starts a throwaway Vikunja 2.7.1 at `http://127.0.0.1:3456` on Postgres, with the plugin loaded from `pocket/`,
 step times on and a mock single sign-on provider, and prints Pocket's address. `DB=sqlite npm run dev` (or `test:local`)
 runs Vikunja on SQLite instead, and `DB=mysql` on MySQL. The containers are `pocket-dev`, `pocket-dev-sso` and
 `pocket-dev-db`. The next run replaces them. Sign in as `dev` / `dev-password`, or with **Mock SSO**. `dev` shares a
 project called Team with `bob`, and its default project with `carol`, so a task there shows **+ me**. The tests rely on
 that, so against your own Vikunja, share the test account's default project with someone. `npm run dev` rebuilds the
-page as `src/` changes, so an edit shows when you reload. Ctrl+C stops the rebuilding. Vikunja keeps running. After
-changing `main.go`, run `npm run dev` again.
+page as `src/` changes. After changing `main.go`, run it again.
 
 ## Tests
 
 ```sh
-npx playwright install chromium    # once; or set BROWSER_CHANNEL=msedge or chrome
+npx playwright install chromium    # once; or set BROWSER_CHANNEL=chrome, for test:parse too
 npm run lint                       # ESLint, and what scripts/check.mjs checks
 npm run test:unit                  # the unit tests, in a second
 node --test tests/unit/actions.test.mjs                         # one file of them
 node --test --test-name-pattern="Undo" "tests/unit/*.test.mjs"  # the tests whose name says Undo
 npm run test:parse                 # quick add's phrases only
 npm run test:local                 # starts the local Vikunja and runs every test
+STEP="^comment$" npm run test:local  # only the steps STEP matches, and the setup steps
 
 # against a real server with the plugin installed (use a test account). Pocket signs in with the user and password.
 # The tests' own requests use the token, an API token of the same user with every permission.
@@ -192,6 +192,7 @@ with a test in the file for its area:
   sheet, gestures, Today, quick add, sharing.
 - `tests/checklists.mjs`: checklists end to end, in a project of their own.
 - `tests/offline.mjs`: with the connection cut, Pocket opens, queues, and sends once the connection is back.
+- `tests/leaks.mjs`: opening a sheet and switching screens many times leaves nothing behind.
 - `tests/session.mjs`: Pocket and Vikunja's web app side by side, signing in and out on either.
 - `tests/steptimes.mjs`: the plugin's step times, through the API only.
 - `tests/relay.mjs`: the plugin's relay, through the API only. A write sent twice with one key is made once.
@@ -270,8 +271,7 @@ The tests delete what they create, except the labels `pocket-smoke` and `templat
 - **Never stop processes by name** (`taskkill /IM`, `pkill`). That closes the user's own Chrome and Node. Stop only
   what you started, by PID, or the `pocket-dev` containers.
 - **On Windows,** Git Bash eats backslashes in a heredoc. Write code with backslashes with the Edit tool, or from a
-  file. `.gitattributes` keeps line endings LF. Without Playwright's own Chromium, `BROWSER_CHANNEL=chrome` uses the
-  installed Chrome, for `test:parse` too.
+  file. `.gitattributes` keeps line endings LF.
 
 ## Measuring
 

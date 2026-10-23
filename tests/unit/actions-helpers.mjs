@@ -3,7 +3,8 @@
 import './browser.mjs';
 import v8 from 'node:v8';
 import vm from 'node:vm';
-import { started, TASK } from '../../src/js/app/tasks.js';
+import { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 
 export const DAY = 86400;
 // The patches Vikunja received. A request the relay answered from what it kept never reached Vikunja.

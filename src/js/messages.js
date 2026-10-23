@@ -2,7 +2,7 @@
 // shown. These functions only build the text, so the unit tests can check it. Lint fails on such a sentence written
 // anywhere else (eslint.config.js).
 import { andList, PRIOS } from './util.js';
-import { NetError } from './api.js';
+import { NetError, nextTry } from './api.js';
 import { dayName, dueInfo, fmtTime, isSet, repeats } from './dates.js';
 import { parseStep } from './checklists.js';
 import { htmlToText } from './html.js';
@@ -30,21 +30,22 @@ export const savedOffline = (n = 1, photos = 0) =>
   'Saved offline' +
   (photos ? `, with ${photos === 1 ? 'the photo' : photos + ' photos'}` : '') +
   `. ${n === 1 && !photos ? 'It goes' : 'They go'} to Vikunja when you're back online.`;
-// Vikunja answered busy, so the change waits, as the Outbox says.
-export const BUSY = 'Waiting for Vikunja. Pocket tries again every 30 seconds.';
+// Vikunja answered busy, so the change waits until `at`, when Pocket next sends (nextTry). The Outbox says the same.
+export const busyText = at => `Waiting for Vikunja. Pocket tries again at ${fmtTime(new Date(at))}.`;
 // A change that names itself (`what`, "Finished Wipe the counter") and waits: for a busy Vikunja (`reached`), or
 // while Pocket is offline.
-export const sentLater = (what, reached = false) =>
-  `${what}. ${reached ? BUSY : "It goes to Vikunja when you're back online."}`;
+export const sentLater = (what, reached = false, at = nextTry()) =>
+  `${what}. ${reached ? busyText(at) : "It goes to Vikunja when you're back online."}`;
 /* What a change that waits says, by sendActs' result `r`: Vikunja was busy (`reached`), or Pocket is offline. A
    request whose reply was lost puts Pocket offline too. Pocket can't tell it from one that never left the phone, and
    sends it again with the same key, so it is made once. */
-export const waitText = (r, n = 1, photos = 0) => (r.reached ? BUSY : savedOffline(n, photos));
-// The Outbox's line while changes wait, offline or not, and once Vikunja refused some or has them all.
+export const waitText = (r, n = 1, photos = 0, at = nextTry()) => (r.reached ? busyText(at) : savedOffline(n, photos));
+// The Outbox's line while changes wait, offline or not, and once Vikunja refused some or has them all. `busy` takes
+// the time Pocket next sends.
 export const OUTBOX = {
   sending: 'Sending…',
   offline: "No connection. These go to Vikunja when you're back online.",
-  busy: BUSY,
+  busy: busyText,
   refused: 'Vikunja refused these. Fix what its message says, then tap Try again. Or tap Cancel.',
   sent: 'Everything has reached Vikunja.',
 };
@@ -313,6 +314,12 @@ const EDITED = {
     dropped: (a, title) => `${it(title)} notes stay as they are.`,
     maybe: (a, title) => still(title, 'have your new notes'),
   },
+  addNotes: {
+    text: (a, title) => `Adding notes to ${task(title)}`,
+    refused: title => 'Adding notes' + (title ? ` to “${named(title)}”` : ''),
+    dropped: (a, title) => `${it(title)} notes stay as they are.`,
+    maybe: (a, title) => still(title, 'have your new notes'),
+  },
   reminders: {
     text: (a, title) => `Reminders on ${task(title)}`,
     refused: title => 'Reminders' + on(title),
@@ -324,6 +331,12 @@ const EDITED = {
     refused: title => 'Asks' + on(title),
     dropped: (a, title) => `${it(title)} asks stay as they are.`,
     maybe: (a, title) => still(title, 'have your new asks'),
+  },
+  rules: {
+    text: (a, title) => `Settings on ${task(title)}`,
+    refused: title => 'Settings' + on(title),
+    dropped: (a, title) => `${it(title)} settings stay as they are.`,
+    maybe: (a, title) => still(title, 'have your new settings'),
   },
   order: {
     text: (a, title) => `Moving a step in ${task(title)}`,
@@ -633,6 +646,8 @@ export const OP_WORDS = {
 // Why a claim or an untick is dropped. Another person was assigned first, or someone finished the checklist.
 export const assignedJustNow = names =>
   `${andList(names)} ${names.length === 1 ? 'was' : 'were'} assigned to it just now`;
+// Why Vikunja refused to assign person `u`.
+export const cantSeeProject = u => `${u.name || u.username} can't see the task's project`;
 export const FINISHED_MEANWHILE = 'the checklist was finished in the meantime, so the step stays done';
 /* The plugin's relay answers 409 with Idempotency-Unknown when it can't tell whether Vikunja made a change. Pocket
    can't tell either, and only the user can check. So the change waits in the Outbox, and Try again sends it as a new
@@ -700,6 +715,22 @@ export const createdProject = (title, checklists = false) =>
   checklists ? `Created ${title}, for checklists.` : `Created ${title}`;
 // A timed step's countdown reached zero.
 export const dueNow = title => `“${title}” is due now`;
+/* The Done button of a step that waits for its time. Before the step it counts from is done it names that step. Then
+   it counts down `left` ms to the second: "Waiting 19:42", or "Waiting 1:05:00" over an hour. */
+export const waitingFor = title => `Waiting for ${title}`;
+export const waitingText = left => {
+  const s = Math.max(0, Math.ceil(left / 1000)),
+    two = n => String(n).padStart(2, '0'),
+    h = Math.floor(s / 3600),
+    m = Math.floor((s % 3600) / 60);
+  return 'Waiting ' + (h ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`);
+};
+// A tap on the tick of a step that waits for its time. `at` is when it can be ticked, or null while it waits on `from`.
+export const tickableAt = (title, at, from) =>
+  at === null ? waitingFor(from) : `${title} can be ticked at ${fmtTime(new Date(at))}`;
+// The Done button, and a tap on the tick, of a step that waits for `from`, the nearest open step above it.
+export const doneAfter = from => `After ${from}`;
+export const tickableAfter = (title, from) => `${title} can be ticked after ${from}`;
 // The tasks whose due time (`due`) or reminder (`reminded`) just passed, by `titles`, as a screen reader hears them.
 export const dueSaid = (titles, due, reminded) =>
   titles.length === 1
@@ -724,9 +755,9 @@ export const lineRefused = (k, n, but, title, why) =>
 // Subtasks added from a task's sheet, with `but`.
 export const addedSubs = (n, but = '') => `Added ${n === 1 ? '1 subtask' : n + ' subtasks'}${but}`;
 // Photos sent with a task that reached Vikunja, while the photos wait: for a busy Vikunja (`reached`), or offline.
-export const photosLater = (project, n, reached = false) =>
+export const photosLater = (project, n, reached = false, at = nextTry()) =>
   `Added to ${project || 'its project'}. ` +
-  (reached ? BUSY : `${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`);
+  (reached ? busyText(at) : `${n === 1 ? 'The photo goes' : 'The photos go'} to Vikunja when you're back online.`);
 // Lines added offline under a task, which Vikunja wouldn't put under it (`why`). `loose` are the titles made as tasks
 // of their own, and `unsent` the text of the lines not added.
 export const subsNotUnder = (parent, why, loose, unsent) =>
@@ -769,6 +800,10 @@ export const notStopped = gone => (gone ? SENT_FIRST : "It is being sent and can
 export const readOnly = project => `${project || 'That project'} is read only. Type +project to pick another project.`;
 // No user has the name typed after @ in a task's sheet.
 export const noUser = name => `No user @${name}`;
+// The heading of the people menu that holding "+ me" opens, for a task in project `project`, and the name it gives you,
+// as the Start sheet does.
+export const whoSees = project => `People who can see ${project || 'this project'}`;
+export const ME = 'Me';
 // The date Pocket picked for a task given a repeat with no date, as `when` ("Tomorrow 9:00 AM").
 export const repeatDate = when =>
   `Pocket set the due date to ${when}, because a repeat needs one. Change the date above if that's wrong.`;

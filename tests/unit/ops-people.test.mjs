@@ -6,13 +6,16 @@ import { sender, reached, noConnection, lastSaid, settle } from './ops-helpers.m
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
-import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
+import { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { addLines } from '../../src/js/ops/index.js';
 import actions from '../../src/js/app/actions.js';
 import claims from '../../src/js/app/claims.js';
 import progress from '../../src/js/app/progress.js';
 import { line } from './samples.mjs';
+import { component } from './fake.mjs';
+import { saved } from '../../src/js/lists.js';
 
 const FLOOR = { id: 600, title: 'floor' },
   MOP = { id: 601, title: 'mop' },
@@ -134,6 +137,17 @@ test('a person or a label on a task deleted in Vikunja since is dropped, and the
   const r = await app.addLabelTo(app.tasks[2], FLOOR);
   assert.deepEqual([r.status, sync.all(1).length], ['error', 0]);
   assert.equal(lastSaid(app).msg, "Adding label floor to “Mop the floor” couldn't be saved: The task does not exist.");
+});
+
+test("a person who can't see the task's project is not kept to send again, and the sender says why", async t => {
+  const { v, app } = listed(t, [task(2)]);
+  v.strangers.add(BOB.id);
+  const r = await app.addAssignee(app.tasks[2], BOB);
+  assert.deepEqual([r.status, sync.all(1).length, ids(v.task(2).assignees)], ['error', 0, []]);
+  assert.equal(
+    lastSaid(app).msg,
+    "Assigning Bob to “Mop the floor” couldn't be saved: Bob can't see the task's project.",
+  );
 });
 
 test('the Undo of a change cancelled in the Outbox, or dropped when Vikunja refused it, sends nothing', async t => {
@@ -307,4 +321,67 @@ test('each op names the person or label, and Cancel names what Vikunja keeps', (
       '“Mop” has no labels.',
     ],
   );
+});
+
+test("the people menu lists you first, then the others who can see the task's project by name, and ticks who is on it", t => {
+  const { app } = listed(t, [task(2, { assignees: [BOB] })], claims);
+  app.user = ME;
+  const sees = (user, ...pids) => ({ user, pids: new Set(pids) });
+  app.people = [
+    sees({ id: 9, username: 'zed', name: 'Zed' }, 5),
+    sees(BOB, 5),
+    sees(ME, 5, 6),
+    sees({ id: 8, username: 'carol', name: '' }, 6),
+    sees({ id: 3, username: 'amy', name: 'Amy' }, 5, 6),
+  ];
+  assert.deepEqual(
+    app.whoList(app.tasks[2]).map(x => [x.u.username, x.on]),
+    [
+      ['me', false],
+      ['amy', false],
+      ['bob', true],
+      ['zed', false],
+    ],
+    'carol cannot see project 5, so she is not listed',
+  );
+  app.people = null;
+  assert.deepEqual(
+    app.whoList(app.tasks[2]).map(x => x.u.username),
+    ['me'],
+    'before the people are loaded, only you are listed',
+  );
+});
+
+test('tapping a person in the people menu assigns them, or unassigns them if ticked, offline too', async t => {
+  const { app, v } = listed(t, [task(2)], claims);
+  Object.assign(app, { user: ME, canWrite: () => true });
+  noConnection(app, v);
+  const slot = () => app.claimSlot(app.tasks[2], app.tasks[2].assignees, false),
+    queued = () => sync.all(1).map(e => [e.op, e.person?.id ?? e.user, e.add]);
+  await app.whoTap(slot(), BOB);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[7], [['assign', 7, true]]], 'bob is assigned at once');
+  await app.whoTap(slot(), BOB);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[], []], 'tapping bob again unassigns him');
+  await app.whoTap(slot(), ME);
+  assert.deepEqual(
+    [ids(app.tasks[2].assignees), queued()],
+    [[1], [['claim', 1, undefined]]],
+    'tapping Me claims the task, as a tap on "+ me" does',
+  );
+  await app.whoTap(slot(), ME);
+  assert.deepEqual([ids(app.tasks[2].assignees), queued()], [[], []], 'tapping Me again lets it go');
+});
+
+test('saving a picture drops the pictures not fetched for 30 days', async t => {
+  const app = component(claims),
+    day = 864e5;
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }));
+  app.avatars = {
+    bob: { url: 'data:old', at: Date.now() - 31 * day },
+    amy: { url: 'data:new', at: Date.now() - 29 * day },
+  };
+  await app.loadAvatar('zed');
+  assert.deepEqual(Object.keys(saved.get('avatars')).sort(), ['amy', 'zed']);
+  assert.deepEqual(Object.keys(app.avatars).sort(), ['amy', 'zed']);
+  saved.set('avatars', {});
 });

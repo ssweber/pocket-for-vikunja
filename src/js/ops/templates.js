@@ -8,7 +8,7 @@ import { OP_WORDS } from '../messages.js';
 import { ALREADY } from '../sync.js';
 import { ZERO } from '../util.js';
 import { isTemplateLabel, templateTitle } from '../checklists.js';
-import { opsId, MOVED, TASK } from '../app/tasks.js';
+import { opsId, MOVED, TASK } from '../tasks.js';
 import { LINE } from './add.js';
 import { movedFrom } from './ticks.js';
 import { backOf, cancelledStages, notFound, now, patch, place, unadd, unplace } from './stages.js';

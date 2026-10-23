@@ -2,12 +2,16 @@
          ones. It is folded until tapped, and its tasks load then. Each project remembers whether its section is open.
          A long list's rows are drawn in batches, the first screenful first (drawn, views.js). -->
     <template x-if="!view.loading && !view.error && ['today', 'project', 'search'].includes(route.name)"><div x-effect="hint.pick && pickHint()">
+      <!-- While Today is narrowed to a label (narrowToday), the bar above its first group says so, and Show all ends it -->
+      <template x-if="route.name === 'today' && only"><div class="only-bar"><span class="only-rule">Only <span class="lab-pill" x-style="{'--lc': colorOf(only.hex_color)}"><i class="dot"></i><span x-text="'*' + only.title"></span></span></span><button type="button" class="only-clear" id="btn-show-all" @click="narrowToday(null)">Show all</button></div></template>
       <template x-for="g in shownGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- When no tasks are open, the empty message is shown above the Done section -->
-        <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
-        <template x-if="!g.fold"><div class="sec" :class="g.cls"><span x-text="g.title"></span><span class="n num" x-text="(g.count ?? g.tasks.length) ? (g.count ?? g.tasks.length).toLocaleString() : ''"></span>
+        <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)">
+          <!-- include markup/empty.html -->
+        </template>
+        <template x-if="!g.fold"><div class="sec" :class="g.cls"><template x-if="g.project"><i class="dot sec-dot" x-style="{background: colorOf(projById.get(g.project)?.hex_color)}"></i></template><span x-text="g.title"></span><span class="n num" x-text="(g.count ?? g.tasks.length) ? (g.count ?? g.tasks.length).toLocaleString() : ''"></span>
           <template x-if="g.key === 'today'"><span class="sec-date" x-text="todayDate"></span></template>
-          <template x-if="g.key === 'overdue' && overdueMovable"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
+          <template x-if="g.key === 'overdue' && overdueMovable && !only"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
         <template x-if="g.fold"><div class="sec" :class="g.cls"><button type="button" class="sec-fold" :id="'sec-' + g.key" :aria-expanded="String(g.open)" @click="toggleDoneSection()">
           <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count.toLocaleString() + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button>
           <!-- Copies what was done today as text, folded or not -->
@@ -35,7 +39,9 @@
           </template>
         </div></template>
       </div></template>
-      <template x-if="!listGroups.some(g => g.tasks.length || (g.fold && g.count !== 0))"><div class="empty"><b x-text="emptyText.title"></b><span x-text="emptyText.body"></span></div></template>
+      <template x-if="!listGroups.some(g => g.tasks.length || (g.fold && g.count !== 0))">
+        <!-- include markup/empty.html -->
+      </template>
     </div></template>
 
     <template x-if="!view.loading && !view.error && route.name === 'projects'"><div>

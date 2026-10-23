@@ -21,6 +21,7 @@ import {
   saved,
   sameGroup,
   savedScreen,
+  searchedLabel,
   soonestFirst,
   TODAY_DAYS,
   todayAt,
@@ -33,7 +34,8 @@ import { watching } from './reactive.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views, { renderSeq } from '../../src/js/app/views.js';
-import tasks, { copyOf, started, TASK } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import sending from '../../src/js/app/sending.js';
 import lines from '../../src/js/app/lines.js';
 import auth from '../../src/js/app/auth.js';
@@ -338,7 +340,7 @@ for (const [kind, route, screen, shown] of SCREENS)
         { id: 20, title: 'Close up', project_id: 7, related_tasks: { subtask: [{ id: 11 }, { id: 12 }] } },
       ]),
       open = () =>
-        Object.assign(component(views, tasks), {
+        Object.assign(component(views, tasks, runs), {
           user: { id: 1 },
           projById: new Map([[7, { id: 7, title: 'Cafe' }]]),
           positions: {},
@@ -509,6 +511,84 @@ test('a list recalculated with the same content is the same object, so its rows 
   const again = app.listGroups;
   assert.equal(again[0], open, 'a group loaded again without changes is the same object');
   assert.notEqual(again[1], done, 'a changed group is a new object');
+});
+
+/* Tapping a label on Today narrows Today to the tasks with it (narrowToday). The groups then hold only those tasks,
+   so their counts count only what is shown. */
+test('Today narrowed to a label shows and counts only the tasks with it, and a moved row’s gap goes with its task', t0 => {
+  Object.assign(globalThis, { scrollY: 300, scrollTo: (x, y) => (globalThis.scrollY = y) });
+  t0.after(() => {
+    delete globalThis.scrollY;
+    delete globalThis.scrollTo;
+  });
+  const errands = { id: 1, title: 'errands', hex_color: 'e5a50a' },
+    phone = { id: 2, title: 'phone' },
+    soon = h => new Date(Date.now() + h * 36e5).toISOString(),
+    t = (id, labels, f = {}) => ({ id, title: 'Task ' + id, labels, due_date: soon(id), ...f });
+  const a = t(1, [errands]),
+    b = t(2, [phone]),
+    c = t(3, [errands, phone]),
+    d = t(4, [phone], { done: true, done_at: new Date().toISOString() }),
+    e = t(5, [errands], { done: true, done_at: new Date().toISOString() });
+  const app = component(views, sending, lines);
+  Object.assign(app, {
+    route: { name: 'today' },
+    pending: [],
+    positions: {},
+    cardOf: () => null,
+    tasks: { 1: a, 2: b, 3: c },
+    movedGaps: { today: [{ id: 'moved-1', gapOf: 2, after: null, at: 0 }] },
+    view: {
+      cards: {},
+      groups: [
+        { key: 'today', tasks: [a, b, c] },
+        { key: 'donetoday', tasks: [d, e] },
+      ],
+    },
+  });
+  const shown = () =>
+    Object.fromEntries(
+      app.listGroups.filter(g => g.tasks.length).map(g => [g.key, [ids(g.tasks), g.count ?? g.tasks.length]]),
+    );
+  assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] });
+  app.narrowToday(errands);
+  assert.deepEqual(app.only, { id: 1, title: 'errands', hex_color: 'e5a50a' });
+  assert.equal(scrollY, 0, 'the page goes to its top, where the bar is');
+  assert.deepEqual(shown(), { today: [[1, 3], 2], donetoday: [[5], 1] });
+  app.narrowToday(phone);
+  assert.deepEqual(shown(), { today: [['moved-1', 2, 3], 3], donetoday: [[4], 1] }, 'one label at a time');
+  app.route = { name: 'search' };
+  assert.equal(app.listGroups.find(g => g.key === 'today').tasks.length, 3, 'only Today is narrowed');
+  app.route = { name: 'today' };
+  app.narrowToday(null);
+  assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] }, 'Show all');
+});
+
+test('leaving Today shows every task on it again', async t => {
+  Object.assign(globalThis, { scrollY: 0, scrollTo() {} });
+  t.after(() => {
+    delete globalThis.scrollY;
+    delete globalThis.scrollTo;
+  });
+  const app = component(views);
+  Object.assign(app, {
+    route: { name: 'today' },
+    only: { id: 1, title: 'errands' },
+    projects: [{ id: 1 }],
+    view: { groups: [] },
+    hint: {},
+    drawFrom() {},
+    showSaved() {},
+    schedulePreload() {},
+    async loadToday() {},
+  });
+  location.hash = '#/today';
+  await app.render();
+  assert.notEqual(app.only, null, 'Today drawn again stays narrowed');
+  location.hash = '#/projects';
+  await app.render();
+  assert.equal(app.only, null);
+  location.hash = '';
 });
 
 test("other screens are not preloaded in the background while a screen's rows are still being drawn", async () => {
@@ -760,6 +840,132 @@ test('done matches in search show 50 tasks, count all of them, and have a row th
     Array.from({ length: 120 }, (_, k) => k + 1),
   );
   assert.equal(app.moreOf('done'), null, 'once all tasks are shown, there is no row');
+});
+
+test('a search starting with * is for a label, with "" for * alone, and anything else searches titles and notes', () => {
+  assert.equal(searchedLabel('*errands'), 'errands');
+  assert.equal(searchedLabel('* errands '), 'errands');
+  assert.equal(searchedLabel('*"on hold"'), 'on hold');
+  assert.equal(searchedLabel('*'), '');
+  assert.equal(searchedLabel('errands'), null);
+});
+
+/* A search for *errands asks Vikunja for the open tasks with every label called errands, and none of the done
+   tasks. It shows them by project, the project with the soonest task first, and rows leave out the project name. */
+test('a search by label lists its open tasks by project, the one with the soonest task first', async () => {
+  const errands = { id: 3, title: 'Errands' },
+    at = d => new Date(Date.now() + d * 864e5).toISOString(),
+    task = (id, project_id, d) => ({ id, title: 'Task ' + id, project_id, due_date: at(d), labels: [errands] });
+  const asked = [];
+  globalThis.fetch = async url => {
+    const u = new URL(url);
+    asked.push(
+      u.pathname.replace('/api/v2', '') + ' ' + (u.searchParams.get('filter') || '') + (u.searchParams.get('q') ?? ''),
+    );
+    const body = u.pathname.endsWith('/labels')
+      ? [errands, { id: 4, title: 'phone' }, { id: 9, title: 'errands' }]
+      : [task(1, 5, 3), task(2, 6, 1), task(3, 5, 2), task(4, 6, 9)];
+    return new Response(JSON.stringify({ items: body, total: body.length }), { status: 200 });
+  };
+  const app = doneApp({ name: 'search' });
+  Object.assign(app, {
+    searchQ: '*errands',
+    labels: [],
+    projById: new Map([
+      [5, { id: 5, title: 'Home', hex_color: '2f9e8f' }],
+      [6, { id: 6, title: 'Shop' }],
+    ]),
+    readCards: async () => ({ steps: [], positions: {} }),
+    keepMarked: g => g,
+  });
+  await app.loadSearch(renderSeq);
+  assert.deepEqual(
+    asked,
+    ['/labels ', '/tasks labels in 3, 9 && done = false'],
+    'both labels called errands, open tasks only',
+  );
+  assert.deepEqual(
+    app.view.groups.map(g => [g.key, g.title, ids(g.tasks)]),
+    [
+      ['project:6', 'Shop', [2, 4]],
+      ['project:5', 'Home', [3, 1]],
+    ],
+  );
+  const home = app.view.groups[1];
+  app.route = { name: 'search' };
+  app.stepRun = () => null;
+  app.rowRing = () => null;
+  assert.ok(
+    !app.rowMeta(home.tasks[0], { ...home, depth: {} }).some(m => m.key === 'p'),
+    'the heading names the project',
+  );
+  assert.ok(
+    app.rowMeta({ ...home.tasks[0], project_id: 6 }, { ...home, depth: {} }).some(m => m.key === 'p'),
+    'a row in another project names its own',
+  );
+
+  asked.length = 0;
+  app.searchQ = '*errandz';
+  await app.loadSearch(renderSeq);
+  assert.deepEqual([asked, app.view.groups], [[], []], 'a label nobody has asks Vikunja for no tasks');
+  app.searchQ = 'errands';
+  await app.loadSearch(renderSeq);
+  assert.ok(asked.includes('/tasks done = falseerrands'), 'without the *, search looks for the word');
+});
+
+test('in search by label, a task that is ticked or loses the label leaves, and one moved goes to its project', () => {
+  const errands = { id: 3, title: 'errands' },
+    t = { id: 1, project_id: 5, labels: [errands] };
+  const app = component(views, sending);
+  Object.assign(app, {
+    route: { name: 'search' },
+    view: {
+      groups: [
+        { key: 'project:5', label: 'errands', tasks: [t] },
+        { key: 'open', tasks: [] },
+      ],
+    },
+  });
+  assert.equal(app.belongsIn(t, 'project:5'), 'project:5');
+  assert.equal(app.belongsIn({ ...t, project_id: 6 }, 'project:5'), 'project:6');
+  assert.equal(app.belongsIn({ ...t, done: true }, 'project:5'), null);
+  assert.equal(app.belongsIn({ ...t, labels: [] }, 'project:5'), null);
+  assert.equal(
+    app.belongsIn({ ...t, done: true }, 'open'),
+    'done',
+    'a search of words still moves a ticked task to Done',
+  );
+});
+
+test('typing * in search offers the labels that match what follows, and says when no label has that name', () => {
+  const app = component(views);
+  Object.assign(app, {
+    route: { name: 'search' },
+    labelsLoaded: true,
+    labels: [
+      { id: 1, title: 'errands' },
+      { id: 2, title: 'phone' },
+      { id: 3, title: 'template' },
+      { id: 4, title: 'Overdue errands' },
+    ],
+  });
+  const offered = q => {
+    app.searchQ = q;
+    return app.searchLabels.map(l => l.title);
+  };
+  assert.deepEqual(offered('*'), ['errands', 'Overdue errands', 'phone'], 'every label but template');
+  assert.deepEqual(offered('*err'), ['errands', 'Overdue errands'], 'those starting with it first');
+  assert.equal(app.emptyText.title, 'Search by label.');
+  assert.deepEqual(offered('*Errands'), [], 'a label called that is searched, not offered');
+  assert.equal(app.emptyText.title, 'No open task has *errands.');
+  assert.deepEqual(offered('*errandz'), []);
+  assert.deepEqual(app.emptyText, {
+    title: 'No label is called “errandz”.',
+    body: 'Leave out the * to search titles and notes.',
+  });
+  assert.deepEqual(offered('err'), [], 'a search of words offers no labels');
+  app.route = { name: 'today' };
+  assert.deepEqual(offered('*err'), [], 'nor does any other screen');
 });
 
 /* This keeps the cost of each row low. A list's group stays one object for as long as the screen is the same

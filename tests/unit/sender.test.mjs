@@ -5,7 +5,8 @@ import { sender, reached, lostOnce, noConnection, settle, offlineSender, lastSai
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addLines, OPS } from '../../src/js/ops/index.js';
-import { copyOf, started, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { CANCEL, sync } from '../../src/js/sync.js';
 import { vikunjaNext } from '../../src/js/checklists.js';
 import { NOT_KEPT, UNKNOWN } from '../../src/js/messages.js';
@@ -117,6 +118,11 @@ test('a refused change kept to try again, and a change held behind it, each have
     ['Not sent. Vikunja refused an earlier change to “Wipe the till”.', 'Outbox'],
   );
 });
+/* Wait until `done()`, for a read the app starts without waiting for it. How many turns of the event loop a reply
+   takes depends on Node's version. */
+const landed = async done => {
+  for (let i = 0; i < 100 && !done(); i++) await new Promise(ok => setImmediate(ok));
+};
 // A change held behind a refused one goes only after Try again or Cancel on the refused one, not every 30 seconds.
 test('a change held behind a refused one is said by the sender alone, and its caller says nothing more', async t => {
   t.after(async () => {
@@ -125,6 +131,7 @@ test('a change held behind a refused one is said by the sender alone, and its ca
   const { v, app } = sender(t, [{ id: 7, title: 'Wipe the till' }], sheet);
   v.trouble = r => (r.method === 'PATCH' ? 403 : null);
   await app.act({ op: 'done', task: 7, run: null, label: 'Wipe the till' });
+  await landed(() => copyOf(7)); // the comment's label is the task's title, from the read the refusal starts
   const before = app.toasts.length;
   Object.assign(app.sheet, { id: 7, commentDraft: 'Counted twice' });
   await app.postComment();
@@ -344,6 +351,7 @@ test('a tick with a comment that finishes on a later try still answers with the 
     'the tick, its ✅ and its comment are sent, and the progress is not',
   );
   await app.sendActs(app.pending[0].id);
+  await landed(() => copyOf(2).updated === v.task(2).updated); // the read the op ends with
   assert.equal(sync.all(1).length, 0);
   const posted = v.task(2).comments[0];
   assert.deepEqual(

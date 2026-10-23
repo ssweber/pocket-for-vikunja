@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { compressed, include, lean, onlyParts, shared } from '../../scripts/build.mjs';
+import { compressed, include, lean, onlyParts, shared, withBuild } from '../../scripts/build.mjs';
 
 test('a part marked "only" is kept where the include names one of its words, and left out everywhere else', () => {
   const row =
@@ -121,4 +121,19 @@ test("the committed page's compressed copies decode to the committed page", () =
     'index.html.br: run npm run build',
   );
   assert.ok(gunzipSync(readFileSync('pocket/app/index.html.gz')).equals(page), 'index.html.gz: run npm run build');
+});
+
+test('the build id comes from the page, so the same page gets the same id and a changed page another', () => {
+  const id = page => withBuild(page).match(/<meta name="pocket-build" content="(\w+)">/)[1],
+    page = '<head><meta name="pocket-build"></head><p>one</p>';
+  assert.equal(id(page), id(page));
+  assert.notEqual(id(page), id(page.replace('one', 'two')));
+  assert.throws(() => withBuild('<p>one</p>'), /needs <meta name="pocket-build">/);
+});
+
+test("the committed page has its build id in its first 1024 bytes, where main.go reads it for the page's ETag", () => {
+  assert.match(
+    readFileSync('pocket/app/index.html').subarray(0, 1024).toString(),
+    /<meta name="pocket-build" content="\w+">/,
+  );
 });

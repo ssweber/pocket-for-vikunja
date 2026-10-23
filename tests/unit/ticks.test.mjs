@@ -4,19 +4,22 @@
 import './browser.mjs';
 import './outbox-db.mjs';
 import { collected, DAY, fingers, patches, opened } from './actions-helpers.mjs';
-import { component, sendStages } from './fake.mjs';
+import { component, fakeVikunja, sendStages } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import actions from '../../src/js/app/actions.js';
-import tasks, { started, TASK } from '../../src/js/app/tasks.js';
+import tasks, { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import sending from '../../src/js/app/sending.js';
-import { stageContext, undosKept } from '../../src/js/app/acts.js';
+import acts, { stageContext, undosKept } from '../../src/js/app/acts.js';
+import outbox from '../../src/js/app/outbox.js';
+import runs from '../../src/js/app/runs.js';
 import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
 import alerts from '../../src/js/app/alerts.js';
 import sheet from '../../src/js/app/sheet.js';
 import views from '../../src/js/app/views.js';
-import { dayGroup, todayGroups } from '../../src/js/lists.js';
+import { dayGroup, saved, todayGroups, viewKey } from '../../src/js/lists.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { movedFrom, OPS } from '../../src/js/ops/index.js';
 import { figure } from '../../src/js/ops/stages.js';
@@ -149,7 +152,7 @@ test('when the batch clears, the subtasks closed with a parent on Today go to Do
   );
   assert.deepEqual(app.leaving, {});
   Object.assign(app, { cardPage: {}, cardOpen: {}, cardAdded: {} });
-  const card = app.cardOf(app.tasks[10], { cards: 'today', line: true, key: 'overdue' });
+  const card = app.cardOf(app.tasks[10], { cards: 'today', key: 'overdue' });
   assert.deepEqual(
     [card?.head, card?.rows.map(s => s.id)],
     ['Done, but 1 subtask is still open', [13]],
@@ -1071,3 +1074,103 @@ test('an Undo the sender reads while it is still being saved on the phone stays 
   await adding;
   assert.deepEqual([read?.id, sync.all(1).map(x => x.id)], [e.id, [e.id]]);
 });
+/* Another tab's change makes this tab read the outbox again. A change this tab saves while that read runs isn't in
+   what the read finds, and must stay in memory, or nothing sends it until the next read. */
+test('a change saved while the outbox is read again stays in the outbox to be sent', async t => {
+  t.after(async () => {
+    for (const x of sync.all(1)) await sync.remove(x.id);
+  });
+  const e = { id: uuid7(), kind: 'act', op: 'done', task: 5, user: 1, at: new Date().toISOString(), n: 0, files: [] };
+  await Promise.all([sync.reload(), sync.add(e, [])]);
+  assert.deepEqual(
+    sync.all(1).map(x => x.id),
+    [e.id],
+  );
+});
+
+/* Offline, a ticked row leaves a project's list as the batch clears, and the project is saved without it. Cancel in
+   the Outbox puts the task back on the list, not done, at once and after the next reopen, also when Pocket was
+   reopened between the tick and the Cancel. On Today, the row goes back from Done today. Each page is a new
+   component, as a reopen gives, and its screen's load fails offline (render, views.js). */
+const ids = (app, k) =>
+  app.view.groups
+    .find(g => g.key === k)
+    .tasks.map(x => x.id)
+    .sort();
+const page = v => {
+  const app = component(tasks, acts, sending, outbox, runs, actions, leaving, views, cards);
+  Object.assign(app, {
+    user: { id: 1 },
+    pending: [],
+    slow: [],
+    cap: {},
+    sheet: { id: null, sub: {} },
+    view: { groups: [], shownRun: null, route: location.hash, cards: {}, project: { id: 7, title: 'Cafe' } },
+    positions: {},
+    checklistIds: new Set(),
+    projById: new Map([[7, { id: 7, title: 'Cafe' }]]),
+  });
+  app.render = () => app.regroupSoon();
+  noConnection(app, v);
+  return app;
+};
+for (const [where, route, start, open] of [
+  [
+    "a project's list",
+    { name: 'project', id: 7 },
+    app => [{ key: 'open', tasks: [app.row(copyOf(1)), app.row(copyOf(2))] }, app.doneGroup(null, 3, false)],
+    app => [ids(app, 'open'), app.view.groups[1].count],
+  ],
+  [
+    'Today',
+    { name: 'today' },
+    app => todayGroups().map(g => (g.key === 'nodate' ? { ...g, tasks: [app.row(copyOf(1)), app.row(copyOf(2))] } : g)),
+    app => [ids(app, 'nodate'), ids(app, 'donetoday').length],
+  ],
+])
+  for (const reopen of [false, true])
+    test(`a tick made offline on ${where} and cancelled ${reopen ? 'after a reopen' : 'at once'} shows the task open there again`, async t => {
+      await sync.ready;
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const was = document.querySelectorAll;
+      document.querySelectorAll = () => [];
+      t.after(async () => {
+        document.querySelectorAll = was;
+        for (const x of sync.all(1)) await sync.remove(x.id);
+        localStorage.clear();
+      });
+      const list = [1, 2].map(id => ({
+          id,
+          title: 'Task ' + id,
+          done: false,
+          project_id: 7,
+          created: new Date().toISOString(),
+        })),
+        v = fakeVikunja(list),
+        again = async () => {
+          const app = page(v);
+          app.route = route;
+          await sync.reload();
+          app.refreshPending();
+          app.showSaved(route, app.savedView(route));
+          app.render();
+          return app;
+        };
+      saved.set('user', { id: 1 });
+      saved.set('projects.recent', [7]);
+      let app = page(v);
+      app.route = route;
+      app.change(w => w.read(structuredClone(list), TASK, started()));
+      app.view.groups = start(app);
+      app.keepScreen(viewKey(route), { ...app.view, at: new Date().toISOString() });
+      await app.toggleDone(app.tasks[1], ROW);
+      await app.clearBatch(true);
+      const [ticked, untouched] = [open(app), [[1, 2], route.name === 'today' ? 0 : 3]];
+      assert.deepEqual(ticked, [[2], untouched[1] + 1], 'the ticked row leaves');
+      if (reopen) app = await again();
+      assert.deepEqual(open(app), ticked, 'it stays ticked');
+      await app.dropAct(sync.all(1)[0].id);
+      assert.deepEqual([open(app), app.tasks[1].done], [untouched, false], 'Cancel puts it back');
+      app = await again();
+      assert.deepEqual([open(app), app.tasks[1].done], [untouched, false], 'after a reopen');
+    });

@@ -9,7 +9,7 @@
 // OTHER_USER / OTHER_PASSWORD (a second account) check that Pocket follows a switch to another account.
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
-import { expect } from './helpers.mjs';
+import { expect, stepper } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const USER = process.env.VIKUNJA_USER,
@@ -23,10 +23,7 @@ const POCKET = process.env.POCKET_URL || SERVER + '/api/v1/plugins/pocket/';
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || undefined });
-let failed = 0,
-  context,
-  vikunja,
-  pocket;
+let context, vikunja, pocket;
 const errors = [];
 async function fresh() {
   // starts a new browser profile with no one signed in
@@ -36,18 +33,8 @@ async function fresh() {
   pocket = await context.newPage();
   for (const p of [vikunja, pocket]) p.on('pageerror', e => errors.push(String(e)));
 }
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's duration so slow steps stand out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]);
-    await pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` }).catch(() => {});
-  }
-}
+const steps = stepper(name => pocket?.screenshot({ path: `${OUT}/session-fail-${name}.png` })),
+  { step, setup } = steps;
 const vikunjaSignedIn = async () => {
   await vikunja.goto(SERVER + '/');
   await vikunja.waitForLoadState('networkidle');
@@ -70,7 +57,7 @@ const expire = page => page.evaluate(t => localStorage.setItem('token', t), EXPI
 
 try {
   await fresh();
-  await step('vikunja-sign-in-carries-to-pocket', async () => {
+  await setup('vikunja-sign-in-carries-to-pocket', async () => {
     await vikunjaSignIn();
     await pocket.goto(POCKET);
     await pocketInApp();
@@ -220,11 +207,10 @@ try {
     });
   }
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL page errors:', errors);
   }
 } finally {
   await browser.close();
 }
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();

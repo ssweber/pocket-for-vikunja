@@ -1,5 +1,5 @@
 // Signing in and out, and following the sign-in Pocket shares with Vikunja's web app.
-import { esc, store, taskDrafts, userCache } from '../util.js';
+import { esc, keep, store, taskDrafts, userCache } from '../util.js';
 import {
   api,
   ApiError,
@@ -149,9 +149,7 @@ export default {
      signing in and saves the session where Pocket reads it. The request is the same one Vikunja's login page makes. */
   signInWith(p) {
     const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-    try {
-      localStorage.setItem('state', state);
-    } catch {}
+    keep('state', state);
     const url =
       `${p.auth_url}?client_id=${encodeURIComponent(p.client_id)}&redirect_uri=${encodeURIComponent(`${location.origin}/auth/openid/${p.key}`)}` +
       `&response_type=code&scope=${encodeURIComponent(p.scope)}&state=${state}`;
@@ -167,6 +165,11 @@ export default {
   showLogin(err) {
     this.screen = 'login';
     this.login.err = err || '';
+  },
+  // api.js calls this when Vikunja refuses the session and renewing it fails. The words are here so that api.js needn't
+  // import messages.js, which imports api.js.
+  sessionEnded() {
+    this.signOut(SIGNED_OUT.ended, { tellServer: false });
   },
   // Signing out of a shared session signs this device out of Vikunja's web app too.
   signOut(msg, { tellServer = true } = {}) {
@@ -255,9 +258,10 @@ export default {
     this.screen = 'app';
     this.signedIn = true;
     Object.assign(this.view, { loading: true, error: '', bootFailed: false, route: null });
-    // Wait for the outbox to load from the phone's database, but not for long. Another tab with an older Pocket can
-    // hold it up.
-    await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
+    /* A row drawn before the outbox's database is read would change when a change waiting there arrives. So wait for
+       the database, unless it had no entries when last read (seenEmpty, sync.js). Another tab with an older Pocket can
+       hold the database up, so don't wait for long. */
+    if (!sync.seenEmpty()) await Promise.race([sync.ready, new Promise(ok => setTimeout(ok, 3000))]);
     sync.ready.then(() => this.refreshPending());
     /* If the token is the one last confirmed for the saved user (keepWho), show that user's saved screen at once and
        ask Vikunja whose token it is. Until Vikunja answers, nothing is sent (setOpening, api.js). Any other token
@@ -317,7 +321,13 @@ export default {
       if (info) saved.set('info', info);
       this.keepWho(sharedToken.get(), user.id);
       confirmed();
-      await this.loadProjects();
+      // Show the saved screen while the projects load, as Pocket does when it opens with the confirmed token.
+      const projects = !kept && saved.get('projects');
+      if (projects) {
+        this.setProjects(projects);
+        this.refreshPending();
+      }
+      await Promise.all([this.loadProjects(), projects && this.render({ kept: true })]);
       this.refreshPending();
       await this.render();
       this.flush();

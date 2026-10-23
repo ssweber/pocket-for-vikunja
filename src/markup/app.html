@@ -9,10 +9,10 @@
              enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button type="button" id="btn-search-cancel" class="linkish" @click="closeSearch()">Cancel</button>
     </form>
-    <nav class="tabs" aria-label="Views" :class="{icons: checklistProjects.length}">
+    <nav class="tabs icons" aria-label="Views">
       <a href="#/today" data-tab="today" :aria-current="route.name === 'today' ? 'page' : null"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Today</span></a>
       <a href="#/projects" data-tab="projects" :aria-current="tab === 'projects' ? 'page' : null"><svg class="i"><use href="#i-folder"/></svg><span class="lbl">Projects</span></a>
-      <template x-if="checklistProjects.length"><a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a></template>
+      <a href="#/checklists" data-tab="checklists" :aria-current="tab === 'checklists' ? 'page' : null"><svg class="i"><use href="#i-checklist"/></svg><span class="lbl">Checklists</span></a>
     </nav>
     <button id="btn-search" class="icon-btn" aria-label="Search" @click="openSearch()"><svg class="i"><use href="#i-search"/></svg></button>
     <!-- Refresh. While a change waits to be sent, or Vikunja rejected a change, the button opens the Outbox instead
@@ -45,8 +45,18 @@
     <template x-for="line in placeLines('project')" :key="line.n">
       <!-- include markup/place-line.html -->
     </template>
+    <!-- While a search starts with *, the labels that match what follows, as the add box offers them. Tapping one
+         searches for it. -->
+    <template x-if="searchLabels.length"><div class="chips search-chips"><template x-for="l in searchLabels" :key="l.id"><button type="button" class="chip suggest tap" @click="searchLabel(l.title)"><i class="dot" x-style="{background: colorOf(l.hex_color)}"></i><span x-text="'*' + l.title"></span></button></template></div></template>
     <template x-if="offline"><p class="offline" role="status" x-text="route.name === 'search' ? 'Offline. Searching needs a connection to Vikunja.' : 'Offline' + (view.savedAt ? ' · showing tasks from ' + new Date(view.savedAt).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : '') + '. Changes wait in the Outbox.'"></p></template>
-    <template x-if="view.loading"><div class="loading">Loading…</div></template>
+    <!-- Grey rows hold the list's place on a screen with nothing saved on the phone. view.loading is never set while a
+         screen shows rows, so a refresh leaves them in place. -->
+    <template x-if="view.loading"><div class="skeleton" role="status" aria-label="Loading">
+      <div class="sec"></div>
+      <div class="list"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
+      <div class="sec short"></div>
+      <div class="list"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
+    </div></template>
 
     <template x-if="!view.loading && view.error"><div>
       <div class="err" style="margin-top:16px" x-html="view.error"></div>

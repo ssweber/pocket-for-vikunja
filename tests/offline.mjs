@@ -11,7 +11,7 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright'; // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, placeLine, placeSays, signIn, steady, synced } from './helpers.mjs';
+import { expect, hintSeen, outboxOf, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN,
@@ -49,30 +49,15 @@ const browser =
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 await hintSeen(context); // dismisses the one-time hint (see helpers.mjs)
 const page = await context.newPage();
+// Quick add's ways to add a list (listShapes, chips.html). Each is a picture, with its words for a screen reader, so a
+// way is found by its words: "1 task + 2 subtasks" puts every line under the first.
+const ways = `#cap-chips .list-ways button`;
+const pickWay = re => page.locator(ways).filter({ hasText: re }).click();
 page.on('dialog', d => d.accept());
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's duration so slow steps stand out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log(
-      'FAIL',
-      name + secs(),
-      '-',
-      e.message
-        .split('\n')
-        .slice(0, process.env.VERBOSE ? 8 : 1)
-        .join(' · '),
-    );
-    await page.screenshot({ path: `${OUT}/offline-fail-${name}.png` }).catch(() => {});
-  }
-}
+const steps = stepper(name => page.screenshot({ path: `${OUT}/offline-fail-${name}.png` })),
+  { step, setup } = steps;
 const capture = async text => {
   await page.fill('#in-capture', text);
   await page.click('#f-capture .go');
@@ -91,21 +76,6 @@ const attached = async n => {
   return t ? ((await (await api('/tasks/' + t.id)).json()).attachments || []).map(a => a.file.name) : [];
 };
 const online = () => page.evaluate(() => window.dispatchEvent(new Event('online'))); // makes Pocket retry now
-// What is waiting in the outbox, as IndexedDB holds it.
-const outboxOf = p =>
-  p.evaluate(
-    () =>
-      new Promise(ok => {
-        const r = indexedDB.open('pocket');
-        r.onsuccess = () => {
-          const q = r.result.transaction('outbox').objectStore('outbox').getAll();
-          q.onsuccess = () => {
-            r.result.close();
-            ok(q.result);
-          };
-        };
-      }),
-  );
 const sameTime = (a, b) => Date.parse(a) === Date.parse(b);
 
 try {
@@ -119,7 +89,7 @@ try {
   });
   if (!seeded.ok) throw new Error('could not create the seed task: HTTP ' + seeded.status);
 
-  await step('online-first-visit', async () => {
+  await setup('online-first-visit', async () => {
     await signIn(page, POCKET, USER, PASSWORD);
     await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
     await page.evaluate(() => navigator.serviceWorker.ready); // Pocket is now saved for offline use
@@ -193,7 +163,7 @@ try {
 
   await step('pasted-list-offline-waits', async () => {
     await page.fill('#in-capture', `${T('P')} tomorrow\n- ${T('P1')}\n- ${T('P2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('P')));
     if (await page.isVisible(pendingRow(T('P1')))) throw new Error('a subtask is shown in Today'); // only the parent should show
@@ -251,9 +221,9 @@ try {
   await step('photo-added-offline-waits', async () => {
     await page.setInputFiles('#in-photo', photo('offline.png'));
     await capture(T('F'));
-    // On Today the row is a single line, so a screen reader announces the waiting attachment (labels and counts are hidden on Today)
+    // The row counts the waiting attachment, and a screen reader hears that it is waiting
     await page.waitForSelector(
-      `${NO_DATE} ${pendingRow(T('F'))} .title .sr:has-text("Attachments, 1 waiting to upload")`,
+      `${NO_DATE} ${pendingRow(T('F'))} .meta [aria-label="Attachments, 1 waiting to upload"]`,
       { state: 'attached' },
     );
     await placeSays(page, 'cap', 'Saved offline, with the photo. They go to Vikunja'); // the message appears by the add box
@@ -264,7 +234,7 @@ try {
     await page.waitForSelector(pendingRow(T('A')), { timeout: 15000 });
     await page.waitForSelector(pendingRow(T('P')));
     await page.waitForSelector(`${NO_DATE} ${pendingRow(T('U'))}`);
-    await page.waitForSelector(`${pendingRow(T('F'))} .title .sr:has-text("waiting to upload")`, { state: 'attached' });
+    await page.waitForSelector(`${pendingRow(T('F'))} .meta [aria-label$="waiting to upload"]`, { state: 'attached' });
   });
 
   await step('back-online-sends-everything', async () => {
@@ -319,9 +289,9 @@ try {
     await page.setInputFiles('#in-photo', photo('glitch.png'));
     await capture(T('G'));
     await placeSays(page, 'cap', 'The photo goes to Vikunja when you');
-    // The task is in Vikunja, so it is a normal row. Its photo is still waiting, and Today's single-line row announces that.
+    // The task is in Vikunja, so it is a normal row. Its photo is still waiting, and the row says so.
     await page.waitForSelector(
-      `${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`,
+      `${NO_DATE} .row:not(.pending):has(.title:has-text("${T('G')}")) .meta [aria-label="Attachments, 1 waiting to upload"]`,
       { state: 'attached' },
     );
     await page.click(`.row .body:has-text("${T('G')}")`);
@@ -564,7 +534,7 @@ try {
     await capture(T('S'));
     await placeSays(page, 'cap', "Pocket couldn't save this on the phone. Keep Pocket open");
     await page.waitForSelector(
-      `.row:has(.title:has-text("${T('S')}")) .title .sr:has-text("Attachments, 1 waiting to upload")`,
+      `.row:has(.title:has-text("${T('S')}")) .meta [aria-label="Attachments, 1 waiting to upload"]`,
       { state: 'attached' },
     );
     cut = false;
@@ -618,7 +588,7 @@ try {
     };
     await page.route('**/v2/tasks/*/relations', lose);
     await page.fill('#in-capture', `${T('K')} tomorrow\n- ${T('K1')}\n- ${T('K2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await online();
     await synced(page);
@@ -679,7 +649,7 @@ try {
   await step('a-pasted-list-typed-offline-arrives-as-one-parent-with-its-subtasks', async () => {
     await context.setOffline(true);
     await page.fill('#in-capture', `${T('Q')} tomorrow\n- ${T('Q1')}\n- ${T('Q2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('Q')));
     const outbox = await page.evaluate(
@@ -805,13 +775,21 @@ try {
         ];
       };
       await expect.poll(kept, { timeout: 20000 }).toEqual([true, 1, 1]);
-      // The same requests again, each with the key Pocket sent it with: the comment, and the tick.
+      // The same requests again, each with the key Pocket sent it with: the comment, and the tick. Since Vikunja 2.7.1,
+      // an API token can't be given POST on a plugin route. So they are sent with a session token, as Pocket sends them.
+      const { token } = await (
+        await fetch(SERVER + '/api/v2/login', {
+          method: 'POST',
+          body: JSON.stringify({ username: USER, password: PASSWORD }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      ).json();
       const again = (a, method, path, body) =>
         fetch(SERVER + '/api/v1/plugins/pocket/v2' + path, {
           method,
           body: JSON.stringify(body),
           headers: {
-            Authorization: 'Bearer ' + TOKEN,
+            Authorization: 'Bearer ' + token,
             'Content-Type': 'application/json',
             'Idempotency-Key': `"${a.key || a.id}:0:0"`,
           },
@@ -870,6 +848,53 @@ try {
       if (t.done || (t.reactions?.['✅'] || []).length)
         throw new Error('Vikunja has the tick: ' + JSON.stringify([t.done, t.reactions]));
     } finally {
+      await page.evaluate(() => {
+        location.hash = '#/today';
+      });
+      await api('/projects/' + proj.id, { method: 'DELETE' });
+    }
+  });
+
+  /* A task ticked offline leaves its project's list, and the project is saved without it. After a reload offline, Cancel
+     in the Outbox shows the task on the list again, not done, and it stays there after the next reload. */
+  await step('a-tick-cancelled-offline-after-a-reload-shows-its-task-again', async () => {
+    const post = async (path, body) => (await api(path, { method: 'POST', body: JSON.stringify(body) })).json();
+    const proj = await post('/projects', { title: T('cancelled project') });
+    try {
+      await post(`/projects/${proj.id}/tasks`, { title: T('cancelled tick') });
+      await post(`/projects/${proj.id}/tasks`, { title: T('left open') });
+      await page.reload(); // so Pocket lists the project
+      await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+      await page.evaluate(id => {
+        location.hash = '#/project/' + id;
+      }, proj.id);
+      const tick = name => page.getByRole('button', { name: 'Mark done: ' + T(name) });
+      await expect(tick('cancelled tick')).toBeVisible({ timeout: 15000 });
+      await context.setOffline(true);
+      await tick('cancelled tick').click();
+      const rows = name => page.locator(`#view .row:has(.title:has-text("${T(name)}"))`);
+      await expect(rows('cancelled tick')).toHaveCount(0, { timeout: 10000 }); // the batch clears
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.reload();
+      await expect(tick('left open')).toBeVisible({ timeout: 15000 });
+      await expect(rows('cancelled tick')).toHaveCount(0);
+      await page.waitForSelector('#btn-refresh.waits');
+      await page.click('#btn-refresh');
+      const row = `#outbox-rows .ob-row:has-text("Done: ${T('cancelled tick')}")`;
+      await page.locator(row).getByRole('button', { name: 'Cancel' }).click();
+      await page.waitForSelector(row, { state: 'detached' });
+      await page.click('#btn-sheet-close');
+      await expect(tick('cancelled tick')).toBeVisible();
+      await page.reload();
+      await expect(tick('left open')).toBeVisible({ timeout: 15000 });
+      await expect(tick('cancelled tick')).toBeVisible();
+      await context.setOffline(false);
+      await online();
+      await synced(page);
+      const [t] = await byTitle(T('cancelled tick'));
+      if (t?.done !== false) throw new Error('Vikunja has the task as ' + JSON.stringify(t?.done));
+    } finally {
+      await context.setOffline(false);
       await page.evaluate(() => {
         location.hash = '#/today';
       });
@@ -1320,7 +1345,7 @@ try {
     if ((await byTitle(T('Y'))).length) throw new Error('the dropped task was added');
   });
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL page errors:', errors);
   }
 } finally {
@@ -1333,5 +1358,4 @@ try {
     for (let i = 0; i < 5 && !(await api('/tasks/' + t.id, { method: 'DELETE' })).ok; i++)
       await new Promise(ok => setTimeout(ok, 500));
 }
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();

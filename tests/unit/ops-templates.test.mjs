@@ -5,9 +5,10 @@ import './browser.mjs';
 import { sender, noConnection, settle, lastSaid } from './ops-helpers.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyOf, started, TASK } from '../../src/js/app/tasks.js';
+import { copyOf, started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { sync } from '../../src/js/sync.js';
-import { UNKNOWN } from '../../src/js/messages.js';
+import { busyText, UNKNOWN } from '../../src/js/messages.js';
 import checklists from '../../src/js/app/checklists.js';
 import quickadd from '../../src/js/app/quickadd.js';
 
@@ -306,6 +307,42 @@ test("a step's people and labels tapped off in its edit box are taken off as ops
   );
 });
 
+test('notes typed after " // " in a step\'s edit box go at the end of its notes, and its asks stay', async t => {
+  const asks = '<p>Use the blue mop</p><p>pocket:ask Wet: yes-no</p>';
+  const { v, app } = editor(t, closing({ 8: { description: asks } }));
+  Object.defineProperty(app, 'subtasks', { get: () => [8, 9].map(id => app.tasks[id]) });
+  Object.defineProperty(app, 'canEdit', { value: true });
+  app.sheet = {
+    id: 7,
+    kind: 'task',
+    sub: {},
+    stepEdit: { id: 8, ignore: {}, text: 'Mop the floor // and under the bar' },
+  };
+  assert.equal(app.stepEditDraft(0).notes, 'and under the bar');
+  assert.equal(app.stepHasNotes('edit'), true, 'the chip says the notes are added to the notes the step has');
+  await app.saveStepEdit(0);
+  assert.deepEqual(
+    [v.task(8).title, v.task(8).description, outbox()],
+    ['Mop the floor', asks + '<p>and under the bar</p>', []],
+    'the title stays, and the notes are a paragraph after the ask',
+  );
+  // A step with no notes gets them as its notes.
+  app.sheet.stepEdit = { id: 9, ignore: {}, text: 'Lock up the back // the key is on the hook' };
+  assert.equal(app.stepHasNotes('edit'), false);
+  await app.saveStepEdit(1);
+  assert.deepEqual([v.task(9).title, v.task(9).description], ['Lock up the back', '<p>the key is on the hook</p>']);
+});
+
+test('a step typed with notes in New template is made with them as its description', async t => {
+  const { v, app } = editor(t, []);
+  newTemplate(app, ['Proof the loaves in 40 min // cover with a damp cloth']);
+  await app.createTemplate();
+  assert.deepEqual(
+    [v.task(102).title, v.task(102).description],
+    ['Proof the loaves T#40m', '<p>cover with a damp cloth</p>'],
+  );
+});
+
 test("a person assigned in a step's edit box and taken off again leaves nothing to send", async t => {
   const { v, app } = editor(t, closing());
   noConnection(app, v);
@@ -379,7 +416,7 @@ const setUp = async (t, trouble) => {
     globalThis.fetch = real;
   });
   v.trouble = trouble;
-  Object.assign(app, { perms: {}, setProjects: list => (app.projects = list) });
+  Object.assign(app, { perms: {}, setProjects: list => (app.projects = list), nextFlush: Date.now() + 600e3 });
   // A busy Vikunja is asked again after a pause (patiently), on the test's clock.
   let done = false;
   app.setUpChecklists().finally(() => (done = true));
@@ -404,7 +441,7 @@ test('Set up checklists says the example template waits when Vikunja is busy, an
   const { v, app } = await setUp(t, r => (making(FIRST)(r) ? 503 : null));
   assert.equal(
     lastSaid(app).msg,
-    'Created the Checklists project, with an example template to try. Waiting for Vikunja. Pocket tries again every 30 seconds.',
+    'Created the Checklists project, with an example template to try. ' + busyText(app.nextFlush),
   );
   await online(t, app, v);
   assert.deepEqual([v.task(101).done, v.task(101).related_tasks.subtask.length, outbox()], [true, 4, []]);

@@ -8,14 +8,9 @@ export const store = {
       return null;
     }
   },
-  // Returns whether the value was kept, which it isn't when localStorage is full.
+  // Returns whether the value was kept (keep).
   set(k, v) {
-    try {
-      localStorage.setItem('pocket.' + k, v);
-      return true;
-    } catch {
-      return false;
-    }
+    return keep('pocket.' + k, v);
   },
   del(k) {
     try {
@@ -23,6 +18,20 @@ export const store = {
     } catch {}
   },
 };
+// Chrome and Safari name the error QuotaExceededError, with code 22. Older Firefox used code 1014.
+const isFull = e => e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014;
+/* Every write to localStorage goes through here. When localStorage is full, the oldest saved screen is deleted
+   (makeRoom, app/tasks.js) and the write tried again, until it fits or no saved screen is left. Returns whether the
+   value was kept. */
+export function keep(k, v) {
+  for (;;)
+    try {
+      localStorage.setItem(k, v);
+      return true;
+    } catch (e) {
+      if (!isFull(e) || !app?.makeRoom?.()) return false;
+    }
+}
 export const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const ZERO = '0001-01-01T00:00:00Z';
 export const esc = s =>

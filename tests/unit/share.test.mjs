@@ -426,6 +426,7 @@ function pasted(text, { mode = 'vikunja', dueTime = '12:00' } = {}) {
       priority: p.priority,
       labels: p.labels,
       repeat: p.repeat ? { after: p.repeat.after, mode: p.repeat.mode } : NO_REPEAT,
+      notes: p.notes,
       items: [],
     };
   });
@@ -443,6 +444,7 @@ const same = it => ({
   priority: it.priority || 0,
   labels: it.labels || [],
   repeat: it.repeat || NO_REPEAT,
+  notes: it.notes || '',
   items: (it.items || []).map(same),
 });
 
@@ -508,6 +510,8 @@ test('a title that quick add would read as syntax is quoted, with single quotes 
   assert.equal(line('Order 50% more cups'), '- [ ] Order 50% more cups');
   assert.equal(line('Standup every week'), '- [ ] "Standup every week"');
   assert.equal(line('Paint !2 coats'), '- [ ] "Paint !2 coats"');
+  assert.equal(line('Bake // 230°C'), '- [ ] "Bake // 230°C"', 'a title with " // " in it would lose its notes');
+  assert.equal(line('Check http://example.com'), '- [ ] Check http://example.com');
   // The rest of the line matters. "in" before a date would be read as part of the date.
   assert.equal(line('Sign in'), '- [ ] Sign in');
   assert.equal(line('Sign in', { due: on(16, 12) }), '- [ ] "Sign in" 2026-10-16');
@@ -550,6 +554,7 @@ test('a copy with quoted titles reads back as the same tasks', () => {
     'Order 3/4 inch screws',
     '+Garden shed',
     'Tables (50%)',
+    'Bake // 230°C',
   ];
   const doc = {
     kind: 'task',
@@ -567,6 +572,47 @@ test('a copy with quoted titles reads back as the same tasks', () => {
   };
   assert.deepEqual(pasted(md(doc)), [same(doc)]);
   assert.deepEqual(pasted(md(doc, { mode: 'todoist' }), { mode: 'todoist' }), [same(doc)]);
+});
+
+test("a task's notes are copied after its line's ' // ', more lines of them under it, and read back as the same notes", () => {
+  const doc = {
+    kind: 'task',
+    ...item('Pack the van', { notes: 'Back door sticks\nLift it first:', due: on(16, 12) }),
+    items: [
+      item('Load chairs', { notes: 'The folding ones', people: [sam] }),
+      item('Tables', {
+        notes: 'Two // not three\n\nAsk @user first',
+        items: [item('Legs', { notes: 'All four' }), item('Feet')],
+      }),
+      item('Lunch friday', { notes: 'Order // pick up' }),
+      item('Lights'),
+    ],
+  };
+  assert.equal(
+    md(doc),
+    [
+      '## Pack the van 2026-10-16 // Back door sticks',
+      '  // Lift it first:',
+      '- [ ] Load chairs @sam // The folding ones',
+      '- [ ] Tables // Two // not three',
+      '  //',
+      '  // Ask @user first',
+      '  - [ ] Legs // All four',
+      '  - [ ] Feet',
+      '- [ ] "Lunch friday" // Order // pick up',
+      '- [ ] Lights',
+    ].join('\n'),
+  );
+  assert.deepEqual(pasted(md(doc)), [same(doc)]);
+  assert.deepEqual(pasted(md(doc, { mode: 'todoist' }), { mode: 'todoist' }), [same(doc)]);
+  // A project's tasks keep their notes the same way.
+  const project = { kind: 'project', title: 'Café', open: 1, items: doc.items };
+  assert.deepEqual(pasted(md(project)), doc.items.map(same));
+  // A line of notes needs the indent. Without it, the line is a task of its own.
+  assert.deepEqual(
+    readList('Tables // Two\n// Three').lines.map(l => l.text),
+    ['Tables // Two', '// Three'],
+  );
 });
 
 /* A parent's progress is the percentage its ring shows. That is the average of its subtasks' progress, and a done
@@ -685,6 +731,37 @@ test("the text shared from a task's sheet matches its ring, with a segment per s
   app.tasks[6] = sub(6, { done: true });
   app.tasks[7] = sub(7);
   assert.equal(shareText(app.shareDoc('task'), NOW).split('\n')[2], `◐ Sub 3 ${app.ringOf(subs[1]).pct}%`);
+});
+
+test("a task's Markdown copy has its notes and its subtasks' notes as plain text, without Pocket's lines, and its text copy has none", () => {
+  const app = shared();
+  const task = (id, description, f = {}) => ({
+    id,
+    title: 'Task ' + id,
+    description,
+    done: false,
+    percent_done: 0,
+    due_date: NONE,
+    project_id: 5,
+    assignees: [],
+    related_tasks: {},
+    ...f,
+  });
+  const sub = task(2, '<p>Take the red one</p><p>pocket:ask Temp: number °C</p>'),
+    t = task(1, '<p>Back door sticks<br>Lift it first</p><p>Then push</p>', { related_tasks: { subtask: [sub] } });
+  for (const x of [t, sub]) app.tasks[x.id] = x;
+  Object.assign(app, { sheet: { id: 1 }, subtasks: [sub], pendingSubtasks: [] });
+  assert.equal(
+    markdownText(app.shareDoc('task')),
+    [
+      '## Task 1 // Back door sticks',
+      '  // Lift it first',
+      '  //',
+      '  // Then push',
+      '- [ ] Task 2 // Take the red one',
+    ].join('\n'),
+  );
+  assert.equal(shareText(app.shareDoc('task'), NOW), ['Task 1  ▱ 0%', '○ Task 2'].join('\n'));
 });
 
 test("the text shared from a checklist's screen matches its ring, counting a tick waiting to be sent as the ring does", () => {

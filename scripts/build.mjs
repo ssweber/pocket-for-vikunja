@@ -14,6 +14,7 @@
 //   <script defer src="alpine-3.17.4-pocket.3.min.js">
 //                                            stays, and src/vendor/alpine-3.17.4.js is minified into that file next
 //                                            to the page (see vendor() below)
+//   <meta name="pocket-build">               gets the build's id (see withBuild() below)
 // A stylesheet or script that isn't in src/ (the libraries in pocket/app/) is left as it is. The markup's comments and
 // indentation are removed (see lean() below), and a template inside another template keeps its content in a template
 // of its own (see shared()). The page is also written compressed, as index.html.br and index.html.gz, for main.go to
@@ -25,6 +26,7 @@ import { existsSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import * as esbuild from 'esbuild';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -166,10 +168,21 @@ async function build() {
   for (const [, to] of parts)
     if (/<\/(script|style)/i.test(to.replace(/^<(script|style)[^>]*>/, '').replace(/<\/(script|style)>$/, '')))
       throw new Error('A </script> or </style> inside the inlined code would cut it short');
+  page = withBuild(page);
   write(join(OUT, 'index.html'), page);
   compressed(join(OUT, 'index.html'), page);
   if (map) write(join(OUT, MAP), map);
   await vendor(page);
+}
+
+/* Writes the build's id, the start of the page's SHA-256, into <meta name="pocket-build">. An open Pocket reloads
+   when the server's page has another id (updateIfNew in views.js), and main.go sends the id as the page's ETag. The
+   id comes from the page alone, so the same src/ always builds the same page. */
+export function withBuild(page) {
+  const tag = '<meta name="pocket-build">';
+  if (!page.includes(tag)) throw new Error(`src/index.html needs ${tag} near the top of its <head>`);
+  const id = createHash('sha256').update(page).digest('hex').slice(0, 16);
+  return page.replace(tag, `<meta name="pocket-build" content="${id}">`);
 }
 
 /* A library that Pocket patches is kept readable in src/vendor/ (alpine-3.17.4.js is Alpine as published, then
@@ -224,7 +237,7 @@ export function compressed(file, page) {
   }
 }
 
-// Write only a file that changed. A new modification time makes every open copy of Pocket reload to get a new version.
+// Write only a file that changed, so a build that changes nothing leaves the files' times alone.
 function write(file, text) {
   if (!existsSync(file) || read(file) !== text) writeFileSync(file, text);
 }

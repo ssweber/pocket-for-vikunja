@@ -7,6 +7,7 @@
 //
 // Creates its own project ("Pocket step times <stamp>"), sets up a template and two checklists started from it the
 // way Pocket does, and deletes the project at the end. Leaves a "template" label behind, as checklists.mjs does.
+import { stepper } from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN;
@@ -45,18 +46,7 @@ const isSet = d => d && !d.startsWith('0001');
 // Minutes from the done time to the due date, or null if there is no due date.
 const after = (due, doneAt) => (isSet(due) ? Math.round((new Date(due) - new Date(doneAt)) / 6000) / 10 : null);
 
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's duration so slow steps stand out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log('FAIL', name + secs(), '-', e.message.split('\n')[0]);
-  }
-}
+const { step, end } = stepper();
 
 const stamp = Date.now();
 const STEPS = [
@@ -373,5 +363,4 @@ try {
       }
     }
 }
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+end();

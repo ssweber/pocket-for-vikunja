@@ -29,7 +29,6 @@
       <button class="go" type="submit" :aria-label="{cap: 'Add task', under: 'Add subtask', ins: 'Add step'}[capW]" @mousedown.prevent :disabled="!boxParsed(capW).title || (capW === 'cap' && cap.busy)"><svg class="i"><use href="#i-up"/></svg></button>
     </form>
     <div class="chips" id="cap-chips" :hidden="!chips(capW).length && !(capBox.focus && !capBox.text)">
-      <template x-if="capLines.length > 1 && capW === 'cap'"><button type="button" class="chip toggle" id="cap-nest" :aria-pressed="String(nestOn)" @mousedown.prevent @click="tapNest()">↳ Under first line</button></template>
       <template x-if="capBox.focus && !capBox.text"><span class="hint" x-text="boxHint(capW)"></span></template>
       <!-- The chips for what the box read (chips.html) -->
       <template x-for="bw in [capW]" :key="0">

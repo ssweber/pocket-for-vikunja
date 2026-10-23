@@ -20,12 +20,14 @@ import {
   parseStep,
   plainRun,
   runParts,
+  runRules,
   plainStep,
   problemText,
   runWithoutDay,
   skippedBy,
-  stepFrom,
   stepProblems,
+  stepTimes,
+  lockOf,
   stepsOf,
   templateName,
   vikunjaNext,
@@ -57,14 +59,20 @@ import {
   ringSaid,
   startMarksDone,
   waitText,
+  tickableAt,
+  tickableAfter,
+  doneAfter,
+  waitingFor,
+  waitingText,
 } from '../messages.js';
 import { newBox } from './core.js';
 import { renderSeq } from './views.js';
 import { keptTicks } from './acts.js';
 import { lastTick, stagesOf, stepsAdding } from '../ops/index.js';
-import { copyOf, opsId, putting, started, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from './tasks.js';
+import { copyOf, putting, started } from './tasks.js';
+import { opsId, TASK_COMMENTS, TASK_REACTIONS_COMMENTS } from '../tasks.js';
 
-const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps have loaded
+const LAST_WAIT = 600; // ms loadRun waits for Last time's notes after the steps load, when nothing is on screen yet
 /* Cache each computed step by id and serialized content. Reuse unchanged step objects so their rows do not redraw
    when another step or countdown changes. */
 const lastSteps = new Map();
@@ -366,15 +374,18 @@ export default {
     this.change(w => w.read([run], TASK_COMMENTS, at));
     if (this.projects.length && !this.isRunTask(run))
       throw new ApiError(404, "This task isn't a started checklist. Open it from its project instead.");
-    /* Wait briefly for Last time's notes before showing the steps, or use cached notes. Notes that arrive later would
-       push the steps down while the user is touching the screen, so lateLast keeps them off the current card. */
+    /* With nothing on screen yet, wait briefly for Last time's notes before showing the steps, or use the saved notes.
+       Notes that arrive later would push the steps down while the user is touching the screen, so lateLast keeps them
+       off the current card. A checklist already on screen, from its saved copy or an earlier load, never waits. */
     const kept = this.view.shownRun?.id === id ? this.view.shownRun : null;
-    const reading = kept?.last ? null : this.readLast(plainRun(run));
+    const reading = kept?.last && !kept.last.saved ? null : this.readLast(plainRun(run));
     const steps = await inBatches(stepsOf(run), 4, async s =>
       allComments(await api(`/tasks/${s.id}?expand=reactions&expand=comments`)),
     ).then(putting(TASK_REACTIONS_COMMENTS));
     const last =
-      reading && (await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))]));
+      reading && !kept
+        ? await Promise.race([reading, new Promise(ok => setTimeout(() => ok(undefined), LAST_WAIT))])
+        : undefined;
     if (seq !== renderSeq) return;
     const keep = this.view.shownRun?.id === id ? this.view.shownRun : null; // reloading the open checklist keeps its step and drafts
     if (!keep) {
@@ -382,7 +393,7 @@ export default {
       this.runBoxAt = null;
     }
     const asked = keep ? -1 : steps.findIndex(s => s.id === this.route.step); // index of the step opened from a list
-    const before = last === undefined ? saved.get('run.' + id)?.shownRun?.last : null;
+    const before = !keep && last === undefined ? saved.get('run.' + id)?.shownRun?.last : null;
     this.runNow = Date.now(); // compute the newly opened run for the current time
     for (const t of [run, ...steps]) this.row(t); // the screen reads the checklist and its steps by id
     this.view.shownRun = {
@@ -393,7 +404,17 @@ export default {
     };
     opened('run', id);
     this.saveRun();
-    if (last === undefined) reading.then(l => this.lateLast(id, l));
+    if (reading && last === undefined) reading.then(l => this.lateLast(id, l));
+  },
+  /* A checklist opened from its saved copy starts as one opened from Vikunja does: on the step the link names, with an
+     empty add box, and with Last time's notes on the step's card. Its load keeps all of that, and reads Last time
+     again because the saved notes may be old (`saved`). */
+  savedRun(r, run) {
+    this.runInsert = newBox();
+    this.runBoxAt = null;
+    this.runNow = Date.now();
+    const at = run.steps.indexOf(r.step);
+    return { ...run, at: at >= 0 ? at : null, last: run.last && { ...run.last, held: null, shown: null, saved: true } };
   },
   // Save the open checklist so it opens offline, as the ids of the checklist and its steps. A save that isn't a load
   // (`fresh` false), as a rename or Last time's notes, doesn't sweep the store.
@@ -432,8 +453,8 @@ export default {
       return null;
     }
   },
-  /* Show late notes below the steps immediately, but hold card notes until another step is selected so the list
-     stays still. */
+  /* Show late notes below the steps immediately. The current card keeps the notes it shows (`shown`) until another
+     step is selected, so the list under it stays still. */
   lateLast(id, last) {
     const r = this.view.shownRun;
     if (r?.id !== id || !last) return;
@@ -441,7 +462,10 @@ export default {
       r.last &&
       JSON.stringify(r.last.notes.map(n => n.id)) === JSON.stringify(last.notes.map(n => n.id)) &&
       r.last.id === last.id;
-    r.last = same ? { ...last, held: r.last.held } : { ...last, held: this.runView?.step?.id ?? null };
+    const step = this.runView?.step;
+    r.last = same
+      ? { ...last, held: r.last.held, shown: r.last.shown }
+      : { ...last, held: step?.id ?? null, shown: this.lastNotes(step) };
     this.saveRun(false);
   },
   /* The checklist on its screen, from its steps as their rows show them, so a tick, a skip or a note waiting in the
@@ -510,14 +534,9 @@ export default {
         pct = Math.round((s.percent_done || 0) * 100);
       // The step waits while a tick, a skip or an untick of it is in the outbox. It looks waiting (slow) once the last
       // of them has waited long enough.
-      const tick = lastTick(this.opsOf(opsId(s.id))),
+      const { tick, doneAt } = this.doneOf(s),
         waiting = !!tick,
         slow = !!tick && this.slow.includes(tick.id);
-      let doneAt = s.done_at;
-      const kept = keptTicks()[s.id];
-      // Compare whole seconds because tick replies include nanoseconds but later task reads do not.
-      if (done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000))
-        doneAt = kept.here;
       const by = skipped ? [skipper] : s.reactions?.[DONE_MARK] || [];
       const doers = () => by.map(u => u.name || u.username);
       const notes = (s.comments || []).map(note);
@@ -578,57 +597,34 @@ export default {
             (slow ? ' · waiting to send' : (by.length ? ' by ' + andList(doers()) : '') + at),
       };
     });
-    /* Time template steps from the completion of the step they depend on, using local times for pending ticks.
-       Honor a due date edited after that completion, but ignore dates the plugin sets without changing updated.
-       Compare whole seconds because offline actions can reach Vikunja within the same second. Inserted steps have
-       no template timing. Repeated steps stand in for their originals, and dependents count from the latest
-       completion. */
-    const group = [],
-      timing = [],
-      place = [],
-      now = serverTime(this.runNow);
-    base.forEach((s, i) => {
-      group[i] = -1;
-      if (!s.added) {
-        group[i] = timing.length;
-        timing.push(parseStep(s.tpl || ''));
-        place.push(i);
-      } else if (s.tpl != null)
-        for (let j = i - 1; j >= 0; j--)
-          if (group[j] >= 0 && base[j].tpl === s.tpl) {
-            group[i] = group[j];
-            break;
-          }
-    });
-    const lastOf = g =>
-      steps
-        .filter((s, i) => group[i] === g && s.done)
-        .sort((a, b) => new Date(a.doneAt) - new Date(b.doneAt))
-        .pop() || steps[place[g]];
+    // When each step is due (stepTimes), with the phone's time for a tick still in the outbox.
+    const now = serverTime(this.runNow),
+      times = stepTimes(steps.map((s, i) => ({ ...s, due_date: base[i].due_date, updated: base[i].updated }))),
+      rules = runRules(run.description);
     steps.forEach((s, i) => {
-      const own = !s.added && group[i] >= 0,
-        t = own ? timing[group[i]] : { offset: null },
-        j = own ? stepFrom(timing, group[i]) : null,
-        from = j >= 0 ? lastOf(j) : null;
-      let due = isSet(base[i].due_date) ? new Date(base[i].due_date) : null,
-        waitsOn = '';
-      if (from) {
-        if (!from.done) {
-          due = null;
-          waitsOn = t.offset ? `${durText(t.offset)} after “${from.title}”` : `when “${from.title}” is done`;
-        } else if (
-          from.waiting ||
-          !due ||
-          !(Math.floor(+new Date(base[i].updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000))
-        )
-          due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + t.offset);
-      }
+      const { time, from, due } = times[i],
+        waitsOn =
+          !from || from.done
+            ? ''
+            : time.offset
+              ? `${durText(time.offset)} after “${from.title}”`
+              : `when “${from.title}” is done`;
       const left = due ? due - now : 0,
-        soon = Math.abs(left) < 864e5;
+        soon = Math.abs(left) < 864e5,
+        lock = lockOf(steps, i, times, rules, now);
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
-      s.counting = !s.done && t.offset !== null && !!due && soon; // a countdown: pinned at the top while it runs
+      s.counting = !s.done && time?.offset != null && !!due && soon; // a countdown: pinned at the top while it runs
       s.dueAt = due ? +due : Infinity;
       s.countText = s.counting ? countText(left) : '';
+      // A step that can't be ticked yet (lockOf). Its Done button says why, counting a time down to the second.
+      s.lock = lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
+      s.lockText = !lock
+        ? ''
+        : lock.icon === 'lock'
+          ? doneAfter(lock.from.title)
+          : lock.at === null
+            ? waitingFor(lock.from.title)
+            : waitingText(left);
       s.dueText = waitsOn
         ? 'Due ' + waitsOn
         : s.counting
@@ -750,7 +746,8 @@ export default {
   // The notes made on this step in the last finished checklist of the same template.
   lastNotes(s) {
     const l = this.view.shownRun?.last;
-    return s?.tpl && s.id !== l?.held ? (l?.notes || []).filter(n => n.tpl === s.tpl) : [];
+    if (!s?.tpl || !l) return [];
+    return s.id === l.held ? l.shown || [] : (l.notes || []).filter(n => n.tpl === s.tpl);
   },
   /* Open a run on its own screen, selecting the requested step if given. Back returns to the screen that opened
      it. */
@@ -851,6 +848,60 @@ export default {
   isStepRow(t, g) {
     return !!g.run || (g.sheet ? this.checklistRole === 'run' : this.role(t) === 'step');
   },
+  /* Whether step `t` can't be ticked yet, at server time `now`, under its checklist's settings (lockOf). Returns null,
+     or {icon, at: when it can be ticked, or null while it waits on a step, from: that step's title}. On the checklist's
+     screen this is the screen's own reading of the step. Elsewhere, as on Today's card, it is worked out the same way
+     from the checklist's steps as the phone has them. */
+  stepLock(t, now = serverTime(Date.now())) {
+    if (!t || t.done || t.pending) return null;
+    const v = this.route.name === 'run' && this.view.shownRun?.steps.includes(t.id) ? this.runView : null,
+      lock = v ? v.steps.find(s => s.id === t.id)?.lock : this.storedLock(t, now);
+    return lock && (lock.at === null || lock.at > now) ? lock : null;
+  },
+  storedLock(t, now) {
+    const run = this.tasks[this.stepRun(this.tasks[t.id] || t)],
+      rules = runRules(run?.description);
+    if (!rules.order && (!rules.wait || parseStep(plainStep(this.tasks[t.id] || t).tpl || '').offset === null))
+      return null;
+    const steps = stepsOf(run)
+      .map(x => this.tasks[x.id] || x)
+      .filter(x => !this.beingDeleted(x.id))
+      .map(x => {
+        const s = plainStep(x),
+          { tick, doneAt } = this.doneOf(s);
+        return { ...s, title: parseStep(s.title).title, doneAt, waiting: !!tick };
+      });
+    const i = steps.findIndex(s => s.id === t.id),
+      lock = i < 0 ? null : lockOf(steps, i, stepTimes(steps), rules, now);
+    return lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
+  },
+  /* The icon a step's tick shows in place of its tick, 'lock' or 'hourglass', or '' when the step can be ticked. A
+     checklist's screen checks each second (runNow), and Today each minute, or each second near a step's time (stepNow).
+     A row that isn't a step reads no time, so the clock doesn't redraw it. An order lock opens when the step above is
+     ticked, which changes the tasks the lock is read from. */
+  rowLock(t, g) {
+    if (!g.run && this.stepRun(t) == null) return '';
+    return this.stepLock(t, serverTime(g.run ? this.runNow : this.stepNow()))?.icon || '';
+  },
+  /* A tap on the tick of a step that can't be ticked yet says when it can, and ticks nothing. A list or a sheet says it
+     on the step's row. A checklist's screen (`run`) has no messages on its rows, so it says it on the step card. */
+  lockedTap(t, run = false) {
+    const lock = this.stepLock(t);
+    if (lock)
+      this.say(lock.icon === 'lock' ? tickableAfter(t.title, lock.from) : tickableAt(t.title, lock.at, lock.from), {
+        row: run ? null : { id: t.id, stays: true },
+        place: ['sheet:top', 'step', 'run'],
+      });
+    return !!lock;
+  },
+  /* When step `s` (plainStep) was done, by this phone's clock for a tick made here (keptTicks), and the tick of it still
+     in the outbox, if any. Whole seconds are compared because tick replies include nanoseconds but later task reads do
+     not. */
+  doneOf(s) {
+    const kept = keptTicks()[s.id],
+      here = s.done && kept && Math.floor(Date.parse(kept.there) / 1000) === Math.floor(Date.parse(s.done_at) / 1000);
+    return { tick: lastTick(this.opsOf(opsId(s.id))), doneAt: here ? kept.here : s.done_at };
+  },
   goProject(id) {
     this.closeSheet(true);
     this.go('#/project/' + id);
@@ -875,6 +926,7 @@ export default {
   async tickStep(s, op, felt = false) {
     const r = this.view.shownRun;
     if (!r) return;
+    if (op === 'done' && this.stepLock(s)) return false; // the Done button of a step that can't be ticked yet does nothing
     const current = this.runView?.step?.id === s.id;
     let html = '';
     // Send this step's draft as a Skip reason or a Done note. Each step keeps its own draft.
@@ -1009,7 +1061,7 @@ export default {
   async stepProgress(s, pct, undoing = false) {
     if (s.done && pct < 100 && !undoing && (await this.tickStep(s, 'undone', true)) === false) return;
     if (pct >= 100 && !undoing) {
-      await this.tickStep(s, 'done', true);
+      if ((await this.tickStep(s, 'done', true)) === false) return;
       this.said = tickSaid(true, s.title);
       return;
     } // a swipe leaves no focused box to announce it

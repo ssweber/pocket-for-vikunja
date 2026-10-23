@@ -26,12 +26,14 @@ import {
   laidUnder,
   loaded,
   noToast,
+  outboxOf,
   placeLine,
   placeSays,
   rowLine,
   signIn,
   slideSeen,
   steady,
+  stepper,
   still,
   swipeRow,
   synced,
@@ -100,27 +102,8 @@ page.on(
 page.on('pageerror', e => errors.push(String(e)));
 page.on('dialog', d => d.accept());
 
-let failed = 0;
-async function step(name, fn) {
-  const start = Date.now(),
-    secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // show each test's time, so a slow one stands out
-  try {
-    await fn();
-    console.log('PASS', name + secs());
-  } catch (e) {
-    failed++;
-    console.log(
-      'FAIL',
-      name + secs(),
-      '-',
-      e.message
-        .split('\n')
-        .slice(0, process.env.VERBOSE ? 8 : 1)
-        .join(' · '),
-    );
-    await page.screenshot({ path: `${OUT}/fail-${name}.png` });
-  }
-}
+const steps = stepper(name => page.screenshot({ path: `${OUT}/fail-${name}.png` })),
+  { step, setup } = steps;
 
 const stamp = Date.now();
 const title = 'Pocket smoke test ' + stamp;
@@ -130,6 +113,11 @@ const createdProjects = [];
 // row's title, or the card's header.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const opener = t => `:is(.row > .body:has(.title:has-text("${t}")), ${cardOf(t)} > .card-head)`;
+// Quick add's ways to add a list (listShapes, chips.html). Each is a picture, with its words for a screen reader, so a
+// way is found by its words: "1 task + 2 subtasks" puts every line under the first.
+const ways = `#cap-chips .list-ways button`;
+const pickWay = re => page.locator(ways).filter({ hasText: re }).click();
+const pickedWay = () => page.locator(`${ways}[aria-pressed=true] .sr`);
 // The body of a row whose task Vikunja has made. A waiting row's id starts with "pending-".
 const sentRow = t => `.row:not([data-id^="pending-"]) > .body:has(.title:has-text("${t}"))`;
 
@@ -139,7 +127,7 @@ try {
       r.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
-          version: 'v2.7.0',
+          version: 'v2.7.1',
           auth: { local: { enabled: false }, ldap: { enabled: false }, openid_connect: { enabled: false } },
         }),
       });
@@ -162,10 +150,10 @@ try {
     await page.getByLabel('Username or email').fill(USER);
     await expect(go).toBeEnabled();
   });
-  await step('sign-in-with-a-password', () => signIn(page, APP, USER, PASSWORD));
+  await setup('sign-in-with-a-password', () => signIn(page, APP, USER, PASSWORD));
   await page.screenshot({ path: `${OUT}/today.png` });
 
-  await step('quick-add', async () => {
+  await setup('quick-add', async () => {
     await page.fill('#in-capture', `${title} tomorrow at 5pm !3 *${label}`);
     const chips = await page.textContent('#cap-chips');
     if (!/Tomorrow/.test(chips) || !/Priority 3/.test(chips)) throw new Error('chips: ' + chips);
@@ -179,19 +167,35 @@ try {
   const row = `.row:has(.title:has-text("${title}"))`;
   await step('refresh-keeps-rows', async () => {
     const before = await page.$(row);
-    await page.click('#btn-refresh');
+    // While Vikunja is slow to answer, the rows stay on screen and no grey rows replace them.
+    let answer;
+    const late = new Promise(ok => (answer = ok)),
+      slow = async r => {
+        await late;
+        await r.fallback();
+      };
+    await page.route(/\/api\/v2\/tasks\?/, slow);
+    try {
+      await page.click('#btn-refresh');
+      await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator(row)).toBeVisible();
+      await expect(page.locator('#view .skel-row')).toHaveCount(0);
+    } finally {
+      answer();
+      await page.unroute(/\/api\/v2\/tasks\?/, slow);
+    }
     await page.waitForSelector('#btn-refresh:not([disabled])');
     if (!(await before.evaluate(el => el.isConnected))) throw new Error('refresh rebuilt the list');
   });
   await step('refresh-loads-a-new-version', async () => {
-    // A second tab whose copy of Pocket looks older than the server's copy.
+    // A second tab whose copy of Pocket has another build id than the server's copy.
     const old = await page.context().newPage();
-    await old.addInitScript(() =>
-      Object.defineProperty(document, 'lastModified', { get: () => '01/01/2000 00:00:00' }),
-    );
     await old.goto(APP);
     await old.waitForSelector(row, { timeout: 15000 });
-    await old.evaluate(() => (window.marker = 1));
+    await old.evaluate(() => {
+      window.marker = 1;
+      document.querySelector('meta[name="pocket-build"]').content = 'old';
+    });
     // Typed text blocks the reload, so the list refreshes in place instead.
     await old.fill('#in-capture', 'half-typed');
     await old.click('#btn-refresh');
@@ -463,6 +467,15 @@ try {
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
     await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
+    // The button's 44px target fits inside the Overdue heading, which is as tall as a heading without a button, such
+    // as Today's, give or take a pixel for how the fonts line up.
+    const [head, plain, act] = [
+      await page.locator('.sec.overdue').boundingBox(),
+      await page.locator('#view .sec:not(:has(.sec-act))').first().boundingBox(),
+      await page.locator('#btn-overdue-today').boundingBox(),
+    ];
+    if (Math.abs(head.height - plain.height) > 1 || Math.round(act.height) !== 44)
+      throw new Error(`the Overdue heading is ${head.height}px tall and its button ${act.height}px`);
     await page.click('#btn-overdue-today');
     await page.waitForSelector(`.sec.today ~ .list ${lateRow}`, { timeout: 15000 });
     // A message with an Undo button appears under the Overdue heading, which stays in place meanwhile.
@@ -539,12 +552,13 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.click('#btn-refresh');
     await page.waitForSelector('#btn-refresh:not([disabled])');
-    // On Today a row is one line: small priority bars, then a short due time, and the project's dot at the right of
-    // the title. The tick's ring does not show the priority. Labels and counts are not shown. A screen reader still
-    // announces the priority, the due time in words and the project.
+    // On Today a row's title is one line, cut with "…". The line under it has the due day and time, the priority
+    // bars, the project and the counts, as on a project's list. The tick's ring does not show the priority. The
+    // task's label is on a line of its own, 20px under it.
     const R = page.locator(row);
-    await expect(R).toHaveClass(/\bone-line\b/);
-    await expect(R.locator('.when > .bars.p3 ~ .due')).toHaveText(/\S/);
+    await expect(R).toHaveClass(/\bclamp\b/);
+    await expect(R.locator('.meta > .due')).toHaveText(/^Tomorrow \S/);
+    await expect(R.locator('.meta .bars.p3')).toHaveCount(1);
     const ring = await R.locator('> .check').evaluate(el => getComputedStyle(el).borderTopColor);
     const plain = await page.evaluate(() => {
       const b = document.createElement('button');
@@ -555,13 +569,13 @@ try {
       return c;
     });
     if (ring !== plain) throw new Error(`the tick's ring colour is ${ring}, not ${plain}`);
-    await expect(R.locator('.when .dot')).toHaveCount(1);
-    await expect(R.locator('.meta')).toHaveCount(0);
-    const said = await R.locator('.title .sr').allTextContents();
-    if (!said.some(s => /Priority: High/.test(s) && /Due |Late: /.test(s)))
-      throw new Error('a screen reader hears ' + JSON.stringify(said));
-    if ((await R.evaluate(el => el.offsetHeight)) > 57)
-      throw new Error('a row on Today is more than one line: ' + (await R.evaluate(el => el.offsetHeight)));
+    await expect(R.locator('.meta .dot')).toHaveCount(1);
+    await expect(R.locator('.meta [aria-label="Comments"]')).toHaveText('1');
+    await expect(R.locator('.when')).toHaveCount(0);
+    await expect(R.locator('> .labs > .lab')).toHaveText([label]);
+    // The title is one line, however long it is. The line under it wraps when it is full, as on a project's list.
+    const tall = await R.locator('.title').evaluate(el => el.offsetHeight);
+    if (tall > 24) throw new Error('the title on Today is more than a line: ' + tall);
     // On the project's list the row has a second line with the priority bars, the comment count and the attachment count.
     await page.evaluate(
       id => {
@@ -737,20 +751,45 @@ try {
     if (made?.attachments?.[0]?.file?.name !== 'receipt.png')
       throw new Error('attachments: ' + JSON.stringify(made?.attachments));
   });
+  const chipTask = `Pocket smoke new project task ${stamp}`;
+  let chipProject;
   await step('create-project-from-chip', async () => {
     const name = `PocketSmoke${stamp}`,
-      t = `Pocket smoke new project task ${stamp}`;
+      t = chipTask;
     await page.fill('#in-capture', `${t} tomorrow +${name}`);
     await page.click('#cap-chips .chip[data-kind=new-project]');
     await page.waitForSelector(`#cap-chips .chip[data-kind=project]:has-text("${name}")`, { timeout: 15000 });
     const project = (await (await api('/projects')).json()).items.find(p => p.title === name);
     if (!project) throw new Error('project not found in Vikunja');
     createdProjects.push(project.id);
+    chipProject = project.id;
     await page.click('#f-capture .go');
     await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
     await synced(page);
     const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
     if (task?.project_id !== project.id) throw new Error('task landed in project ' + task?.project_id);
+  });
+  // A screen with nothing saved on the phone shows grey rows until Vikunja answers, and no Loading text.
+  await step('a-first-open-shows-grey-rows', async () => {
+    let answer;
+    const late = new Promise(ok => (answer = ok)),
+      slow = async r => {
+        if (r.request().method() === 'GET') await late;
+        await r.fallback();
+      };
+    await page.route(/\/api\/v2\/(projects|tasks)/, slow);
+    try {
+      await page.evaluate(id => (location.hash = '#/project/' + id), chipProject);
+      await expect(page.locator('#view .skeleton[role=status] .skel-row')).toHaveCount(8);
+      await expect(page.locator('#view')).not.toContainText('Loading');
+    } finally {
+      answer();
+      await page.unroute(/\/api\/v2\/(projects|tasks)/, slow);
+    }
+    await expect(page.locator(`.row .title:has-text("${chipTask}")`)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#view .skel-row')).toHaveCount(0);
+    await page.click('nav.tabs a[data-tab=today]');
+    await loaded(page);
   });
   await step('pasted-list-says-who-cant-get-it', async () => {
     // A pasted list that names someone who isn't a user shows a warning before sending, as a single task does. A line
@@ -760,8 +799,8 @@ try {
       `- [x] Pocket smoke napkins\n- Pocket smoke list tomorrow @nobody${stamp}\n- Pocket smoke cups`,
     );
     await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody${stamp}")`, { timeout: 10000 });
-    await expect(page.locator('#cap-chips .chip', { hasText: '1 will be added as done' })).toBeVisible();
-    await expect(page.locator('#cap-chips .chip', { hasText: '3 tasks' })).toBeVisible();
+    await expect(page.locator('#cap-chips .chip', { hasText: '1 done' })).toBeVisible();
+    await expect(pickedWay()).toHaveText('3 tasks');
     const marked = await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
     if (!marked.includes('due:tomorrow')) throw new Error('marks: ' + JSON.stringify(marked));
     await page.fill('#in-capture', '');
@@ -816,7 +855,7 @@ try {
       sub = `Pocket smoke undated sub ${stamp}`;
     const noDate = 'div:has(> .sec:has-text("Added today, no date"))';
     await page.fill('#in-capture', `${t}\n- ${sub}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 1 subtask');
     await page.click('#f-capture .go');
     await page.waitForSelector(`${noDate} :is(.row .title, .card-title):has-text("${t}")`, { timeout: 15000 });
     if (await page.isVisible(`.item > .row .title:has-text("${sub}")`))
@@ -843,11 +882,9 @@ try {
       '#in-capture',
       `${parentTitle} tomorrow\n- Pocket smoke sub A ${stamp}\n• [ ] Pocket smoke sub B ${stamp}`,
     );
-    if (!(await page.textContent('#cap-chips')).includes('3 tasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
-    await page.click('#cap-nest');
-    if (!(await page.textContent('#cap-chips')).includes('1 task + 2 subtasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     // The new task is highlighted. It shows as a row, or as a card once it is loaded with its subtasks.
     await page.waitForSelector(`:is(.row.fresh .title, .day-card.fresh .card-title):has-text("${parentTitle}")`, {
@@ -1212,7 +1249,11 @@ try {
       const to = shared[0],
         homeTitle = projects.find(p => p.id === home)?.title,
         t = `Pocket smoke auto project ${stamp}`;
-      await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE}`);
+      // The @ suggestion names the project the task moves to, and taking it gives that project's chip.
+      await page.fill('#in-capture', `${t} tomorrow @${ASSIGNEE.slice(0, 2)}`);
+      await page.click(`#cap-chips .chip[data-kind=suggest]:has-text("@${ASSIGNEE} · ${to.title}")`, {
+        timeout: 15000,
+      });
       const auto = `#cap-chips .chip[data-kind=autoProject]:has-text("${to.title}")`;
       await page.waitForSelector(auto, { timeout: 15000 });
       await page.click(auto); // undo the automatic project: the default project returns, with a warning
@@ -1433,10 +1474,6 @@ try {
     ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
   const capMarks = () =>
     page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
-  const chipsSay = async text => {
-    if (!(await page.textContent('#cap-chips')).includes(text))
-      throw new Error(`the chips don't include "${text}": ` + (await page.textContent('#cap-chips')));
-  };
   // A task's subtasks in Vikunja as [title, done] pairs, sorted by title.
   const subsDone = async id => ((await get(id)).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
   await step('a-line-that-says-its-done-arrives-done', async () => {
@@ -1498,7 +1535,65 @@ try {
       if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
     }
   });
-  /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 will be added as done"). Tapping the
+  /* The text after " // " is the task's notes. It is highlighted in the box and shown in a chip, and a date in it is not
+     read. The task is made with the notes as its description, and its sheet shows them under the title. */
+  await step('the-text-after-two-slashes-is-the-notes-and-the-sheet-shows-them', async () => {
+    const t = `Pocket smoke notes ${stamp}`,
+      R = `#view ${rowOf(t)}`,
+      chip = page.locator('#cap-chips .chip[data-kind=notes]');
+    await toastGone();
+    await refreshToday();
+    await page.fill('#in-capture', `${t} // the brown ones, tomorrow`);
+    await expect(chip).toHaveText('Notes: the brown ones, tomorrow');
+    await expect.poll(capMarks).toBe('notes:// the brown ones, tomorrow');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
+    await synced(page);
+    const made = await taskTitled(t);
+    try {
+      if (made?.description !== '<p>the brown ones, tomorrow</p>' || made.due_date !== '0001-01-01T00:00:00Z')
+        throw new Error(
+          'the task in Vikunja is ' + JSON.stringify(made && { description: made.description, due: made.due_date }),
+        );
+      await page.click(`${R} > .body`);
+      await expect(page.locator('#d-card #d-desc')).toContainText('the brown ones, tomorrow');
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+    } finally {
+      if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
+    }
+  });
+  /* Picking 1 task + notes makes the list one task. The first line is the task, read as usual, and the other lines
+     follow its own notes, with their line breaks. A date in them is not read. */
+  await step('picking-1-task-plus-notes-makes-a-list-one-task-with-the-other-lines-as-notes', async () => {
+    const t = `Pocket smoke fold ${stamp}`,
+      R = `#view ${rowOf(t)}`;
+    await toastGone();
+    await refreshToday();
+    await page.fill('#in-capture', `${t} !2 // kitchen\nthe tap drips tomorrow\nask about the boiler`);
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + notes');
+    await expect(pickedWay()).toHaveText('1 task + notes');
+    await expect.poll(capMarks).toBe('priority:!2,notes:// kitchen\nthe tap drips tomorrow\nask about the boiler');
+    await page.click('#f-capture .go');
+    await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
+    await synced(page);
+    const made = await taskTitled(t);
+    try {
+      if (
+        made?.description !== '<p>kitchen<br>the tap drips tomorrow<br>ask about the boiler</p>' ||
+        made.priority !== 2 ||
+        made.due_date !== '0001-01-01T00:00:00Z'
+      )
+        throw new Error(
+          'the task in Vikunja is ' +
+            JSON.stringify(made && { description: made.description, priority: made.priority, due: made.due_date }),
+        );
+    } finally {
+      if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
+    }
+  });
+  /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 done"). Tapping the
      chip leaves those lines out and says so, as Pocket did before. Tapping again brings them back. When added, they are
      done subtasks under the first line. Its ring counts them from the start and the parent's progress is written with
      them: (100 + 50 + 100 + 0) / 4 = 63%. */
@@ -1510,14 +1605,14 @@ try {
       '#in-capture',
       `${p} tomorrow\n- [x] ${sub('A')}\n- [ ] ${sub('B')} (50%)\nx ${sub('C')}\n- ${sub('D')}`,
     );
-    await page.click('#cap-nest');
-    await expect(chip).toHaveText('2 will be added as done');
-    await chipsSay('1 task + 4 subtasks');
+    await pickWay('1 task + 4 subtasks');
+    await expect(chip).toHaveText('2 done');
     await chip.click();
     await expect(chip).toHaveText('2 already ticked, left out');
-    await chipsSay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await chip.click();
-    await expect(chip).toHaveText('2 will be added as done');
+    await expect(chip).toHaveText('2 done');
+    await expect(pickedWay()).toHaveText('1 task + 4 subtasks');
     await page.click('#f-capture .go');
     const ring = page.locator(`#view ${cardOf(p)} > .card-head > .ring`);
     await expect(ring.locator('.n')).toHaveText('2/4', { timeout: 20000 });
@@ -1546,9 +1641,8 @@ try {
     }
   });
   /* Parents in a pasted list. A heading such as "## Pack the van" is a task, and the lines under it, up to the next
-     heading, are its subtasks. A chip says what the list will create. The ↳ Under first line chip is switched on
-     automatically because the first line is a parent. Turning it off makes every line a separate task. */
-  const nestChip = page.locator('#cap-nest');
+     heading, are its subtasks. The way picked says what the list will create. Picking 5 tasks makes every line a
+     separate task. */
   const madeFrom = []; // the tasks these tests added, deleted afterwards
   await step('a-pasted-list-with-headings-makes-parents', async () => {
     const A = `Pocket smoke head A ${stamp}`,
@@ -1558,14 +1652,11 @@ try {
       '#in-capture',
       `## ${A} tomorrow\n- ${sub('a1')}\n- [x] ${sub('a2')}\n\n## ${B} tomorrow\n${sub('b1')}`,
     );
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('2 tasks + 3 subtasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
-    await chipsSay('5 tasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('2 tasks + 3 subtasks');
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
+    await pickWay(/^5 tasks/);
+    await expect(pickedWay()).toHaveText('5 tasks');
+    await pickWay('2 tasks + 3 subtasks');
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(A)} > .card-head > .ring .n`)).toHaveText('1/2', { timeout: 20000 });
     await expect(page.locator(`#view ${cardOf(B)}`)).toBeVisible();
@@ -1601,8 +1692,8 @@ try {
     await page.click(opener(t.title));
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     await page.fill('#d-subin', `${sub('A')}\n  ${sub('A1')}\n    x ${sub('A2')}\n${sub('B')}`);
-    await expect(page.locator('#d-subbox-chips .chip', { hasText: '4 subtasks' })).toBeVisible();
-    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
+    await expect(page.locator('#d-subbox-chips .list-ways [aria-pressed=true] .sr')).toHaveText('4 subtasks');
+    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 done');
     await page.click('#d-subbox form .go');
     // The task has two direct subtasks. The other lines are nested under the first.
     const rows = page.locator('#d-subtasks .row:not(.pending) .title');
@@ -1633,18 +1724,16 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
   /* When typing, a first line that ends with a colon is the parent of the other lines, and the colon is removed from
-     its title. The ↳ Under first line chip is switched on. Turning it off makes every line a separate task. */
+     its title. Picking 3 tasks makes every line a separate task. */
   await step('a-first-line-ending-with-a-colon-is-the-parent-of-the-rest', async () => {
     const p = `Pocket smoke colon ${stamp}`,
       sub = n => `Pocket smoke after ${n} ${stamp}`;
     await page.fill('#in-capture', `${p} tomorrow:\n${sub('a')}\n${sub('b')}`);
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('1 task + 2 subtasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
-    await chipsSay('3 tasks');
-    await nestChip.click();
-    await chipsSay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
+    await pickWay('3 tasks');
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(p)} > .card-head > .ring .n`)).toHaveText('0/2', { timeout: 20000 });
     await synced(page);
@@ -1669,7 +1758,7 @@ try {
       ticked = await make(`Pocket smoke repeat ticked ${stamp}`, { due_date: todayAt(23), repeat_after: 86400 });
     madeFrom.push(ticked);
     const week = title => page.locator(`div:has(> .sec:has-text("Next 7 days")) ${rowOf(title)}`),
-      due = title => page.locator(`${rowOf(title)} .when .due`).textContent();
+      due = title => page.locator(`${rowOf(title)} .meta .due`).textContent();
     const shownDone = async (title, was) => {
       await expect(page.locator(rowOf(title))).toHaveClass(/\bdone\b/);
       await expect(page.locator(rowOf(title))).toHaveClass(/\bleaving\b/);
@@ -2566,7 +2655,7 @@ try {
      hides the phone's keyboard. A drag from the sheet's bar follows the touch and closes the sheet, whether or not a
      field has focus. When nothing is being typed in, a drag from anywhere at the sheet's top does the same. A date
      field that kept the focus does not block it. If the phone cancels the touch mid-drag, the sheet goes back up. */
-  const { touch, touchDrag } = await finger(page);
+  const { tap, touch, touchDrag } = await finger(page);
   await step('a-touch-in-a-text-field-never-slides-the-sheet-and-its-bar-always-does', async () => {
     const t = await make(`Pocket smoke sheet slide ${stamp}`, {
       due_date: todayAt(23),
@@ -3326,6 +3415,182 @@ try {
       for (const t of [late, a, b, c]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
+  /* Open date chips hold the batch, as a finger does. Removing a moved row's gap shortens the page, and at the bottom
+     of a long Today the scroll that causes would close the chips. */
+  /* A row's labels are buttons on a line of their own under its title. A swipe or a hold that starts on a label still
+     moves the row, and a tap beside the labels opens the task. */
+  await step('a-rows-labels-are-buttons-and-the-row-still-swipes-and-holds-from-them', async () => {
+    const l = await (
+        await api('/labels', { method: 'POST', headers: json, body: JSON.stringify({ title: `errands${stamp}` }) })
+      ).json(),
+      a = await make(`Pocket smoke labelled A ${stamp}`, { due_date: dayAt(1, 12) }),
+      b = await make(`Pocket smoke labelled B ${stamp}`, { due_date: dayAt(20, 12) }),
+      R = rowOf(a.title),
+      LAB = `${R} > .labs > .lab`;
+    try {
+      for (const t of [a, b])
+        await api(`/tasks/${t.id}/labels`, { method: 'POST', headers: json, body: JSON.stringify({ label_id: l.id }) });
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(LAB)).toHaveText([l.title], { timeout: 15000 });
+      await loaded(page);
+      const h = await page.locator(R).evaluate(el => el.offsetHeight);
+      if (h < 96 || h > 100) throw new Error('a row with labels is ' + h + 'px tall, not 98');
+      // A tap on the label line, beside the label, opens the task
+      await page.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const k = await steady(page.locator(LAB));
+      await page.mouse.click(k.x + k.width + 60, k.y + k.height / 2);
+      await expect(page.locator('#sheet')).toBeVisible();
+      await page.click('#btn-sheet-close');
+      await page.waitForSelector('#sheet', { state: 'hidden' });
+      // Beside the labels, from the label out to the row's right edge under the "+ me" slot, a tap reaches the body.
+      // The spot at the edge is 14px in, since the last row's corner is cut round by the list's 14px radius.
+      const missed = sel =>
+        page.locator(sel).evaluate(row => {
+          const k = row.querySelector(':scope > .labs > .lab:last-child').getBoundingClientRect(),
+            r = row.getBoundingClientRect(),
+            body = row.querySelector(':scope > button.body');
+          return [k.right + 4, r.right - 14]
+            .flatMap(x => [r.bottom - 11, r.bottom - 2].map(y => [x, y]))
+            .map(([x, y]) => [x, y, document.elementFromPoint(x, y)])
+            .filter(([, , el]) => !body.contains(el))
+            .map(([x, y, el]) => [
+              Math.round(x - r.left),
+              Math.round(y - r.top),
+              el && el.tagName + '.' + [...el.classList].join('.'),
+              row.className,
+              Math.round(r.width) + 'x' + Math.round(r.height),
+            ]);
+        });
+      const besideOpens = async sel => {
+        await page.locator(sel).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        await steady(page.locator(sel));
+        const off = await missed(sel);
+        if (off.length)
+          throw new Error(sel + ': beside the labels, a tap at ' + JSON.stringify(off) + ' misses the body');
+      };
+      await besideOpens(R);
+      // The same holds on the project's list, where the rows have other rows above and below them
+      await page.evaluate(id => {
+        location.hash = '#/project/' + id;
+      }, a.project_id);
+      await expect(page.locator(`#view ${rowOf(b.title)} > .labs > .lab`)).toHaveText([l.title], { timeout: 15000 });
+      for (const t of [a, b]) await besideOpens(`#view ${rowOf(t.title)}`);
+      await page.click('nav.tabs a[data-tab=today]');
+      await expect(page.locator(LAB)).toBeVisible();
+      await page.locator(R).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await swipeRow(page, R, 50, { from: '> .labs > .lab' });
+      await synced(page);
+      if (Math.round((await get(a.id)).percent_done * 100) !== 50)
+        throw new Error('a swipe from the label saved ' + (await get(a.id)).percent_done);
+      await holdOnToday(LAB);
+      await page.mouse.up();
+      await expect(page.getByRole('dialog', { name: `Move “${a.title}” to another day` })).toBeVisible();
+      await page.keyboard.press('Escape');
+      // Tapping the label narrows Today to it. The bar says so, the one group left counts only its task, and Move all
+      // to today is hidden. Show all, or leaving Today, shows every task again.
+      const narrow = async () => {
+        await page.locator(LAB).click();
+        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^Only\\s*\\*${l.title}\\s*Show all$`));
+      };
+      await narrow();
+      await expect(page.locator('#view .list > .row, #view .item > .row')).toHaveCount(1);
+      await expect(page.locator('#view .sec .n')).toHaveText(['1']);
+      await expect(page.locator('#btn-overdue-today')).toHaveCount(0);
+      await page.click('#btn-show-all');
+      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('#view .sec').first()).toBeVisible();
+      if ((await page.locator('#view .list > .row, #view .item > .row').count()) < 2)
+        throw new Error('Show all left one row');
+      await narrow();
+      await page.click('nav.tabs a[data-tab=projects]');
+      await page.click('nav.tabs a[data-tab=today]');
+      await expect(page.locator(R)).toBeVisible();
+      await expect(page.locator('.only-bar')).toHaveCount(0);
+      // With nothing this week left with the label, Today says so and offers a search for it
+      await narrow();
+      await api(`/tasks/${a.id}/labels/${l.id}`, { method: 'DELETE' });
+      await page.click('#btn-refresh');
+      await expect(page.locator('#view .empty > b')).toHaveText(`Nothing due this week has *${l.title}.`);
+      await expect(page.locator('#view .empty > span')).toHaveText('Search finds the tasks due later or with no date.');
+      // The search lists the open tasks with the label, under their project's name, which the rows leave out
+      await page.getByRole('button', { name: `Search *${l.title}` }).click();
+      await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
+      const home = await (await api('/projects/' + b.project_id)).json(),
+        found = async () => {
+          await expect(page.locator('#view .sec > .n')).toHaveText(['1'], { timeout: 15000 });
+          await expect(page.locator('#view .sec > span').first()).toHaveText(home.title);
+          await expect(page.locator('#view .sec > .sec-dot')).toHaveCount(1);
+          await expect(page.locator(`#view ${rowOf(b.title)}`)).toBeVisible();
+          await expect(page.locator(`#view ${rowOf(b.title)} .meta .dot`)).toHaveCount(0);
+        };
+      await found();
+      // Typing * offers the labels that match what follows. Tapping one searches for it.
+      await page.fill('#in-search', '*' + l.title.slice(0, 8));
+      const chip = page.locator('.search-chips .chip', { hasText: '*' + l.title });
+      // A tap 21px above or below the chip's middle still reaches it, so its tap area is 44px tall.
+      const reach = await chip.evaluate(c => {
+        const r = c.getBoundingClientRect(),
+          x = r.left + r.width / 2,
+          y = r.top + r.height / 2;
+        return [y - 21, y + 21].map(at => c.contains(document.elementFromPoint(x, at)));
+      });
+      if (reach.includes(false)) throw new Error('a label under search has a tap area under 44px: ' + reach);
+      await chip.click();
+      await expect(page.locator('#in-search')).toHaveValue('*' + l.title);
+      await found();
+      await page.fill('#in-search', `*nolabel${stamp}`);
+      await expect(page.locator('#view .empty > b')).toHaveText(`No label is called “nolabel${stamp}”.`);
+      await page.click('#btn-search-cancel');
+      await expect(page.locator('.only-bar')).toHaveCount(0);
+    } finally {
+      for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' });
+      await api('/labels/' + l.id, { method: 'DELETE' });
+    }
+  });
+  await step('a-hold-on-today-keeps-the-batch-waiting-while-its-dates-are-open', async () => {
+    const ts = [];
+    for (let i = 0; i < 14; i++)
+      ts.push(
+        await make(`Pocket smoke wait ${String(i).padStart(2, '0')} ${stamp}`, { due_date: dayAt(6, 23, 40 + i) }),
+      );
+    const menu = t => page.getByRole('dialog', { name: `Move “${t.title}” to another day` });
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(rowOf(ts.at(-1).title))).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      await flickOnToday(rowOf(ts[0].title), 50, 4, 'tomorrow');
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toBeVisible();
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      if (!(await page.evaluate(() => scrollY > 0))) throw new Error('Today is too short to scroll');
+      // The row nearest the middle of the screen, so neither the header nor the add box is under the touch.
+      const mid = await page.evaluate(
+        titles =>
+          titles
+            .map(t => [...document.querySelectorAll('#view .row')].find(r => r.innerText.includes(t)))
+            .map((r, i) => [i, Math.abs(r.getBoundingClientRect().top - innerHeight / 2)])
+            .sort((x, y) => x[1] - y[1])[0][0],
+        ts.map(t => t.title),
+      );
+      await holdOnToday(rowOf(ts[mid].title), { scroll: false });
+      await page.mouse.up();
+      await expect(menu(ts[mid]), 'the chips open').toBeVisible();
+      await later(5000);
+      await expect(menu(ts[mid]), 'the chips are still open after 5 seconds').toBeVisible();
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toBeVisible();
+      // Closing the chips lets the batch clear 3 seconds later.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await later(4000);
+      await expect(movedGap('Moved to Tomorrow', ts[0])).toHaveCount(0);
+      await synced(page);
+    } finally {
+      await page.mouse.up();
+      await page.keyboard.press('Escape');
+      for (const t of ts) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
   await step('a-hold-on-today-leaves-a-repeating-task-where-it-is-and-says-why', async () => {
     const r = await make(`Pocket smoke hold repeats ${stamp}`, { due_date: todayAt(21), repeat_after: 86400 }),
       R = rowOf(r.title);
@@ -3386,6 +3651,16 @@ try {
     // screen the test makes the screen even shorter if Today has so few tasks that the last row isn't next to the add box.
     const first = await make(`Pocket smoke hold first ${stamp}`, { due_date: new Date(2001, 0, 1, 9).toISOString() }),
       last = await make(`Pocket smoke hold last ${stamp}`, { due_date: dayAt(7, 23) });
+    // The touch near the first row's right end is on its claim slot. With someone else on the task, holding there is
+    // the row's own hold, not the people menu that holding "+ me" opens.
+    const seers = await (await api(`/projects/${home2}/users/search`)).json(),
+      other = (seers?.items || seers || []).find(u => u.id !== me2.id);
+    if (other)
+      await api(`/tasks/${first.id}/assignees`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ user_id: other.id }),
+      });
     // Done today's heading, under the last row once earlier tests have ticked tasks, would leave room below that row.
     // It is hidden here, so the last row sits by the add box.
     const noDone = await page.addStyleTag({ content: '#view .done-sec{display:none}' });
@@ -3396,8 +3671,8 @@ try {
       await expect(page.locator(rowOf(last.title))).toBeVisible({ timeout: 15000 });
       await loaded(page);
       for (const [t, top, fx] of [
-        [first, true, 0.9],
-        [last, false, 0.1],
+        [first, true, 0.78], // just left of where "+ me" sits, the furthest right a hold picks a date
+        [last, false, 0.2], // just right of the tick
       ]) {
         await page.evaluate(top => scrollTo(0, top ? 0 : document.documentElement.scrollHeight), top);
         if (!top) {
@@ -3432,6 +3707,21 @@ try {
           throw new Error(
             `${where}the chips didn't move onto the screen: their middle is ${midX},${midY}, the touch is ${at.x},${at.y}`,
           );
+        // The ring that stands for the thumb starts in the clear middle, away from the touch. Moving 30px towards the
+        // screen's middle lights the chip that way, and the ring moves the same 30px.
+        const ringAt = () =>
+          page.locator('.throw-ring').evaluate(async el => {
+            await Promise.all(el.getAnimations().map(a => a.finished.catch(() => {})));
+            const r = el.getBoundingClientRect();
+            return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)];
+          });
+        if (JSON.stringify(await ringAt()) !== JSON.stringify([Math.round(midX), Math.round(midY)]))
+          throw new Error(`${where}the ring starts at ${await ringAt()}, not in the middle at ${midX},${midY}`);
+        await page.mouse.move(at.x + (top ? -30 : 30), at.y, { steps: 4 });
+        await expect(dateChip(top ? 'today' : 'tomorrow')).toHaveClass(/\bon\b/);
+        await expect
+          .poll(ringAt, { message: where + 'the ring did not move as far as the touch' })
+          .toEqual([Math.round(midX + (top ? -30 : 30)), Math.round(midY)]);
         await page.mouse.move(at.x + 2, at.y + (top ? -40 : 40), { steps: 4 });
         await expect(dateChip(top ? 'week' : 'none')).toHaveClass(/\bon\b/);
         await page.mouse.move(at.x + 2, at.y + 2, { steps: 4 });
@@ -3523,6 +3813,80 @@ try {
       if (await page.$(`${B} .claim.mine`)) throw new Error("someone else's task shows as yours");
     } finally {
       for (const t of [a, b].filter(Boolean)) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+  /* Holding "+ me" opens a menu of the people who can see the task's project, and the date chips never appear. Lifting
+     the finger leaves it open. A tap outside closes it with no change, and tapping a person assigns them. Someone
+     else's picture does nothing. A short tap on "+ me" still assigns you, and a swipe that starts on it
+     still swipes the row. */
+  await step('holding-plus-me-offers-the-people-who-can-see-the-project', async () => {
+    const a = await make(`Pocket smoke people ${stamp}`, { due_date: todayAt(21) }),
+      A = rowOf(a.title),
+      menu = page.locator('.people-menu'),
+      people = async () => ((await get(a.id)).assignees || []).map(u => u.username);
+    const holdSlot = async () => {
+      await page.locator(A).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const box = await steady(page.locator(`${A} > .claim`)),
+        x = box.x + box.width / 2,
+        y = box.y + Math.min(box.height / 2, 28);
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await later(700);
+    };
+    try {
+      await toastGone();
+      await refreshToday();
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible({ timeout: 15000 });
+      await loaded(page);
+      await holdSlot();
+      await expect(menu).toBeVisible();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await page.mouse.up();
+      await expect(menu).toBeVisible();
+      const home = projects2.find(p => p.id === home2)?.title;
+      await expect(menu.locator('.people-head')).toHaveText(`People who can see ${home}`);
+      const items = menu.getByRole('menuitemcheckbox');
+      await expect(items.first().locator('.people-name')).toHaveText(new RegExp(`^Me\\s*@${me2.username}$`));
+      await expect(items.filter({ hasText: '@carol' })).toHaveAttribute('aria-checked', 'false');
+      const box = await menu.boundingBox(),
+        row = await page.locator(A).boundingBox();
+      if (Math.abs(box.x + box.width - (row.x + row.width)) > 1 || Math.abs(box.y - (row.y + row.height + 6)) > 1)
+        throw new Error('the menu is not under the row, right-aligned: ' + JSON.stringify([box, row]));
+      await page.mouse.click(20, row.y - 40);
+      await expect(menu).toHaveCount(0);
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible();
+      // Tapping carol assigns her, and her picture replaces "+ me". Holding her picture does nothing, because a hold
+      // picks a date only between the tick and the slot.
+      await holdSlot();
+      await page.mouse.up();
+      await items.filter({ hasText: '@carol' }).click();
+      await expect(menu).toHaveCount(0);
+      await expect(page.locator(`${A} > .claim .av`)).toHaveText('C');
+      await synced(page);
+      if (JSON.stringify(await people()) !== '["carol"]') throw new Error('assigned to ' + (await people()));
+      await holdSlot();
+      await expect(page.locator('.throw')).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
+      await page.mouse.up();
+      await api(`/tasks/${a.id}/assignees/${(await get(a.id)).assignees[0].id}`, { method: 'DELETE' });
+      await refreshToday();
+      // A swipe from "+ me" opens the row on its Delete, and a tap on the row closes it. Then a tap on "+ me" assigns you.
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible({ timeout: 15000 });
+      await swipeRow(page, A, 'open', { from: '> .claim' });
+      await page.waitForSelector(`${A}.swiped`);
+      await expect(menu).toHaveCount(0);
+      const open = await page.locator(A).boundingBox();
+      await page.mouse.click(open.x + open.width / 2, open.y + open.height / 2);
+      await expect(page.locator(`${A}.swiped`)).toHaveCount(0);
+      await expect(page.locator('#sheet')).toBeHidden();
+      await page.locator(`${A} > .claim`).click();
+      await expect(page.locator(`${A} > .claim.mine .av`)).toBeVisible();
+      await expect(menu).toHaveCount(0);
+      await synced(page);
+      if (JSON.stringify(await people()) !== JSON.stringify([me2.username]))
+        throw new Error('after a tap, assigned to ' + (await people()));
+    } finally {
+      await api('/tasks/' + a.id, { method: 'DELETE' });
     }
   });
   /* The sheet's own row claims a task when swiped, as a list row does, because the same rule applies everywhere. So
@@ -3662,9 +4026,9 @@ try {
         page.locator(`${rowOf(theirs.title)} .claim[aria-disabled=true] .av`),
         "the other assignee's picture isn't shown",
       ).toBeVisible();
-    // Under Today the row shows no time, and only the project's dot at its right. The project's list says Today.
-    await expect(page.locator(`.sec.today ~ .list ${D} .when .dot`)).toHaveCount(1);
-    await expect(page.locator(`${D} .when .due`)).toHaveCount(0);
+    // Under Today the row shows no time, only the project. The project's list says Today.
+    await expect(page.locator(`.sec.today ~ .list ${D} .meta .dot`)).toHaveCount(1);
+    await expect(page.locator(`${D} .meta .due`)).toHaveCount(0);
     // Sliding sets the progress, and no one is assigned.
     await page.locator(F).evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await slideProgress(F, 25, async () => {
@@ -3684,6 +4048,83 @@ try {
     await page.evaluate(() => {
       location.hash = '#/today';
     });
+  });
+  /* Vikunja's user search lists the user's own bots on every project, but Vikunja assigns a bot only where it has
+     access. So a project shared with no one has no "+ me", even when the user owns a bot, and a project shared with the
+     bot offers it. When the share is removed after Pocket loaded it, Vikunja refuses the assignment, and the change
+     leaves the Outbox with the reason. An API token can't make bots, so this step signs in. */
+  await step('your-own-bot-is-offered-only-where-it-can-see', async () => {
+    const session = (
+      await (
+        await fetch(SERVER + '/api/v2/login', {
+          method: 'POST',
+          headers: json,
+          body: JSON.stringify({ username: USER, password: PASSWORD }),
+        })
+      ).json()
+    ).token;
+    const bots = (path, init = {}) =>
+      fetch(SERVER + '/api/v2/user/bots' + path, {
+        ...init,
+        headers: { ...json, Authorization: 'Bearer ' + session },
+      });
+    const made = await bots('', {
+      method: 'POST',
+      body: JSON.stringify({ username: `bot-pocket-smoke-${stamp}`, name: 'Smoke bot' }),
+    });
+    if (!made.ok) return; // a Vikunja without bots
+    const bot = await made.json();
+    const proj = await (
+      await api('/projects', {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ title: `PocketSmokeBot${stamp}` }),
+      })
+    ).json();
+    createdProjects.push(proj.id);
+    const a = await make(`Pocket smoke bot ${stamp}`, { due_date: todayAt(21) }, proj.id),
+      A = rowOf(a.title),
+      menu = page.locator('.people-menu'),
+      item = menu.getByRole('menuitemcheckbox').filter({ hasText: '@' + bot.username });
+    try {
+      await toastGone();
+      await page.evaluate(() => {
+        location.hash = '#/today';
+      });
+      await page.reload(); // reload so Pocket loads who can see each project
+      await expect(page.locator(A)).toBeVisible({ timeout: 15000 });
+      await expect(page.locator(`${A} .claim`), 'your bot gives a project shared with no one "+ me"').toHaveCount(0, {
+        timeout: 20000,
+      });
+      await api(`/projects/${proj.id}/users`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ username: bot.username, permission: 1 }),
+      });
+      await page.reload();
+      await loaded(page);
+      // "+ me" shows once Pocket knows who can see the project. Until then a hold on the slot opens no menu.
+      await expect(page.locator(`${A} > .claim .me`)).toBeVisible({ timeout: 15000 });
+      const box = await steady(page.locator(`${A} > .claim`));
+      await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 28));
+      await page.mouse.down();
+      // Lift only once the menu is open. On a busy machine the hold can register late, and lifting first is a tap.
+      await expect(menu).toBeVisible();
+      await page.mouse.up();
+      // Your bot is in every project's user search, so Pocket checks which projects it can see. With many projects
+      // that takes a while.
+      await expect(item, 'a project shared with your bot offers it').toBeVisible({ timeout: 30000 });
+      await api(`/projects/${proj.id}/users/${bot.username}`, { method: 'DELETE' });
+      refused.add(`${SERVER}/api/v1/plugins/pocket/v2/tasks/${a.id}/assignees/bulk`);
+      await item.click();
+      await toast(page, `Smoke bot can't see the task's project`);
+      await synced(page);
+      const left = await outboxOf(page);
+      if (left.length) throw new Error('the refused change stays in the Outbox: ' + JSON.stringify(left));
+      if ((await get(a.id)).assignees?.length) throw new Error('the bot was assigned');
+    } finally {
+      await bots('/' + bot.id, { method: 'DELETE' });
+    }
   });
   /* The one-time hint appears on a phone that has never swiped a row. It sits on the first row that takes a swipe for
      its progress and is drawn with that row, so no row moves when it appears. It also leaves without moving any row,
@@ -4036,6 +4477,9 @@ try {
       await toastGone();
       await refreshToday();
       await page.waitForSelector(`.sec.today ~ .list ${rowOf(t)}`, { timeout: 15000 });
+      // The load can scroll the page. Rows then stay where they are until 3 seconds after the scroll stops, and the
+      // highlight is gone before the row reaches Overdue. So wait for the scroll to stop before moving the clock.
+      await page.evaluate(() => Alpine.$data(document.body).untouched());
       // Move the page's clock past the due time instead of waiting for it. Vikunja stores the time in whole seconds, so
       // the task can be due up to a second before `due`.
       await page.clock.fastForward(
@@ -4339,7 +4783,7 @@ try {
       reminders: [{ reminder: todayAt(8) }],
     });
     const R = page.locator(rowOf(r.title)),
-      due = () => R.locator('.when .due').textContent();
+      due = () => R.locator('.meta .due').textContent();
     try {
       await toastGone();
       await refreshToday();
@@ -4599,7 +5043,7 @@ try {
     };
     const R = `#view .row[data-id="${r.id}"]`,
       rowTitle = page.locator(`${R} > .body .title > span:not(.sr)`).first(),
-      bars = page.locator(`${R} .when .bars`);
+      bars = page.locator(`${R} .meta .bars`);
     try {
       await toastGone();
       await refreshToday();
@@ -5443,8 +5887,7 @@ ${footName('Hooks')}`);
     await expect(page.locator('#view .aimed')).toHaveCount(0);
     // A tap with a touch still opens the sheet. Closing the sheet leaves the box where it is, at the bottom.
     const b = await steady(page.locator(Fuel + ' > .body'));
-    await touch('touchStart', b.x + b.width / 2, b.y + b.height / 2);
-    await touch('touchEnd', 0, 0);
+    await tap(b.x + b.width / 2, b.y + b.height / 2);
     await page.waitForSelector('#sheet .row.own');
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -5801,14 +6244,17 @@ ${footName('Hooks')}`);
       navigator.share = undefined;
     });
     // The Markdown list uses quick add's syntax, so pasting it back recreates the task. The task is a heading without
-    // a percentage, because the percentage is worked out from the subtasks. Each subtask is a line.
+    // a percentage, because the percentage is worked out from the subtasks. Its notes follow " // ", with each more
+    // line of them indented under it. Each subtask is a line.
     await (await menu()).getByRole('menuitem', { name: 'Copy as a Markdown list' }).click();
     await placeSays(page, 'sheet:top', 'Copied as a Markdown list');
     await expect
       .poll(clip)
       .toBe(
         [
-          `## Pack the van ${stamp}`,
+          `## Pack the van ${stamp} // Bring the long cable`,
+          '  //',
+          '  // Keys in the office',
           '- [x] Load chairs',
           '- [ ] Tables (50%)',
           `- [ ] Sound system @${me.username}`,
@@ -5860,7 +6306,9 @@ ${footName('Hooks')}`);
       .toBe(
         [
           `# PocketSmokeShare${stamp} · 5 open · 1 done`,
-          `- [ ] Pack the van ${stamp}`,
+          `- [ ] Pack the van ${stamp} // Bring the long cable`,
+          '  //',
+          '  // Keys in the office',
           '  - [ ] Tables (50%)',
           `  - [ ] Sound system @${me.username}`,
           '  - [ ] Lights',
@@ -5876,8 +6324,8 @@ ${footName('Hooks')}`);
     await expect.poll(clip).toBe(await page.evaluate(() => window.shared[0].text));
   });
   /* A copied task can be pasted back. Its Markdown, pasted into quick add's box, makes the same task again with the
-     same subtasks, including whether each is done, how far along it is and who is assigned. The percentage is not
-     written in the copy, so it is worked out again as 38%. */
+     same subtasks, including whether each is done, how far along it is and who is assigned, and the same notes. The
+     percentage is not written in the copy, so it is worked out again as 38%. */
   await step('a-tasks-copy-pasted-into-quick-add-makes-the-same-tasks', async () => {
     if (!vanCopy) throw new Error("no copy to paste: the step before didn't get that far");
     const title = `Pack the van ${stamp}`;
@@ -5897,13 +6345,10 @@ ${footName('Hooks')}`);
     await expect(
       page.locator('#cap-chips .chip', { hasText: 'The # line is the list’s name, so it is left out' }),
     ).toBeVisible();
-    if (!(await page.textContent('#cap-chips')).includes('2 tasks + 3 subtasks'))
-      throw new Error("chips for a project's copy: " + (await page.textContent('#cap-chips')));
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
     await page.fill('#in-capture', vanCopy);
-    await expect(page.locator('#cap-nest')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
-    if (!(await page.textContent('#cap-chips')).includes('1 task + 4 subtasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
+    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 done');
+    await expect(pickedWay()).toHaveText('1 task + 4 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(title)} > .card-head > .ring .n`)).toHaveText('1/4', { timeout: 20000 });
     await synced(page);
@@ -5915,6 +6360,9 @@ ${footName('Hooks')}`);
     try {
       if ((await shape(twin.id)) !== (await shape(vanId)))
         throw new Error(`the copy's subtasks ${await shape(twin.id)}, the original's ${await shape(vanId)}`);
+      const notes = (await get(twin.id)).description;
+      if (notes !== '<p>Bring the long cable</p><p>Keys in the office</p>')
+        throw new Error("the copy's notes: " + notes);
       await expect.poll(async () => Math.round((await get(twin.id)).percent_done * 100)).toBe(38);
     } finally {
       for (const t of made) await api('/tasks/' + t.id, { method: 'DELETE' });
@@ -5934,7 +6382,7 @@ ${footName('Hooks')}`);
       headers: json,
       body: JSON.stringify({ title: `Instant renamed ${stamp}` }),
     });
-    // Today's lists answer late. Meanwhile Pocket shows the saved copy, with no Loading message.
+    // Today's lists answer late. Meanwhile Pocket shows the saved copy, with no grey rows.
     let answer;
     const late = new Promise(ok => {
       answer = ok;
@@ -5947,7 +6395,7 @@ ${footName('Hooks')}`);
     try {
       await page.click('nav.tabs a[data-tab=today]');
       await expect(page.locator(rowOf(`Instant ${stamp}`))).toBeVisible();
-      await expect(page.locator('#view .loading')).toHaveCount(0);
+      await expect(page.locator('#view .skel-row')).toHaveCount(0);
       await page.locator(rowOf(`Instant ${stamp}`)).evaluate(el => {
         el.dataset.mark = 'kept';
       });
@@ -6094,9 +6542,10 @@ ${footName('Hooks')}`);
       // space, whereas a plain row next to the card has one.
       await expect(card.locator('.card-open > .dot')).toHaveCount(1);
       await expect(line.locator('.dot')).toHaveCount(0);
-      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .dot`)).toHaveCount(1);
-      // Due times are written short, "11p" where the phone writes "11:00 PM", and "11:59p" for "11:59 PM". This applies
-      // to the card's header, its row and a plain row. A screen reader announces the time in full.
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .meta .dot`)).toHaveCount(1);
+      // On a card, due times are written short, "11p" where the phone writes "11:00 PM", and "11:59p" for "11:59 PM".
+      // This applies to the card's header and its row. A plain row has the time in full. A screen reader announces the
+      // time in full.
       const clock = (p, h, m) =>
         p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), todayAt(h, m));
       const [at23, at2359] = [await clock(page, 23), await clock(page, 23, 59)];
@@ -6104,9 +6553,7 @@ ${footName('Hooks')}`);
         throw new Error(`${at23} and ${at2359} shorten to ${shortTime(at23)} and ${shortTime(at2359)}`);
       await expect(card.locator('.card-head .due')).toHaveText(shortTime(at2359));
       await expect(line.locator('.when .due')).toHaveText(shortTime(at2359));
-      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .when .due`)).toHaveText(
-        shortTime(at2359),
-      );
+      await expect(page.locator(`.item > .row:has(.title:has-text("${Q.title}")) .meta .due`)).toHaveText(at2359);
       await expect(card.locator('.card-head .sr')).toContainText('Today ' + at2359);
       await expect(line.locator('.title')).toContainText('Today ' + at2359);
       // On a phone with a 24-hour clock, the time is written the way that phone writes it, such as "23:59".
@@ -6173,28 +6620,15 @@ ${footName('Hooks')}`);
       if (zones.wrong.length) throw new Error('taps land elsewhere: ' + zones.wrong.join('; '));
       if (Object.values(zones.widths).some(w => w < 48) || zones.height < 48)
         throw new Error('a touch target is under 48px: ' + JSON.stringify(zones));
-      // Today's assignee slot is as wide as "+ me" needs, 74px with 8px of padding before it, on a card's row and a plain
-      // row alike. That way whatever comes before it, a time or a dot, ends in one vertical line down the list.
-      const slotOf = R =>
-        R.evaluate(el => {
-          const c = el.querySelector(':scope > .claim'),
-            s = getComputedStyle(c),
-            w = el.querySelector('.when');
-          return {
-            min: s.minWidth,
-            before: s.paddingLeft,
-            width: c.getBoundingClientRect().width,
-            when: w ? Math.round((el.getBoundingClientRect().right - w.getBoundingClientRect().right) * 2) / 2 : null,
-          };
-        });
-      const slots = [await slotOf(line), await slotOf(page.locator(`.item > .row:has(.title:has-text("${Q.title}"))`))];
-      for (const s of slots)
-        if (s.min !== '74px' || s.before !== '8px' || s.width < 74 || s.width > 84)
-          throw new Error("Today's slot isn't 74px, with 8px before it: " + JSON.stringify(slots));
-      if (slots[0].when === null || slots[0].when !== slots[1].when)
-        throw new Error(
-          "the time on a card's row and the dot on a plain row don't end in one line: " + JSON.stringify(slots),
-        );
+      // A card's assignee slot is as wide as "+ me" needs, 74px with 8px of padding before it. That way the times
+      // before it end in one vertical line down the card.
+      const slot = await line.evaluate(el => {
+        const c = el.querySelector(':scope > .claim'),
+          s = getComputedStyle(c);
+        return { min: s.minWidth, before: s.paddingLeft, width: c.getBoundingClientRect().width };
+      });
+      if (slot.min !== '74px' || slot.before !== '8px' || slot.width < 74 || slot.width > 84)
+        throw new Error("A card's slot isn't 74px, with 8px before it: " + JSON.stringify(slot));
       const rowTick = await page
         .locator(`.item > .row:has(.title:has-text("${Q.title}"))`)
         .evaluate(
@@ -6622,7 +7056,7 @@ ${footName('Hooks')}`);
         await page.click('nav.tabs a[data-tab=today]');
         await expect(stepTitle(P.title)).toHaveText(X.title);
         await expect(page.locator(`${stepLine(P.title)} .claim`)).toBeVisible();
-        await expect(page.locator('#view .loading')).toHaveCount(0);
+        await expect(page.locator('#view .skel-row')).toHaveCount(0);
         await expect(page.locator('#view')).toHaveAttribute('aria-busy', 'true');
       } finally {
         answer();
@@ -6642,7 +7076,7 @@ ${footName('Hooks')}`);
     ).json();
     createdProjects.push(proj.id);
     await make(long, { due_date: todayAt(23) }, proj.id);
-    // Finds elements on screen that reach past the right edge. It skips text inside a one-line title, which is cut short.
+    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line.
     const past = () =>
       page.evaluate(() => {
         const w = document.documentElement.clientWidth;
@@ -6651,7 +7085,7 @@ ${footName('Hooks')}`);
             el =>
               el.offsetParent !== null &&
               el.getBoundingClientRect().right > w + 1 &&
-              !el.parentElement.closest('.one-line .title, .card-title'),
+              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title'),
           )
           .map(
             el =>
@@ -6976,7 +7410,7 @@ ${footName('Hooks')}`);
     await page.waitForFunction(() => document.querySelector('#in-capture').value === 'Buy milk friday');
   });
   if (errors.length) {
-    failed++;
+    steps.failed++;
     console.log('FAIL console errors:', errors);
   }
 } finally {
@@ -7000,5 +7434,4 @@ ${footName('Hooks')}`);
     }
 }
 
-console.log(failed ? `${failed} failed` : 'All passed');
-process.exitCode = failed ? 1 : 0;
+steps.end();

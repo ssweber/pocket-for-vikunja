@@ -11,6 +11,7 @@ import {
   throwFlick,
   throwLayout,
   throwPick,
+  throwSpan,
   throwTargets,
 } from '../../src/js/throw.js';
 
@@ -235,6 +236,17 @@ test('the chips stay on the screen for a row at the top and at the bottom, by mo
   assert.ok(
     Math.min(...squeezed.targets.map(t => box(squeezed, t)[2])) >= phone.top + THROW.margin,
     'with too little space, such as when the keyboard is open, the chips still clear the header',
+  );
+});
+
+test('a hold picks a date between the tick and the "+ me" slot, and leaves the slot\'s width out on a row without one', () => {
+  const row = { left: 0, right: 390 };
+  assert.deepEqual(throwSpan(row, { right: 56 }, { left: 318 }), { left: 56, right: 318 });
+  assert.deepEqual(throwSpan(row, { right: 56 }, undefined), { left: 56, right: 324 });
+  assert.deepEqual(
+    throwSpan(row, undefined, undefined),
+    { left: 0, right: 324 },
+    'a row with no tick starts at its left edge',
   );
 });
 

@@ -3,7 +3,8 @@
 import { component, outboxOf } from './fake.mjs';
 import { watching } from './reactive.mjs';
 import sending from '../../src/js/app/sending.js';
-import tasks, { started, TASK } from '../../src/js/app/tasks.js';
+import tasks, { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import views from '../../src/js/app/views.js';
@@ -277,13 +278,56 @@ test("the sheet's own row shows only the due date, priority, repeat and upcoming
   };
   assert.deepEqual(
     app.rowMeta(t, { depth: {} }).map(m => m.key),
-    ['due', 'prio', 'p', 'up', 'l1', 'rep', 'com', 'att', 'rem'],
-    'a row on Today shows every item',
+    ['due', 'prio', 'p', 'up', 'rep', 'com', 'att', 'rem'],
+    'a row on Today shows every item but its labels, which have a line of their own',
   );
   assert.deepEqual(
     app.rowMeta(t, SHEET_ROW).map(m => m.key),
     ['due', 'prio', 'rep', 'rem'],
   );
+});
+
+test('a row shows the notes icon for notes, but not for an empty description or a line of Pocket’s alone', () => {
+  const app = component(views),
+    row = description => app.rowNotes({ id: 5, description }, { depth: {} });
+  assert.equal(row('<p>Use the blue cloths</p>'), true);
+  assert.equal(row('<p><img src="a.png"></p>'), true, 'a picture alone is notes');
+  assert.equal(row('<p>pocket:order 3 1 2</p><p>Ask at the bar</p>'), true);
+  for (const d of [
+    undefined,
+    '',
+    '<p></p>',
+    '<p>&nbsp;</p><p><br></p>',
+    '<p>pocket:order 3 1 2</p>',
+    '<p>pocket:run</p>',
+  ])
+    assert.equal(row(d), false, String(d));
+  const t = { id: 5, description: '<p>Use the blue cloths</p>' };
+  assert.equal(app.rowNotes(t, { depth: {}, sheet: true }), true, 'a subtask in its parent’s sheet');
+  assert.equal(app.rowNotes(t, SHEET_ROW), false, 'the sheet shows its own notes under the row');
+  assert.equal(app.rowNotes(t, { top: true }), false);
+  assert.equal(app.rowNotes(t, RUN), false);
+  assert.equal(
+    app.rowNotes(t, { depth: {}, sheet: true, step: true }),
+    false,
+    'a template step shows its first line of notes',
+  );
+});
+
+test("a row's labels have a line of their own, without template, and a checklist's steps show none", () => {
+  const app = component(views),
+    errands = { id: 1, title: 'errands' },
+    t = { id: 5, labels: [errands, { id: 2, title: 'Template' }] };
+  app.stepRun = x => (x.id === 6 ? 4 : null);
+  assert.deepEqual(app.rowLabels(t), [errands]);
+  const none = app.rowLabels({ id: 3, labels: [] });
+  assert.deepEqual(none, []);
+  assert.equal(
+    app.rowLabels({ id: 3 }),
+    none,
+    'every row without labels gets the same list, so it has nothing to redraw',
+  );
+  assert.deepEqual(app.rowLabels({ ...t, id: 6 }), [], 'a step of a checklist');
 });
 
 test("under a step's title the row shows Inserted or Repeated, the latest comment, its files and a countdown until it is done", () => {
@@ -611,11 +655,13 @@ test('a touch that moves past the swipe threshold on a slant and then stops does
     (win[type] ||= []).push(fn);
   };
   globalThis.getSelection = () => null;
+  globalThis.Alpine = { $data: el => el.scope };
   navigator.vibrate = p => felt.push(p);
   c.after(() => {
     delete document.addEventListener;
     delete globalThis.addEventListener;
     delete globalThis.getSelection;
+    delete globalThis.Alpine;
     delete navigator.vibrate;
   });
   app.holdToSlide(area, () => ({ el: row, reorder: { start() {}, move() {}, end() {} } }));
@@ -669,6 +715,44 @@ test('a checklist step swipes for progress like a task, and only an inserted ste
   assert.equal(at(4), null, 'a step waiting to be sent allows only a tap');
   app.runView.finished = true;
   assert.equal(at(1), null, "a finished checklist's steps do not swipe");
+});
+
+/* A step that can't be ticked yet (stepLock) springs back from a swipe right, on a checklist's screen and in
+   any list, and nothing is set. */
+test("a step that can't be ticked yet springs back from a swipe, and its progress stays as it is", () => {
+  const app = component(progress),
+    set = [];
+  Object.assign(app, {
+    runView: { steps: [step({ id: 1, pct: 0 })], finished: false },
+    tasks: { 9: { id: 9, project_id: 1 } },
+    view: { shownRun: { id: 9 } },
+    lines: {},
+    leaving: {},
+    canWrite: () => true,
+    canTick: () => true,
+    canDelete: () => false,
+    isRunTask: () => false,
+    ringOf: () => null,
+    rowRing: () => null,
+    stepLock: t => (t.id === 1 ? { icon: 'hourglass', at: Date.now() + 6e4, from: 'Mix the dough' } : null),
+    claimOnSlide: () => () => set.push('claim'),
+    stepProgress: (s, pct) => set.push(['step', pct]),
+    setProgress: (t, pct) => set.push(['task', pct]),
+  });
+  const row = id => ({ dataset: { id: String(id), gestures: '' }, clientWidth: 360, closest: () => null }),
+    onRun = app.stepSlide(row(1), { closest: () => null }),
+    onToday = app.rowGesture({ id: 1, percent_done: 0 }, row(1), false);
+  for (const s of [onRun, onToday]) {
+    assert.equal(s.springs, true);
+    s.finish(100);
+    s.finish(50);
+  }
+  assert.deepEqual(set, [], 'no progress, no tick and no claim');
+  assert.equal(
+    app.rowGesture({ id: 2, percent_done: 0 }, row(2), false).springs,
+    false,
+    'another task swipes as usual',
+  );
 });
 
 // Deleting a step added during a checklist asks for confirmation, from its × or from its row's Delete. A swipe asks
@@ -1319,6 +1403,84 @@ test('who can see each project is loaded, kept on the phone and loaded again lat
   );
 });
 
+/* Vikunja's search lists the user's own bots on every project, but Vikunja assigns a bot only where it owns the
+   project or a parent, or one of them is shared with it directly. Project 1 is the user's Inbox, 2 is shared with the
+   bot, 4 is under 3, which is shared with the bot, 5 is the bot's own, and 6's shares can't be read. */
+test("the user's own bot counts only on the projects it can see, and no more is asked when the search lists none", async () => {
+  const me = { id: 1, username: 'alex' },
+    bob = { id: 2, username: 'bob' },
+    bot = { id: 5, username: 'bot-claude', name: 'Claude', bot_owner_id: 1 },
+    projects = [
+      { id: 1, owner: me },
+      { id: 2, owner: me },
+      { id: 3, owner: me },
+      { id: 4, owner: me, parent_project_id: 3 },
+      { id: 5, owner: bot },
+      { id: 6, owner: bob },
+    ],
+    shared = { 1: [], 2: [bot], 3: [bot], 4: [], 5: [] },
+    asked = [];
+  let search = [me, bot];
+  const app = component(quickadd, claims);
+  Object.assign(app, {
+    user: me,
+    projects,
+    projById: new Map(projects.map(p => [p.id, p])),
+    access: {},
+    userKnown: {},
+    people: null,
+    seenBy: {},
+  });
+  globalThis.fetch = async url => {
+    const path = new URL(url).pathname.replace(/^\/api\/v2/, ''),
+      pid = +path.match(/projects\/(\d+)\//)[1];
+    asked.push(path);
+    if (path.endsWith('/search')) return new Response(JSON.stringify({ items: search }), { status: 200 });
+    return pid in shared
+      ? new Response(JSON.stringify({ items: shared[pid], total_pages: 1 }), { status: 200 })
+      : new Response('{"code":7002}', { status: 403 });
+  };
+  await app.loadPeople(true);
+  assert.deepEqual(app.seenBy, { 1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }, 'the Inbox counts as only the user');
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6].map(pid => app.access[pid + ':bot-claude']),
+    [false, true, true, true, true, true],
+    "the bot sees what is shared with it, a project under one, its own, and one whose shares can't be read",
+  );
+  assert.equal(app.onlyYou(1), true, 'so the Inbox shows no claim slot');
+  assert.deepEqual(
+    asked.filter(p => !p.endsWith('/search')),
+    [
+      '/projects/1/users',
+      '/projects/2/users',
+      '/projects/3/users',
+      '/projects/4/users',
+      '/projects/5/users',
+      '/projects/6/users',
+    ],
+    "each project's shares are read once",
+  );
+
+  Object.assign(app, { access: {} });
+  asked.length = 0;
+  assert.deepEqual(
+    [await app.canSee(1, 'Bot-Claude'), await app.canSee(4, 'bot-claude')],
+    [false, true],
+    '@bot-claude typed in an add box is checked the same way',
+  );
+  assert.equal(app.userKnown['bot-claude'], true, 'the bot is still known to exist');
+
+  search = [me, bob];
+  asked.length = 0;
+  await app.loadPeople(true);
+  assert.equal(await app.canSee(1, 'bob'), true);
+  assert.deepEqual(
+    asked.filter(p => !p.endsWith('/search')),
+    [],
+    'without an own bot in the search, no shares are read',
+  );
+});
+
 /* Holding a row or card on Today shows its dates around the touch point (app/throw.js). A card's row holds its card.
    A task that Move all to today leaves where it is shows every date dimmed, with a line saying why. A task the user
    can't change shows nothing. */
@@ -1372,18 +1534,21 @@ test('holding a row on Today shows its dates, but a repeating task, a template o
 });
 
 /* Runs a hold on a fake screen. holdToSlide (app/progress.js) drives the row's gesture (rowGesture, throwOf in
-   app/throw.js). throwView stands in for what is drawn, and `seen` records what it is told to show. When the dates are
+   app/throw.js). throwView stands in for what is drawn, and `seen` records what it is told to show. `rings` records
+   each move of the ring that stands for the thumb, as [dx, dy, whether a date is lit]. When the dates are
    left open to tap, `tap(id)` taps a date and `pickDay(day)` picks one in the phone's date picker. `moved` records
    the reschedule the hold ends in. `touch(x, y)` touches the row and waits until the hold registers. `to(x, y)`
    moves the touch, `up()` releases it, and `away()` is the phone cancelling the touch (pointercancel). `felt`
    records navigator.vibrate, which stands in for haptic(): 12 when the hold registers and 6 for each highlighted
-   date. The clock is set to Wednesday 7 October 2026, 2:20 PM. The task `t` (a test may change it between holds) was
-   due the morning before. */
+   date. `claim(can)` is a press on the row's claim slot, which `touch` takes as its third argument, and whoMenu
+   records the people menu it opens. The clock is set to Wednesday 7 October 2026, 2:20 PM. The task `t` (a test may
+   change it between holds) was due the morning before. */
 function heldOnToday(c) {
   c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 9, 7, 14, 20) });
   const app = component(progress, throwing),
     t = { id: 1, title: 'Call the plumber', project_id: 1, due_date: new Date(2026, 9, 6, 9).toISOString() };
   const seen = [],
+    rings = [],
     moved = [],
     felt = [],
     on = {},
@@ -1415,10 +1580,12 @@ function heldOnToday(c) {
     reschedule: (x, to) => {
       moved.push([x.id, to.label, to.due]);
     },
+    whoMenu: slot => seen.push(['people', slot.id]),
     throwView: (x, held, targets, why, px, py) => {
       seen.push(['drawn', why, px, py]);
       return {
         light: p => seen.push(['lit', p?.id ?? null]),
+        ring: (dx, dy, lit) => rings.push([dx, dy, lit]),
         close: () => seen.push(['closed']),
         open: (pick, picked) => {
           seen.push(['open']);
@@ -1433,11 +1600,13 @@ function heldOnToday(c) {
     (win[type] ||= []).push(fn);
   };
   globalThis.getSelection = () => null;
+  globalThis.Alpine = { $data: el => el.scope };
   navigator.vibrate = p => felt.push(p);
   c.after(() => {
     delete document.addEventListener;
     delete globalThis.addEventListener;
     delete globalThis.getSelection;
+    delete globalThis.Alpine;
     delete navigator.vibrate;
   });
   app.holdToSlide(area, () => app.rowGesture(t, row, false));
@@ -1458,16 +1627,22 @@ function heldOnToday(c) {
     app,
     t,
     seen,
+    rings,
     moved,
     felt,
     tap: id => tap(id),
     pickDay: day => choose(day),
-    touch(x = 180, y = 300) {
+    claim(can = true) {
+      const claim = { scope: { slot: { id: t.id, can } }, closest: () => row };
+      return { closest: sel => (sel.startsWith('.claim') ? claim : null) };
+    },
+    touch(x = 180, y = 300, target = undefined) {
       x0 = x;
       y0 = y;
       seen.length = 0;
+      rings.length = 0;
       felt.length = 0;
-      fire(on.pointerdown, { clientX: x, clientY: y });
+      fire(on.pointerdown, { clientX: x, clientY: y, ...(target && { target }) });
       c.mock.timers.tick(HOLD_MS);
     },
     to(dx, dy) {
@@ -1482,6 +1657,18 @@ function heldOnToday(c) {
   };
 }
 const oct = (d, h, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+
+// A row 16px to 374px across, with its tick out to 72px and its "+ me" slot from 308px.
+test('a hold on Today picks a date only between the tick and the "+ me" slot', () => {
+  const rect = (left, right) => ({ getBoundingClientRect: () => ({ left, right }) }),
+    row = {
+      ...rect(16, 374),
+      closest: () => row,
+      querySelector: sel => (sel.includes('.check') ? rect(16, 72) : sel.includes('.claim') ? rect(308, 374) : null),
+    },
+    from = x => component(throwing).throwOf({ id: 1, due_date: null }, row, null).from(row, x);
+  assert.deepEqual([40, 72, 200, 308, 340].map(from), [false, true, true, true, false]);
+});
 
 test('holding a row on Today draws its dates around the touch, and releasing on a date moves the task there', c => {
   const h = heldOnToday(c);
@@ -1502,6 +1689,15 @@ test('holding a row on Today draws its dates around the touch, and releasing on 
       [12, 6],
     ],
     'dragging right highlights Tomorrow and the phone vibrates',
+  );
+  assert.deepEqual(
+    h.rings,
+    [
+      [10, 2, false],
+      [20, 4, false],
+      [30, 4, true],
+    ],
+    'the ring moves as far as the touch, and shows when Tomorrow lights',
   );
   h.to(60, 10);
   assert.equal(h.seen.length, 2, 'dragging further the same way changes nothing and does not vibrate');
@@ -1567,6 +1763,7 @@ test('holding a row on Today never highlights or picks a date that changes nothi
     [['lit', null], [12]],
     'for a task due later today, dragging towards Today highlights nothing and does not vibrate',
   );
+  assert.deepEqual(h.rings.at(-1), [-40, 0, false], 'the ring moves with the touch, and the dimmed Today stays unlit');
   h.up();
   assert.deepEqual(h.moved, [], 'releasing there moves nothing');
   h.t.repeat_after = 86400;
@@ -1645,6 +1842,55 @@ test("a day picked in the phone's date picker moves the task there, but not to i
 
 /* The steps of a new template (app/checklists.js, sheet/sub-list.html) exist only as rows on the phone. They are
    written through the one box at the bottom of the list, and Vikunja knows nothing about them until Create template. */
+test('holding "+ me" or your own picture opens the people menu, and the date chips never appear', c => {
+  const h = heldOnToday(c);
+  h.touch(330, 300, h.claim());
+  assert.deepEqual(
+    [h.seen, h.felt],
+    [[['people', 1]], [12]],
+    'when the hold registers, the phone vibrates and the menu opens while the finger is down',
+  );
+  h.to(0, 40);
+  h.up();
+  assert.deepEqual([h.seen, h.moved], [[['people', 1]], []], 'moving and lifting the finger after that does nothing');
+  h.touch(330, 300, h.claim(false));
+  assert.deepEqual(h.seen, [['drawn', null, 330, 300]], "someone else's picture keeps the row's hold");
+});
+
+test("a press on a claim slot keeps the row's swipe and tap, and only its hold opens the people menu", () => {
+  const app = component(progress),
+    row = { id: 'row' },
+    claim = slot => ({ scope: { slot }, closest: () => row }),
+    on = el => ({ closest: sel => (sel === '.claim:not(.restore)' ? el : null) }),
+    menus = [];
+  globalThis.Alpine = { $data: el => el.scope };
+  app.whoMenu = slot => menus.push(slot.id);
+  const s = { el: row, swipe: 'delete', finish: () => {}, start: 0, reorder: { lift() {} } };
+  try {
+    const held = app.whoHold(on(claim({ id: 4, can: true })), s);
+    assert.deepEqual(
+      [held.el, held.swipe, held.finish, held.start, held.reorder === s.reorder],
+      [row, 'delete', s.finish, 0, false],
+      'a swipe from the slot still swipes the row',
+    );
+    held.reorder.lift();
+    assert.deepEqual(menus, [4], "holding opens the menu for the slot's task");
+    assert.equal(
+      app.whoHold(on(claim({ id: 4, can: false })), s),
+      s,
+      "someone else's picture keeps the row's gestures",
+    );
+    assert.equal(app.whoHold(on(null), s), s, 'a press elsewhere on the row keeps its gestures');
+    assert.deepEqual(
+      Object.keys(app.whoHold(on(claim({ id: 5, can: true })), null)),
+      ['el', 'reorder'],
+      'a slot on a row with no gestures of its own, as in search, still opens the menu',
+    );
+  } finally {
+    delete globalThis.Alpine;
+  }
+});
+
 test('in New template, each line from the add box becomes a step row after the row the box is under', () => {
   const app = component(checklists, quickadd, sheet);
   Object.assign(app, {
@@ -1698,6 +1944,45 @@ test('in New template, each line from the add box becomes a step row after the r
   assert.equal(app.stepShown(till).title, 'Count the till');
   till.ignore = { priority: true };
   assert.equal(app.stepShown(till).title, 'Count the till !4');
+});
+
+test("in New template, a folded list becomes one step whose notes are the other lines, and a time in them isn't read", () => {
+  const app = component(checklists, quickadd, sheet);
+  Object.assign(app, {
+    user: { settings: { frontend_settings: {} } },
+    projects: [],
+    sheet: {
+      kind: 'newtpl',
+      subAt: null,
+      stepEdit: null,
+      newTpl: { rows: [], project: { id: 7 }, add: { text: '', keep: false, from: null, ignore: {} } },
+    },
+    labels: [],
+    projById: new Map(),
+    canWrite: () => true,
+  });
+  const box = app.sheet.newTpl.add;
+  box.text = 'Preheat the oven in 10 min\nto 230°C\nfan off after 5 min';
+  app.tapChip(
+    'new:+',
+    app.listShapes('new:+').find(c => c.notes),
+  );
+  assert.deepEqual(
+    app.listShapes('new:+').map(c => [c.text, c.pressed]),
+    [
+      ['3 steps', false],
+      ['1 step + notes', true],
+    ],
+  );
+  assert.deepEqual(
+    app.marks('new:+').map(m => m.kind + ':' + box.text.slice(m.start, m.end)),
+    ['due:in 10 min', 'notes:to 230°C\nfan off after 5 min'],
+  );
+  app.sendSteps('new');
+  const [row] = app.sheet.newTpl.rows;
+  assert.equal(app.sheet.newTpl.rows.length, 1);
+  assert.equal(app.stepShown(row).title, 'Preheat the oven');
+  assert.deepEqual(app.draft('new').added, ['Preheat the oven T#10m // to 230°C\nfan off after 5 min']);
 });
 
 test('a finished checklist under Checklists shows when it finished, how many steps were skipped and how many comments it has', () => {

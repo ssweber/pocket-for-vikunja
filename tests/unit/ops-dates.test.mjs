@@ -5,7 +5,8 @@ import { sender, reached, lostOnce, noConnection, settle, offlineSender, lastSai
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPS } from '../../src/js/ops/index.js';
-import { started, TASK } from '../../src/js/app/tasks.js';
+import { started } from '../../src/js/app/tasks.js';
+import { TASK } from '../../src/js/tasks.js';
 import sheet from '../../src/js/app/sheet.js';
 import { sync, uuid7 } from '../../src/js/sync.js';
 import { UNKNOWN } from '../../src/js/messages.js';

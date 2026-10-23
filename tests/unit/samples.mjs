@@ -308,6 +308,22 @@ export const SAMPLES = {
     made: v => v.task(7).description === '<p>Use the probe</p><p>pocket:ask number °F</p>',
     cannot: ['partly done'],
   },
+  // Notes typed after " // " when a template step is edited go at the end of its notes, after its ask.
+  'edit, notes added': {
+    op: 'edit',
+    tasks: [task(7, 'Check the fridge', { description: '<p>Use the probe</p><p>pocket:ask number °C</p>' })],
+    fields: { op: 'edit', task: 7, rebase: 'addNotes', text: 'Wipe it after', run: null },
+    made: v => v.task(7).description === '<p>Use the probe</p><p>pocket:ask number °C</p><p>Wipe it after</p>',
+    cannot: ['partly done'],
+  },
+  // A template's "Enforce step times" is turned on, beside its order line.
+  'edit, settings': {
+    op: 'edit',
+    tasks: [task(7, 'Closing', { description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>' })],
+    fields: { op: 'edit', task: 7, rebase: 'rules', rules: { wait: true }, run: null },
+    made: v => v.task(7).description === '<p>Lock the back door too.</p><p>pocket:order 8 9</p><p>pocket:wait</p>',
+    cannot: ['partly done'],
+  },
   // The checklist's second step moves up, in its order line.
   'edit, order': {
     op: 'edit',
@@ -323,7 +339,8 @@ export const SAMPLES = {
     cannot: ['partly done'],
   },
   /* A checklist started from template 7, with its two steps, at the time the template was due, so the template moves
-     on to the next day. In the randomized test, task `t` is the template, with steps 2 and 3 when it is the checklist. */
+     on to the next day. The checklist gets a copy of the template's settings. In the randomized test, task `t` is the
+     template, with steps 2 and 3 when it is the checklist. */
   startRun: {
     labels: [TEMPLATE],
     tasks: [
@@ -331,7 +348,7 @@ export const SAMPLES = {
         labels: [TEMPLATE],
         due_date: D9,
         repeat_after: 86400,
-        description: '<p>Lock the back door too.</p><p>pocket:order 8 9</p>',
+        description: '<p>Lock the back door too.</p><p>pocket:in-order</p><p>pocket:order 8 9</p>',
         related_tasks: { subtask: [{ id: 8 }, { id: 9 }] },
       }),
       task(8, 'Mop the floor', { related_tasks: { parenttask: [{ id: 7 }] } }),
@@ -363,7 +380,8 @@ export const SAMPLES = {
         run.title.endsWith(' · #1') &&
         !run.labels.length &&
         run.assignees.some(u => u.id === ME.id) &&
-        run.description === '<p>Lock the back door too.</p><p>pocket:run</p><p>pocket:order 102 103</p>' &&
+        run.description ===
+          '<p>Lock the back door too.</p><p>pocket:run</p><p>pocket:in-order</p><p>pocket:order 102 103</p>' &&
         v.task(103).title === 'Lock up' &&
         v.task(103).reminders.length === 1 &&
         v.task(7).due_date !== D9
@@ -466,6 +484,26 @@ export const SAMPLES = {
       v.task(101).description === '<p>pocket:added</p>' &&
       v.task(1).description === '<p>pocket:order 2 3 101</p>' &&
       v.task(1).related_tasks.subtask.some(s => s.id === 101),
+  },
+  // A step inserted with notes typed after " // " keeps them in front of its mark.
+  'addStep, with notes': {
+    op: 'addStep',
+    tasks: checklist({ 1: { description: '<p>pocket:order 2 3</p>' } }),
+    fields: (ops, t = { id: 1, project_id: 5, title: 'Closing' }) => ({
+      op: 'addStep',
+      task: t.id,
+      run: t.id,
+      title: 'Sweep up',
+      p: line('Sweep up', { notes: 'behind the bins' }).p,
+      from: null,
+      tpl: null,
+      before: null,
+      after: 3,
+      under: t.id,
+      pid: t.project_id,
+      runTitle: t.title,
+    }),
+    made: v => v.task(101).description === '<p>behind the bins</p><p>pocket:added</p>',
   },
   // Step 2 repeated in the checklist, as Repeat sends it: a copy of it goes right after it.
   'addStep, repeated': {

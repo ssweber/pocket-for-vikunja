@@ -221,7 +221,7 @@ function sections() {
      ("12p"), a whole hour ("3p"), and a subtask in another project. That subtask keeps its own project dot, while the
      other rows leave the dot to the card's header. One row has nothing at its right end, so its title fills the row. */
   const tasting = task({
-    title: 'Get ready for the tasting evening',
+    title: 'Get ready for the coffee tasting',
     due_date: dayAt(0, 18, 30),
     priority: 2,
     related_tasks: { subtask: [{ id: 1401 }, { id: 1402 }, { id: 1403 }, { id: 1404 }] },
@@ -230,12 +230,12 @@ function sections() {
     kid(1401, { under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3 }),
     kid(1402, {
       under: tasting.id,
-      title: 'Borrow glasses from next door',
+      title: 'Borrow cups from next door',
       project_id: 4,
       due_date: dayAt(0, 12),
       priority: 1,
     }),
-    kid(1403, { under: tasting.id, title: 'Chill the white wine', due_date: dayAt(0, 15), assignees: [jamie] }),
+    kid(1403, { under: tasting.id, title: 'Make the cold brew', due_date: dayAt(0, 15), assignees: [jamie] }),
     kid(1404, { under: tasting.id, title: 'Set out the tables' }),
     kid(701, { under: van2.id, title: 'Load chairs', done: true }),
     kid(702, { under: van2.id, title: 'Load tables', assignees: [jamie] }),
@@ -722,6 +722,47 @@ function sections() {
           },
         ],
       },
+      // A task with notes has the notes icon after its title. A line of Pocket's alone is not notes.
+      {
+        title: 'With notes: the icon after the title, then done, then only a line of Pocket’s (no icon)',
+        depth: {},
+        tasks: [
+          task({ title: 'Order oat milk', description: '<p>The barista brand</p>' }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            comment_count: 2,
+          }),
+          task({ title: 'Wipe the counters', done: true, description: '<p>Use the blue cloths</p>' }),
+          task({ title: 'Repaint the sign', description: '<p>pocket:order 1 2</p>' }),
+        ],
+      },
+      {
+        title: 'With notes on Today: the icon after the …, so the cut never hides it',
+        depth: {},
+        clamp: true,
+        tasks: [
+          task({ title: 'Order oat milk', description: '<p>The barista brand</p>', due_date: dayAt(0, 9) }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            due_date: dayAt(0, 14),
+          }),
+        ],
+      },
+      {
+        title: 'With notes on one line: the time and dot stay at the right',
+        depth: {},
+        line: true,
+        tasks: [
+          task({ title: 'Order the cups', description: '<p>Ask for the 8oz</p>', due_date: dayAt(1, 10), priority: 2 }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            due_date: dayAt(1, 14),
+          }),
+        ],
+      },
       // Progress is drawn in the tick, a quarter at a time, with no line under the row.
       {
         title: 'Progress in the tick, a quarter at a time: none, 25%, 50%, 75%, done; and 30%, set on the web',
@@ -1056,7 +1097,7 @@ function runSteps() {
     step({ title: 'Wipe the steam wand', added: 'Repeated' }),
     step({ title: 'Restock the cups', assignees: [jamie], percent_done: 0.5 }),
     step({ title: 'Unlock the door', tpl: 'Unlock the door T#30m:machine' }),
-    step({ title: 'Sweep the floor', tpl: 'Sweep the floor T#10m' }),
+    step({ title: 'Sweep the floor', tpl: 'Sweep the floor T#10m' }), // waits for Unlock the door, as the checklist waits for step times
     step({
       title: 'Check the walk-in cooler',
       tpl: 'Check the walk-in cooler',
@@ -1282,7 +1323,7 @@ document.addEventListener('alpine:init', () =>
         assignees: [me, jamie],
         created_by: me,
         comments: [],
-        description: '',
+        description: '<p>pocket:run</p><p>pocket:wait</p>',
         related_tasks: { copiedfrom: [{ id: 900 }], subtask: s.steps.map(x => ({ id: x.id, title: x.title })) },
       };
       this.pending = [

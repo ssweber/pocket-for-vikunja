@@ -12,6 +12,61 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
+## Unreleased
+
+## 0.3.0 (2026-10-23)
+
+### Added
+
+- Two switches on a template, **Enforce step times** and **Enforce step order**, stop a checklist's step being ticked
+  before its time, or while a step above it is open ([guide](docs/guide.md#timed-steps)).
+- A task's labels show under its title, and tapping one on Today shows only the tasks with that label
+  ([guide](docs/guide.md#tasks)).
+- Searching for `*errands` lists every open task with that label, by project, and typing `*` offers the labels.
+- Text after ` // ` in an add box becomes the task's notes, and a task with notes shows the notes icon after its
+  title ([guide](docs/guide.md#quick-add)).
+- A box holding a list shows the ways to add it as pictures of the tasks each makes, one of them a single task whose
+  notes are the other lines, in place of **↳ Under first line**.
+- Holding **+ me**, or your own picture, opens a menu of the people who can see the project, to assign or unassign
+  them ([guide](docs/guide.md#assigning)).
+
+### Changed
+
+- Pocket opens on its saved screen sooner, and a checklist opened before shows its steps at once from its saved copy.
+- The header always has the Today, Projects and Checklists tabs, and Checklists offers to set up a checklist project
+  when there is none.
+- A screen with nothing saved on the phone shows grey rows while it loads, instead of "Loading…".
+- Today's rows show the title on one line, with the time, project and counts on a line under it, as a project's list
+  does.
+- Holding a task on Today shows a ring that follows the thumb, and a hold picks a date only between the tick and
+  "+ me".
+- On Today, a checklist step's countdown counts the seconds in its last minute, as the checklist's screen does.
+- Copy as a Markdown list includes each task's notes, and pasting the copy into an add box brings them back.
+- An `@` suggestion for someone who can't see the project names the project the task would move to.
+- "Move all to today", "Open project" and the label chips under search are easier to tap.
+
+### Fixed
+
+- Pocket reloads only for a new version, not when the server can't be reached or sends an error.
+- A change no longer waits in the Outbox for good when the server's database fails or another tab changed the Outbox.
+- When the server's rate limit is reached, Pocket waits as long as the server asks, and "Waiting for Vikunja" says
+  when it tries again.
+- A tick or a date change cancelled in the Outbox while offline puts the task back on its list at once.
+- A monthly task due on the 29th, 30th or 31st shows the date Vikunja 2.7.1 moves it to, such as Feb 28 for Jan 31.
+- A finished checklist counts every skipped step and comment, also past Vikunja's 50 comments.
+- Date chips left open on Today no longer close when a moved row's gap leaves the bottom of the page.
+- Your own bots are offered only on projects shared with them, and an assignment Vikunja refuses leaves the Outbox and
+  says why.
+- When the phone's storage for Pocket is full, Pocket drops the oldest saved screen to make room, instead of not
+  saving.
+- A default due time in Vikunja's settings that isn't HH:MM is read as noon, as Vikunja's web app does.
+- A tap beside "+ me", under a row's labels, opens the task.
+
+### What Pocket writes into Vikunja
+
+- A template's switches are the lines `pocket:wait` and `pocket:in-order` in its notes, and each checklist gets a copy
+  of them when it starts.
+
 ## 0.2.0 (2026-10-19)
 
 ### Before you update

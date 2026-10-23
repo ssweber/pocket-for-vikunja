@@ -3,7 +3,7 @@
 import { component } from './fake.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allPages, api, partOf, passing } from '../../src/js/api.js';
+import { allPages, api, nextTry, partOf, passing } from '../../src/js/api.js';
 
 /* A fake Vikunja with a list of `n` items, paged the way Vikunja pages them (at most `max` per page). Each reply is
    delayed briefly so requests made together overlap. It records the requests (`asked`, as [page, per_page]) and the
@@ -273,4 +273,60 @@ test("a 409 that gives Vikunja's error code is Vikunja's refusal, not the relay 
   assert.equal(sent.length, 1);
   assert.deepEqual([e.status, e.code], [409, 4008]);
   assert.ok(!passing(e));
+});
+
+/* Vikunja's rate limit answers 429 with Retry-After. Until then a keyed write fails at once, without reaching Vikunja,
+   and the outbox keeps it. When the wait is over, the outbox is sent. */
+test('after a 429, no keyed write reaches Vikunja until Retry-After has passed, and then the outbox is sent', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const app = component();
+  let flushed = 0;
+  app.flush = () => flushed++;
+  const sent = relay([429, { message: 'Too Many Requests' }, { 'Retry-After': '60' }], [201, { id: 5 }]);
+  const write = () => api('/tasks/5', { method: 'POST', body: {}, key: KEY }).catch(e => e);
+  assert.ok(passing(await write()), 'the outbox keeps it');
+  t.mock.timers.tick(59e3);
+  const e = await write();
+  assert.deepEqual([e.status, sent.length, flushed], [429, 1, 0], 'a write 59 seconds on is not sent');
+  await api('/tasks?page=1');
+  assert.equal(sent.length, 2, 'a read is still sent');
+  t.mock.timers.tick(1e3);
+  assert.equal(flushed, 1, 'the outbox is sent when the wait is over');
+  assert.deepEqual(await write(), { id: 5 });
+});
+
+// The waiting message names this time, so it must be when the outbox really sends next.
+test('the outbox next sends when a 429’s wait ends, or else at the next 30-second send', () => {
+  const app = component(),
+    now = Date.UTC(2026, 9, 21, 15, 40);
+  assert.equal(nextTry(now), now + 30e3, 'before the first 30-second send is timed, 30 seconds on');
+  app.nextFlush = now + 20e3;
+  assert.equal(nextTry(now), now + 20e3);
+  app.calmUntil = now + 90e3;
+  assert.equal(nextTry(now), now + 90e3, 'the 30-second send before then sends no keyed write');
+  app.calmUntil = now + 5e3;
+  assert.equal(nextTry(now), now + 5e3, 'the end of the wait sends the outbox itself');
+  assert.equal(nextTry(now + 10e3), now + 20e3, 'once the wait is over');
+});
+
+test('Retry-After may be an HTTP date, and a wait longer than 5 minutes, or one Pocket cannot read, is cut', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.UTC(2026, 9, 21, 12) });
+  const app = component();
+  const write = () => api('/tasks/5', { method: 'POST', body: {}, key: KEY }).catch(e => e);
+  const waits = async header => {
+    app.calmUntil = 0;
+    const sent = relay([429, {}, { 'Retry-After': header, Date: new Date().toUTCString() }], [201, { id: 5 }]);
+    await write();
+    let s = 0;
+    while ((await write()).status === 429) {
+      t.mock.timers.tick(1e3);
+      s++;
+    }
+    assert.equal(sent.length, 2);
+    return s;
+  };
+  assert.equal(await waits(new Date(Date.now() + 90e3).toUTCString()), 90, 'an HTTP date');
+  assert.equal(await waits('86400'), 300, 'a day is cut to 5 minutes');
+  assert.equal(await waits('soon'), 0, 'a value that is neither seconds nor a date gives no wait');
+  assert.equal(await waits('-5'), 0, 'nor does a negative number');
 });

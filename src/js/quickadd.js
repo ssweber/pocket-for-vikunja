@@ -34,6 +34,21 @@ const DAY_FIRST = (() => {
   }
 })();
 export const projectName = typed => typed.replace(/[_-]/g, ' ').trim();
+/* The labels to offer for `q`, typed after *: those whose title starts with it first, then those that contain it,
+   each in alphabetical order. None when a label is called `q`, since the word is a label already. */
+export function labelsMatching(labels, q) {
+  q = q.toLowerCase();
+  if (q && labels.some(l => l.title.toLowerCase() === q)) return [];
+  const score = l => {
+    const n = l.title.toLowerCase();
+    return n.startsWith(q) ? 0 : n.includes(q) ? 1 : 9;
+  };
+  return labels
+    .map(l => ({ l, s: score(l) }))
+    .filter(x => x.s < 9)
+    .sort((a, b) => a.s - b.s || a.l.title.localeCompare(b.l.title))
+    .map(x => x.l);
+}
 function tokenRe(prefix, flags = 'g') {
   return new RegExp(`(^|\\s)\\${prefix}(?:"([^"]+)"|'([^']+)'|(\\S+))`, flags);
 }
@@ -48,6 +63,9 @@ export function removeAssignees(title, prefix, names, mid = []) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
+// The user's default due time setting, or noon when it isn't set. Vikunja's web app reads only "HH:MM", with hours to
+// 23 and minutes to 59, and atTime would move "25:99" to the next day.
+export const dueTimeOf = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : '12:00');
 // Set a date's time from "HH:MM". The default is Vikunja's default due time setting, which is noon unless the user
 // changed it.
 export function atTime(d, hhmm = '12:00') {
@@ -130,19 +148,50 @@ function endFigure(title, tail = '') {
     ? { start: m.index + 1, end: m.index + m[0].length, pct }
     : null;
 }
+// A title in quotes at the start of a line, which nothing in it is read from (parseCapture).
+const HELD = /^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/;
+/* The text after the first " // " in a line is the task's notes, and is not read for dates or people. The spaces on
+   both sides keep "http://" and "a//b" in the title, and a quoted title at the start keeps its slashes too. Returns
+   {at (the index of the space before the slashes), notes}, or null when nothing follows the slashes. Pocket reads
+   notes in every Quick Add Magic mode, as it reads a percentage. A line can hold more lines of notes, each starting
+   with "//" (readList), and the notes leave out those slashes.
+
+   A list folded into one task (readList's `fold`) is one line holding the other lines. When its first line has no
+   " // ", its notes start at the line break (`at`). The notes lose the indent all their lines share, so a list
+   indented under the first line starts at the left. */
+export function notesOf(line) {
+  const from = line.match(HELD)?.[0].length ?? 0,
+    nl = line.indexOf('\n', from),
+    slashes = line.indexOf(' // ', from),
+    at = nl >= 0 && (slashes < 0 || slashes > nl) ? nl : slashes;
+  if (at < 0) return null;
+  const [head, ...more] = line.slice(at).split(/\r?\n/),
+    lines = [head.slice(4).trim(), ...more.map(l => l.trimEnd())],
+    cut = Math.min(...lines.filter(Boolean).map(l => l.length - l.trimStart().length)),
+    notes = lines
+      .map((l, i) => (i ? l.slice(cut).replace(/^\s*\/\/ ?/, '') : l))
+      .join('\n')
+      .replace(/^\s*\n/, '')
+      .trimEnd();
+  return notes ? { at, notes } : null;
+}
 /* Returns {title, project, projectMiss, labels, assignees, mid, priority, due, dueLabel, dueFromRepeat, repeat, pct,
-   marks}. `mid` is the index in `title` of the sign of each @username in the middle of it (removeAssignees). `pct` is
-   the task's own progress, read from a percentage at the end, and 0 for none. `marks` are the phrases that were read,
-   as [{start, end, kind, name, kept}] positions in `text`, one per phrase. `kind` is one of the `ignore` keys, `name`
-   is the user for @username, and `kept` is the text a label or project in the middle of the title leaves there.
+   notes, marks}. `mid` is the index in `title` of the sign of each @username in the middle of it (removeAssignees).
+   `pct` is the task's own progress, read from a percentage at the end, and 0 for none. `notes` is the text after
+   " // " (notesOf), or ''. `marks` are the phrases that were read, as [{start, end, kind, name, kept}] positions in
+   `text`, one per phrase. `kind` is one of the `ignore` keys, `name` is the user for @username, and `kept` is the text
+   a label or project in the middle of the title leaves there.
 
    `opts`: mode ("vikunja", "todoist" or "disabled"), ignore (kinds the user tapped off, whose text stays in the
-   title: project, labels, assignees, priority, repeat, due, progress), now, dueTime ("HH:MM"). */
+   title: project, labels, assignees, priority, repeat, due, progress, notes), now, dueTime ("HH:MM"). */
 export function parseCapture(
   text,
   projects,
   { mode = 'vikunja', ignore = {}, now = new Date(), dueTime = '12:00' } = {},
 ) {
+  const nt = !ignore.notes && notesOf(text),
+    noted = nt ? [{ start: nt.at + 1, end: text.length, kind: 'notes' }] : [];
+  if (nt) text = text.slice(0, nt.at);
   const out = {
     title: text,
     project: null,
@@ -157,6 +206,7 @@ export function parseCapture(
     repeat: null,
     repeatWarn: '',
     pct: 0,
+    notes: nt ? nt.notes : '',
     marks: [],
   };
   const P = QUICK_ADD_PREFIXES[mode],
@@ -169,6 +219,7 @@ export function parseCapture(
         title: (text.slice(0, f.start) + text.slice(f.end)).trim(),
         marks: [{ start: f.start, end: f.end, kind: 'progress' }],
       });
+    out.marks.push(...noted);
     return out;
   }
   // A checklist step's T#20m, T#40m:roast and {#roast} must not be read as a date, a time or a project. Each is
@@ -183,7 +234,7 @@ export function parseCapture(
      Reading the text after the quotes is Pocket's own behaviour. Vikunja has no way to stop a word being read, and a
      Markdown copy needs one (share.js). The title ends at the first closing quote that is followed by a space or the
      end. The quoted title is hidden like a step's token, quotes included. */
-  const held = text.match(/^(\s*)(["'])([\s\S]*?)\2(?=\s|$)/);
+  const held = text.match(HELD);
   if (held)
     text =
       held[1] +
@@ -554,7 +605,7 @@ export function parseCapture(
     if (last && last.kind === kind && !text.slice(last.end, i).trim()) last.end = i + 1;
     else out.marks.push({ start: i, end: i + 1, kind });
   }
-  out.marks = [...out.marks, ...people].sort((a, b) => a.start - b.start);
+  out.marks = [...out.marks, ...people, ...noted].sort((a, b) => a.start - b.start);
   const prefix = { project: P.project, labels: P.label };
   for (const { g } of keep) {
     const k = out.marks.find(x => x.kind === g.kind && x.start <= g.at && g.at < x.end);
@@ -583,6 +634,8 @@ const DONE_BOX = /^(?:\[[xX✓]\]|[☑☒])\s*/,
    with fewer #s. A single #, as in "# Café · 12 open · 5 done", names the whole list, as a project's copy starts. It
    is left out of the tasks. */
 const HEADING = /^(#{1,6})\s+/;
+// A line of notes under a task, as a task's Markdown copy writes one (share.js): "//", then a space and the text.
+const MORE_NOTES = /^\/\/(?=\s|$)/;
 /* Read a box's text as a list. Returns {lines, ticked, one, first, names}.
    - `lines` has one entry per line that becomes a task, in order: {text (the line without its markers), at (where the
      text starts in the box's text), done, mark ([start, end] of the text that marked the line done), under (the
@@ -600,17 +653,36 @@ const HEADING = /^(#{1,6})\s+/;
    line above it goes under that line, to any depth, in spaces or tabs of any width (a tab counts as four spaces).
 
    In quick add (`colon`), a first line ending with a colon, such as "Groceries:", is the parent of every line with no
-   parent, and its colon is removed. This is how a list in a message starts. Quick add's "Under first line" option
-   changes that. `nest` makes the first line the parent of every line with no parent. `flat` makes every line its own
+   parent, and its colon is removed. This is how a list in a message starts. Quick add's ways to add a list (listShapes)
+   change that. `nest` makes the first line the parent of every line with no parent. `flat` makes every line its own
    task and keeps the first line's colon.
 
    `steps` is for a checklist's steps, where a step is done by doing it. A ticked line is left out, an x is part of the
-   text, and so is a heading's #. */
-export function readList(text, { steps = false, done = true, nest = false, flat = false, colon = false } = {}) {
-  const rows = [];
+   text, and so is a heading's #.
+
+   A line that starts with "//" and is indented more than the line above it holds more notes for that line. It joins
+   that line's text, newline and all, so the notes keep their lines (notesOf) and the box's positions still match.
+
+   `fold` makes the box one task. Its first line is read as if it were alone in the box, and the other lines join its
+   text as they were typed, to become its notes (notesOf). `folded` is then true. */
+export function readList(
+  text,
+  { steps = false, done = true, nest = false, flat = false, colon = false, fold = false } = {},
+) {
+  const rows = [],
+    all = String(text || '');
+  if (fold) {
+    const head = all.match(/^\s*.*/)[0],
+      list = readList(head, { steps, done }),
+      l = list.lines[0];
+    if (l && all.slice(head.length).trim()) {
+      l.text = all.slice(l.at).trimEnd();
+      return { ...list, folded: true };
+    }
+  }
   let at = 0,
     ticked = 0;
-  for (const raw of String(text || '').split('\n')) {
+  for (const raw of all.split('\n')) {
     let i = raw.length - raw.trimStart().length;
     const indent = [...raw.slice(0, i)].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0);
     const take = re => {
@@ -619,6 +691,14 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
       return m;
     };
     take(QUOTE_MARKS);
+    const prev = rows.at(-1),
+      end = at + raw.trimEnd().length;
+    if (prev?.text && indent > prev.indent && MORE_NOTES.test(raw.slice(i))) {
+      const more = all.slice(prev.end, end);
+      Object.assign(prev, { text: prev.text + more, kept: prev.kept + more, typed: prev.typed + more, end });
+      at += raw.length + 1;
+      continue;
+    }
     const hash = i,
       level = steps ? 0 : take(HEADING)?.[1].length || 0;
     // A list's name is never marked done. The text after its # is the name.
@@ -643,6 +723,7 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
       indent,
       typed: raw.slice(hash).trim(),
       typedAt: at + hash,
+      end,
     });
     at += raw.length + 1;
   }
@@ -680,7 +761,8 @@ export function readList(text, { steps = false, done = true, nest = false, flat 
     );
     (r.level ? heads : above).push({ level: r.level, indent: r.indent, k: lines.length - 1 });
   }
-  const led = colon && lines.length > 1 && /\S:$/.test(lines[0].text),
+  // A colon at the end of the line's notes is part of the notes.
+  const led = colon && lines.length > 1 && !notesOf(lines[0].text) && /\S:$/.test(lines[0].text),
     first = led || lines.some(l => l.under === 0);
   if (led && !flat) lines[0].text = lines[0].text.slice(0, -1).trimEnd();
   for (const [i, l] of lines.entries())

@@ -23,6 +23,7 @@
   --code-bg: rgba(0, 0, 0, 0.06);
   --shadow-lift: 0 1px 3px rgba(0, 0, 0, 0.14), 0 8px 22px rgba(0, 0, 0, 0.2);
   --danger-ink: #ffffff;
+  --knob: #ffffff; /* an on/off switch's knob, in both themes */
   --r-row: 14px;
   --r-sheet: 22px;
   --r-chip: 999px;
@@ -38,6 +39,7 @@
   --title-x: calc(14px + var(--tick) + 12px);
   --sub-tick: 24px;
   --sub-in: 30px;
+  --lab-tint: 16%; /* how much of a label's colour tints its pill */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -59,6 +61,7 @@
     --danger: #f07a8b;
     --danger-ink: #1a080c;
     --danger-soft: #45202a;
+    --lab-tint: 24%;
     color-scheme: dark;
   }
 }
@@ -562,24 +565,31 @@ main {
   font-weight: 600;
   font-size: 14px;
 }
+/* A heading with a button keeps one line. A long name is cut with "…", and the button never wraps. */
+.sec:has(> .sec-act) > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A 44px target inside the heading's height, so a heading with a button is no taller than one without */
 .sec-act {
-  margin-left: auto;
+  flex: none;
+  white-space: nowrap;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 12px 2px;
+  margin: -12px 0 -12px auto;
+  text-align: right;
   border: 0;
   background: transparent;
   color: var(--accent);
   font-size: 14px;
   font-weight: 650;
-  padding: 6px 2px;
 }
 .sec-act[disabled] {
   opacity: 0.55;
 }
-#btn-copy-done {
-  min-width: 44px;
-  padding: 12px 2px;
-  margin: -12px 0 -12px auto;
-  text-align: right;
-} /* a 44px target in a heading's height */
 /* A heading after a list that ends in a card's footer moves up. Most of the space above it is already the footer's
    own gap, so without this the heading would sit too far from the list. The footer keeps its 48px touch target, which
    now overlaps the heading, so the heading ignores touches (pointer-events:none) and they reach the footer. */
@@ -674,14 +684,15 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 .row.own .title {
   font-weight: 650;
 }
-/* A one-line row (Today): the title is cut short with "…", with the due time and the project's dot at its right. A
-   card's rows leave the dot to the card's header. A screen reader hears the full text (rowWhen). */
+/* Today cuts a title to one line with "…" at its end (.clamp). A card's row on Today is a single line (.one-line),
+   with the due time and the project's dot at the right of its title, and a screen reader hears the rest (rowWhen). A
+   card's rows leave the dot to the card's header. */
 .row.one-line .title-line {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
-.row.one-line .title {
+.row:is(.one-line, .clamp) .title {
   position: relative;
   flex: 1;
   min-width: 0;
@@ -691,7 +702,7 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   overflow-wrap: normal;
 }
 /* Screen-reader text stays at the start of the title, not past where the title was cut short */
-.row.one-line .title .sr,
+.row:is(.one-line, .clamp) .title .sr,
 .card-open > .sr {
   left: 0;
 }
@@ -704,6 +715,40 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* The notes icon after a title. It is centred on the title's first line, so it adds no height. On a title cut short,
+   the title shrinks to its text and the icon follows the …, with the time and dot still at the right. */
+.has-notes svg.i {
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  vertical-align: -1px;
+  color: var(--muted);
+}
+/* A subtask in a sheet keeps its title as the only text in its .title, where tests find it by its exact text. The title
+   is inline, so the icon after it follows the last word. */
+.row > .body > .title:has(~ .has-notes) {
+  display: inline;
+}
+.row.clamp .title-line:has(> .has-notes) {
+  display: flex;
+  gap: 8px;
+}
+.title-line > .has-notes {
+  flex: none;
+  align-self: flex-start;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.title-line > .has-notes svg.i {
+  margin-left: 0;
+}
+.title-line:has(> .has-notes) > .title {
+  flex: 0 1 auto;
+}
+.title-line > .has-notes ~ .when {
+  margin-left: auto;
+}
 .when {
   flex: none;
   display: flex;
@@ -715,6 +760,72 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 }
 .when .dot {
   margin: 0;
+}
+/* A row's labels, on a line of their own under the title. Each 44px button overlaps the body's bottom padding, so the
+   row grows by 20px, not 44px. The line ignores touches, so beside the labels a tap reaches the body. */
+.row:has(> .labs) {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.row > .labs {
+  order: 1;
+  flex: 0 0 calc(100% - var(--tick) - 9px);
+  display: flex;
+  flex-wrap: wrap;
+  margin: -10px 0 -12px calc(var(--tick) + 9px);
+  pointer-events: none;
+}
+/* The body reaches down beside the labels to the row's bottom edge, so a tap there opens the task too. Its margin
+   takes back what its padding adds, so the title's line keeps its height. The labels are drawn over it. */
+.row:has(> .labs) > button.body {
+  padding-bottom: 36px;
+  margin-bottom: -34px;
+}
+/* The "+ me" slot ends where the labels' line starts. The body also covers the 22px under the slot, out to the row's
+   right edge, so a tap there opens the task. That strip starts where the tick's touch target ends. */
+.row:has(> .labs) > button.body::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: calc(max(var(--row-inset), 14px) + var(--tick) + 12px);
+  height: 22px;
+}
+/* Positioned, so the label is drawn over the title's line it overlaps, and takes taps there */
+.lab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 3px;
+  border: 0;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+/* A label is a pill tinted with its colour, with a dot in that colour, because a light tint of yellow is faint */
+.lab > span,
+.lab-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 38px;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--lc) var(--lab-tint), var(--surface));
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+:is(.lab, .lab-pill) .dot {
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  background: var(--lc);
 }
 .when .bars {
   height: 9px;
@@ -878,10 +989,117 @@ button.check::after {
   font-size: 17px;
   margin-bottom: 4px;
 }
+/* While Today is narrowed to a label, the bar above its first group says so, with Show all in a 44px button */
+.sec-dot {
+  width: 9px;
+  height: 9px;
+  margin: 0 -2px 0 2px;
+  align-self: center;
+}
+/* Each label offered under search has a 44px tap area around its 30px chip. Wrapped lines are 15px apart, so their
+   areas don't overlap, and the margins leave room for the part of each area outside the chip. */
+.chips.search-chips {
+  row-gap: 15px;
+  margin-bottom: 8px;
+}
+.search-chips .chip {
+  position: relative;
+}
+.search-chips .chip::after {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 22px) -3px;
+}
+.only-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding-left: 14px;
+  border-radius: var(--r-row);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 15px;
+}
+.only-rule {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.only-rule .lab-pill {
+  font-size: 14px;
+  font-weight: 600;
+}
+.only-clear,
+.empty-act {
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 650;
+}
+.empty-act {
+  display: block;
+  margin: 6px auto 0;
+}
 .loading {
   padding: 40px 0;
   text-align: center;
   color: var(--muted);
+}
+/* Grey rows have a real row's height, tick and title, so the list replaces them without moving. They stay still. */
+.skeleton {
+  --skel: color-mix(in srgb, var(--muted) 25%, var(--surface));
+}
+.skeleton .sec {
+  align-items: center;
+  height: 21px;
+}
+.skeleton .sec::before {
+  content: '';
+  width: 84px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--skel);
+}
+.skeleton .sec.short::before {
+  width: 56px;
+}
+.skel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 57px;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+}
+.skel-row:first-child {
+  height: 56px;
+  border-top: 0;
+}
+.skel-row::before {
+  content: '';
+  flex: none;
+  width: var(--tick);
+  height: var(--tick);
+  border-radius: 50%;
+  border: 2px solid var(--skel);
+}
+.skel-row::after {
+  content: '';
+  width: 62%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--skel);
+}
+.skel-row:nth-child(3n + 2)::after {
+  width: 44%;
+}
+.skel-row:nth-child(3n)::after {
+  width: 76%;
 }
 .offline {
   margin: 8px 0 0;
@@ -1013,8 +1231,8 @@ button.check::after {
 .row > .claim {
   margin: -8px -8px -12px 0;
 }
-/* On a one-line row (Today) the slot has a fixed width with its content against the right edge, so the times and dots
-   to its left line up down the list whether it holds "+ me" or a picture. It is as wide as "+ me" needs, plus 8px of
+/* On a card's one-line row the slot has a fixed width with its content against the right edge, so the times and dots
+   to its left line up down the card whether it holds "+ me" or a picture. It is as wide as "+ me" needs, plus 8px of
    padding on the left, so the title gets the rest. Its touch target is still as tall as the row and well over 48px
    wide. */
 .row.one-line > .claim:not(:has(~ .icon-btn)) {
@@ -1170,6 +1388,22 @@ button.check::after {
    new progress (.row-prog, below). */
 .row:not(.done) > button.check {
   background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1turn), transparent 0) content-box;
+}
+/* The tick of a step that can't be ticked yet: a grey box with a padlock, drawn over any progress. */
+.check.locked {
+  border-color: var(--line);
+  background: var(--surface);
+}
+.check.locked svg,
+.row:not(.done) > button.check.locked svg {
+  opacity: 1;
+  stroke: var(--muted);
+  stroke-width: 2.2;
+  width: 15px;
+  height: 15px;
+}
+.row:not(.done) > button.check.locked {
+  background: none;
 }
 /* A parent's ring (ring.html) replaces the tick on a task with subtasks or a checklist. It is a thin arc (--ring)
    starting at 12 o'clock on a faint track, never a quarter pie, so it isn't mistaken for the task's own tick. When
@@ -1566,7 +1800,8 @@ button.ring::after {
 .throw-t:focus-visible {
   border-radius: 16px;
 }
-.throw.open {
+.throw.open,
+.people-scrim {
   pointer-events: auto;
   touch-action: none;
   background: color-mix(in srgb, var(--scrim) 20%, transparent);
@@ -1600,6 +1835,29 @@ button.ring::after {
 }
 .throw.open .throw-date {
   display: block;
+}
+/* The ring stands for the thumb, which near a screen edge sits over a chip it doesn't point at (throwRing). It is drawn
+   over a chip's background but under its text, so a lit chip stays readable. The chips make no stacking context, so
+   their text and the ring share the one .throw makes. */
+.throw-t > * {
+  position: relative;
+  z-index: 2;
+}
+.throw-ring {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+.throw-ring.on {
+  border-color: var(--accent-ink);
+  background: none;
+}
+.throw.open .throw-ring {
+  display: none;
 }
 .throw-why {
   position: absolute;
@@ -2440,6 +2698,19 @@ a.sec-act {
   flex: 1;
   max-width: 360px;
 }
+/* The Done of a step that can't be ticked yet looks like a disabled button, and keeps its size. Grey, because a faded
+   green still looks ready to tap in dark mode. */
+.btn.locked {
+  background: var(--sunk);
+  color: var(--muted);
+}
+.btn.locked span {
+  line-height: 1.2;
+}
+.btn.locked svg.i {
+  width: 18px;
+  height: 18px;
+}
 /* What a step asks to record (step-card.html). A number is set large, as a reading. A picked option is tinted, so Done
    stays the one solid button. */
 .ask {
@@ -3084,6 +3355,53 @@ main.bare {
   color: var(--accent);
   font-weight: 600;
 }
+/* chips.html needs one root element. Its chips are still the .chips row's own items. */
+.chip-row {
+  display: contents;
+}
+/* The ways to add a list's lines, as one segmented control on a line of its own above the chips */
+.seg.list-ways {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 2px;
+  border-radius: 10px;
+}
+.seg.list-ways button {
+  flex: 1 1 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+/* A way is drawn as its tasks: a bar for each, shifted right by its depth. One task with notes has the notes icon
+   after its bar, as a row does. A long list has its count beside the picture. */
+.seg.list-ways button {
+  gap: 6px;
+}
+.way {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.way i {
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  margin-left: calc(var(--d) * 9px);
+}
+svg.i.way-notes {
+  width: 14px;
+  height: 14px;
+  margin-left: -2px;
+}
+.way-n {
+  font-size: 13px;
+  font-weight: 650;
+}
 .chip.toggle {
   background: var(--sunk);
   color: var(--muted);
@@ -3092,6 +3410,16 @@ main.bare {
 .chip.toggle[aria-pressed='true'] {
   background: var(--accent);
   color: var(--accent-ink);
+}
+/* A notes chip is cut short with "…" after about 30 characters, so it leaves room for the other chips. The box above
+   it shows the whole note. */
+.chip[data-kind='notes'] {
+  max-width: min(100%, 30ch);
+  min-width: 0;
+}
+.chip[data-kind='notes'] span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chip .x {
   font-weight: 700;
@@ -3212,21 +3540,24 @@ main.bare {
   vertical-align: -2px;
   margin-right: 3px;
 }
-#sheet .menu {
-  position: absolute;
-  right: 12px;
-  top: calc(100% - 2px);
-  z-index: 5;
+/* A menu of actions: the sheet's ⋯ menu, and the people menu that holding "+ me" opens */
+.menu {
   min-width: 240px;
-  max-width: calc(100% - 24px);
   background: var(--surface);
   border-radius: 14px;
   padding: 6px;
   box-shadow: var(--shadow-menu);
 }
-#sheet .menu button,
-#sheet .menu > a,
-#sheet .menu > label {
+#sheet .menu {
+  position: absolute;
+  right: 12px;
+  top: calc(100% - 2px);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+}
+.menu button,
+.menu > a,
+.menu > label {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3241,26 +3572,26 @@ main.bare {
   color: var(--ink);
   text-decoration: none;
 }
-#sheet .menu button:hover,
-#sheet .menu button:focus-visible,
-#sheet .menu > a:hover,
-#sheet .menu > a:focus-visible,
-#sheet .menu > label:hover,
-#sheet .menu > label:focus-within {
+.menu button:hover,
+.menu button:focus-visible,
+.menu > a:hover,
+.menu > a:focus-visible,
+.menu > label:hover,
+.menu > label:focus-within {
   background: var(--sunk);
 }
-#sheet .menu small {
+.menu small {
   font-size: 13px;
   font-weight: 400;
   color: var(--muted);
 }
 /* The row that moves a task to another project is a label with its select stretched over it, unseen, so a tap
    anywhere on the row opens the phone's own list of projects */
-#sheet .menu > label {
+.menu > label {
   position: relative;
   cursor: pointer;
 }
-#sheet .menu > label select {
+.menu > label select {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -3269,11 +3600,77 @@ main.bare {
   font-size: 16px;
   cursor: pointer;
 }
-#sheet .menu button.danger {
+.menu button.danger {
   color: var(--danger);
 }
-#sheet .menu button[disabled] {
+.menu button[disabled] {
   opacity: 0.4;
+}
+/* The people menu that holding "+ me" or your own picture opens (whoMenu, claims.js). Each person is a 46px row with
+   their picture and a ✓ when they are assigned. The menu has the date chips' thin edge, which keeps it visible in dark
+   mode, and the screen behind dims as it does behind date chips open to tap (.throw.open). */
+.people-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.people-menu {
+  position: fixed;
+  max-width: calc(100% - 32px);
+  box-shadow:
+    var(--shadow-menu),
+    0 0 0 1px color-mix(in srgb, var(--muted) 35%, transparent);
+}
+.people-head {
+  margin: 0;
+  padding: 8px 14px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.people-menu button {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 9px 14px 9px 10px;
+}
+.people-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people-menu small {
+  margin-left: 6px;
+}
+.people-tick {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  stroke-width: 3;
+  visibility: hidden;
+}
+.people-menu [aria-checked='true'] .people-tick {
+  visibility: visible;
+}
+.people-menu .pic .av {
+  box-shadow: none;
+}
+.people-menu .pic.mine .av {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+/* The slot held for the menu stays pressed while the menu is open */
+.claim.holding .me {
+  background: var(--accent-soft);
+  border-style: solid;
+}
+.claim.holding .pic .av {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 5px var(--accent-soft);
 }
 #sheet .step-menu {
   right: 0;
@@ -3483,6 +3880,52 @@ body.sheet-open {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* A card of on/off switches: a template's settings, and "Use for checklists" in New project. Each row is a label, so
+   a tap anywhere on it flips its switch. */
+.switches .prop {
+  cursor: pointer;
+}
+.switches .prop > svg.i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.switches .v {
+  display: block;
+}
+.switches b {
+  display: block;
+  font-weight: 600;
+}
+.switches .note {
+  display: block;
+  margin: 2px 0 0;
+}
+.switches-note {
+  margin: -6px 14px 14px;
+}
+/* An on/off switch, drawn from a checkbox. The knob is a radial gradient, so the switch needs no extra element. */
+.switch {
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 48px;
+  height: 30px;
+  margin: 0;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--muted) 40%, var(--surface))
+    radial-gradient(circle at 15px 50%, var(--knob) 11.5px, transparent 12.5px);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.switch:checked {
+  background: var(--accent) radial-gradient(circle at 33px 50%, var(--knob) 11.5px, transparent 12.5px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .prop select,
 .prop input[type='datetime-local'] {

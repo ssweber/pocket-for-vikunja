@@ -34,6 +34,19 @@ export const keptScreens = () => [
   ...(saved.get('projects.recent') || []).map(projectKey),
   ...(saved.get('runs.recent') || []).map(runKey),
 ];
+/* The kept screen saved on the phone whose tasks were loaded longest ago (its `at`), or undefined when none is saved.
+   Each screen loads when it is opened, so this is usually the one opened longest ago. A screen with no time counts as
+   oldest. */
+export const oldestScreen = () => {
+  let oldest,
+    when = Infinity;
+  for (const k of keptScreens()) {
+    const s = saved.get(k),
+      at = Date.parse(s?.at) || 0;
+    if (s && at < when) [oldest, when] = [k, at];
+  }
+  return oldest;
+};
 /* Delete the saved screens of the projects and checklists no longer kept, and `project.last`, which nothing reads. A
    screen saved before it fell out of the kept lists, or saved under an older key, would stay on the phone for good. */
 export const dropUnkept = () => {
@@ -66,7 +79,7 @@ export const savedScreen = s => ({
 export const screenIds = s => {
   if (!s) return [];
   const ids = [
-    ...(s.groups || []).flatMap(g => g.tasks || []),
+    ...(s.groups || []).flatMap(g => [...(g.tasks || []), ...(g.left || []).map(l => l.id)]),
     ...(s.steps || []),
     ...(s.tasks || []),
     ...(s.checklists || []).flatMap(cl => [
@@ -90,7 +103,7 @@ export const soonestFirst = tasks => [
      an order.
    - `reschedule`: holding a row on Today moves it to another date (app/throw.js), because Today is ordered by date.
      Search results have no order, so holding a row there does nothing.
-   - `line`: Today's rows are a single line (rowWhen, app/views.js).
+   - `clamp`: Today cuts each title to one line, so every row is the same height and the screen fits more rows.
    - `cards`: a task with open subtasks or steps is a stacked card (cardOf, app/cards.js). Cards are collapsed on
      Today ('today') and in search ('found'), and open on a project's list ('list'). A list of done tasks has none.
    A list's options live on its group `g`. Each row copies them onto its element for the gesture code (rowGestures).
@@ -99,7 +112,7 @@ export const screenRows = name =>
   ({
     project: { cards: 'list', delete: true, reorder: true },
     search: { cards: 'found', delete: true },
-    today: { cards: 'today', line: true, delete: true, reschedule: true },
+    today: { cards: 'today', clamp: true, delete: true, reschedule: true },
   })[name] || {};
 /* Options for a task's own row at the top of its sheet (sheet/task-card.html). The task can be deleted from there,
    which closes the sheet, but it can't be moved. `own` makes the row's tick, swipe and title act on the sheet's task.
@@ -269,6 +282,32 @@ export const viewKey = r =>
    The gap is a placeholder among the group's rows, not the task, because every row of a task reads the same marks
    (`leaving`, `flashed`) by its id. Its id is its own, so its mark is too. */
 export const isMovedGap = t => t.gapOf !== undefined;
+// Whether task `t` has the label with id `id`.
+export const hasLabel = (t, id) => !!t?.labels?.some(l => l.id === id);
+/* The label a search is for, without its *: "errands" for "*errands" or `*"on hold"`, "" for "*" alone, and null for
+   a search of titles and notes. */
+export const searchedLabel = q => {
+  if (!q.startsWith('*')) return null;
+  return q
+    .slice(1)
+    .trim()
+    .replace(/^"(.*)"$/, '$1');
+};
+export const projectGroupKey = id => 'project:' + id;
+/* The open tasks with label `label`, as search shows them: a group for each project, named after it. `tasks` are
+   soonest first, so the project with the soonest task comes first. */
+export const projectGroups = (tasks, label, projById) => {
+  const by = new Map();
+  for (const t of tasks) by.set(t.project_id, [...(by.get(t.project_id) || []), t]);
+  return [...by].map(([id, list]) => ({
+    key: projectGroupKey(id),
+    cls: '',
+    title: projById.get(id)?.title || '',
+    project: id,
+    label,
+    tasks: list,
+  }));
+};
 /* The index of the gap a moved row left among its group's rows. The gap goes under the row that was above it
    (`after`), or at its old index (`at`) once that row has gone too. */
 export const gapIndex = (tasks, { after, at }) => {

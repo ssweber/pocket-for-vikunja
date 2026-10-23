@@ -37,7 +37,7 @@ registerHooks({
 });
 const tab = async name => {
   const from = path => import(new URL(`${path}?tab=${name}`, import.meta.url));
-  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages, dates, checklists, util] =
+  const [fake, tasks, acts, sending, outbox, runs, actions, sync, ops, messages, dates, checklists, util, fields] =
     await Promise.all(
       [
         './fake.mjs',
@@ -54,6 +54,7 @@ const tab = async name => {
           'dates',
           'checklists',
           'util',
+          'tasks',
         ].map(p => `../../src/js/${p}.js`),
       ].map(from),
     );
@@ -71,6 +72,7 @@ const tab = async name => {
     dates,
     checklists,
     util,
+    fields,
     parts: [tasks, acts, sending, outbox, runs].map(m => m.default).concat(deletes),
   };
 };
@@ -141,15 +143,8 @@ const TROUBLE = {
 /* Open `tab` on the outbox as the database has it, with nothing in memory, as a tab opens or reloads. Its rows come
    from Vikunja, as a screen reads them. */
 async function open(tab, x) {
-  const s = tab.sync;
-  s.entries = new Map();
-  s.volatile.clear();
-  s.bytes.clear();
-  s.held.clear();
-  s.claimed.clear();
-  await s.reload();
-  for (const c of await s.tx(['claims'], 'readonly', st => st('claims').getAll())) s.claimed.set(c.id, c);
-  const app = tab.fake.component(...tab.parts);
+  const s = tab.sync,
+    app = tab.fake.component(...tab.parts);
   Object.assign(app, {
     user: ME,
     pending: [],
@@ -169,6 +164,13 @@ async function open(tab, x) {
     notesRefused() {},
   });
   Object.defineProperty(app, 'toast', { value: {} });
+  // The outbox is read once the component is made, since making it empties sync.entries.
+  s.volatile.clear();
+  s.bytes.clear();
+  s.held.clear();
+  s.claimed.clear();
+  await s.reload();
+  for (const c of await s.tx(['claims'], 'readonly', st => st('claims').getAll())) s.claimed.set(c.id, c);
   // A read lists only the subtasks that still exist, as Vikunja's does.
   const list = [...x.v.tasks.values()].map(t =>
     structuredClone({
@@ -180,7 +182,7 @@ async function open(tab, x) {
       }),
     }),
   );
-  app.change(w => w.read(list, tab.tasks.TASK_REACTIONS_COMMENTS, tab.tasks.started()));
+  app.change(w => w.read(list, tab.fields.TASK_REACTIONS_COMMENTS, tab.tasks.started()));
   for (const t of list) app.row(t);
   app.refreshPending();
   x.tabs.push(app);

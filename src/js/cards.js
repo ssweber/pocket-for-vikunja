@@ -3,7 +3,7 @@
    where it sits and which subtask is on top. It has no DOM code, so the unit tests can check it. app/cards.js draws
    the cards. */
 import { isSet } from './dates.js';
-import { durText } from './checklists.js';
+import { countText, durText } from './checklists.js';
 import { dayGroup } from './lists.js';
 
 // A task's open subtasks, as listed in its own related_tasks.
@@ -122,13 +122,15 @@ export function runTop(steps, pinned, pick) {
   if (pinned != null && k(pinned) >= 0) return k(pinned);
   return Math.max(0, k(pick(pinned ?? null)));
 }
-/* A step's countdown on a checklist's card, to the minute, because Today redraws once a minute: "in 1h 5m" or "12m
-   late". Null when the step is more than a day away in either direction, because the date reads better there. `due`
-   and `now` are in ms. */
-export function countdown(due, now) {
+/* A step's countdown on a row or a card, to the minute: "in 1h 5m" or "12m late". With `secs`, where the row redraws
+   each second near the step's time (stepNow), it counts the last minute to the second, as a checklist's screen does
+   (countText). Null when the step is more than a day away in either direction, because the date reads better there.
+   `due` and `now` are in ms. */
+export function countdown(due, now, secs = false) {
   const left = due - now,
     min = ms => Math.max(6e4, ms);
   if (!(Math.abs(left) < 864e5)) return null;
+  if (secs) return { text: countText(left), late: left < 0 };
   return left >= 0
     ? { text: 'in ' + durText(min(Math.ceil(left / 6e4) * 6e4)), late: false }
     : { text: durText(min(Math.floor(-left / 6e4) * 6e4)) + ' late', late: true };

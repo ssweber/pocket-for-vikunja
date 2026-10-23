@@ -154,10 +154,19 @@ export function htmlToText(html) {
     .trim();
 }
 export const RICH = /<(ul|ol|a |table|pre|code|h[1-6]|blockquote|img|strong|em|b>|i>)/i;
+// A line's indent is written as non-breaking spaces, because HTML drops the spaces at the start of a line.
 export function textToHtml(text) {
+  const indent = s => '&nbsp;'.repeat(s.replace(/\t/g, '    ').length);
   return text
     .trim()
     .split(/\n{2,}/)
-    .map(p => '<p>' + esc(p).replace(/\n/g, '<br>') + '</p>')
+    .map(
+      p =>
+        '<p>' +
+        esc(p)
+          .replace(/^[ \t]+/gm, indent)
+          .replace(/\n/g, '<br>') +
+        '</p>',
+    )
     .join('');
 }

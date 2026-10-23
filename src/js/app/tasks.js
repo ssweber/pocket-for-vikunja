@@ -12,8 +12,9 @@
    and in what order (subRow). */
 import { app, raw, store } from '../util.js';
 import { allPages, api, serverTime } from '../api.js';
-import { dropUnkept, intoKeys, keptScreens, saved, savedScreen, screenIds } from '../lists.js';
+import { dropUnkept, intoKeys, keptScreens, oldestScreen, saved, savedScreen, screenIds } from '../lists.js';
 import { sync } from '../sync.js';
+import { MOVED, opsId, SAVED, TASK, TASK_COUNT_REACTIONS } from '../tasks.js';
 import { opOf, OPS } from '../ops/index.js';
 import { repeats } from '../dates.js';
 import { allComments, inBatches } from '../checklists.js';
@@ -27,49 +28,7 @@ const same = (a, b) =>
 // A row gets its own lists and objects, so writing a row never changes Vikunja's copy or an answer.
 const own = v => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
 
-/* The fields of a task that each kind of request can be trusted for (read, answer), as Vikunja 2.7 answers. A task
-   read alone or in a list, and a PATCH reply, has every field in TASK, labels and people included. Reactions, comments
-   and the comment count come only with expand=, and are null without it, which would read as "none". A new task's
-   reply comes before Pocket adds its labels, people, parent and files. A saved screen holds copies made of these
-   fields. */
-export const TASK = [
-  'id',
-  'title',
-  'description',
-  'done',
-  'done_at',
-  'due_date',
-  'start_date',
-  'end_date',
-  'repeat_after',
-  'repeat_mode',
-  'priority',
-  'percent_done',
-  'hex_color',
-  'is_favorite',
-  'identifier',
-  'index',
-  'position',
-  'bucket_id',
-  'cover_image_attachment_id',
-  'project_id',
-  'created',
-  'created_by',
-  'updated',
-  'labels',
-  'assignees',
-  'attachments',
-  'reminders',
-  'related_tasks',
-];
-export const TASK_COUNT = [...TASK, 'comment_count']; // expand=comment_count
-export const TASK_COUNT_REACTIONS = [...TASK_COUNT, 'reactions']; // expand=comment_count and expand=reactions
-export const TASK_COMMENTS = [...TASK, 'comments']; // expand=comments
-export const TASK_REACTIONS_COMMENTS = [...TASK_COMMENTS, 'reactions']; // expand=reactions and expand=comments
-export const CREATED = TASK.filter(k => !['labels', 'assignees', 'related_tasks', 'attachments'].includes(k));
-export const SAVED = [...TASK_REACTIONS_COMMENTS, 'comment_count'];
-
-const copies = new Map(); // task id -> Vikunja's last copy, holding only fields from those lists
+const copies = new Map(); // task id -> Vikunja's last copy, holding only fields from the lists in ../tasks.js
 const bases = new Map(); // task id -> what a row was made from while Vikunja's copy of it is unknown
 // Outbox entries that no row shows any more, though they may still be in the outbox: answered, or a held delete undone.
 const settled = new Set();
@@ -157,8 +116,6 @@ export function writes(on = {}, idle = false) {
   return w;
 }
 const UNKNOWN = Symbol('unknown');
-// The fields a write marking a repeating task done may leave, since Vikunja moves such a task on to its next dates.
-export const MOVED = ['done', 'done_at', 'due_date', 'start_date', 'end_date', 'reminders'];
 const opWrites = new Map(); // outbox entry id -> its op's write (sendingOp)
 /* The write of op entry `a` as the sender sends it (writes): the tasks it changes, each with what its apply sets
    there. A field the apply sets to the value the copy has is one it sets too, so it is found by applying the op to
@@ -253,10 +210,6 @@ let depth = 0,
 const inChange = () => {
   if (!depth) throw new Error('Write the store inside change().');
 };
-/* The id that the ops on task `task` are filed under in opsOn. A step still being inserted is 'pending-' + its entry's
-   id until Vikunja has made it, and its own id from then on. Code that looks up a waiting step's ops goes through
-   this too, or an op filed under the new id would vanish from the step's row. */
-export const opsId = task => (typeof task === 'string' ? (sync.taskOf(task.replace(/^pending-/, '')) ?? task) : task);
 // The ids of the tasks an outbox entry changes (an op's `on`).
 const shownOn = a => opOf(a).on(a);
 // A key of opsOn as the task id it stands for. A task not yet sent has a string id.
@@ -633,6 +586,12 @@ export const dropCopies = () => {
 let unread = null; // the ids of the copies kept on the phone that the store hasn't read yet, once their list is read
 const unsaved = new Set();
 const keptCopy = id => copies.get(id) ?? bases.get(id);
+/* The copy of `t` kept on the phone. Vikunja lists every checklist started from a template, and every copy of each of
+   its steps, as whole tasks (copiedto). The phone keeps their ids only, or each start would make these copies longer. */
+const onPhone = t =>
+  t.related_tasks?.copiedto?.length
+    ? { ...t, related_tasks: { ...t.related_tasks, copiedto: t.related_tasks.copiedto.map(x => ({ id: x.id })) } }
+    : t;
 /* Read the copies kept on the phone into the store: those of tasks `ids`, or all that are left. A screen saved on the
    phone reads its own tasks' copies first, so its first row isn't held up by the rest (keptScreen). A copy the store
    has already is newer, and a copy read after a write to its task is thrown away (read). */
@@ -664,7 +623,9 @@ function keepCopies(c, ids) {
   /* A copy the phone has no room for stays unsaved, so the next save tries it again. It stays out of the list unless an
      older copy of it is on the phone. */
   const failed = new Set(
-    kept.filter(id => keptCopy(id) && (unsaved.has(id) || !was.has(id)) && !saved.set('task.' + id, keptCopy(id))),
+    kept.filter(
+      id => keptCopy(id) && (unsaved.has(id) || !was.has(id)) && !saved.set('task.' + id, onPhone(keptCopy(id))),
+    ),
   );
   unsaved.clear();
   for (const id of failed) unsaved.add(id);
@@ -695,7 +656,7 @@ function keptIds(c, phone = false) {
   for (const k of keptScreens()) for (const id of screenIds(saved.get(k)) || []) add(id);
   for (const id of pointed(c)) add(id);
   if (!phone) {
-    for (const g of c.view?.groups || []) for (const t of g.tasks) add(t.id);
+    for (const g of c.view?.groups || []) for (const t of [...g.tasks, ...(g.left || [])]) add(t.id);
     for (const cl of c.view?.checklists || [])
       for (const t of [...(cl.runs || []), ...(cl.finished || []), ...(cl.templates || [])]) add(t.id);
     const r = c.view?.shownRun,
@@ -834,6 +795,18 @@ export default {
   // the newest copy Pocket had.
   keepChanged() {
     if (this.user && outboxRead) keepCopies(this, keptIds(this, true));
+  },
+  /* Make room in a full localStorage (keep, util.js). Delete the oldest saved screen, and the copies of its tasks that
+     nothing else needs (keptIds): no other kept screen, outbox entry or the screen on display. Returns false when no
+     saved screen is left to delete. */
+  makeRoom() {
+    const key = oldestScreen();
+    if (!key) return false;
+    const ids = screenIds(saved.get(key)) || [];
+    store.del('saved.' + key);
+    const keep = keptIds(this);
+    for (const id of ids) if (!keep.has(id)) store.del('saved.task.' + id);
+    return !saved.get(key);
   },
   /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
      keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran

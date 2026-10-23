@@ -1,6 +1,6 @@
 // The outbox: everything waiting to go to Vikunja, kept on the phone. The requests of each change are its op's stages
 // (src/js/ops/).
-import { app } from './util.js';
+import { app, store } from './util.js';
 
 /* The rows show the ops waiting in the outbox (keyOps, app/tasks.js), so each change to it in this tab tells them,
    once for all the changes made together. Deletes held for Restore change what the rows show too. */
@@ -23,6 +23,8 @@ class Told extends Set {
     return super.delete(v);
   }
 }
+// The key in localStorage that says the outbox's database had no entries when it was last read (seenEmpty).
+const EMPTY = 'outbox.empty';
 
 /* An entry is one of:
    - an op (`kind: 'act'`, `op`), sent through its stages. A line typed in an add box is an `add` op (ops/add.js):
@@ -36,7 +38,12 @@ class Told extends Set {
    Entries, file bytes and the tasks Pocket has added live in IndexedDB. An entry and its files are saved together or
    not at all. The screen reads a copy in memory (`entries`). Sending always starts from the database's copy, so two
    tabs never work from a stale one. If the database can't be used or the phone is out of space, the entry waits in
-   memory only, and Pocket tells the user to keep it open. */
+   memory only, and Pocket tells the user to keep it open.
+
+   A new page can't show what is waiting until the database opens, which a slow phone or another tab can hold up for
+   seconds. So localStorage keeps a flag (EMPTY) for whether the database had no entries when it was last read. Then
+   boot (app/auth.js) waits for the database only when an entry might be waiting. A wrong "empty" would let a row change
+   after it is drawn, so every write deletes the flag, and only a read that finds no entries sets it. */
 export const sync = {
   entries: new Map(), // id -> entry, what the screen shows
   volatile: new Set(), // ids of entries kept in memory only
@@ -91,6 +98,8 @@ export const sync = {
   async start() {
     try {
       await this.reload();
+      if (this.entries.size) store.del(EMPTY);
+      else await this.noteEmpty();
       // A claim lasts a day, or while an entry still waits for its task: a line under a line, or an op on a new step.
       const day = Date.now() - 86400000,
         named = new Set(
@@ -111,14 +120,32 @@ export const sync = {
       app?.refreshPending();
     });
   },
-  // Reload the entries from the database, and keep those that exist in memory only.
+  /* Reload the entries from the database, and keep those that exist in memory only. Keep those this tab is still adding
+     too. A read that started before their save doesn't find them, and nothing would send them until the next read. */
   async reload() {
     const list = await this.tx(['outbox'], 'readonly', s => s('outbox').getAll());
-    const keep = [...this.volatile].map(id => this.entries.get(id)).filter(Boolean);
+    const keep = [...this.volatile, ...this.adding.keys()].map(id => this.entries.get(id)).filter(Boolean);
     this.entries = new Map([...list, ...keep].map(e => [e.id, e]));
   },
   changed() {
     this.channel?.postMessage('changed');
+  },
+  // Whether the database had no entries when last read, in any tab. False when localStorage can't say.
+  seenEmpty() {
+    return store.get(EMPTY) === '1';
+  },
+  /* Set the flag once a read has found no entries. The database is read again after, because another tab may have
+     added an entry, and deleted the flag, between that read and this write. If that read fails, the flag goes. */
+  async noteEmpty() {
+    store.set(EMPTY, '1');
+    if (await this.tx(['outbox'], 'readonly', s => s('outbox').count()).catch(() => 1)) store.del(EMPTY);
+  },
+  /* Write to the outbox in one transaction. The flag is deleted before the write, in case the page is closed during
+     it, and again after, in case another tab set it meanwhile from a read made before this write. */
+  async write(fn) {
+    store.del(EMPTY);
+    await this.tx(['files', 'outbox'], 'readwrite', fn);
+    store.del(EMPTY);
   },
   // This user's entries, oldest first, so changes are sent in the order they were made (a tick, then its untick).
   all(user) {
@@ -138,7 +165,7 @@ export const sync = {
       const data = await Promise.all(
         files.map(async f => ({ name: f.name, type: f.type, data: await f.arrayBuffer() })),
       );
-      await this.tx(['files', 'outbox'], 'readwrite', s => {
+      await this.write(s => {
         data.forEach((d, i) => s('files').put(d, entry.files[i].key));
         s('outbox').put(plain(entry));
       });
@@ -162,7 +189,7 @@ export const sync = {
       return;
     }
     try {
-      await this.tx(['files', 'outbox'], 'readwrite', s => {
+      await this.write(s => {
         for (const k of drop) s('files').delete(k);
         for (const e of all) s('outbox').put(plain(e));
       });
@@ -183,15 +210,17 @@ export const sync = {
     for (const k of keys) this.bytes.delete(k);
     if (task != null) for (const x of this.entries.values()) named(x, name, task);
     try {
-      await this.tx(['files', 'outbox'], 'readwrite', s => {
+      const left = await this.tx(['files', 'outbox'], 'readwrite', s => {
         for (const k of keys) s('files').delete(k);
         s('outbox').delete(id);
         if (task != null)
           s('outbox').getAll().onsuccess = r => {
             for (const x of r.target.result) if (named(x, name, task)) s('outbox').put(x);
           };
+        return s('outbox').count();
       });
       this.changed();
+      if (!left) await this.noteEmpty();
     } catch {}
   },
   async drop(fn) {
@@ -278,6 +307,8 @@ export const packParsed = p => ({
   remind: !!p.remind,
   done: !!p.done,
   pct: p.pct || 0,
+  ...(p.notes && { notes: p.notes }),
+  ...(p.tags && { tags: p.tags }),
 });
 export const unpackParsed = p => ({ ...p, due: p.due ? new Date(p.due) : null });
 export const randomId = () =>

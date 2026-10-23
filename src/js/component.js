@@ -98,7 +98,8 @@ export const directives = Alpine => {
        checklist's box on a checklist's screen.
      - Enter sends the text, or takes the top suggestion (boxEnter). While an input method is composing a word, Enter
        picks from the input method's own list instead.
-     - Typing @ or * loads the people or labels it suggests. The projects that + suggests are already loaded.
+     - Typing @ or * loads the people or labels it suggests. The projects that + suggests are already loaded. Each
+       letter after @ also looks up the suggested people's access that isn't loaded yet (lookUpSuggested).
      - Half a second after typing pauses, it checks the @usernames in the text (checkAccess). The check finds out
        whether each person exists and can see the project the lines go to, so chips can warn before sending. It
        checks again only when the names or the project change.
@@ -173,7 +174,11 @@ export const directives = Alpine => {
     watch(() => {
       const kind = app.boxToken(name())?.kind;
       if (kind === 'label') app.loadLabels().catch(() => {});
-      if (kind === 'assignee') app.loadPeople().catch(() => {});
+      if (kind === 'assignee')
+        app
+          .loadPeople()
+          .then(() => app.lookUpSuggested(name()))
+          .catch(() => {});
     });
     let asked = '',
       timer;

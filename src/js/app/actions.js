@@ -46,7 +46,8 @@ import { between, listViewOf, placeAfter, placeMove, positionOrder, siblingBlock
 import { dayGroup, parentIds } from '../lists.js';
 import { itemsOf, sync, uuid7 } from '../sync.js';
 import { addLines, cancelling, cancelOf, movedFrom, opOf, personOf, tagOf, waitingPositions } from '../ops/index.js';
-import { copyOf, opsId } from './tasks.js';
+import { copyOf } from './tasks.js';
+import { opsId } from '../tasks.js';
 
 // How long a held deletion stays valid. After that, another tab or a restarted Pocket may send it. This tab can keep
 // its rows longer if a touch or scroll keeps the batch waiting.
@@ -241,6 +242,7 @@ export default {
   /* Tick a checklist step through the outbox, which records who did it and works offline. The op shows the tick on
      the step's row while it waits. A list row waits for the batch to clear. In a sheet the step stays visible as done. */
   async tickRunStep(t, run, rowEl) {
+    if (!t.done && this.lockedTap(t)) return; // a tick from a sheet, as a row's tick has already asked (tickRow)
     const was = t.done,
       f = { id: uuid7(), op: was ? 'undone' : 'done', task: t.id, run },
       acting = this.act(f);
@@ -581,6 +583,8 @@ export default {
         from.tasks.findIndex(x => x.id === t.id),
         1,
       );
+    // A task moved off Today goes back if its move is cancelled (offList, views.js).
+    if (from && !into) from.left = [...(from.left || []).filter(l => l.id !== t.id), { id: t.id, to: null }];
     into?.tasks.push(t);
     this.setBadge(groups.find(g => g.key === 'overdue')?.tasks.length || 0);
   },

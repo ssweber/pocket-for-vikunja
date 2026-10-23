@@ -1,6 +1,6 @@
 // Claiming a subtask or a step (assigning yourself to it), letting it go, and assigning anyone or unassigning them.
 import { ApiError } from '../api.js';
-import { assignedJustNow, OP_WORDS } from '../messages.js';
+import { assignedJustNow, cantSeeProject, OP_WORDS } from '../messages.js';
 import { ALREADY, CANCEL } from '../sync.js';
 import { setOne } from './stages.js';
 import { whoOf } from './shown.js';
@@ -97,13 +97,21 @@ export const unclaim = {
 
 // The fields of a person that an entry keeps: what the op's words and the task's rows show of them.
 export const personOf = u => ({ id: u.id, username: u.username || '', name: u.name || '' });
+// Vikunja's code for a person who can't see the task's project. Sending the op again can't succeed, so it is dropped.
+const NO_ACCESS = 7003;
+const setPerson = setOne('assignees', a => a.person.id);
+const assignIt = (a, c) =>
+  setPerson(a, c).catch(e => {
+    if (e.code === NO_ACCESS) e.message = cantSeeProject(a.person);
+    throw e;
+  });
 /* `person` is assigned (`add`) or unassigned, on the people Vikunja has when it is sent (setOne), so a person a teammate
    assigned since stays. `was` is the people the row showed, for Cancel's words when Pocket has no copy. A claim keeps
    its own op, so two people claiming at once still settle on one. Each is the other's Undo. A task deleted in Vikunja
-   since drops the op. */
+   since drops the op, and so does a person who can't see its project. */
 export const assign = {
   apply: (t, a) => ({ ...t, assignees: withPerson(t.assignees, a.person, a.add) }),
-  stages: [setOne('assignees', a => a.person.id)],
+  stages: [assignIt],
   invert: a => ({
     op: 'assign',
     task: a.task,
@@ -112,7 +120,7 @@ export const assign = {
     was: a.got?.task?.assignees ?? withPerson(a.was, a.person, a.add),
   }),
   merge: joined,
-  refusal: (a, e) => (e?.status === 404 ? 'dropped' : 'kept'),
+  refusal: (a, e) => (e?.status === 404 || e?.code === NO_ACCESS ? 'dropped' : 'kept'),
   sheetPlace: 'sheet:props',
   replyOnly: () => ['assignees'],
   ...OP_WORDS.assign,

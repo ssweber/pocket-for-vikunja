@@ -13,7 +13,8 @@ import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js'
 import { listViewOf, positionOrder } from '../order.js';
 import { isMovedGap } from '../lists.js';
 import { completeAsk, headText, ringSaid } from '../messages.js';
-import { started, TASK_COUNT } from './tasks.js';
+import { started } from './tasks.js';
+import { TASK_COUNT } from '../tasks.js';
 
 const shownStep = new Map(); // card id -> the step last on its top row, to tell when a new one arrives
 let cardIO = null; // the IntersectionObserver that collapses an opened card once it is off the screen
@@ -74,9 +75,10 @@ export default {
       head: head ? headText(r.list.filter(s => s.pending || !done(s)).length) : null,
       project: t.project_id,
     };
-    // The options for the card's rows. `key` lets a row under the Today heading leave out the word "Today".
+    // The options for the card's rows. `line` makes a row on Today a single line (rowWhen), so a collapsed card keeps
+    // its height while its steps are ticked. `key` lets a row under the Today heading leave out the word "Today".
     // `reschedule` lets holding a row move the card to another day.
-    card.g = { depth: {}, card, line: g.line, key: g.key, delete: true, reschedule: g.reschedule };
+    card.g = { depth: {}, card, line: g.cards === 'today', key: g.key, delete: true, reschedule: g.reschedule };
     return card;
   },
   // An item's classes in a list with cards: has-card when it holds a card, and has-tab when the card has a footer. The

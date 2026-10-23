@@ -4,14 +4,14 @@
    and answers everything still waiting, and reads every task. The checks after each command compare the app with a
    model made from the fake Vikunja's replies, each op's `apply` and the outbox's database, never from the store's own
    functions. A failure prints the seed and the shortest sequence that breaks a check. */
-import './browser.mjs';
+import { granted } from './browser.mjs';
 import { stores, used } from './outbox-db.mjs';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { fakeVikunja } from './fake.mjs';
-import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/app/tasks.js';
+import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { older, uuid7 } from '../../src/js/sync.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
@@ -74,8 +74,9 @@ const usePage = i => {
 };
 usePage(0);
 /* CI=1 fixes the seed. FC_RUNS sets the number of sequences, and FC_SEED a seed to run again. FC_PATH and FC_REPLAY
-   replay a failure's path and replayPath at once. FC_STATS=1 prints how often each command ran, each KNOWN bug was
-   met, and checks 4 and 5 ran with nothing skipped. */
+   replay a failure's path and replayPath at once, with its seed. A path without its replayPath can't be replayed, so
+   keep all three. FC_STATS=1 prints how often each command ran, each KNOWN bug was met, and checks 4 and 5 ran with
+   nothing skipped. */
 let later = 0; // the latest time a sequence reached
 const RUNS = +process.env.FC_RUNS || 1000,
   START = Date.parse('2026-10-17T09:00:00Z'),
@@ -1031,15 +1032,18 @@ class World {
   sending(p) {
     return this.bg(Promise.resolve(p).then(() => this.app.refreshPending()));
   }
-  // Wait until the app stops working: no request, no write to the store and no write to the database for a few turns.
+  /* Wait until the app stops working: no request, no write to the store, no database task and no lock granted for
+     four turns. A database request takes several turns, so counting requests alone could stop while the next holder
+     of the outbox lock was about to send. */
   async settle() {
+    const busy = () => this.activity + used.tasks + granted.count;
     let was,
       n = 0;
     do {
-      was = this.activity + used.requests;
+      was = busy();
       for (let i = 0; i < 4; i++) await tick();
       if (++n > 500) throw new Error('the app never stopped working');
-    } while (was !== this.activity + used.requests);
+    } while (was !== busy());
   }
   acts() {
     return sync.all(ME.id).filter(e => e.kind === 'act');
@@ -2204,6 +2208,54 @@ test("a read's comments are taken after a sweep, though a catch-up that started 
       new CatchUp(false),
       new Sweep([]),
       new StartRead([1], false),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* The tick on checklist 1 is held while three more ops wait for the outbox lock. The reload makes the tick fail, and
+   the next op in line on the old page sends the tick again. The reload waits for that request too, so Vikunja makes
+   it before the new page reads checklist 1. */
+test("a reload waits for the old page's next send before the new page reads", async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new StepMade(),
+      new Queue('done', 1),
+      new Reload(false),
+      new Send(false),
+      new Sheet(3, 'assign'),
+      new Queue('add, with a label and a person', 1),
+      new Queue('delete, with no Restore', STEP),
+      new Reload(false),
+    ]) {
+      assert.ok(c.check(w.model), `${c} can run`);
+      await c.run(w.model, w);
+    }
+    await drain(w, [0]);
+  } finally {
+    await w.close();
+  }
+});
+
+/* The step and three more ops wait for the outbox lock behind a held tick. Each takes its turn with database reads
+   and writes but no request, and the outbox is checked only once the step is made. */
+test('the outbox empties once every op waiting for the lock has had its turn', async t => {
+  const w = await open(t.mock.timers);
+  try {
+    for (const c of [
+      new Queue('done', 1),
+      new Send(false),
+      new Queue('done', 1),
+      new Queue('delete, with no Restore', 3),
+      new Drop(0),
+      new StepMade(),
+      new Undo(0),
     ]) {
       assert.ok(c.check(w.model), `${c} can run`);
       await c.run(w.model, w);

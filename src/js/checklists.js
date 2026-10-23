@@ -1,9 +1,9 @@
 // Checklists: how templates, runs and timed steps are stored in Vikunja, and how steps are parsed as they are typed.
 // Pocket marks its own data with lines in task descriptions, and these functions read and write those lines.
-import { allPages, ApiError } from './api.js';
+import { allPages, ApiError, serverTime } from './api.js';
 import { htmlToText, parseFragment } from './html.js';
 import { isSet } from './dates.js';
-import { NUMBER_WORDS } from './quickadd.js';
+import { notesOf, NUMBER_WORDS } from './quickadd.js';
 
 /* Checklists live in a project with the line "pocket:checklists" in its description. A template is a task in that
    project, labelled "template" and marked done. Its subtasks, also marked done, are its steps.
@@ -107,12 +107,37 @@ export const withOrder = (html, ids) => withLine(html, ORDER_LINE, ids ? `${ORDE
 export const withRunMark = html => withLine(html, RUN_LINE, 'pocket:run');
 export const withStepLine = (html, title) => withLine(html, STEP_LINE, title === null ? null : 'pocket:step ' + title);
 export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
+/* A template's settings for its checklists, as lines in its description. "pocket:wait" stops a timed step being ticked
+   before its time. "pocket:in-order" stops a step being ticked while a step above it is open. A checklist gets a copy
+   of the lines when it starts and reads only its own, so changing the template changes only checklists started later.
+   "pocket:in-order" is not "pocket:order", which holds the step ids. */
+const WAIT_LINE = /^pocket:wait$/i,
+  IN_ORDER_LINE = /^pocket:in-order$/i;
+export function runRules(html) {
+  const root = parseFragment(html || '');
+  return { wait: !!markLines(root, WAIT_LINE).length, order: !!markLines(root, IN_ORDER_LINE).length };
+}
+// The description with the settings `rules` sets ({wait, order}, either may be left out) written as lines.
+export function withRules(html, rules) {
+  if ('wait' in rules) html = withLine(html, WAIT_LINE, rules.wait ? 'pocket:wait' : null);
+  if ('order' in rules) html = withLine(html, IN_ORDER_LINE, rules.order ? 'pocket:in-order' : null);
+  return html;
+}
 // Any line of Pocket's, including one that a newer Pocket writes and this one does not know. An older copy still
 // installed somewhere must not show such a line as a note, or lose it when the notes are edited.
 const ANY_LINE = /^pocket:\S/i,
   KNOWN_LINES = [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE];
 // The notes alone, without Pocket's lines.
 export const notesOnly = html => withLine(html || '', ANY_LINE, null);
+// Whether a description has notes besides Pocket's lines. Every row asks, so it reads the tags with a regex instead of
+// parsing the HTML.
+export const hasNotes = html =>
+  /<img\b/i.test(html || '') ||
+  (html || '')
+    .replace(/<\/?(p|div|li|br|h\d)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]*>|&nbsp;|&#160;/g, ' ')
+    .split('\n')
+    .some(l => l.trim() && !ANY_LINE.test(l.trim()));
 // A step's notes as a checklist copies them: without the lines that place a step in a template or a checklist, which
 // the copy gets anew. Every other line stays where it is, so a step's asks, and a newer Pocket's lines, come along.
 export const copiedNotes = html => KNOWN_LINES.reduce((h, re) => withLine(h, re, null), html || '');
@@ -178,7 +203,7 @@ export function repeatWords(t) {
 }
 /* The due date Vikunja gives a template when it's ticked, or null if it doesn't repeat. Mode 0 moves the date forward
    by whole intervals, to the first time after now. Monthly moves it forward one month only, so a template left for
-   months is still late. Mode 2 sets it one interval after now. Checked on Vikunja 2.7. */
+   months is still late. Mode 2 sets it one interval after now. Checked on Vikunja 2.7.1. */
 export function vikunjaNext(t, now = Date.now()) {
   const due = Date.parse(t.due_date);
   if (!isSet(t.due_date)) return null;
@@ -196,10 +221,12 @@ export function nextAfter(t, from, now = Date.now()) {
     d = t.repeat_mode === 1 ? addMonths(from, i) : from + i * (t.repeat_after || 0) * 1000;
   return d;
 }
-// Add `n` months the way Go's AddDate does in Vikunja. It keeps the same day of the month and overflows into the next
-// month (Jan 31 → Mar 3).
+// Add `n` months the way Vikunja 2.7.1 moves a monthly task. It keeps the day of the month, cut to the month's last
+// day (Jan 31 → Feb 28). Vikunja then moves on from the cut day, so Feb 28 → Mar 28.
 const addMonths = (ms, n) => {
-  const d = new Date(ms);
+  const d = new Date(ms),
+    last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(d.getUTCDate(), last));
   d.setUTCMonth(d.getUTCMonth() + n);
   return +d;
 };
@@ -358,7 +385,8 @@ export const countText = left =>
     : durText(-left < 6e4 ? -left : Math.floor(-left / 6e4) * 6e4) + ' late';
 /* One string for everything on a run's screen that changes only because time passes. It holds today's date, which
    "Due tomorrow" depends on. For each open step with a time (`dueAt`, ms), it holds whether the time has come,
-   whether it is within a day, and the countdown text. tickRun (app/alerts.js) redraws the run only when the string
+   whether it is within a day, and the countdown text. A step that can't be ticked yet (`lock`) counts the seconds on
+   its Done button, so the string holds them too. tickRun (app/alerts.js) redraws the run only when the string
    changes, so an idle run does no work as the seconds pass. */
 export const runShows = (steps, now) =>
   new Date(now).toDateString() +
@@ -366,7 +394,10 @@ export const runShows = (steps, now) =>
     .filter(s => !s.done && Number.isFinite(s.dueAt))
     .map(s => {
       const left = s.dueAt - now;
-      return `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}`;
+      return (
+        `|${s.id}:${left < 0 ? 'l' : ''}${left <= 0 ? 'c' : ''}${Math.abs(left) < 864e5 ? countText(left) : ''}` +
+        (s.lock?.at && left > 0 ? ':' + Math.ceil(left / 1e3) : '')
+      );
     })
     .join('');
 /* The index of the step a run goes to next. The run's screen and its card on Today both use this rule. `steps` are
@@ -388,6 +419,67 @@ export function stepFrom(steps, i) {
   if (!s.ref) return i - 1;
   const j = steps.findIndex(x => sameName(x.name, s.ref));
   return j >= 0 && j < i ? j : null;
+}
+/* When each step of a run is due. `steps` are the run's steps in order, {title, tpl, added, done, doneAt, waiting,
+   due_date, updated}. `tpl` is the template step's title, which holds the time, and `waiting` says the tick is still
+   in the outbox, so `doneAt` is the phone's time. A time counts from when the step it names was done. A due date
+   changed after that is kept. One the plugin set is not, because the plugin leaves `updated` alone. Whole seconds are
+   compared, because offline ticks can reach Vikunja within one second. An inserted step has no time. A repeated step
+   stands in for its template step, and a step timed from it counts from the copy done last.
+
+   Returns, for each step, {time: its template step's parseStep, or null; from: the step it counts from, or null;
+   due: a Date, or null}. */
+export function stepTimes(steps) {
+  const group = [],
+    timing = [],
+    place = [];
+  steps.forEach((s, i) => {
+    group[i] = -1;
+    if (!s.added) {
+      group[i] = timing.length;
+      timing.push(parseStep(s.tpl || ''));
+      place.push(i);
+    } else if (s.tpl != null)
+      for (let j = i - 1; j >= 0; j--)
+        if (group[j] >= 0 && steps[j].tpl === s.tpl) {
+          group[i] = group[j];
+          break;
+        }
+  });
+  const lastOf = g =>
+    steps
+      .filter((s, i) => group[i] === g && s.done)
+      .sort((a, b) => new Date(a.doneAt) - new Date(b.doneAt))
+      .pop() || steps[place[g]];
+  return steps.map((s, i) => {
+    const own = !s.added && group[i] >= 0,
+      time = own ? timing[group[i]] : null,
+      j = own ? stepFrom(timing, group[i]) : null,
+      from = j >= 0 ? lastOf(j) : null;
+    let due = isSet(s.due_date) ? new Date(s.due_date) : null;
+    if (from && !from.done) due = null;
+    else if (
+      from &&
+      (from.waiting || !due || !(Math.floor(+new Date(s.updated) / 1000) > Math.floor(+new Date(from.doneAt) / 1000)))
+    )
+      due = new Date((from.waiting ? serverTime(+new Date(from.doneAt)) : +new Date(from.doneAt)) + time.offset);
+    return { time, from, due };
+  });
+}
+/* Whether step `i` of a run can't be ticked yet, under the run's settings (`rules`, runRules). `steps` are the run's
+   steps in order and `times` what stepTimes gave them. With `order`, a step waits while a step above it is open (a
+   skipped step is done), and the nearest such step is named. With `wait`, a timed step waits for the step it counts
+   from, then for its time. A step added during the run has no time, so it never waits for one. Returns null when the
+   step can be ticked, else {icon: 'lock' or 'hourglass', at: when it can be ticked, or null while it waits on a step,
+   from: that step}. */
+export function lockOf(steps, i, times, rules, now) {
+  if (steps[i].done) return null;
+  if (rules.order)
+    for (let j = i - 1; j >= 0; j--) if (!steps[j].done) return { icon: 'lock', at: null, from: steps[j] };
+  const at = times[i];
+  if (!rules.wait || at.time?.offset == null) return null;
+  if (at.from && !at.from.done) return { icon: 'hourglass', at: null, from: at.from };
+  return at.due && +at.due > now ? { icon: 'hourglass', at: +at.due, from: at.from } : null;
 }
 /* A step's time typed as a phrase: "in 20 min", "after an hour", "20 minutes later", "1h 30m after". It is saved as
    T#20m. Instructions like "for 2 minutes" or "rest 10 minutes" aren't read as times. */
@@ -487,9 +579,20 @@ function stepName(title, taken) {
    A time typed as a phrase becomes T#…, unless `keep` is set to keep the phrase. `from` is the step the time counts
    from: null as typed, '' for the step before, or another row's key. A step that another step counts from by key
    gets a name made from its title if it has none, so moving rows doesn't change what a step counts from. `clean`
-   removes what quick add reads out of a title (@people, *labels), so the name is made from the title text alone. */
+   removes what quick add reads out of a title (@people, *labels), so the name is made from the title text alone.
+
+   A row's notes, after " // " (notesOf), are kept apart, so a time in them is not read. Unless the row's notes chip
+   is tapped off (`ignore.notes`), they follow the saved title in `added`, where the step's line reads them again. */
 export function draftSteps(rows, before = [], clean = t => t) {
-  const all = [...before.map(b => ({ ...b, fixed: true })), ...rows.filter(r => r.text.trim())];
+  const all = [
+    ...before.map(b => ({ ...b, fixed: true })),
+    ...rows
+      .filter(r => r.text.trim())
+      .map(r => {
+        const n = !r.ignore?.notes && notesOf(r.text.trim());
+        return n ? { ...r, text: r.text.trim().slice(0, n.at), notes: n.notes } : r;
+      }),
+  ];
   const parsed = all.map(r => parseStep(r.text)),
     at = new Map(all.map((r, i) => [r.key, i]));
   const phrase = all.map((r, i) => (r.fixed || /(^|\s)T#/i.test(r.text) ? null : readStepPhrase(r.text)));
@@ -542,6 +645,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
     info.set(r.key, {
       i,
       saved: saved[i],
+      notes: r.notes || '',
       offset: steps[i].offset,
       name: steps[i].name,
       text: infos[i].text,
@@ -555,7 +659,7 @@ export function draftSteps(rows, before = [], clean = t => t) {
   });
   return {
     info,
-    added: saved.filter((_, i) => !all[i].fixed),
+    added: saved.flatMap((t, i) => (all[i].fixed ? [] : [all[i].notes ? `${t} // ${all[i].notes}` : t])),
     problem: [...info.values()].some(x => x.problem),
     renames: all
       .map((r, i) => (r.fixed && saved[i] !== r.text.trim() ? { key: r.key, title: saved[i] } : null))
@@ -581,6 +685,7 @@ export function stepInfos(titles) {
     return {
       title: s.title,
       text: text && text[0].toUpperCase() + text.slice(1),
+      timed: !!when,
       problem: problems
         .filter(p => p.i === i)
         .map(p => p.text)
@@ -599,11 +704,14 @@ export async function patiently(fn) {
     }
   }
 }
-/* A task with all its comments. Vikunja's expand=comments returns only the first 50, and leaves `comments` out when
-   there are none. An empty list then says the comments were read, so a comment waiting to be sent has a list to join
-   (said, ops/shown.js). */
+/* A task with all its comments. Vikunja's expand=comments returns the oldest 50 comments of all the tasks in a reply,
+   so a task in a list can come with some of its comments or none. Read with expand=comment_count too, a task with
+   fewer comments than its count has more. A task read alone may have more when it has 50. Vikunja leaves `comments` out
+   when there are none. An empty list then says the comments were read, so a comment waiting to be sent has a list to
+   join (said, ops/shown.js). */
 export async function allComments(t) {
-  if ((t.comments || []).length >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
+  const n = (t.comments || []).length;
+  if (t.comment_count != null ? t.comment_count > n : n >= 50) t.comments = await allPages(`/tasks/${t.id}/comments`);
   t.comments ||= [];
   return t;
 }

@@ -7,6 +7,49 @@ import { swipeAt } from '../src/js/progress.js';
    the timeout ends, so a test doesn't need a separate wait before checking the page. */
 export const expect = base.configure({ timeout: 10000 });
 
+/* Runs a file's steps, prints each one's result and time, and counts the failures. `shot(name)` saves a picture of a
+   failed step. STEP=<regex> runs only the steps whose name it matches, plus the setup steps, which always run because
+   later steps need what they make. A step that builds on the steps just before it needs them in the regex too.
+   `end()` prints the totals and sets the exit code. A failure found after the steps adds to `failed`. */
+export function stepper(shot = () => {}) {
+  const only = process.env.STEP ? new RegExp(process.env.STEP) : null;
+  const s = { failed: 0, ran: 0, skipped: 0 };
+  const run = async (name, fn, setup) => {
+    if (only && !setup && !only.test(name)) return void s.skipped++;
+    if (!setup) s.ran++;
+    const start = Date.now(),
+      secs = () => ` (${((Date.now() - start) / 1000).toFixed(1)}s)`; // shows each step's time, so a slow one stands out
+    try {
+      await fn();
+      console.log('PASS', name + (only && setup ? ' (setup)' : '') + secs());
+    } catch (e) {
+      s.failed++;
+      console.log(
+        'FAIL',
+        name + secs(),
+        '-',
+        e.message
+          .split('\n')
+          .slice(0, process.env.VERBOSE ? 8 : 1)
+          .join(' · '),
+      );
+      try {
+        await shot(name);
+      } catch {}
+    }
+  };
+  s.step = (name, fn) => run(name, fn, false);
+  s.setup = (name, fn) => run(name, fn, true);
+  s.end = () => {
+    const skipped = only ? `, ${s.skipped} skipped by STEP` : '';
+    if (only && !s.ran) console.log(`STEP=${process.env.STEP} matches no step in this file`);
+    console.log((s.failed ? `${s.failed} failed` : 'All passed') + skipped);
+    if (only && s.failed) console.log('A step can fail because STEP skipped a step it needs. Add that step to STEP.');
+    process.exitCode = s.failed ? 1 : 0;
+  };
+  return s;
+}
+
 /* Waits until everything Pocket has to send has reached Vikunja. Call it before a test reads Vikunja or deletes
    what the test made. It needs <html data-sync> (core.js) to be "idle" for `settle` ms, because a tap's handler may be
    about to send something. It never finishes while something can't be sent (a deletion whose Undo is still showing,
@@ -23,6 +66,23 @@ export async function synced(page, { timeout = 20000, settle = 250 } = {}) {
   }
 }
 
+/* What is waiting in the outbox, as IndexedDB holds it. A change shows on screen before Pocket has finished writing it
+   to IndexedDB. A test that reloads the page, as if the phone closed Pocket, first waits until the change is here. */
+export const outboxOf = p =>
+  p.evaluate(
+    () =>
+      new Promise(ok => {
+        const r = indexedDB.open('pocket');
+        r.onsuccess = () => {
+          const q = r.result.transaction('outbox').objectStore('outbox').getAll();
+          q.onsuccess = () => {
+            r.result.close();
+            ok(q.result);
+          };
+        };
+      }),
+  );
+
 // Signs in with a username and password on Pocket's sign-in screen at `url`, then waits for the first list to load.
 export async function signIn(page, url, user, password) {
   await page.goto(url);
@@ -34,10 +94,10 @@ export async function signIn(page, url, user, password) {
   await loaded(page);
 }
 
-/* Waits until the current screen is loaded from Vikunja. That means no Loading text, and no saved copy of the
-   screen that is shown while the real one loads behind it (<main id="view" aria-busy>). */
+/* Waits until the current screen is loaded from Vikunja. That means no grey rows or Loading text, and no saved copy
+   of the screen that is shown while the real one loads behind it (<main id="view" aria-busy>). */
 export async function loaded(page, timeout = 15000) {
-  await expect(page.locator('#view .loading')).toHaveCount(0, { timeout });
+  await expect(page.locator('#view :is(.skeleton, .loading)')).toHaveCount(0, { timeout });
   await expect(page.locator('#view[aria-busy="true"]')).toHaveCount(0, { timeout });
 }
 
@@ -84,7 +144,7 @@ export async function steady(locator, timeout = 5000) {
    `touch(type, x, y, at)` sends one touchStart, touchMove, touchEnd or touchCancel. Each carries its time (`at`, in ms),
    as events from a phone do, because Chrome delays passing them on. The test therefore decides how fast the touch moves.
    `touchDrag(sel, by, n, every, hold, {check, cancel})` touches the middle of `sel`, moves `by` px down in `n` moves
-   `every` ms apart, then releases. It really waits `hold` ms before moving. `check` runs before the release, while the
+   `every` ms apart, then releases, and returns once the release's time has passed. It really waits `hold` ms before moving. `check` runs before the release, while the
    touch is still down and after the page has received the last move. Chrome gives the page touch moves one frame at a
    time, later than the test sends them, so a check that nothing moved would otherwise pass before the page could react.
    `cancel` ends the touch with touchcancel instead of a release, as the phone does when its own gesture or a call
@@ -135,8 +195,28 @@ export async function finger(page) {
     } finally {
       await touch(cancel ? 'touchCancel' : 'touchEnd', x, y + by, t0 + n * every + 8);
     }
+    // The release is stamped ahead of the clock. Waiting until its time makes the next touch come after it, as a
+    // finger's does. Chrome sometimes drops a tap sent before then, so the tap opens nothing.
+    await page.waitForTimeout(Math.max(0, t0 + n * every + 8 - Date.now()));
   };
-  return { touch, touchDrag };
+  /* Playwright's own Chromium (no BROWSER_CHANNEL) sometimes makes no click from a tap, about one tap in ten late in
+     smoke.mjs. No mousedown or click reaches the page then, so Pocket never sees the tap. tap() sends the tap again
+     when no click arrives within a second, up to three times. */
+  const tap = async (x, y) => {
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => {
+        window.__tapped = false;
+        addEventListener('click', () => (window.__tapped = true), { capture: true, once: true });
+      });
+      await touch('touchStart', x, y);
+      await touch('touchEnd', x, y);
+      try {
+        return void (await page.waitForFunction(() => window.__tapped, null, { polling: 50, timeout: 1000 }));
+      } catch {}
+    }
+    throw new Error('three taps made no click');
+  };
+  return { touch, touchDrag, tap };
 }
 
 /* The layer a swiped row uncovers (lay, app/progress.js). The layer stays still under the row. It is placed in the
@@ -251,16 +331,23 @@ export const hintSeen = context =>
    edge and a swipe left near its right edge, so each direction has space to move. `start` is the row's progress when
    the swipe starts (100 for a done row). `one` is for a parent's header or row, whose right side only has its full
    point. `check` runs while the swipe is held. By default the mouse is used, which the page treats as a touch but
-   which never meets the phone's touch rules. Pass `finger` (finger(page).touch) to swipe with real touch events. */
-export async function swipeRow(page, sel, to, { start = 0, one = false, check = null, finger = null } = {}) {
+   which never meets the phone's touch rules. Pass `finger` (finger(page).touch) to swipe with real touch events. `from`
+   is a selector inside the row to start the swipe on, at its centre. */
+export async function swipeRow(
+  page,
+  sel,
+  to,
+  { start = 0, one = false, check = null, finger = null, from = null } = {},
+) {
   const el = page.locator(sel);
   await el.evaluate(e => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
   const box = await steady(el),
     width = await el.evaluate(e => e.clientWidth),
-    screen = page.viewportSize().width;
+    screen = page.viewportSize().width,
+    on = from && (await el.locator(from).first().boundingBox());
   const right = to === 'back' || (typeof to === 'number' && to > start),
-    x = right ? box.x + 60 : box.x + box.width - 40,
-    y = box.y + Math.min(box.height / 2, 28);
+    x = on ? on.x + on.width / 2 : right ? box.x + 60 : box.x + box.width - 40,
+    y = on ? on.y + on.height / 2 : box.y + Math.min(box.height / 2, 28);
   const wants = r =>
     to === 'back'
       ? r.to === 'stop' && r.off > 20
