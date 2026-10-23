@@ -722,6 +722,47 @@ function sections() {
           },
         ],
       },
+      // A task with notes has the notes icon after its title. A line of Pocket's alone is not notes.
+      {
+        title: 'With notes: the icon after the title, then done, then only a line of Pocket’s (no icon)',
+        depth: {},
+        tasks: [
+          task({ title: 'Order oat milk', description: '<p>The barista brand</p>' }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            comment_count: 2,
+          }),
+          task({ title: 'Wipe the counters', done: true, description: '<p>Use the blue cloths</p>' }),
+          task({ title: 'Repaint the sign', description: '<p>pocket:order 1 2</p>' }),
+        ],
+      },
+      {
+        title: 'With notes on Today: the icon after the …, so the cut never hides it',
+        depth: {},
+        clamp: true,
+        tasks: [
+          task({ title: 'Order oat milk', description: '<p>The barista brand</p>', due_date: dayAt(0, 9) }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            due_date: dayAt(0, 14),
+          }),
+        ],
+      },
+      {
+        title: 'With notes on one line: the time and dot stay at the right',
+        depth: {},
+        line: true,
+        tasks: [
+          task({ title: 'Order the cups', description: '<p>Ask for the 8oz</p>', due_date: dayAt(1, 10), priority: 2 }),
+          task({
+            title: 'Stock the new shelves in the back room before the delivery comes',
+            description: '<p>Heavy boxes at the bottom</p>',
+            due_date: dayAt(1, 14),
+          }),
+        ],
+      },
       // Progress is drawn in the tick, a quarter at a time, with no line under the row.
       {
         title: 'Progress in the tick, a quarter at a time: none, 25%, 50%, 75%, done; and 30%, set on the web',

@@ -175,7 +175,7 @@ const TYPE_WORDS = { number: 'a number', 'yes-no': 'yes or no', choice: 'a choic
 const asksWords = asks =>
   asks.length === 1 && !asks[0].label ? TYPE_WORDS[asks[0].type] : asks.map(a => a.label).join(', ');
 export const asksText = asks => 'Asks: ' + asksWords(asks);
-export const asksMeta = asks => ({ key: 'asks', cls: 'note-mark', icon: 'comment', text: asksText(asks) });
+export const asksMeta = asks => ({ key: 'asks', cls: 'note-mark', icon: 'notes', text: asksText(asks) });
 /* A checklist step's meta line: each answer that counts, amber outside its range, and "not recorded" for a done step's
    missing one. An open step with no answers says what it records. */
 export function askMeta(t) {

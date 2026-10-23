@@ -55,12 +55,13 @@
   <!-- /only -->
   <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)">
     <!-- only run sheet -->
-    <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template>
+    <template x-if="g.sheet || g.run"><div class="title"><span x-text="g.step ? stepShown(t).title : t.title"></span><template x-if="g.sheet && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template></div></template>
     <!-- /only -->
     <!-- On a card's one-line row (g.line), rowWhen gives what is shown at the right of the title. It is calculated
-         once per row, like the slot. -->
+         once per row, like the slot. A task with notes has the notes icon after its title (rowNotes). On a title
+         that is cut short, the icon goes after the …, outside the title, so the cut never hides it. -->
     <!-- only top list card own -->
-    <template x-for="w in !g.sheet && !g.run ? [g.line ? rowWhen(t, g) : null] : []" :key="0"><div class="title-line"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!t.done && shownPct(t) && !rowRing(t, g)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template><template x-if="w?.said"><span class="sr" x-text="', ' + w.said"></span></template><template x-if="g.own && canEdit"><span class="sr">, tap to change the title</span></template></div>
+    <template x-for="w in !g.sheet && !g.run ? [g.line ? rowWhen(t, g) : null] : []" :key="0"><div class="title-line"><div class="title"><template x-if="t.pending"><span class="sr">Not sent yet: </span></template><template x-if="g.depth[t.id]"><span class="sr">Subtask: </span></template><span x-text="rowTitle(t)"></span><template x-if="!g.line && !g.clamp && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template><template x-if="!t.done && shownPct(t) && !rowRing(t, g)"><span class="sr" x-text="', progress ' + shownPct(t) + '%'"></span></template><template x-if="w?.said"><span class="sr" x-text="', ' + w.said"></span></template><template x-if="g.own && canEdit"><span class="sr">, tap to change the title</span></template></div><template x-if="(g.line || g.clamp) && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template>
       <!-- At the right of a one-line row's title: small priority bars, the short due date and the project's dot. A
            card's row has no dot, since the card's header has one, unless the row is in another project. With none of
            the three, nothing is drawn and the title gets the space. -->

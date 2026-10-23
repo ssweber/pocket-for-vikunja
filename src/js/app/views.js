@@ -3,7 +3,7 @@ import { collapseRows, colorOf, PRIOS, raw, store, TZ } from '../util.js';
 import { askMeta, asksMeta, stepAsks } from '../asks.js';
 import { allPages, api, ApiError, errText, NetError, partOf, why } from '../api.js';
 import { addDays, dueInfo, fmtTime, isSet, repeats, shortDue, startOfDay } from '../dates.js';
-import { CHECKLIST_MARK, comesRound, DONE_MARK, isTemplateLabel, templateName } from '../checklists.js';
+import { CHECKLIST_MARK, comesRound, DONE_MARK, hasNotes, isTemplateLabel, templateName } from '../checklists.js';
 import { currentRoute } from '../routing.js';
 import { labelsMatching, projectName } from '../quickadd.js';
 import {
@@ -224,6 +224,11 @@ export default {
   // A row's title: a template's without its "TEMPLATE: ".
   rowTitle(t) {
     return this.role(t) === 'template' ? templateName(t.title) : t.title;
+  },
+  // Whether a row shows the notes icon after its title. The sheet's own row and a checklist's top row have their notes
+  // below them. A checklist's step shows its notes on its card, and a template's step shows their first line.
+  rowNotes(t, g) {
+    return !g.own && !g.top && !g.run && !g.step && hasNotes(t.description);
   },
   // Send a row's tick to the action for its place: a checklist step, the sheet's own task, a sheet subtask or a list
   // row. Tapping the tick of a marked row undoes the mark instead. The phone vibrates once. A step that can't be ticked

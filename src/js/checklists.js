@@ -129,6 +129,15 @@ const ANY_LINE = /^pocket:\S/i,
   KNOWN_LINES = [ORDER_LINE, RUN_LINE, STEP_LINE, ADDED_LINE];
 // The notes alone, without Pocket's lines.
 export const notesOnly = html => withLine(html || '', ANY_LINE, null);
+// Whether a description has notes besides Pocket's lines. Every row asks, so it reads the tags with a regex instead of
+// parsing the HTML.
+export const hasNotes = html =>
+  /<img\b/i.test(html || '') ||
+  (html || '')
+    .replace(/<\/?(p|div|li|br|h\d)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]*>|&nbsp;|&#160;/g, ' ')
+    .split('\n')
+    .some(l => l.trim() && !ANY_LINE.test(l.trim()));
 // A step's notes as a checklist copies them: without the lines that place a step in a template or a checklist, which
 // the copy gets anew. Every other line stays where it is, so a step's asks, and a newer Pocket's lines, come along.
 export const copiedNotes = html => KNOWN_LINES.reduce((h, re) => withLine(h, re, null), html || '');

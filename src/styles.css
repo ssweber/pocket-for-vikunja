@@ -706,6 +706,35 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* The notes icon after a title. It is centred on the title's first line, so it adds no height. On a title cut short,
+   the title shrinks to its text and the icon follows the …, with the time and dot still at the right. */
+.has-notes svg.i {
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  vertical-align: -1px;
+  color: var(--muted);
+}
+.row.clamp .title-line:has(> .has-notes) {
+  display: flex;
+  gap: 8px;
+}
+.title-line > .has-notes {
+  flex: none;
+  align-self: flex-start;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.title-line > .has-notes svg.i {
+  margin-left: 0;
+}
+.title-line:has(> .has-notes) > .title {
+  flex: 0 1 auto;
+}
+.title-line > .has-notes ~ .when {
+  margin-left: auto;
+}
 .when {
   flex: none;
   display: flex;

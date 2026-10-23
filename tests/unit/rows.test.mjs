@@ -287,6 +287,33 @@ test("the sheet's own row shows only the due date, priority, repeat and upcoming
   );
 });
 
+test('a row shows the notes icon for notes, but not for an empty description or a line of Pocket’s alone', () => {
+  const app = component(views),
+    row = description => app.rowNotes({ id: 5, description }, { depth: {} });
+  assert.equal(row('<p>Use the blue cloths</p>'), true);
+  assert.equal(row('<p><img src="a.png"></p>'), true, 'a picture alone is notes');
+  assert.equal(row('<p>pocket:order 3 1 2</p><p>Ask at the bar</p>'), true);
+  for (const d of [
+    undefined,
+    '',
+    '<p></p>',
+    '<p>&nbsp;</p><p><br></p>',
+    '<p>pocket:order 3 1 2</p>',
+    '<p>pocket:run</p>',
+  ])
+    assert.equal(row(d), false, String(d));
+  const t = { id: 5, description: '<p>Use the blue cloths</p>' };
+  assert.equal(app.rowNotes(t, { depth: {}, sheet: true }), true, 'a subtask in its parent’s sheet');
+  assert.equal(app.rowNotes(t, SHEET_ROW), false, 'the sheet shows its own notes under the row');
+  assert.equal(app.rowNotes(t, { top: true }), false);
+  assert.equal(app.rowNotes(t, RUN), false);
+  assert.equal(
+    app.rowNotes(t, { depth: {}, sheet: true, step: true }),
+    false,
+    'a template step shows its first line of notes',
+  );
+});
+
 test("a row's labels have a line of their own, without template, and a checklist's steps show none", () => {
   const app = component(views),
     errands = { id: 1, title: 'errands' },
