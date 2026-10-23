@@ -715,6 +715,11 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   vertical-align: -1px;
   color: var(--muted);
 }
+/* A subtask in a sheet keeps its title as the only text in its .title, where tests find it by its exact text. The title
+   is inline, so the icon after it follows the last word. */
+.row > .body > .title:has(~ .has-notes) {
+  display: inline;
+}
 .row.clamp .title-line:has(> .has-notes) {
   display: flex;
   gap: 8px;

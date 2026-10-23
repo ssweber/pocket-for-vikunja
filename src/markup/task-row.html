@@ -55,7 +55,7 @@
   <!-- /only -->
   <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)">
     <!-- only run sheet -->
-    <template x-if="g.sheet || g.run"><div class="title"><span x-text="g.step ? stepShown(t).title : t.title"></span><template x-if="g.sheet && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template></div></template>
+    <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template><template x-if="g.sheet && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template>
     <!-- /only -->
     <!-- On a card's one-line row (g.line), rowWhen gives what is shown at the right of the title. It is calculated
          once per row, like the slot. A task with notes has the notes icon after its title (rowNotes). On a title
