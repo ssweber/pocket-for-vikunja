@@ -3410,9 +3410,10 @@ svg.i.way-notes {
   background: var(--accent);
   color: var(--accent-ink);
 }
-/* A notes chip is cut short with "…" on one line. The box above it shows the whole note. */
+/* A notes chip is cut short with "…" after about 30 characters, so it leaves room for the other chips. The box above
+   it shows the whole note. */
 .chip[data-kind='notes'] {
-  max-width: 100%;
+  max-width: min(100%, 30ch);
   min-width: 0;
 }
 .chip[data-kind='notes'] span {
