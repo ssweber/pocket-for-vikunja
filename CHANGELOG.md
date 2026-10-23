@@ -38,7 +38,8 @@ is a new 0.x.y.
 - A screen with nothing saved on the phone shows grey rows while it loads, instead of "Loading…".
 - Today's rows show the title on one line, with the time, project and counts on a line under it, as a project's list
   does.
-- Holding a task on Today shows a ring that follows the thumb and slides onto the date it picks.
+- Holding a task on Today shows a ring that follows the thumb, and a hold picks a date only between the tick and
+  "+ me".
 - On Today, a checklist step's countdown counts the seconds in its last minute, as the checklist's screen does.
 - Copy as a Markdown list includes each task's notes, and pasting the copy into an add box brings them back.
 - An `@` suggestion for someone who can't see the project names the project the task would move to.
