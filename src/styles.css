@@ -1843,20 +1843,12 @@ button.ring::after {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   pointer-events: none;
 }
-.throw-ring.slide {
-  transition: transform 120ms ease-out;
-}
 .throw-ring.on {
   border-color: var(--accent-ink);
   background: none;
 }
 .throw.open .throw-ring {
   display: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .throw-ring.slide {
-    transition: none;
-  }
 }
 .throw-why {
   position: absolute;

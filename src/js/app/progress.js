@@ -476,6 +476,7 @@ export default {
       let s = inTextField(e.target) ? null : this.whoHold(e.target, find(e.target));
       if (!s || away.has(s.slide || s.el)) return;
       if (s.swipe?.base) s = { el: s.el, slide: s.slide, swipe: s.swipe, width: s.width }; // a row open on Delete can be swiped or tapped closed, but not held, and its progress is 0%
+      if (s.reorder?.from && !s.reorder.from(e.target, e.clientX)) s = { ...s, reorder: null }; // held outside the part of the row that picks a date
       g = { s, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, mode: 'wait' };
       // After HOLD_MS the row lifts. On a project's list the whole card lifts. On Today the dates appear at once.
       if (s.reorder)

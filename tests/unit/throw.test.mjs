@@ -11,7 +11,7 @@ import {
   throwFlick,
   throwLayout,
   throwPick,
-  throwRing,
+  throwSpan,
   throwTargets,
 } from '../../src/js/throw.js';
 
@@ -239,22 +239,14 @@ test('the chips stay on the screen for a row at the top and at the bottom, by mo
   );
 });
 
-test('the ring starts in the middle, moves as far as the touch, and sits on a chip while it is highlighted', () => {
-  const ts = throwTargets(iso(12, 16), on(12)),
-    lay = throwLayout(ts, { x: 355, y: 300, ...phone, width: 390 }),
-    at = (dx, dy) => {
-      const r = throwRing(lay, dx, dy, throwPick(ts, dx, dy));
-      return [lay.x + r.x, lay.y + r.y];
-    };
-  assert.equal(lay.x, 232, 'a hold at the right edge pushes the chips in, so the middle is left of the touch');
-  assert.deepEqual(at(0, 0), [232, 300], 'the ring starts in the middle, not under the thumb');
-  assert.deepEqual(at(-10, 4), [222, 304], 'short of a chip, the ring moves as far as the touch');
-  const today = lay.targets.find(t => t.id === 'today');
-  assert.deepEqual(at(-30, 0), [232 + today.x, 300], 'moving 30px left puts the ring on Today, wherever the thumb is');
+test('a hold picks a date between the tick and the "+ me" slot, and leaves the slot\'s width out on a row without one', () => {
+  const row = { left: 0, right: 390 };
+  assert.deepEqual(throwSpan(row, { right: 56 }, { left: 318 }), { left: 56, right: 318 });
+  assert.deepEqual(throwSpan(row, { right: 56 }, undefined), { left: 56, right: 324 });
   assert.deepEqual(
-    throwRing(lay, -30, 0, null),
-    { x: -30, y: 0 },
-    'a dimmed chip, passed as null, leaves it with the touch',
+    throwSpan(row, undefined, undefined),
+    { left: 0, right: 324 },
+    'a row with no tick starts at its left edge',
   );
 });
 

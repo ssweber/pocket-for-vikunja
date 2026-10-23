@@ -3669,8 +3669,8 @@ try {
       await expect(page.locator(rowOf(last.title))).toBeVisible({ timeout: 15000 });
       await loaded(page);
       for (const [t, top, fx] of [
-        [first, true, 0.9],
-        [last, false, 0.1],
+        [first, true, 0.78], // just left of where "+ me" sits, the furthest right a hold picks a date
+        [last, false, 0.2], // just right of the tick
       ]) {
         await page.evaluate(top => scrollTo(0, top ? 0 : document.documentElement.scrollHeight), top);
         if (!top) {
@@ -3706,21 +3706,20 @@ try {
             `${where}the chips didn't move onto the screen: their middle is ${midX},${midY}, the touch is ${at.x},${at.y}`,
           );
         // The ring that stands for the thumb starts in the clear middle, away from the touch. Moving 30px towards the
-        // screen's middle lights the chip that way, and the ring slides onto that chip, not to where the touch is.
+        // screen's middle lights the chip that way, and the ring moves the same 30px.
         const ringAt = () =>
-            page.locator('.throw-ring').evaluate(async el => {
-              await Promise.all(el.getAnimations().map(a => a.finished.catch(() => {})));
-              const r = el.getBoundingClientRect();
-              return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)];
-            }),
-          side = top ? today : tomorrow;
+          page.locator('.throw-ring').evaluate(async el => {
+            await Promise.all(el.getAnimations().map(a => a.finished.catch(() => {})));
+            const r = el.getBoundingClientRect();
+            return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)];
+          });
         if (JSON.stringify(await ringAt()) !== JSON.stringify([Math.round(midX), Math.round(midY)]))
           throw new Error(`${where}the ring starts at ${await ringAt()}, not in the middle at ${midX},${midY}`);
         await page.mouse.move(at.x + (top ? -30 : 30), at.y, { steps: 4 });
         await expect(dateChip(top ? 'today' : 'tomorrow')).toHaveClass(/\bon\b/);
         await expect
-          .poll(ringAt, { message: where + 'the ring is not on the lit chip' })
-          .toEqual([Math.round((side.l + side.r) / 2), Math.round((side.t + side.b) / 2)]);
+          .poll(ringAt, { message: where + 'the ring did not move as far as the touch' })
+          .toEqual([Math.round(midX + (top ? -30 : 30)), Math.round(midY)]);
         await page.mouse.move(at.x + 2, at.y + (top ? -40 : 40), { steps: 4 });
         await expect(dateChip(top ? 'week' : 'none')).toHaveClass(/\bon\b/);
         await page.mouse.move(at.x + 2, at.y + 2, { steps: 4 });
@@ -3854,7 +3853,8 @@ try {
       await page.mouse.click(20, row.y - 40);
       await expect(menu).toHaveCount(0);
       await expect(page.locator(`${A} > .claim .me`)).toBeVisible();
-      // Tapping carol assigns her, and her picture replaces "+ me". Holding her picture is the row's own hold.
+      // Tapping carol assigns her, and her picture replaces "+ me". Holding her picture does nothing, because a hold
+      // picks a date only between the tick and the slot.
       await holdSlot();
       await page.mouse.up();
       await items.filter({ hasText: '@carol' }).click();
@@ -3863,11 +3863,9 @@ try {
       await synced(page);
       if (JSON.stringify(await people()) !== '["carol"]') throw new Error('assigned to ' + (await people()));
       await holdSlot();
-      await expect(page.locator(DATES)).toHaveCount(4);
+      await expect(page.locator('.throw')).toHaveCount(0);
       await expect(menu).toHaveCount(0);
       await page.mouse.up();
-      await page.keyboard.press('Escape');
-      await expect(page.locator('.throw')).toHaveCount(0);
       await api(`/tasks/${a.id}/assignees/${(await get(a.id)).assignees[0].id}`, { method: 'DELETE' });
       await refreshToday();
       // A swipe from "+ me" opens the row on its Delete, and a tap on the row closes it. Then a tap on "+ me" assigns you.

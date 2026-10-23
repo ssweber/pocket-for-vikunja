@@ -12,7 +12,7 @@ import {
   throwFlick,
   throwLayout,
   throwPick,
-  throwRing,
+  throwSpan,
   throwTargets,
 } from '../throw.js';
 import { isSet, repeats } from '../dates.js';
@@ -203,6 +203,14 @@ export default {
     };
     return {
       el: held,
+      // Whether a hold that starts at x on `target` picks a date (throwSpan). Elsewhere the row only swipes and taps.
+      from(target, x) {
+        const row = target.closest('.row, .card-head'),
+          rect = el => row.querySelector(`:scope > ${el}`)?.getBoundingClientRect();
+        if (!row) return true;
+        const { left, right } = throwSpan(row.getBoundingClientRect(), rect(':is(.check, .ring)'), rect('.claim'));
+        return x >= left && x <= right;
+      },
       lift(x, y) {
         x0 = x;
         y0 = y;
@@ -221,7 +229,7 @@ export default {
           v.light(can(p));
           if (can(p)) haptic('tick');
         }
-        v.ring(dx, dy, can(on));
+        v.ring(dx, dy, !!can(on));
       },
       end(commit) {
         if (!v) return;
@@ -296,11 +304,9 @@ export default {
         );
       set.querySelector('.throw-why')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: THROW.ms });
     }
-    /* The ring follows the touch with no transition, or it would lag behind the thumb. It slides (.slide) only for
-       THROW.ms after a chip lights or unlights, onto the chip or back to the touch. */
+    // The ring follows the touch with no transition, or it would lag behind the thumb.
     const ring = set.querySelector('.throw-ring');
-    let menu = null,
-      slid = 0;
+    let menu = null;
     const close = () => {
       menu?.close();
       if (shut === close) shut = null;
@@ -309,15 +315,9 @@ export default {
     };
     return {
       light: p => chipsLight(set, p),
-      ring(dx, dy, p) {
-        if (!!p !== ring.classList.contains('on')) {
-          ring.classList.add('slide');
-          clearTimeout(slid);
-          slid = setTimeout(() => ring.classList.remove('slide'), THROW.ms);
-        }
-        ring.classList.toggle('on', !!p);
-        const r = throwRing(lay, dx, dy, p);
-        ring.style.transform = `translate(${r.x}px, ${r.y}px)`;
+      ring(dx, dy, lit) {
+        ring.classList.toggle('on', lit);
+        ring.style.transform = `translate(${dx}px, ${dy}px)`;
       },
       close,
       /* Leave the chips open to tap (tapMenu). A dimmed date does nothing. Pick a date… opens the phone's picker
