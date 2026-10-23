@@ -3815,7 +3815,7 @@ try {
   });
   /* Holding "+ me" opens a menu of the people who can see the task's project, and the date chips never appear. Lifting
      the finger leaves it open. A tap outside closes it with no change, and tapping a person assigns them. Someone
-     else's picture keeps the row's own hold. A short tap on "+ me" still assigns you, and a swipe that starts on it
+     else's picture does nothing. A short tap on "+ me" still assigns you, and a swipe that starts on it
      still swipes the row. */
   await step('holding-plus-me-offers-the-people-who-can-see-the-project', async () => {
     const a = await make(`Pocket smoke people ${stamp}`, { due_date: todayAt(21) }),

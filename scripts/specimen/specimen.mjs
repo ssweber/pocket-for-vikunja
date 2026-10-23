@@ -221,7 +221,7 @@ function sections() {
      ("12p"), a whole hour ("3p"), and a subtask in another project. That subtask keeps its own project dot, while the
      other rows leave the dot to the card's header. One row has nothing at its right end, so its title fills the row. */
   const tasting = task({
-    title: 'Get ready for the tasting evening',
+    title: 'Get ready for the coffee tasting',
     due_date: dayAt(0, 18, 30),
     priority: 2,
     related_tasks: { subtask: [{ id: 1401 }, { id: 1402 }, { id: 1403 }, { id: 1404 }] },
@@ -230,12 +230,12 @@ function sections() {
     kid(1401, { under: tasting.id, title: 'Print the tasting notes', due_date: dayAt(0, 10, 30), priority: 3 }),
     kid(1402, {
       under: tasting.id,
-      title: 'Borrow glasses from next door',
+      title: 'Borrow cups from next door',
       project_id: 4,
       due_date: dayAt(0, 12),
       priority: 1,
     }),
-    kid(1403, { under: tasting.id, title: 'Chill the white wine', due_date: dayAt(0, 15), assignees: [jamie] }),
+    kid(1403, { under: tasting.id, title: 'Make the cold brew', due_date: dayAt(0, 15), assignees: [jamie] }),
     kid(1404, { under: tasting.id, title: 'Set out the tables' }),
     kid(701, { under: van2.id, title: 'Load chairs', done: true }),
     kid(702, { under: van2.id, title: 'Load tables', assignees: [jamie] }),
