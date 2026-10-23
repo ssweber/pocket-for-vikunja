@@ -565,8 +565,17 @@ main {
   font-weight: 600;
   font-size: 14px;
 }
+/* A heading with a button keeps one line. A long name is cut with "…", and the button never wraps. */
+.sec:has(> .sec-act) > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* A 44px target inside the heading's height, so a heading with a button is no taller than one without */
 .sec-act {
+  flex: none;
+  white-space: nowrap;
   min-width: 44px;
   min-height: 44px;
   padding: 12px 2px;
