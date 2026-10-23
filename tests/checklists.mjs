@@ -2210,7 +2210,9 @@ try {
     await page.waitForSelector('#run-box .cap-marks mark[data-kind="priority"]', { state: 'attached' });
     if (await page.$('#run-box-chips .chip[data-kind="due"]')) throw new Error('the add box read a date');
     await page.fill(box, 'Mop up !3 tomorrow\nRinse the mop');
-    await page.waitForSelector('#run-box-chips .chip:has-text("2 steps")');
+    await page.waitForSelector('#run-box-chips .list-ways [aria-pressed=true] .sr:text-is("2 steps")', {
+      state: 'attached',
+    });
     await page.press(box, 'Enter');
     await until('the pasted steps were never inserted', async () =>
       (await titles()).includes('Mop up tomorrow | Rinse the mop'),

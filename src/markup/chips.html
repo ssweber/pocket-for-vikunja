@@ -5,7 +5,9 @@
      which shows whether it is pressed. A chip with neither only shows information and can't take focus. Examples are
      where the task will be added, what a list creates, and text kept as plain text. A chip's dot is a project's or a
      label's colour, and its icon is a photo's clip. Tapping a chip leaves focus in the box, so the keyboard stays
-     up. -->
-<template x-for="c in chips(bw)" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
+     up. A box with more than one line first shows the ways to add its lines, as a segmented control on a line of its
+     own (listShapes). -->
+<div class="chip-row"><template x-for="ways in [chips(bw).filter(c => c.kind === 'shape')].filter(w => w.length)" :key="0"><div class="seg list-ways" role="group" aria-label="Add the lines as"><template x-for="c in ways" :key="c.key"><button type="button" :aria-pressed="String(c.pressed)" :title="c.text" @mousedown.prevent @click="tapChip(bw, c)"><span class="sr" x-text="c.text"></span><span class="way" aria-hidden="true"><template x-for="(d, i) in c.depths" :key="i"><i x-style="{'--d': d}"></i></template></span><template x-if="c.notes"><svg class="i way-notes" aria-hidden="true"><use href="#i-notes"/></svg></template><template x-if="c.count"><span class="way-n num" aria-hidden="true" x-text="c.count"></span></template></button></template></div></template>
+<template x-for="c in chips(bw).filter(c => c.kind !== 'shape')" :key="c.key"><button type="button" class="chip" :class="(c.cls || '') + (c.kind ? ' tap' : '') + (c.off ? ' off' : '')" :data-kind="c.kind || null" :aria-pressed="c.pressed === undefined ? null : String(c.pressed)"
   :tabindex="c.kind ? 0 : -1" :title="c.hint || (c.kind ? (c.off ? 'Tap to use this' : 'Tap to keep these words in the title') : null)"
-  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template>
+  @mousedown.prevent @click="tapChip(bw, c)"><template x-if="c.color"><i class="dot" x-style="{background: c.color}"></i></template><template x-if="c.icon"><svg class="i"><use :href="'#i-' + c.icon"/></svg></template><span x-text="c.text"></span></button></template></div>

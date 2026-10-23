@@ -1224,7 +1224,7 @@ addNest(
   '## Pack the van\n- Load chairs\n## Set the hall\n- Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, null, null, null],
-  'with ↳ Under first line off, every line is a separate task',
+  'with flat, every line is a separate task',
   { flat: true },
   true,
 );
@@ -1232,14 +1232,14 @@ addNest(
   '## Pack the van\n- Load chairs\n## Set the hall\n- Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, 0, 0, 2],
-  'with ↳ Under first line on, the first line is the parent of every line with no parent',
+  'with nest, the first line is the parent of every line with no parent',
   { nest: true },
 );
 addNest(
   'Pack the van\n- Load chairs\n- Tables',
   ['Pack the van', 'Load chairs', 'Tables'],
   [null, 0, 0],
-  'with ↳ Under first line on, a list with no markers goes under its first line',
+  'with nest, a list with no markers goes under its first line',
   { nest: true },
   false,
 );
@@ -1292,7 +1292,7 @@ addNest(
   'Pack the van\n  Load chairs\nSet the hall\n  Lights',
   ['Pack the van', 'Load chairs', 'Set the hall', 'Lights'],
   [null, null, null, null],
-  'with ↳ Under first line off, every line is a separate task',
+  'with flat, every line is a separate task',
   { flat: true },
   true,
 );
@@ -1300,7 +1300,7 @@ addNest(
   'Order cups\nPack the van\n  Load chairs',
   ['Order cups', 'Pack the van', 'Load chairs'],
   [null, 0, 1],
-  'with ↳ Under first line on and no parent in the text, the first line is the parent of the lines with no parent',
+  'with nest and no parent in the text, the first line is the parent of the lines with no parent',
   { nest: true },
   false,
 );
@@ -1351,7 +1351,7 @@ addNest(
   'Groceries:\n- milk',
   ['Groceries:', 'milk'],
   [null, null],
-  'with ↳ Under first line off, the lines are separate tasks and the colon stays in the title',
+  'with flat, the lines are separate tasks and the colon stays in the title',
   { colon: true, flat: true },
   true,
 );

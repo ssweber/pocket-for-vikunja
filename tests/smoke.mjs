@@ -113,6 +113,11 @@ const createdProjects = [];
 // row's title, or the card's header.
 const cardOf = t => `.day-card:has(> .card-head .card-title:has-text("${t}"))`;
 const opener = t => `:is(.row > .body:has(.title:has-text("${t}")), ${cardOf(t)} > .card-head)`;
+// Quick add's ways to add a list (listShapes, chips.html). Each is a picture, with its words for a screen reader, so a
+// way is found by its words: "1 task + 2 subtasks" puts every line under the first.
+const ways = `#cap-chips .list-ways button`;
+const pickWay = re => page.locator(ways).filter({ hasText: re }).click();
+const pickedWay = () => page.locator(`${ways}[aria-pressed=true] .sr`);
 // The body of a row whose task Vikunja has made. A waiting row's id starts with "pending-".
 const sentRow = t => `.row:not([data-id^="pending-"]) > .body:has(.title:has-text("${t}"))`;
 
@@ -792,8 +797,8 @@ try {
       `- [x] Pocket smoke napkins\n- Pocket smoke list tomorrow @nobody${stamp}\n- Pocket smoke cups`,
     );
     await page.waitForSelector(`#cap-chips .chip.warn:has-text("No user @nobody${stamp}")`, { timeout: 10000 });
-    await expect(page.locator('#cap-chips .chip', { hasText: '1 will be added as done' })).toBeVisible();
-    await expect(page.locator('#cap-chips .chip', { hasText: '3 tasks' })).toBeVisible();
+    await expect(page.locator('#cap-chips .chip', { hasText: '1 done' })).toBeVisible();
+    await expect(pickedWay()).toHaveText('3 tasks');
     const marked = await page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent));
     if (!marked.includes('due:tomorrow')) throw new Error('marks: ' + JSON.stringify(marked));
     await page.fill('#in-capture', '');
@@ -848,7 +853,7 @@ try {
       sub = `Pocket smoke undated sub ${stamp}`;
     const noDate = 'div:has(> .sec:has-text("Added today, no date"))';
     await page.fill('#in-capture', `${t}\n- ${sub}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 1 subtask');
     await page.click('#f-capture .go');
     await page.waitForSelector(`${noDate} :is(.row .title, .card-title):has-text("${t}")`, { timeout: 15000 });
     if (await page.isVisible(`.item > .row .title:has-text("${sub}")`))
@@ -875,11 +880,9 @@ try {
       '#in-capture',
       `${parentTitle} tomorrow\n- Pocket smoke sub A ${stamp}\n• [ ] Pocket smoke sub B ${stamp}`,
     );
-    if (!(await page.textContent('#cap-chips')).includes('3 tasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
-    await page.click('#cap-nest');
-    if (!(await page.textContent('#cap-chips')).includes('1 task + 2 subtasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     // The new task is highlighted. It shows as a row, or as a card once it is loaded with its subtasks.
     await page.waitForSelector(`:is(.row.fresh .title, .day-card.fresh .card-title):has-text("${parentTitle}")`, {
@@ -1469,10 +1472,6 @@ try {
     ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t);
   const capMarks = () =>
     page.$$eval('#cap-marks mark', els => els.map(e => e.dataset.kind + ':' + e.textContent).join());
-  const chipsSay = async text => {
-    if (!(await page.textContent('#cap-chips')).includes(text))
-      throw new Error(`the chips don't include "${text}": ` + (await page.textContent('#cap-chips')));
-  };
   // A task's subtasks in Vikunja as [title, done] pairs, sorted by title.
   const subsDone = async id => ((await get(id)).related_tasks?.subtask || []).map(s => [s.title, s.done]).sort();
   await step('a-line-that-says-its-done-arrives-done', async () => {
@@ -1562,19 +1561,17 @@ try {
       if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
     }
   });
-  /* Tapping the chip that counts a list's lines makes the list one task. The first line is the task, read as usual, and
-     the other lines follow its own notes, with their line breaks. A date in them is not read. */
-  await step('the-count-chip-makes-a-list-one-task-with-the-other-lines-as-notes', async () => {
+  /* Picking 1 task + notes makes the list one task. The first line is the task, read as usual, and the other lines
+     follow its own notes, with their line breaks. A date in them is not read. */
+  await step('picking-1-task-plus-notes-makes-a-list-one-task-with-the-other-lines-as-notes', async () => {
     const t = `Pocket smoke fold ${stamp}`,
-      R = `#view ${rowOf(t)}`,
-      chip = page.locator('#cap-chips .chip[data-kind=fold]');
+      R = `#view ${rowOf(t)}`;
     await toastGone();
     await refreshToday();
     await page.fill('#in-capture', `${t} !2 // kitchen\nthe tap drips tomorrow\nask about the boiler`);
-    await expect(chip).toHaveText('3 tasks');
-    await chip.click();
-    await expect(chip).toHaveText('1 task + notes');
-    await expect(page.locator('#cap-nest')).toHaveCount(0);
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + notes');
+    await expect(pickedWay()).toHaveText('1 task + notes');
     await expect.poll(capMarks).toBe('priority:!2,notes:// kitchen\nthe tap drips tomorrow\nask about the boiler');
     await page.click('#f-capture .go');
     await expect(page.locator(`${R}:not(.pending)`)).toBeVisible({ timeout: 15000 });
@@ -1594,7 +1591,7 @@ try {
       if (made) await api('/tasks/' + made.id, { method: 'DELETE' });
     }
   });
-  /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 will be added as done"). Tapping the
+  /* A pasted list can contain lines that are already ticked off. One chip counts them ("2 done"). Tapping the
      chip leaves those lines out and says so, as Pocket did before. Tapping again brings them back. When added, they are
      done subtasks under the first line. Its ring counts them from the start and the parent's progress is written with
      them: (100 + 50 + 100 + 0) / 4 = 63%. */
@@ -1606,14 +1603,14 @@ try {
       '#in-capture',
       `${p} tomorrow\n- [x] ${sub('A')}\n- [ ] ${sub('B')} (50%)\nx ${sub('C')}\n- ${sub('D')}`,
     );
-    await page.click('#cap-nest');
-    await expect(chip).toHaveText('2 will be added as done');
-    await chipsSay('1 task + 4 subtasks');
+    await pickWay('1 task + 4 subtasks');
+    await expect(chip).toHaveText('2 done');
     await chip.click();
     await expect(chip).toHaveText('2 already ticked, left out');
-    await chipsSay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await chip.click();
-    await expect(chip).toHaveText('2 will be added as done');
+    await expect(chip).toHaveText('2 done');
+    await expect(pickedWay()).toHaveText('1 task + 4 subtasks');
     await page.click('#f-capture .go');
     const ring = page.locator(`#view ${cardOf(p)} > .card-head > .ring`);
     await expect(ring.locator('.n')).toHaveText('2/4', { timeout: 20000 });
@@ -1642,9 +1639,8 @@ try {
     }
   });
   /* Parents in a pasted list. A heading such as "## Pack the van" is a task, and the lines under it, up to the next
-     heading, are its subtasks. A chip says what the list will create. The ↳ Under first line chip is switched on
-     automatically because the first line is a parent. Turning it off makes every line a separate task. */
-  const nestChip = page.locator('#cap-nest');
+     heading, are its subtasks. The way picked says what the list will create. Picking 5 tasks makes every line a
+     separate task. */
   const madeFrom = []; // the tasks these tests added, deleted afterwards
   await step('a-pasted-list-with-headings-makes-parents', async () => {
     const A = `Pocket smoke head A ${stamp}`,
@@ -1654,14 +1650,11 @@ try {
       '#in-capture',
       `## ${A} tomorrow\n- ${sub('a1')}\n- [x] ${sub('a2')}\n\n## ${B} tomorrow\n${sub('b1')}`,
     );
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('2 tasks + 3 subtasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
-    await chipsSay('5 tasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('2 tasks + 3 subtasks');
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
+    await pickWay(/^5 tasks/);
+    await expect(pickedWay()).toHaveText('5 tasks');
+    await pickWay('2 tasks + 3 subtasks');
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(A)} > .card-head > .ring .n`)).toHaveText('1/2', { timeout: 20000 });
     await expect(page.locator(`#view ${cardOf(B)}`)).toBeVisible();
@@ -1697,8 +1690,8 @@ try {
     await page.click(opener(t.title));
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     await page.fill('#d-subin', `${sub('A')}\n  ${sub('A1')}\n    x ${sub('A2')}\n${sub('B')}`);
-    await expect(page.locator('#d-subbox-chips .chip', { hasText: '4 subtasks' })).toBeVisible();
-    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
+    await expect(page.locator('#d-subbox-chips .list-ways [aria-pressed=true] .sr')).toHaveText('4 subtasks');
+    await expect(page.locator('#d-subbox-chips .chip[data-kind=done]')).toHaveText('1 done');
     await page.click('#d-subbox form .go');
     // The task has two direct subtasks. The other lines are nested under the first.
     const rows = page.locator('#d-subtasks .row:not(.pending) .title');
@@ -1729,18 +1722,16 @@ try {
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
   /* When typing, a first line that ends with a colon is the parent of the other lines, and the colon is removed from
-     its title. The ↳ Under first line chip is switched on. Turning it off makes every line a separate task. */
+     its title. Picking 3 tasks makes every line a separate task. */
   await step('a-first-line-ending-with-a-colon-is-the-parent-of-the-rest', async () => {
     const p = `Pocket smoke colon ${stamp}`,
       sub = n => `Pocket smoke after ${n} ${stamp}`;
     await page.fill('#in-capture', `${p} tomorrow:\n${sub('a')}\n${sub('b')}`);
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'true');
-    await chipsSay('1 task + 2 subtasks');
-    await nestChip.click();
-    await expect(nestChip).toHaveAttribute('aria-pressed', 'false');
-    await chipsSay('3 tasks');
-    await nestChip.click();
-    await chipsSay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
+    await pickWay('3 tasks');
+    await expect(pickedWay()).toHaveText('3 tasks');
+    await pickWay('1 task + 2 subtasks');
+    await expect(pickedWay()).toHaveText('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(p)} > .card-head > .ring .n`)).toHaveText('0/2', { timeout: 20000 });
     await synced(page);
@@ -6349,13 +6340,10 @@ ${footName('Hooks')}`);
     await expect(
       page.locator('#cap-chips .chip', { hasText: 'The # line is the list’s name, so it is left out' }),
     ).toBeVisible();
-    if (!(await page.textContent('#cap-chips')).includes('2 tasks + 3 subtasks'))
-      throw new Error("chips for a project's copy: " + (await page.textContent('#cap-chips')));
+    await expect(pickedWay()).toHaveText('2 tasks + 3 subtasks');
     await page.fill('#in-capture', vanCopy);
-    await expect(page.locator('#cap-nest')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 will be added as done');
-    if (!(await page.textContent('#cap-chips')).includes('1 task + 4 subtasks'))
-      throw new Error('chips: ' + (await page.textContent('#cap-chips')));
+    await expect(page.locator('#cap-chips .chip[data-kind=done]')).toHaveText('1 done');
+    await expect(pickedWay()).toHaveText('1 task + 4 subtasks');
     await page.click('#f-capture .go');
     await expect(page.locator(`#view ${cardOf(title)} > .card-head > .ring .n`)).toHaveText('1/4', { timeout: 20000 });
     await synced(page);

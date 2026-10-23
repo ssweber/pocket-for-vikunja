@@ -1951,10 +1951,16 @@ test("in New template, a folded list becomes one step whose notes are the other 
   });
   const box = app.sheet.newTpl.add;
   box.text = 'Preheat the oven in 10 min\nto 230°C\nfan off after 5 min';
-  app.tapChip('new:+', app.chips('new:+')[0]);
+  app.tapChip(
+    'new:+',
+    app.listShapes('new:+').find(c => c.notes),
+  );
   assert.deepEqual(
-    app.chips('new:+').map(c => c.text),
-    ['1 step + notes'],
+    app.listShapes('new:+').map(c => [c.text, c.pressed]),
+    [
+      ['3 steps', false],
+      ['1 step + notes', true],
+    ],
   );
   assert.deepEqual(
     app.marks('new:+').map(m => m.kind + ':' + box.text.slice(m.start, m.end)),

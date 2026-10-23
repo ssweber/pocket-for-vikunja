@@ -49,6 +49,10 @@ const browser =
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 await hintSeen(context); // dismisses the one-time hint (see helpers.mjs)
 const page = await context.newPage();
+// Quick add's ways to add a list (listShapes, chips.html). Each is a picture, with its words for a screen reader, so a
+// way is found by its words: "1 task + 2 subtasks" puts every line under the first.
+const ways = `#cap-chips .list-ways button`;
+const pickWay = re => page.locator(ways).filter({ hasText: re }).click();
 page.on('dialog', d => d.accept());
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
@@ -159,7 +163,7 @@ try {
 
   await step('pasted-list-offline-waits', async () => {
     await page.fill('#in-capture', `${T('P')} tomorrow\n- ${T('P1')}\n- ${T('P2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('P')));
     if (await page.isVisible(pendingRow(T('P1')))) throw new Error('a subtask is shown in Today'); // only the parent should show
@@ -584,7 +588,7 @@ try {
     };
     await page.route('**/v2/tasks/*/relations', lose);
     await page.fill('#in-capture', `${T('K')} tomorrow\n- ${T('K1')}\n- ${T('K2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await online();
     await synced(page);
@@ -645,7 +649,7 @@ try {
   await step('a-pasted-list-typed-offline-arrives-as-one-parent-with-its-subtasks', async () => {
     await context.setOffline(true);
     await page.fill('#in-capture', `${T('Q')} tomorrow\n- ${T('Q1')}\n- ${T('Q2')}`);
-    await page.click('#cap-nest');
+    await pickWay('1 task + 2 subtasks');
     await page.click('#f-capture .go');
     await page.waitForSelector(pendingRow(T('Q')));
     const outbox = await page.evaluate(

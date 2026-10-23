@@ -653,8 +653,8 @@ const MORE_NOTES = /^\/\/(?=\s|$)/;
    line above it goes under that line, to any depth, in spaces or tabs of any width (a tab counts as four spaces).
 
    In quick add (`colon`), a first line ending with a colon, such as "Groceries:", is the parent of every line with no
-   parent, and its colon is removed. This is how a list in a message starts. Quick add's "Under first line" option
-   changes that. `nest` makes the first line the parent of every line with no parent. `flat` makes every line its own
+   parent, and its colon is removed. This is how a list in a message starts. Quick add's ways to add a list (listShapes)
+   change that. `nest` makes the first line the parent of every line with no parent. `flat` makes every line its own
    task and keeps the first line's colon.
 
    `steps` is for a checklist's steps, where a step is done by doing it. A ticked line is left out, an x is part of the

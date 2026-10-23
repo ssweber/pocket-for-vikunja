@@ -1077,7 +1077,18 @@ const boxes = () => {
   app.sheet = { task: { id: 9, project_id: 5, title: 'Pack the van' }, sub: newBox() };
   return app;
 };
-const chipsOf = (app, w) => app.chips(w).map(c => (c.off ? '~' : '') + c.text);
+const chipsOf = (app, w) =>
+  app
+    .chips(w)
+    .filter(c => c.kind !== 'shape')
+    .map(c => (c.off ? '~' : '') + c.text);
+// The ways to add a box's lines (listShapes), with ● on the one picked
+const waysOf = (app, w) => app.listShapes(w).map(c => (c.pressed ? '●' : '') + c.text);
+const pick = (app, w, text) =>
+  app.tapChip(
+    w,
+    app.listShapes(w).find(c => c.text === text),
+  );
 const marksOf = (app, w) => app.marks(w).map(m => m.kind + ':' + app.box(w).text.slice(m.start, m.end));
 const linesOf = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.done]);
 const tap = (app, w, text) =>
@@ -1120,7 +1131,8 @@ test('a line marked as done shows a Done chip and a marked marker, and tapping t
 test('a list with lines marked as done shows one chip that counts them, and tapping it leaves them out or adds them back', () => {
   const app = boxes();
   app.cap.text = 'Groceries\n- [x] Eggs\n- [ ] Milk tomorrow\nx Bread';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 done', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●4 tasks', '1 task + 3 subtasks', '1 task + notes']);
   assert.deepEqual(marksOf(app, 'cap'), ['done:[x]', 'due:tomorrow', 'done:x']);
   assert.deepEqual(linesOf(app, 'cap'), [
     ['Groceries', false],
@@ -1128,18 +1140,20 @@ test('a list with lines marked as done shows one chip that counts them, and tapp
     ['Milk', false],
     ['Bread', true],
   ]);
-  tap(app, 'cap', 'will be added as done');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 already ticked, left out', '2 tasks', 'Café']);
+  tap(app, 'cap', '2 done');
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 already ticked, left out', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks', '1 task + 1 subtask', '1 task + notes']);
   assert.deepEqual(marksOf(app, 'cap'), ['due:tomorrow']);
   assert.deepEqual(linesOf(app, 'cap'), [
     ['Groceries', false],
     ['Milk', false],
   ]);
   tap(app, 'cap', 'left out');
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 will be added as done', '4 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['2 done', 'Café']);
   // A subtask box reads them the same way.
   app.sheet.sub.text = '[x] Load chairs\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '2 subtasks']);
+  assert.deepEqual(chipsOf(app, 'sub'), ['1 done']);
+  assert.deepEqual(waysOf(app, 'sub'), ['●2 subtasks', '1 subtask + notes']);
   assert.deepEqual(linesOf(app, 'sub'), [
     ['Load chairs', true],
     ['Tables', false],
@@ -1147,10 +1161,11 @@ test('a list with lines marked as done shows one chip that counts them, and tapp
 });
 
 const under = (app, w) => app.boxParsedLines(w).map(p => p.under);
-test('a pasted list with headings makes each heading a task with its lines as subtasks, and ↳ Under first line turns that off', () => {
+test('a pasted list with headings makes each heading a task with its lines as subtasks, and offers the other ways to add it', () => {
   const app = boxes();
   app.cap.text = '## Pack the van (38%)\n- Load chairs\n- [x] Tables\n## Set the hall\n- Lights (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 done', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks + 3 subtasks', '5 tasks', '1 task + 4 subtasks', '1 task + notes']);
   assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3]);
   assert.deepEqual(
     app.boxParsedLines('cap').map(p => [p.title, p.pct]),
@@ -1163,33 +1178,47 @@ test('a pasted list with headings makes each heading a task with its lines as su
     ],
     "a parent's percentage is dropped",
   );
-  assert.equal(app.nestOn, true, 'the first line is a parent as the list is written');
-  app.tapNest();
-  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null, null, null]]);
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '5 tasks', 'Café']);
-  app.tapNest();
-  assert.deepEqual(
-    [app.nestOn, under(app, 'cap')],
-    [true, [null, 0, 0, null, 3]],
-    'tapping again restores the list as written',
-  );
-  // A list with no markers does not nest until the user taps ↳ Under first line.
+  pick(app, 'cap', '5 tasks');
+  assert.deepEqual(under(app, 'cap'), [null, null, null, null, null]);
+  assert.deepEqual(waysOf(app, 'cap'), ['2 tasks + 3 subtasks', '●5 tasks', '1 task + 4 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + 4 subtasks');
+  assert.deepEqual(under(app, 'cap'), [null, 0, 0, 0, 3], 'every line without a parent goes under the first');
+  pick(app, 'cap', '2 tasks + 3 subtasks');
+  assert.deepEqual(under(app, 'cap'), [null, 0, 0, null, 3], 'the list as written is back');
+  // A list with no markers is a task per line. Every line its own task is the same, so it is left out.
   app.cap = newBox();
   app.cap.text = 'Pack the van\nLoad chairs\nTables';
-  assert.deepEqual([app.nestOn, chipsOf(app, 'cap')], [false, ['3 tasks', 'Café']]);
-  app.tapNest();
+  assert.deepEqual(waysOf(app, 'cap'), ['●3 tasks', '1 task + 2 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + 2 subtasks');
+  assert.deepEqual([waysOf(app, 'cap')[1], under(app, 'cap')], ['●1 task + 2 subtasks', [null, 0, 0]]);
+  pick(app, 'cap', '3 tasks');
+  assert.deepEqual(under(app, 'cap'), [null, null, null]);
+});
+
+test('a list longer than five lines draws its first five and shows how many tasks each way makes', () => {
+  const app = boxes();
+  app.cap.text = 'Pack the van\n  Chairs\n  Tables\nLights\nCables\nTape\nBins';
   assert.deepEqual(
-    [app.nestOn, chipsOf(app, 'cap'), under(app, 'cap')],
-    [true, ['1 task + 2 subtasks', 'Café'], [null, 0, 0]],
+    app.listShapes('cap').map(c => [c.text, c.depths, c.count, c.notes]),
+    [
+      ['5 tasks + 2 subtasks', [0, 1, 1, 0, 0], '5+2', false],
+      ['7 tasks', [0, 0, 0, 0, 0], '7', false],
+      ['1 task + 6 subtasks', [0, 1, 1, 1, 1], '1+6', false],
+      ['1 task + notes', [0], null, true],
+    ],
   );
-  app.tapNest();
-  assert.deepEqual([app.nestOn, under(app, 'cap')], [false, [null, null, null]]);
+  app.cap.text = 'Pack the van\nChairs';
+  assert.deepEqual(
+    app.listShapes('cap').map(c => c.count),
+    [null, null, null],
+    'a short list is all in its picture',
+  );
 });
 
 test("in a subtask box, a heading's lines go under the heading, and the heading goes under the open task", () => {
   const app = boxes();
   app.sheet.sub.text = '## Chairs\n- Stack them\n- [x] Count them\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 will be added as done', '4 subtasks']);
+  assert.deepEqual([chipsOf(app, 'sub'), waysOf(app, 'sub')], [['1 done'], ['●4 subtasks', '1 subtask + notes']]);
   assert.deepEqual(
     app.boxItems('sub').map(x => [x.raw, x.under]),
     [
@@ -1215,14 +1244,14 @@ test("a checklist project's subtask box leaves a date in the title, and a @user 
 test('a pasted list with indented lines puts each under the nearest line above it that is indented less', () => {
   const app = boxes();
   app.cap.text = 'Pack the van (38%)\n  Load chairs (50%)\n    Stack them\n  Tables\nSet the hall';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks + 3 subtasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
+  assert.equal(waysOf(app, 'cap')[0], '●2 tasks + 3 subtasks');
   assert.deepEqual(under(app, 'cap'), [null, 0, 1, 0, null]);
   assert.deepEqual(
     app.boxParsedLines('cap').map(p => p.pct),
     [0, 0, 0, 0, 0],
     'a percentage on a line with lines under it is dropped',
   );
-  assert.equal(app.nestOn, true);
   // In a subtask box, a line goes under the line above it, which goes under the open task.
   app.sheet.sub.text = 'Chairs\n  Stack them\nTables';
   assert.deepEqual(
@@ -1238,11 +1267,8 @@ test('a pasted list with indented lines puts each under the nearest line above i
 test("a pasted copy of a project treats its # heading as the list's name, leaves it out, and shows a chip saying so", () => {
   const app = boxes();
   app.cap.text = '# Café · 3 open · 5 done\n- [ ] Order milk\n- [ ] Pack the van\n  - [ ] Tables (50%)';
-  assert.deepEqual(chipsOf(app, 'cap'), [
-    'The # line is the list’s name, so it is left out',
-    '2 tasks + 1 subtask',
-    'Café',
-  ]);
+  assert.deepEqual(chipsOf(app, 'cap'), ['The # line is the list’s name, so it is left out', 'Café']);
+  assert.deepEqual(waysOf(app, 'cap'), ['●2 tasks + 1 subtask', '3 tasks', '1 task + 2 subtasks', '1 task + notes']);
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under, x.p.pct]),
     [
@@ -1251,18 +1277,21 @@ test("a pasted copy of a project treats its # heading as the list's name, leaves
       ['Tables', 1, 50],
     ],
   );
-  assert.equal(app.nestOn, false, 'the first task line is not a parent');
   // Alone in the box, a # line names no list. It is a task, as typed.
   app.cap.text = '# of chairs we need';
   assert.deepEqual([chipsOf(app, 'cap'), linesOf(app, 'cap')], [['Café'], [['# of chairs we need', false]]]);
 });
 
-test('in quick add, a first line ending with a colon is the parent of the other lines without its colon, unless ↳ Under first line is off', () => {
+test('in quick add, a first line ending with a colon is the parent of the other lines without its colon, unless every line is picked to be a task', () => {
   const app = boxes();
   app.cap.text = 'Groceries:\nmilk\n- [x] eggs';
   assert.deepEqual(
-    [chipsOf(app, 'cap'), app.nestOn],
-    [['1 will be added as done', '1 task + 2 subtasks', 'Café'], true],
+    [chipsOf(app, 'cap'), waysOf(app, 'cap')],
+    [
+      ['1 done', 'Café'],
+      ['●1 task + 2 subtasks', '3 tasks', '1 task + notes'],
+    ],
+    'every line under the first is the list as written, so it is left out',
   );
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under]),
@@ -1272,8 +1301,8 @@ test('in quick add, a first line ending with a colon is the parent of the other 
       ['eggs', 0],
     ],
   );
-  app.tapNest();
-  assert.deepEqual([chipsOf(app, 'cap'), app.nestOn], [['1 will be added as done', '3 tasks', 'Café'], false]);
+  pick(app, 'cap', '3 tasks');
+  assert.deepEqual(waysOf(app, 'cap'), ['1 task + 2 subtasks', '●3 tasks', '1 task + notes']);
   assert.deepEqual(
     app.boxItems('cap').map(x => [x.p.title, x.under]),
     [
@@ -1282,7 +1311,7 @@ test('in quick add, a first line ending with a colon is the parent of the other 
       ['eggs', null],
     ],
   );
-  // A subtask box has no ↳ Under first line to tap off, so the colon stays in the title there.
+  // A subtask box doesn't make the first line a parent for its colon, so the colon stays in the title there.
   app.sheet.sub.text = 'Groceries:\nmilk';
   assert.deepEqual(
     app.boxItems('sub').map(x => [x.p.title, x.under]),
@@ -1593,8 +1622,9 @@ test("a checklist's add box leaves out a ticked line without a chip to tap, and 
   assert.deepEqual(
     app.chips('ins').map(c => [c.text, c.kind]),
     [
+      ['2 steps', 'shape'],
+      ['1 step + notes', 'shape'],
       ['1 line is already ticked, so it is left out', undefined],
-      ['2 steps', 'fold'],
     ],
   );
   assert.deepEqual(linesOf(app, 'ins'), [
@@ -1624,44 +1654,45 @@ test('the text after " // " is marked and shown as notes after the other chips, 
   assert.deepEqual([chipsOf(app, 'cap'), marksOf(app, 'cap')], [['Café'], []]);
 });
 
-test('a pasted list gets one chip counting the lines with notes, and tapping it keeps every line’s notes in its title', () => {
+test('a pasted list reads every line’s notes, and has no chip to keep them in the titles', () => {
   const app = boxes();
   app.cap.text = 'Order paper bags // the brown ones\nOrder till rolls\nOrder labels // white';
-  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', 'Notes on 2 tasks']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
   assert.deepEqual(marksOf(app, 'cap'), ['notes:// the brown ones', 'notes:// white']);
-  tap(app, 'cap', 'Notes on');
-  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', '~Notes on 2 tasks']);
   assert.deepEqual(notesOfLines(app, 'cap'), [
-    ['Order paper bags // the brown ones', ''],
+    ['Order paper bags', 'the brown ones'],
     ['Order till rolls', ''],
-    ['Order labels // white', ''],
+    ['Order labels', 'white'],
   ]);
-  // A subtask box and a checklist's box count subtasks and steps.
+  // A notes chip tapped off while the box had one line doesn't carry over to the list.
+  app.cap = newBox();
+  app.cap.text = 'Order paper bags // the brown ones';
+  tap(app, 'cap', 'Notes:');
+  app.cap.text += '\nOrder labels // white';
+  assert.deepEqual(notesOfLines(app, 'cap'), [
+    ['Order paper bags', 'the brown ones'],
+    ['Order labels', 'white'],
+  ]);
+  // A subtask box and a checklist's box read them too.
   app.sheet.sub.text = 'Load chairs // the folding ones\nTables';
-  assert.deepEqual(chipsOf(app, 'sub'), ['2 subtasks', 'Notes on 1 subtask']);
+  assert.deepEqual(chipsOf(app, 'sub'), []);
   assert.deepEqual(notesOfLines(app, 'sub'), [
     ['Load chairs', 'the folding ones'],
     ['Tables', ''],
   ]);
   app.runInsert.text = 'Wipe the counter // with the blue cloth\nMop // both rooms';
-  assert.deepEqual(chipsOf(app, 'ins'), ['2 steps', 'Notes on 2 steps']);
+  assert.deepEqual(chipsOf(app, 'ins'), []);
 });
 
 test('an indented line starting with // under a pasted line is more of its notes, marked in the box with them', () => {
   const app = boxes();
   app.cap.text = '- [ ] Tables // Two\n  //\n  // Ask first\n  - [ ] Legs';
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 task + 1 subtask', 'Café', 'Notes on 1 task']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
   assert.deepEqual(notesOfLines(app, 'cap'), [
     ['Tables', 'Two\n\nAsk first'],
     ['Legs', ''],
   ]);
   assert.deepEqual(marksOf(app, 'cap'), ['notes:// Two\n  //\n  // Ask first']);
-  tap(app, 'cap', 'Notes on');
-  assert.deepEqual(
-    notesOfLines(app, 'cap')[0],
-    ['Tables // Two // // Ask first', ''],
-    'tapped off, they stay in the title',
-  );
 });
 
 test('a line’s notes are sent as its description, in the request that makes it, as one paragraph', async t => {
@@ -1694,21 +1725,22 @@ test('a line’s notes are sent as its description, in the request that makes it
   assert.equal(v.task(101).description, '<p>the &lt;brown&gt; ones &amp; lids</p>');
 });
 
-test('tapping the count chip makes the first line the task and the other lines its notes, and tapping it again makes a list', () => {
-  const app = boxes(),
-    hint = text => app.chips('cap').find(c => c.text === text)?.hint;
+test('picking 1 task + notes makes the first line the task and the other lines its notes, and picking 3 tasks makes a list again', () => {
+  const app = boxes();
   app.cap.text = 'Call the plumber\nthe tap drips tomorrow @user\nask about the boiler';
-  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café']);
-  assert.equal(hint('3 tasks'), 'Tap to make the first line the task and the rest its notes');
-  tap(app, 'cap', '3 tasks');
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 task + notes', 'Café'], 'nothing in the notes is read');
-  assert.equal(hint('1 task + notes'), 'Tap to add each line as a task');
+  assert.deepEqual(waysOf(app, 'cap'), ['●3 tasks', '1 task + 2 subtasks', '1 task + notes']);
+  pick(app, 'cap', '1 task + notes');
+  assert.deepEqual(
+    [chipsOf(app, 'cap'), waysOf(app, 'cap')],
+    [['Café'], ['3 tasks', '1 task + 2 subtasks', '●1 task + notes']],
+    'nothing in the notes is read',
+  );
   assert.deepEqual(notesOfLines(app, 'cap'), [
     ['Call the plumber', 'the tap drips tomorrow @user\nask about the boiler'],
   ]);
   assert.deepEqual(marksOf(app, 'cap'), ['notes:the tap drips tomorrow @user\nask about the boiler']);
-  tap(app, 'cap', '1 task + notes');
-  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café']);
+  pick(app, 'cap', '3 tasks');
+  assert.equal(waysOf(app, 'cap')[0], '●3 tasks');
   assert.deepEqual(notesOfLines(app, 'cap'), [
     ['Call the plumber', ''],
     ['the tap drips @user', ''],
@@ -1718,13 +1750,13 @@ test('tapping the count chip makes the first line the task and the other lines i
 
 test("a folded list's first line is read as usual, and its own notes come before the other lines", () => {
   const app = boxes();
-  app.cap.text = 'Call the plumber +café !2 // kitchen\nthe tap drips\nask about the boiler';
-  assert.deepEqual(chipsOf(app, 'cap'), ['3 tasks', 'Café', 'Notes on 1 task']);
-  tap(app, 'cap', 'Notes on');
-  tap(app, 'cap', '3 tasks');
+  app.cap.text = 'Call the plumber +café !2 // kitchen';
+  tap(app, 'cap', 'Notes:');
+  app.cap.text += '\nthe tap drips\nask about the boiler';
+  pick(app, 'cap', '1 task + notes');
   assert.deepEqual(
     chipsOf(app, 'cap'),
-    ['1 task + notes', 'Café', 'Priority 2'],
+    ['Café', 'Priority 2'],
     'folding reads notes again after their chip was tapped off, and shows no notes chip',
   );
   assert.deepEqual(notesOfLines(app, 'cap'), [['Call the plumber', 'kitchen\nthe tap drips\nask about the boiler']]);
@@ -1739,13 +1771,9 @@ test('a folded indented list keeps its indents and checkboxes in the notes, and 
   t.after(clear);
   const app = boxes();
   app.cap.text = '- [ ] Groceries:\n  - milk\n    - oat milk\n  - [x] eggs';
-  assert.deepEqual(chipsOf(app, 'cap'), ['1 will be added as done', '1 task + 3 subtasks', 'Café']);
-  tap(app, 'cap', '1 task + 3 subtasks');
-  assert.deepEqual(
-    chipsOf(app, 'cap'),
-    ['1 task + notes', 'Café'],
-    'the ticked line is notes now, so no chip counts it, and the ↳ Under first line chip has one line',
-  );
+  assert.deepEqual(chipsOf(app, 'cap'), ['1 done', 'Café']);
+  pick(app, 'cap', '1 task + notes');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café'], 'the ticked line is notes now, so no chip counts it');
   assert.equal(app.capLines.length, 1);
   const [p] = app.boxParsedLines('cap');
   assert.deepEqual([p.title, p.notes, p.done], ['Groceries:', '- milk\n  - oat milk\n- [x] eggs', false]);
@@ -1762,16 +1790,15 @@ test('a folded indented list keeps its indents and checkboxes in the notes, and 
 test('a subtask box and a checklist box fold too, into one subtask or one step', () => {
   const app = boxes();
   app.sheet.sub.text = 'Load chairs\n\nthe folding ones';
-  tap(app, 'sub', '2 subtasks');
-  assert.deepEqual(chipsOf(app, 'sub'), ['1 subtask + notes']);
+  pick(app, 'sub', '1 subtask + notes');
+  assert.deepEqual(waysOf(app, 'sub'), ['2 subtasks', '●1 subtask + notes']);
   assert.deepEqual(notesOfLines(app, 'sub'), [['Load chairs', 'the folding ones']]);
   app.runInsert.text = 'Wipe the counter\nwith the blue cloth\nthen dry it';
-  assert.equal(app.chips('ins')[0].hint, 'Tap to make the first line the step and the rest its notes');
-  tap(app, 'ins', '3 steps');
-  assert.deepEqual(chipsOf(app, 'ins'), ['1 step + notes']);
+  pick(app, 'ins', '1 step + notes');
+  assert.deepEqual(waysOf(app, 'ins'), ['3 steps', '●1 step + notes']);
   assert.deepEqual(notesOfLines(app, 'ins'), [['Wipe the counter', 'with the blue cloth\nthen dry it']]);
-  tap(app, 'ins', '1 step + notes');
-  assert.deepEqual(chipsOf(app, 'ins'), ['3 steps']);
+  pick(app, 'ins', '3 steps');
+  assert.deepEqual(waysOf(app, 'ins'), ['●3 steps', '1 step + notes']);
 });
 
 test('typing +project suggests the projects you can add to, Enter takes the first, and a subtask box suggests none', () => {
@@ -1952,7 +1979,7 @@ test('while Today is narrowed to a label, its add boxes give each line that labe
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*Errands']);
   assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['Errands'], undefined]]);
   app.cap.text = 'Buy stamps\nPost the parcel';
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks', 'Café', '*errands']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*errands']);
   assert.deepEqual(labelsOfLines(app, 'cap'), [
     ['Buy stamps', ['errands'], [1]],
     ['Post the parcel', ['errands'], [1]],
@@ -1961,7 +1988,7 @@ test('while Today is narrowed to a label, its add boxes give each line that labe
   app.sheet.sub.text = 'Buy stamps';
   assert.deepEqual(labelsOfLines(app, 'sub'), [['Buy stamps', [], undefined]]);
   app.route = { name: 'project', id: 5 };
-  assert.deepEqual(chipsOf(app, 'cap'), ['2 tasks', 'Café']);
+  assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
   assert.deepEqual(labelsOfLines(app, 'cap')[0], ['Buy stamps', [], undefined]);
 });
 

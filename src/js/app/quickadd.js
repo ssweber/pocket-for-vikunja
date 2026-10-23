@@ -137,7 +137,7 @@ export default {
       ].join('\0');
     const had = reads.get(w);
     if (had && had.key === key && had.projects === this.projects) return had;
-    const r = { key, projects: this.projects, list: null, first: null, firstAll: null, lines: null };
+    const r = { key, projects: this.projects, list: null, first: null, firstAll: null, lines: null, shapes: null };
     reads.set(w, r);
     return r;
   },
@@ -153,20 +153,6 @@ export default {
         ? { done: !b.ignore?.done, nest: cap && !!b.nest, flat: cap && !!b.flat, colon: cap, fold }
         : { steps: true, fold },
     ));
-  },
-  /* A pasted list keeps the nesting it was written with. Turning the Under first line chip off flattens the list, and
-     turning it on again restores the nesting. A list with no written nesting gets the first line as the parent when
-     the chip is on. Only quick add has this chip. A subtask box keeps a trailing colon in the title. */
-  get nestOn() {
-    return this.cap.nest || (!this.cap.flat && this.boxList('cap').first);
-  },
-  tapNest() {
-    const c = this.cap;
-    if (this.nestOn) {
-      if (c.nest) c.nest = false;
-      else c.flat = true;
-    } else if (c.flat) c.flat = false;
-    else c.nest = true;
   },
   boxLines(w) {
     return this.boxList(w).lines.map(l => l.text);
@@ -195,29 +181,33 @@ export default {
     const base = this.boxBase(w);
     return (r[k] = parseCapture(this.boxLines(w)[0] || '', this.projects, {
       ...this.parseOpts,
-      ignore: all ? base : { ...base, ...this.box(w).ignore },
+      ignore: all ? base : { ...base, ...this.boxIgnore(w) },
     }));
+  },
+  /* What the user tapped off in box `w`. A list has no notes chip, so it reads every line's notes, even after the
+     chip of its first line was tapped off before the second line was typed. */
+  boxIgnore(w) {
+    const { notes, ...rest } = this.box(w).ignore || {};
+    return notes && this.boxList(w).lines.length > 1 ? rest : this.box(w).ignore;
   },
   get parsed() {
     return this.boxParsed('cap');
   },
   /* Parse every line of a box. A pasted quick add list uses one project for all its lines. Each line keeps its done
-     state and its parent's index. A parent's own percentage is dropped, because its subtasks decide its progress. The
-     notes chip, tapped off, keeps every line's notes in its title. */
+     state and its parent's index. A parent's own percentage is dropped, because its subtasks decide its progress. */
   boxParsedLines(w) {
     const r = this.boxRead(w);
     if (r.lines) return r.lines;
     const list = this.boxList(w).lines,
       lines = list.map(l => l.text),
-      first = this.boxParsed(w),
-      off = this.box(w).ignore?.notes ? { notes: true } : {};
+      first = this.boxParsed(w);
     const parsed =
       w === 'cap'
         ? lines.length > 1
-          ? this.parseList(lines, first, off).parsed
+          ? this.parseList(lines, first).parsed
           : [first]
         : lines.map((l, i) =>
-            i ? parseCapture(l, this.projects, { ...this.parseOpts, ignore: { ...this.boxBase(w), ...off } }) : first,
+            i ? parseCapture(l, this.projects, { ...this.parseOpts, ignore: this.boxBase(w) }) : first,
           );
     const parents = new Set(list.map(l => l.under));
     return (r.lines = parsed.map((p, i) => ({
@@ -248,9 +238,8 @@ export default {
     }));
   },
   /* The first +project anywhere in a pasted list applies to every line, and other project names stay in their
-     titles. Returns {parsed, project, miss}. `first` is the first line when it is already parsed. `off` holds the
-     chips tapped off for every line. */
-  parseList(lines, first, off = {}) {
+     titles. Returns {parsed, project, miss}. `first` is the first line when it is already parsed. */
+  parseList(lines, first) {
     let owner = -1;
     const parsed = lines.map((raw, i) => {
       const p =
@@ -258,7 +247,7 @@ export default {
           ? first
           : parseCapture(raw, this.projects, {
               ...this.parseOpts,
-              ignore: owner >= 0 ? { ...off, project: true } : off,
+              ignore: owner >= 0 ? { project: true } : {},
             });
       if (owner < 0 && (p.project || p.projectMiss)) owner = i;
       return p;
@@ -687,8 +676,60 @@ export default {
     if (c.action) c.action();
     else if (c.kind) b.ignore = { ...b.ignore, [c.kind]: !b.ignore?.[c.kind] };
   },
-  /* Build the chips under a box from what it parsed. Only quick add shows photos and the list-nesting chip, and a
-     subtask box shows no project chip. */
+  /* The ways a box's lines can be added, as a segmented control (chips.html): the nesting as typed, every line its own
+     task, every line under the first, or one task with the other lines as its notes. Each is drawn as the tasks it
+     makes, a bar for each, shifted right by its depth. As typed comes first, so the pressed way starts the row until
+     the user picks another. A way that makes the same tasks as one before it is left out. Only quick add reads nesting,
+     so the other boxes offer the first and the last. */
+  listShapes(w) {
+    const r = this.boxRead(w);
+    if (r.shapes) return r.shapes;
+    const b = this.box(w),
+      cap = w === 'cap',
+      what = cap ? 'task' : this.isSubBox(w) ? 'subtask' : 'step',
+      read = o =>
+        readList(b.text, this.readsDone(w) ? { done: !b.ignore?.done, colon: cap, ...o } : { steps: true, ...o }),
+      now = this.boxList(w),
+      plural = (k, x) => `${k} ${x}${k === 1 ? '' : 's'}`,
+      ways = (cap ? [{}, { flat: true }, { nest: true }] : [{}]).map(o => ({ o, list: read(o) }));
+    if (ways[0].list.lines.length < 2) return (r.shapes = []);
+    const shape = list => JSON.stringify(list.lines.map(l => l.under)),
+      seen = new Set(),
+      shapes = ways.filter(({ list }) => !seen.has(shape(list)) && seen.add(shape(list)));
+    const way = (key, text, pressed, set, depths, count = null) => ({
+      key: 'shape-' + key,
+      kind: 'shape',
+      text,
+      pressed,
+      depths,
+      count,
+      notes: !!set.fold,
+      action: () => {
+        if (cap) Object.assign(b, { nest: !!set.nest, flat: !!set.flat });
+        b.ignore = { ...b.ignore, fold: !!set.fold, ...(set.fold && { notes: false }) };
+      },
+    });
+    return (r.shapes = [
+      ...shapes.map(({ o, list }, i) => {
+        const n = list.lines.length,
+          subs = list.lines.filter(l => l.under !== null).length,
+          depth = [];
+        list.lines.forEach((l, k) => (depth[k] = l.under === null ? 0 : depth[l.under] + 1));
+        // The picture shows the first five lines. A longer list also shows its count, as "12" or "1+11".
+        return way(
+          i,
+          cap && subs ? `${plural(n - subs, 'task')} + ${plural(subs, 'subtask')}` : plural(n, what),
+          !now.folded && shape(now) === shape(list),
+          o,
+          depth.slice(0, 5),
+          n <= 5 ? null : subs ? `${n - subs}+${subs}` : String(n),
+        );
+      }),
+      way('fold', `1 ${what} + notes`, !!now.folded, { fold: true }, [0]),
+    ]);
+  },
+  /* Build the chips under a box from what it parsed. Only quick add shows photos, and a subtask box shows no project
+     chip. */
   chips(w) {
     const b = this.box(w),
       cap = w === 'cap';
@@ -712,6 +753,7 @@ export default {
     const list = this.boxList(w),
       ticked = list.ticked,
       left = !!b.ignore?.done;
+    photos.push(...this.listShapes(w));
     // A # line is the list's name, as at the top of a copied project. It is left out, and a chip says so.
     if (list.names.length)
       photos.push({
@@ -732,7 +774,7 @@ export default {
       photos.push({
         key: 'tk',
         kind: 'done',
-        text: left ? `${ticked} already ticked, left out` : `${ticked} will be added as done`,
+        text: left ? `${ticked} already ticked, left out` : `${ticked} done`,
         hint: left
           ? `Tap to add ${ticked === 1 ? 'it' : 'them'} as done`
           : `Tap to leave ${ticked === 1 ? 'this line' : 'these lines'} out`,
@@ -743,38 +785,9 @@ export default {
       n = list.lines.length,
       off = k => !!b.ignore?.[k];
     out.push(...photos);
-    // For a pasted list, show how many tasks there are, which project they go to, and a warning for each user who
-    // can't see that project.
+    // For a pasted list, show which project its tasks go to, and a warning for each user who can't see that project.
     const listWarn = () => this.accessHints(w).warn.map((text, i) => ({ key: 'w' + i, cls: 'warn', text }));
-    // One chip counts the lines with notes. Tapping it keeps every line's notes in its title.
-    const noted = list.lines.filter(l => notesOf(l.text)).length,
-      what = cap ? 'task' : this.isSubBox(w) ? 'subtask' : 'step',
-      notesChip = () =>
-        noted
-          ? [
-              {
-                key: 'notes',
-                kind: 'notes',
-                text: `Notes on ${noted} ${what}${noted === 1 ? '' : 's'}`,
-                off: off('notes'),
-              },
-            ]
-          : [];
-    /* The chip that counts a list's lines folds the list into one task: the first line, with the other lines as its
-       notes (readList's `fold`). Tapping it again unfolds the list. Folding reads notes again if their chip was tapped
-       off, or the other lines would join the title. */
-    const folded = !!list.folded,
-      count = text => ({
-        key: 'n',
-        kind: 'fold',
-        text,
-        hint: folded
-          ? `Tap to add each line as a ${what}`
-          : `Tap to make the first line the ${what} and the rest its notes`,
-        action: () => {
-          b.ignore = { ...b.ignore, fold: !folded, notes: false };
-        },
-      });
+    const folded = !!list.folded;
     // The label Today is narrowed to, as if it were typed. Tapping it leaves the label off.
     const only = this.boxOnly(w),
       onlyChip = () =>
@@ -790,19 +803,10 @@ export default {
             ]
           : [];
     if (n > 1 && !cap) {
-      out.push(count(`${n} ${what}s`), ...onlyChip(), ...listWarn(), ...notesChip());
+      out.push(...onlyChip(), ...listWarn());
       return out;
     }
     if (n > 1) {
-      // A line under another line counts as a subtask, as in "1 task + 3 subtasks".
-      const subs = list.lines.filter(l => l.under !== null).length;
-      out.push(
-        count(
-          subs
-            ? `${n - subs} task${n - subs === 1 ? '' : 's'} + ${subs} subtask${subs === 1 ? '' : 's'}`
-            : `${n} tasks`,
-        ),
-      );
       const { project, miss } = this.parseList(this.capLines);
       const to = this.projById.get(project?.id || this.defaultProjectId());
       if (to) out.push({ key: 'p', color: colorOf(to.hex_color), text: to.title });
@@ -815,13 +819,12 @@ export default {
           text: this.creatingProject ? 'Creating…' : `+ Create project “${projectName(miss)}”`,
           action: () => this.createProject(miss),
         });
-      out.push(...onlyChip(), ...listWarn(), ...notesChip());
+      out.push(...onlyChip(), ...listWarn());
       return out;
     }
     // The chips come from the full parse. A chip the user tapped off stays visible, so it can be tapped on again.
     const all = this.boxParsed(w, true);
     const { auto, warn } = this.accessHints(w);
-    if (folded) out.push(count(`1 ${what} + notes`));
     if (all.project)
       out.push({
         key: 'p',
