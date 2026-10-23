@@ -467,13 +467,14 @@ try {
     const lateRow = `.row:has(.title:has-text("${late}"))`;
     await page.click('#btn-refresh');
     await page.waitForSelector(`.sec.overdue ~ .list ${lateRow}`, { timeout: 15000 });
-    // The button's 44px target fits inside the Overdue heading, which is no taller than its own line of text.
-    const [head, line, act] = [
+    // The button's 44px target fits inside the Overdue heading, which is as tall as a heading without a button, such
+    // as Today's, give or take a pixel for how the fonts line up.
+    const [head, plain, act] = [
       await page.locator('.sec.overdue').boundingBox(),
-      await page.locator('.sec.overdue > span').first().boundingBox(),
+      await page.locator('#view .sec:not(:has(.sec-act))').first().boundingBox(),
       await page.locator('#btn-overdue-today').boundingBox(),
     ];
-    if (head.height > line.height + 0.5 || Math.round(act.height) !== 44)
+    if (Math.abs(head.height - plain.height) > 1 || Math.round(act.height) !== 44)
       throw new Error(`the Overdue heading is ${head.height}px tall and its button ${act.height}px`);
     await page.click('#btn-overdue-today');
     await page.waitForSelector(`.sec.today ~ .list ${lateRow}`, { timeout: 15000 });
@@ -4107,9 +4108,12 @@ try {
       const box = await steady(page.locator(`${A} > .claim`));
       await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 28));
       await page.mouse.down();
-      await later(700);
+      // Lift only once the menu is open. On a busy machine the hold can register late, and lifting first is a tap.
+      await expect(menu).toBeVisible();
       await page.mouse.up();
-      await expect(item, 'a project shared with your bot offers it').toBeVisible();
+      // Your bot is in every project's user search, so Pocket checks which projects it can see. With many projects
+      // that takes a while.
+      await expect(item, 'a project shared with your bot offers it').toBeVisible({ timeout: 30000 });
       await api(`/projects/${proj.id}/users/${bot.username}`, { method: 'DELETE' });
       refused.add(`${SERVER}/api/v1/plugins/pocket/v2/tasks/${a.id}/assignees/bulk`);
       await item.click();
