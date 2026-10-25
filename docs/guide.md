@@ -202,6 +202,7 @@ Pocket opens without a connection and shows lists as last loaded.
   - Nothing: plugins aren't enabled, or Vikunja hasn't been restarted.
 - **The log shows the old version after updating.** Vikunja reads `main.go` at startup. Restart it.
 - **The log shows `POST /api/v1/plugins/pocket/v2/* is not available to API tokens`.** Vikunja 2.7.1 and later log this at every start. Pocket signs in as the user, not with an API token, so it is unaffected. An API token can't send a POST through the plugin. It can send to `/api/v2` directly.
+- **Vikunja's page stays open after single sign-on.** Signing in from the home-screen app ends on Vikunja's page. Close it to return to Pocket.
 - **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
 - **"@user can't see Inbox".** Share the project with them, or add a `+project` they can access.
 
