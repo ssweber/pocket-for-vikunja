@@ -77,6 +77,6 @@ Cloudron: the plugins folder is `/app/data/plugins/` and `config.yml` is `/app/d
 
 ## More
 
-The [guide](docs/guide.md) has the full quick-add syntax, gestures, templates, asks, offline behaviour and troubleshooting. To work on Pocket itself, see [docs/development.md](docs/development.md).
+The [guide](docs/guide.md) has the quick-add syntax, gestures, templates, asks, offline behaviour and troubleshooting. To work on Pocket itself, see [docs/development.md](docs/development.md).
 
 MIT licensed.
