@@ -22,7 +22,7 @@ pocket/        the plugin, as it is installed in Vikunja's plugins folder
 tests/         the end-to-end tests, helpers.mjs (what they share), and unit/ (the tests that need no browser)
 scripts/       build.mjs, dev.mjs (a local Vikunja), check.mjs (what lint checks besides ESLint), demo.mjs (the
                README's pictures), specimen/ (every state of a row on one page), perf/ (timing long lists)
-docs/          this file, guide.md (for people using Pocket), design-rules.md and roadmap.md
+docs/          this file, guide.md (using Pocket), data.md (Pocket's records), design-rules.md, roadmap.md
 ```
 
 Each file in `src/js/` starts with a comment saying what it is for. By what you are changing:

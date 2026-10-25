@@ -4,7 +4,7 @@ What the [README](../README.md) leaves out: the quick-add syntax, the gestures, 
 
 **Using Pocket:** [Quick add](#quick-add) · [Tasks](#tasks) · [Assigning](#assigning) · [Checklists](#checklists) · [Timed steps](#timed-steps) · [Asks](#asks) · [Reminders](#reminders) · [Offline](#offline)
 
-**On the server:** [Step times](#step-times) · [Troubleshooting](#troubleshooting) · [Privacy and security](#privacy-and-security)
+**On the server:** [Step times](#step-times) · [Troubleshooting](#troubleshooting) · [Privacy and security](#privacy-and-security) · [What Pocket stores in Vikunja](data.md)
 
 ## Quick add
 
@@ -26,6 +26,27 @@ Pocket reads Vikunja's [Quick Add Magic](https://vikunja.io/help/quick-add-magic
 | `Order bags // the brown ones` | Notes, from the text after ` // ` |
 
 Wrap the whole text in quotes to turn parsing off: `"Friday night jazz poster"`.
+
+<details>
+<summary><b>Every rule</b>, and where Pocket differs from Vikunja's parser</summary>
+
+- Typing `+` suggests projects, and typing `*` suggests labels.
+- Numeric dates such as `10/12` are read only at the start or end of the text, so "Table 4/5 wobbles" is left alone. Vikunja always reads `10/12` as a US date.
+- Without a time, a task gets your default due time from Vikunja's settings.
+- `at 5` is 5 PM. Vikunja reads it as 5 AM. After a morning, a bare hour is read as written: `tomorrow morning at 6` is 6 AM. After an evening or a night, a bare hour up to 11 is PM.
+- `this morning` and `tonight` are today, even once that time has passed. Vikunja reads `tonight` as 9 PM. `morning` on its own stays in the title.
+- After a night, `at 12` and `at midnight` are the midnight that ends the day, and `at 1` to `at 4` are the small hours after it. `tonight at 1` is 1 AM tomorrow.
+- After a repeat, a part of the day sets the time it repeats at: `every monday evening` is Mondays at 6 PM.
+- Vikunja can't repeat on weekdays only, so `every weekday` stays in the title and a chip says so. `every month` repeats on the same day each month, where Vikunja uses every 30 days.
+- A date means its next occurrence. In June, `2nd March` is next March.
+- Pocket also reads `every monday`, `every other day` and `the 17th` anywhere in the text.
+- A `@user`, `*label` or `+project` in the middle of the text keeps its word in the title, without its sign: `Fix the *urgent leak` is "Fix the urgent leak", with the label urgent. At the start or the end, the word is removed, as in Vikunja. Other `@`, `*` and `+` words, dates, repeats, priorities and percentages between it and that end don't count: `Call the plumber @user *home tomorrow` is "Call the plumber".
+- A `@user` who can't be assigned stays as typed. Without a `+project`, if exactly one of your projects is shared with them, Pocket picks it and shows a chip.
+- `(50%)` works as well as `50%`, and `100%` is done. `[x] ` and `X ` work as well as `x `.
+- Notes start after the first ` // `. Slashes without a space on both sides, as in `http://`, stay in the title. An indented line under the text that starts with `//` adds a line to the notes.
+- Quotes at the start keep the title as typed and parse the rest: `"Lunch friday" @user tomorrow`.
+
+</details>
 
 **Pasting a list.** Each line becomes a task, in the first `+project` found. Indented lines, lines under a `## ` heading, and lines after a first line ending in a colon become subtasks. The pictures under the box offer other ways to add the lines, such as one task with the rest as its notes.
 
@@ -105,7 +126,7 @@ A template is a procedure your team repeats. Starting it creates a checklist, wh
 - Template steps can be skipped, not removed.
 - Tap the checklist's ring to finish early.
 
-**In Vikunja's web app.** A template is a task labeled `template`, titled "TEMPLATE: …", with its steps as done subtasks. A checklist is a copy named like "Opening up · Oct 4 · #3". A ✅ reaction marks a step done, and ⏭️ marks it skipped. Vikunja lets people remove only their own reactions, so un-ticking someone else's step leaves their ✅. Lines starting with `pocket:` in a description are Pocket's records. Pocket hides them. Leave them in place.
+**In Vikunja's web app.** A template is a task labeled `template`, and a checklist is a copy of it. A ✅ reaction on a step says who did it. Lines starting with `pocket:` are Pocket's records, so leave them in place. [What Pocket stores in Vikunja](data.md) has the details.
 
 ## Timed steps
 
@@ -119,7 +140,7 @@ In Vikunja's web app, the timer is part of the step's title:
 | `Put the croissants in the oven {#croissants}` | No timer. `{#croissants}` names the step. |
 | `Take the croissants out T#18m:croissants` | 18 minutes after the step named "croissants". |
 
-Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`.
+Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`. [Timers](data.md#timers) has the rest of the rules.
 
 **Enforcing.** Two switches under a template's steps are off at first. **Enforce step times** stops a timed step being ticked early. **Enforce step order** stops a step being ticked while one above it is open. **Skip** still works. Vikunja's web app ignores both.
 
@@ -149,7 +170,7 @@ An ask is a line in the step's notes, and it can be typed there:
 | `pocket:ask Seal intact: yes-no` | Yes or No |
 | `pocket:ask Belt: choice Good \| Worn \| Replace` | One of the options |
 
-Vikunja sends a webhook to a private address, such as an n8n flow, only with `outgoingrequests.allownonroutableips: true` in its config.
+[Asks](data.md#asks) and [Answers](data.md#answers) have the full format, for an export or an n8n flow.
 
 ## Reminders
 
@@ -191,4 +212,4 @@ With `steptimes: true` in `config.yml` (or `VIKUNJA_PLUGINS_POCKET_STEPTIMES=tru
 - Pocket talks only to the Vikunja that serves it, with Vikunja's own session.
 - For offline use, Pocket keeps the last-loaded lists, the Outbox and unsent text in the browser. Signing out clears them, and another account on the same phone never sees them.
 - Notes and comments are sanitized before display. Attachments other than images, PDFs and plain text download instead of opening. This stops a collaborator's content from running code in Pocket, which shares Vikunja's origin.
-- The plugin serves `app/` and passes Pocket's changes to Vikunja's API as the signed-in user, so Vikunja checks permissions as usual. It keeps Vikunja's answer to each change for 31 days in its own table, `pocket_relay`, so a change sent twice is made once. With step times on, it also sets due dates on checklist steps. Nothing else. Review [`pocket/main.go`](../pocket/main.go) and [`pocket/relay.go`](../pocket/relay.go) before installing.
+- The plugin serves `app/` and passes Pocket's changes to Vikunja's API as the signed-in user, so Vikunja checks permissions as usual. It keeps Vikunja's answer to each change for 31 days in its own table, `pocket_relay`, so a change sent twice is made once. With step times on, it also sets due dates on checklist steps. Nothing else. [What the plugin writes](data.md#what-the-plugin-writes) has the details. Review [`pocket/main.go`](../pocket/main.go) and [`pocket/relay.go`](../pocket/relay.go) before installing.
