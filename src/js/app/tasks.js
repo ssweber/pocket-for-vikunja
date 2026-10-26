@@ -520,25 +520,30 @@ const writers = { read, answer, made, base, leave, keyOps, offTasks, answered, l
    new task's `parent`, is left as it is, and a field of Vikunja's that the task as shown doesn't have leaves the row. A
    task given to base gets a row if it has none, and its fields lie under the row's.
 
-   A task marked done keeps every field until its batch clears (leaving.js), and clearing the batch shows it. Either
-   its op hasn't been answered yet. Or it is a repeating task that Vikunja moved on to its next date, and its row
-   would jump to another group as it leaves. A task given to base while it is marked done shows as it was given, as a
+   A task marked done keeps the fields a tick changes (MOVED) until its batch clears (leaving.js), and clearing the
+   batch shows them. Either its op hasn't been answered yet. Or it is a repeating task that Vikunja moved on to its
+   next date, and its row would jump to another group as it leaves. Its other fields show at once, so a title edited
+   in its sheet shows there. A task given to base while it is marked done keeps those fields as it was given, as a
    line that arrived done does (arrivedDone, sending.js). */
 function show(c, id) {
   const had = c.tasks[id],
     from = given.get(id),
-    held = c.leaving[id] === 'done';
+    kept = c.leaving[id] === 'done' && (from ?? (had && raw(had)));
   given.delete(id);
-  if (!from && (!had || held)) return;
-  const t = held ? from : c.shownAs(id),
-    all = from && !held ? { ...(copies.has(id) ? pocketOwn(from) : from), ...t } : t;
+  if (!from && !had) return;
+  const t = c.shownAs(id),
+    all = from ? { ...(copies.has(id) ? pocketOwn(from) : from), ...t } : kept && t ? { ...t } : t;
+  if (all && kept)
+    for (const k of MOVED)
+      if (k in kept) all[k] = kept[k];
+      else delete all[k];
   if (!had) {
     c.tasks[id] = own(all);
     return;
   }
   const was = raw(had);
   for (const [k, v] of Object.entries(all || {})) if (!same(was[k], v)) had[k] = own(v);
-  if (!held && all) for (const k of Object.keys(was)) if (SAVED.includes(k) && !(k in all)) delete had[k];
+  if (all) for (const k of Object.keys(was)) if (SAVED.includes(k) && !(k in all)) delete had[k];
 }
 
 /* read, for a read's promise: allPages(path).then(putting(TASK)). The read starts as putting is called. A task deleted

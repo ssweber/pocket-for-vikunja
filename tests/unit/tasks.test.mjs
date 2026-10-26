@@ -275,9 +275,10 @@ test("a read started before a task's answer leaves its copy alone, and a read st
 });
 
 /* A ticked list row is held done from the tap, and marked until its batch clears (leaving.js). A repeating task's
-   answer has it open at its next date, which would move the row to another group as it leaves. So the row keeps every
-   field until the batch clears, and then shows Vikunja's copy. */
-test("a task leaving done keeps every field until its batch clears, then shows Vikunja's copy", async c => {
+   answer has it open at its next date, which would move the row to another group as it leaves. So the row keeps its
+   done state and dates until the batch clears, and then shows Vikunja's copy. Its other fields show at once, so a
+   title edited in its sheet before the batch clears shows there. */
+test('a task leaving done keeps its done state and dates until its batch clears, and shows a new title at once', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, leaving);
 
@@ -297,9 +298,13 @@ test("a task leaving done keeps every field until its batch clears, then shows V
   read([{ id: 1, title: 'Water them', done: false, due_date: '2026-10-11T09:00:00Z', repeat_after: 86400 }]);
   assert.deepEqual(
     [t.done, t.due_date, t.title],
-    [true, '2026-10-10T09:00:00Z', 'Water the plants'],
-    'the answer and a later read wait',
+    [true, '2026-10-10T09:00:00Z', 'Water them'],
+    "the answer's and a later read's done state and dates wait, and the read's title shows",
   );
+  const rename = act(1, 'edit', { set: { title: 'Water the ferns' }, was: { title: 'Water them' } });
+  outboxOf(app, [rename]);
+  assert.equal(t.title, 'Water the ferns', 'a title edited while the row is marked shows at once');
+  outboxOf(app, []);
   await app.clearBatch(true);
   assert.deepEqual(
     [t.done, t.due_date, t.title],
@@ -1173,8 +1178,9 @@ test("the sheet's read of its subtasks' people goes into their rows, and leaves 
 });
 
 /* A line that arrived done is at its next date in Vikunja's copy by the time its row is made. The row is given the task
-   as the line made it, marked done, and shows it so until the batch clears (placeSent, arrivedDone). */
-test('a task given a row while it is marked done shows as given until its batch clears', async c => {
+   as the line made it, marked done, and shows its done state and dates so until the batch clears (placeSent,
+   arrivedDone). */
+test('a task given a row while it is marked done keeps the dates it was given until its batch clears', async c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(tasks, leaving);
   read([{ id: 1, title: 'Water the plants', done: false, due_date: '2026-10-09T09:00:00Z', repeat_after: 86400 }]);
@@ -1185,7 +1191,7 @@ test('a task given a row while it is marked done shows as given until its batch 
   const t = app.tasks[1];
   app.markRow(1, { kind: 'done' });
   read([{ id: 1, title: 'Water them', done: false, due_date: '2026-10-09T09:00:00Z', repeat_after: 86400 }]);
-  assert.deepEqual([t.done, t.due_date, t.title], [true, '2026-10-08T09:00:00Z', 'Water the plants']);
+  assert.deepEqual([t.done, t.due_date, t.title], [true, '2026-10-08T09:00:00Z', 'Water them']);
   await app.clearBatch(true);
   assert.deepEqual([t.done, t.due_date, t.title], [false, '2026-10-09T09:00:00Z', 'Water them']);
 });
