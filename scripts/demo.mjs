@@ -228,7 +228,7 @@ const centre = async (page, sel) => {
 };
 
 // CLIPS=reschedule,demo makes only those. The names are demo, checklist, reschedule, progress, nudge, people,
-// quickadd and list.
+// quickadd, list, asks and done.
 const want = name => !process.env.CLIPS || process.env.CLIPS.split(',').includes(name);
 
 // ---------- the GIFs ----------
@@ -318,10 +318,12 @@ async function showNew(title, y) {
 /* The guide's clips, each from the same café: one gesture, then a pause on its result. A clip is a square of the
    screen, as wide as the phone, centred `shift` px below the middle of `around` as the clip starts. */
 const SQUARE = 390;
-async function clip(name, around, shift, act) {
+// `setup` runs before filming starts, for a clip that opens on another screen or needs more of the story.
+async function clip(name, around, shift, act, setup) {
   if (!want(name)) return;
   await seed();
   gif = await phone({ scale: 1.5, height: 760 });
+  if (setup) await setup(gif.page);
   const b = await gif.page.locator(around).first().boundingBox(),
     top = Math.round(Math.max(0, Math.min(760 - SQUARE, b.y + b.height / 2 + shift - SQUARE / 2)));
   await snap(1000);
@@ -331,68 +333,45 @@ async function clip(name, around, shift, act) {
   await writeGif(`pocket-${name}.gif`, top);
 }
 
-if (want('demo')) {
-  await seed();
-  gif = await phone({ scale: 1.5, height: 760 });
-  const { page } = gif;
-
-  await snap(1800); // Today, with the oat milk order as a card folded down to its next step
-  // 1. Open a card. The tab under its top row lists every open subtask, and the rows below move down.
-  await tap('.day-card:has-text("Order oat milk") .card-more[aria-expanded=false]');
-  await page.waitForSelector('.day-card:has-text("Order oat milk") .card-more[aria-expanded=true]');
-  await page.waitForTimeout(250);
-  await snap(1500);
-  // 2. Quick add. The words it reads are highlighted, and chips show what will be saved.
+// The README's first clip: the bottom of Today, where three ways of recording work fit in one square.
+await clip('demo', '#capture', 0, async page => {
+  // Swipe right on a task nobody has claimed. Its ring fills to 50%, and "+ me" becomes Alex's initial.
+  await swipe('.row:has-text("Post next week")');
+  await page.waitForSelector('.row:has-text("Post next week") .claim.mine');
+  hold(1000);
+  // A ticked row stays in place for 3 seconds, then leaves.
+  await tap('.row:has-text("Pick up change from the bank") .check', 3600);
+  // Log a job already done. Quick add highlights the words it reads before the task is sent.
   await tap('#in-capture');
-  for (const ch of 'Order 6 bags of house blend at 4 +orders !3') {
+  for (const ch of 'x Fixed the dripping tap') {
     await page.keyboard.type(ch);
     await snap(ch === ' ' ? 40 : 75);
   }
   hold(1500);
   await tap('#f-capture .go');
-  await page.waitForSelector('.row .title:has-text("Order 6 bags")');
-  await page.locator('#in-capture').blur();
-  await page.waitForTimeout(150); // the box's help disappears with the keyboard
-  await film(1500);
-  hold(800); // the new row is highlighted, then fades
-  // 3. Progress. Swipe right on a task nobody has claimed. The ring in the green space it uncovers fills to 25%, then
-  //    50%. On release the row springs back with its tick half filled, and "+ me" becomes Alex's initial A.
-  await swipe('.row:has-text("Post next week")');
-  await page.waitForSelector('.row:has-text("Post next week") .claim.mine');
-  hold(1000);
-  // 4. Done. A ticked row stays in place, ticked, and leaves the list 3 seconds later. The rows below close up once, after it leaves.
-  await tap('.row:has-text("Pick up change from the bank") .check');
-  await page.waitForSelector('.row.done:has-text("Pick up change from the bank")');
-  await page.waitForTimeout(200);
-  await snap();
-  {
-    const t = Date.now();
-    await page.waitForTimeout(2300);
-    hold(Date.now() - t);
-  }
-  await film(1200);
-  hold(1800);
-  await gif.context.close();
-  await writeGif('pocket-demo.gif');
-}
+  await film(1500, () => page.locator('#in-capture').blur()); // the box's help goes with the keyboard
+});
 
 // ---------- the checklist GIF: opening up the café, with the checklist's row and ring, the square step boxes and the timed steps ----------
-if (want('checklist')) {
-  await seed();
-  // Create templates the way Pocket does. Each has the label "template", its steps are marked done, then the template is marked done.
+/* Create a template in the café the way Pocket does. It has the label "template", its steps are marked done, then the
+   template is marked done. A step is a title, or [title, description] for a step with notes or asks. */
+async function template(title, steps) {
   const tplLabel =
     (await A('GET', '/labels')).items.find(l => l.title === 'template') ||
     (await A('POST', '/labels', { title: 'template' }));
-  async function template(title, steps) {
-    const t = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title });
-    for (const step of steps) {
-      const s = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title: step });
-      await A('POST', `/tasks/${t.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
-      await A('PATCH', '/tasks/' + s.id, { done: true });
-    }
-    await A('POST', `/tasks/${t.id}/labels`, { label_id: tplLabel.id });
-    await A('PATCH', '/tasks/' + t.id, { done: true });
+  const t = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title });
+  for (const step of steps) {
+    const [stepTitle, description] = [step].flat();
+    const s = await A('POST', `/projects/${proj['Café'].id}/tasks`, { title: stepTitle, description });
+    await A('POST', `/tasks/${t.id}/relations`, { other_task_id: s.id, relation_kind: 'subtask' });
+    await A('PATCH', '/tasks/' + s.id, { done: true });
   }
+  await A('POST', `/tasks/${t.id}/labels`, { label_id: tplLabel.id });
+  await A('PATCH', '/tasks/' + t.id, { done: true });
+}
+
+if (want('checklist')) {
+  await seed();
   // Four steps, so the start sheet's Start button fits on the GIF's screen.
   await template('Opening up', [
     'Turn on the espresso machine {#machine}',
@@ -477,6 +456,56 @@ await clip('quickadd', '#capture', 0, async page => {
   await tap('#f-capture .go', 900);
   await showNew('Order 6 bags', 560); // above the add box, inside the clip's square
 });
+// A step that asks for the fridge's temperature and whether its seal is intact. The checklist starts off camera. The
+// answers are typed on the step's card, and Done sends them and ticks the step.
+await clip(
+  'asks',
+  '#step-asks',
+  40,
+  async page => {
+    await tap('#step-asks .answer-in');
+    for (const ch of '3.5') {
+      await page.keyboard.type(ch);
+      await snap(120);
+    }
+    await page.locator('#step-asks .answer-in').blur();
+    await tap('#step-asks button:has-text("Yes")', 900);
+    await tap('#step-done', 1500);
+  },
+  async page => {
+    await template('Fridge check', [
+      ['Check the milk fridge', '<p>pocket:ask Temp: number °C 0..5</p><p>pocket:ask Seal intact: yes-no</p>'],
+      'Wipe the door seals',
+    ]);
+    await page.click('nav.tabs a[data-tab=checklists]');
+    await page.click('.cl-tpl:has-text("Fridge check") .cl-start');
+    await page.click('#start-go:not([disabled])');
+    await page.waitForSelector('#step-asks');
+    await page.waitForTimeout(600);
+  },
+);
+// Tick the last task on Today. It leaves, Done today appears under the list and counts it, and tapping Done today
+// lists it. The clip is the bottom of the screen, where Done today is.
+await clip(
+  'done',
+  '#capture',
+  SQUARE,
+  async page => {
+    // Scroll to the end before each tap, or Done today's heading is still behind the add box.
+    const toEnd = () =>
+      film(900, () => page.evaluate(() => scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })));
+    await tap('.row:has-text("Renew the food") .check', 3600);
+    await toEnd();
+    await tap('#sec-donetoday', 300);
+    await toEnd();
+    await tap('#btn-copy-done', 300);
+    await toEnd();
+  },
+  async page => {
+    await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(400);
+  },
+);
 // A pasted list. The pictures under the box show the ways to add it. Picking the last makes it one task, with the
 // other lines as its notes, and the new row has the notes icon.
 await clip('list', '#capture', 0, async page => {

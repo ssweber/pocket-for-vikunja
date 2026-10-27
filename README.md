@@ -1,41 +1,44 @@
 # Pocket for Vikunja
 
-Pocket is a mobile interface for Vikunja, installed as a plugin. It uses your existing Vikunja account and data, and adds three things the web app doesn't do well on a phone: repeatable checklists, fast task entry, and progress tracking.
+**Your team's tasks and checklists, on their phones, in the Vikunja you already host.**
 
-<table>
-  <tr>
-    <th>Checklists</th>
-    <th>Tasks</th>
-  </tr>
-  <tr>
-    <td><img src="docs/screenshots/pocket-checklist.gif" width="280" alt="Starting the Opening up checklist and completing two steps; a timed step counts down"></td>
-    <td><img src="docs/screenshots/pocket-demo.gif" width="280" alt="Today with a card of subtasks; a task added with quick add; a swipe setting progress; a task ticked off"></td>
-  </tr>
-</table>
+<p align="center"><img src="docs/screenshots/pocket-demo.gif" width="280" alt="A swipe right fills a task's ring to half and + me becomes Alex's initial; another task is ticked and leaves; 'x Fixed the dripping tap' is added as a done task"></p>
 
-Pocket is unofficial. Report problems here, not to Vikunja.
+Pocket is a phone app that runs inside Vikunja as a plugin. Your team opens a link, signs in with their Vikunja account, and adds it to the home screen. No app store, no account with anyone else, nothing to pay per person.
 
-## What it adds
+> **Everything Pocket makes is ordinary Vikunja data: projects, tasks, comments, attachments, labels and reactions.** Remove the plugin and it's all still there. [What Pocket stores.](docs/data.md)
 
-**Checklists.** Pocket creates step-by-step checklists from a task template. Each checklist records who completed each step and when. Steps can have timers relative to the previous step, and templates can recur on a schedule. A step can ask for answers, such as a temperature or a yes or no, and each answer is saved as a comment that an export can read. Checklists are ordinary Vikunja tasks and appear in the web app.
+## Why
 
-**Quick add.** Type a task using Vikunja's quick-add syntax: `+project`, `@user`, `*label`, `!priority`, and natural-language dates. Pocket shows what it parsed before you submit. Paste a list and each line becomes a task. Indented lines become subtasks.
+"Is anyone doing this yet?" gets asked all day in a small shop. The paper checklist gets filled in twice, or three times, and nobody can say when. Small jobs leave no trace. At the end of the day, you can't say what you did. Vikunja already holds the tasks, but its web app is built for a desk. Pocket is the phone side of the Vikunja you already run.
 
-**Progress.** Swipe a task to set its progress in 25% increments. Setting progress on an unassigned task assigns it to you. Parent tasks show the aggregate progress of their subtasks. Progress can be shared as plain text through the phone's share sheet.
+## What it does
 
-**Offline.** Pocket opens without a connection and queues new tasks, comments, and checklist activity until it reconnects.
+### Record the work as you do it
 
-## How it works
+Swipe right to show progress. Tap the circle when a task is done. Start a new task with `x ` to log a job you already did. Quick add shows what it read before you send it. **Done today** lists everything you finished, ready to paste into a message. [Quick add](docs/guide.md#quick-add) · [Tasks](docs/guide.md#tasks)
 
-The plugin serves a single-page web app from `/api/v1/plugins/pocket/`. It runs inside Vikunja, has no server of its own, and makes no outside requests. Sign-in is Vikunja's own.
+### See who's on it
 
-The plugin is about 600 lines of Go in [`pocket/main.go`](pocket/main.go). By default it only serves files. With `steptimes: true` it also writes due dates to timed checklist steps, so reminders and the web app's views reflect them.
+<img src="docs/screenshots/pocket-people.gif" width="240" alt="Holding the + me chip on a task shows the people who can see the project; tapping one assigns them">
+
+Tap **+ me** and it's yours. Showing progress on a task no one had makes it yours too. Hold **+ me** to hand it off. Nobody has to ask who's on it. [Assigning](docs/guide.md#assigning)
+
+### Checklists that get finished
+
+<img src="docs/screenshots/pocket-checklist.gif" width="240" alt="Starting the Opening up checklist and completing two steps; the next step counts down to when it is due">
+
+A manager writes the steps once. The crew ticks them one at a time, and each tick records who and when. A step can wait, or ask for a reading such as a temperature. An odd reading is saved in amber, not refused. Step order and times are enforced only if you turn them on. [Checklists](docs/guide.md#checklists)
+
+### Everything due, on one screen
+
+Today shows what's due this week. A due checklist shows for the people it's assigned to, or for everyone who can start it when it's assigned to no one. Plan in Vikunja's web app. Do the work from Today.
 
 ## Install
 
 Requires Vikunja 2.7 or later.
 
-1. Download the [latest release](https://github.com/ssweber/pocket-for-vikunja/releases/latest) and unzip it into Vikunja's `plugins` folder: `plugins/pocket/main.go`, `plugins/pocket/app/index.html`.
+1. Download the [latest release](https://github.com/ssweber/pocket-for-vikunja/releases/latest) and unzip it into Vikunja's `plugins` folder, so you have `plugins/pocket/main.go` and `plugins/pocket/app/index.html`.
 
 2. In `config.yml`:
 
@@ -44,33 +47,31 @@ Requires Vikunja 2.7 or later.
      enabled: true
      loader: yaegi
      pocket:
-       steptimes: true   # optional; see docs/guide.md#step-times
+       steptimes: true        # optional: timed steps get due dates, so they show on Today and in email reminders
    service:
-     maxitemsperpage: 500   # in the service: section you have, if there is one; long lists load in fewer requests
+     maxitemsperpage: 500     # optional: long lists load in fewer requests
    ```
 
-   With environment variables instead: `VIKUNJA_SERVICE_MAXITEMSPERPAGE=500` and `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true`.
+   If you already have a `service:` section, add the line there. As environment variables: `VIKUNJA_PLUGINS_POCKET_STEPTIMES=true` and `VIKUNJA_SERVICE_MAXITEMSPERPAGE=500`. More on [step times](docs/guide.md#step-times).
 
 3. Restart Vikunja. The log should include `pocket: serving … at /api/v1/plugins/pocket/`.
 
-4. Open `https://<your Vikunja>/api/v1/plugins/pocket/` on your phone, sign in, and add it to your home screen. After single sign-on from the home screen, Vikunja's page stays open. Close it to return to Pocket.
+4. Open `https://<your Vikunja>/api/v1/plugins/pocket/` on your phone, sign in, and add it to your home screen.
 
-To update, unzip the new release over `plugins/pocket/`. Vikunja needs a restart only if `main.go` changed.
+To update, unzip the new release over `plugins/pocket/`. Every phone picks it up the next time Pocket opens. Restart Vikunja only if `main.go` or `relay.go` changed.
 
-Cloudron: the plugins folder is `/app/data/plugins/`, and `config.yml` is `/app/data/config.yml`.
+Cloudron: the plugins folder is `/app/data/plugins/` and `config.yml` is `/app/data/config.yml`.
 
-## Reminders
+## Good to know
 
-Timers sound while Pocket is open. When it's closed, reminders arrive by Vikunja's email, which needs `mailer` configured on the server. Pocket sends no push notifications.
+- **Unofficial.** Report problems here, not to Vikunja.
+- **0.x.** Expect changes between releases. The [changelog](CHANGELOG.md) says what.
+- **Works offline.** Pocket opens without a connection and sends what you did once it has one. Ticks, deletes and moves can be undone.
+- **No push notifications.** Timers sound while Pocket is open. Otherwise reminders come by Vikunja's email, which needs `mailer` configured.
+- **Vikunja checks every change.** The plugin passes Pocket's changes to Vikunja's API as the signed-in user. With step times on, it also sets due dates on checklist steps itself. It makes no outside requests. [Privacy and security](docs/guide.md#privacy-and-security)
 
-## Documentation
+## More
 
-The [guide](docs/guide.md) covers the full quick-add syntax, behavior you might not expect, checklist templates, asks, step times, offline behavior, and troubleshooting.
+The [guide](docs/guide.md) has the quick-add syntax, gestures, templates, asks and troubleshooting. To work on Pocket itself, see [docs/development.md](docs/development.md).
 
-## Development
-
-The app is Alpine.js in `src/`. `npm run build` produces `pocket/app/index.html`. `npm run dev` starts a local Vikunja with the plugin loaded. See [docs/development.md](docs/development.md).
-
-## License
-
-MIT.
+MIT licensed.

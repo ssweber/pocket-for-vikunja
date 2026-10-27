@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { fakeVikunja } from './fake.mjs';
-import { CREATED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
+import { CREATED, MOVED, TASK, TASK_REACTIONS_COMMENTS } from '../../src/js/tasks.js';
 import { older, uuid7 } from '../../src/js/sync.js';
 import { checklist, line, ME, SAMPLES } from './samples.mjs';
 
@@ -1109,8 +1109,8 @@ const WAITING_STEP = {
   comments: [],
 };
 
-/* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, a row marked done is as it
-   was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
+/* Each check returns what broke it. 1: each row is the model's copy, then the waiting ops, a row marked done keeps
+   its done state and dates as it was marked, each copy is the model's, each field the store wrote comes from a reply or a change it was
    given, a task Pocket deleted is gone, and the step not yet made shows its waiting ops. 2: a row is the same object from one command to the next. 3: Vikunja made each key at most once.
    4 (matches): once nothing waits or runs, the copy of each task is Vikunja's. 5: what judge found. 6: a fold took
    out of the outbox only ops Vikunja never made, and lost no change the user asked for (prune). 7: a sweep kept the
@@ -1136,10 +1136,12 @@ function checks(w) {
     if (w.seen.has(k) && w.seen.get(k) !== row) out.push(`check 2: ${k}'s row is a new object`);
     const f = m.frozen.get(id);
     if (f) {
-      for (const field of fields(id, f, row))
+      for (const field of fields(id, f, row).filter(x => MOVED.includes(x)))
         out.push(
           `check 1: ${k} is marked done, and its ${field} changed from ${canon(f[field])} to ${canon(row[field])}`,
         );
+      const rest = m.shown(id) && fields(id, row, m.shown(id)).filter(x => !MOVED.includes(x));
+      if (rest?.length) out.push(`check 1: ${k} is marked done, and its ${rest} differ from its copy and ops`);
     } else if (!m.shown(id) || fields(id, row, m.shown(id)).length)
       out.push(`check 1: ${k}'s row is ${canon(row)}, and its copy and ops give ${canon(m.shown(id))}`);
   }
