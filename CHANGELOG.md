@@ -14,6 +14,12 @@ is a new 0.x.y.
 
 ## Unreleased
 
+## 0.3.1 (2026-10-27)
+
+### Fixed
+
+- A title changed in a task's sheet just after ticking the task now shows the new title, in the sheet and on the row.
+
 ## 0.3.0 (2026-10-23)
 
 ### Added
