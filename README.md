@@ -12,16 +12,6 @@ Pocket is a phone app that runs inside Vikunja as a plugin. Your team opens a li
 
 "Is anyone doing this yet?" gets asked all day in a small shop. The paper checklist gets filled in twice, or three times, and nobody can say when. Small jobs leave no trace. At the end of the day, you can't say what you did. Vikunja already holds the tasks, but its web app is built for a desk. Pocket is the phone side of the Vikunja you already run.
 
-## Who it's for
-
-**Managers who work the floor.** You run the place and do the small jobs too.
-
-**The crew who tick the checklists.** Today's checklist is waiting when they open Pocket.
-
-**Anyone with work they repeat.** Write the steps once and stop carrying them in your head.
-
-Pocket is the wrong fit for planning on a board, assigning every task from the top, or tracking time.
-
 ## What it does
 
 ### Record the work as you do it
