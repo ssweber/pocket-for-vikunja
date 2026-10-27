@@ -2,6 +2,8 @@
 
 **Your team's tasks and checklists, on their phones, in the Vikunja you already host.**
 
+<p align="center"><img src="docs/screenshots/pocket-demo.gif" width="280" alt="A swipe right fills a task's ring to half and + me becomes Alex's initial; another task is ticked and leaves; 'x Fixed the dripping tap' is added as a done task"></p>
+
 Pocket is a phone app that runs inside Vikunja as a plugin. Your team opens a link, signs in with their Vikunja account, and adds it to the home screen. No app store, no account with anyone else, nothing to pay per person.
 
 > **Everything Pocket makes is ordinary Vikunja data: projects, tasks, comments, attachments, labels and reactions.** Remove the plugin and it's all still there. [What Pocket stores.](docs/data.md)
@@ -23,8 +25,6 @@ Pocket is the wrong fit for planning on a board, assigning every task from the t
 ## What it does
 
 ### Record the work as you do it
-
-<img src="docs/screenshots/pocket-demo.gif" width="240" alt="A swipe right fills a task's ring to half and + me becomes Alex's initial; another task is ticked and leaves; 'x Fixed the dripping tap' is added as a done task">
 
 Swipe right to show progress. Tap the circle when a task is done. Start a new task with `x ` to log a job you already did. Quick add shows what it read before you send it. **Done today** lists everything you finished, ready to paste into a message. [Quick add](docs/guide.md#quick-add) · [Tasks](docs/guide.md#tasks)
 
