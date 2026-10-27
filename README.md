@@ -8,37 +8,41 @@ Pocket is a phone app that runs inside Vikunja as a plugin. Your team opens a li
 
 ## Why
 
-"Is anyone doing this yet?" is the question a small team asks all day. The paper checklist on the wall gets skipped, scribbled through, or never collected. Vikunja already holds the tasks, but its web app is built for a desk, not for someone with a tool in the other hand. Pocket is the phone side of the Vikunja you already run.
+"Is anyone doing this yet?" gets asked all day in a small shop. The paper checklist gets filled in twice, or three times, and nobody can say when. Small jobs leave no trace. At the end of the day, you can't say what you did. Vikunja already holds the tasks, but its web app is built for a desk. Pocket is the phone side of the Vikunja you already run.
 
 ## Who it's for
 
-**Small teams who work on their feet.** One thumb, no time to type a form.
+**Managers who work the floor.** You run the place and do the small jobs too.
 
-**Teams with opening, closing or safety checklists** who want to know who ticked each step, and when, without collecting paper.
+**The crew who tick the checklists.** Today's checklist is waiting when they open Pocket.
+
+**Anyone with work they repeat.** Write the steps once and stop carrying them in your head.
+
+Pocket is the wrong fit for planning on a board, assigning every task from the top, or tracking time.
 
 ## What it does
 
-### Add a task in one line
+### Record the work as you do it
 
-<img src="docs/screenshots/pocket-quickadd.gif" width="240" alt="Typing 'Order 6 bags of house blend fri at 9 +orders !3' shows chips for the project, date and priority before the task is added">
+<img src="docs/screenshots/pocket-demo.gif" width="240" alt="A swipe right fills a task's ring to half and + me becomes Alex's initial; another task is ticked and leaves; 'x Fixed the dripping tap' is added as a done task">
 
-Type `Order 6 bags of house blend fri at 9 +orders !3` and Pocket shows what it read before you send it. Paste a list and each line becomes a task. [Quick add](docs/guide.md#quick-add)
+Swipe right to show progress. Tap the circle when a task is done. Start a new task with `x ` to log a job you already did. Quick add shows what it read before you send it. **Done today** lists everything you finished, ready to paste into a message. [Quick add](docs/guide.md#quick-add) · [Tasks](docs/guide.md#tasks)
 
 ### See who's on it
 
 <img src="docs/screenshots/pocket-people.gif" width="240" alt="Holding the + me chip on a task shows the people who can see the project; tapping one assigns them">
 
-Tap **+ me** and it's yours. Hold it to hand the task to someone else. Swipe right to show how far along you are. **Done today** lists what you finished, ready to paste into a message. [Assigning](docs/guide.md#assigning)
+Tap **+ me** and it's yours. Showing progress on a task no one had makes it yours too. Hold **+ me** to hand it off. Nobody has to ask who's on it. [Assigning](docs/guide.md#assigning)
 
 ### Checklists that get finished
 
 <img src="docs/screenshots/pocket-checklist.gif" width="240" alt="Starting the Opening up checklist and completing two steps; the next step counts down to when it is due">
 
-One step at a time, with a big **Done**. Each step records who ticked it and when. A step can wait twenty minutes, wait for the one before it, or ask for a temperature, a yes or no, or a note. A template can repeat on a schedule and shows on Today when it is due. [Checklists](docs/guide.md#checklists)
+A manager writes the steps once. The crew ticks them one at a time, and each tick records who and when. A step can wait, or ask for a reading such as a temperature. An odd reading is saved in amber, not refused. Step order and times are enforced only if you turn them on. [Checklists](docs/guide.md#checklists)
 
-### Works when the signal doesn't
+### Everything due, on one screen
 
-Pocket opens without a connection and sends what you did once it has one. Ticks, deletes and moves can be undone.
+Today shows what's due this week. A due checklist shows for the people it's assigned to, or for everyone who can start it when it's assigned to no one. Plan in Vikunja's web app. Do the work from Today.
 
 ## Install
 
@@ -72,11 +76,12 @@ Cloudron: the plugins folder is `/app/data/plugins/` and `config.yml` is `/app/d
 
 - **Unofficial.** Report problems here, not to Vikunja.
 - **0.x.** Expect changes between releases. The [changelog](CHANGELOG.md) says what.
+- **Works offline.** Pocket opens without a connection and sends what you did once it has one. Ticks, deletes and moves can be undone.
 - **No push notifications.** Timers sound while Pocket is open. Otherwise reminders come by Vikunja's email, which needs `mailer` configured.
 - **Vikunja checks every change.** The plugin passes Pocket's changes to Vikunja's API as the signed-in user. With step times on, it also sets due dates on checklist steps itself. It makes no outside requests. [Privacy and security](docs/guide.md#privacy-and-security)
 
 ## More
 
-The [guide](docs/guide.md) has the quick-add syntax, gestures, templates, asks, offline behaviour and troubleshooting. To work on Pocket itself, see [docs/development.md](docs/development.md).
+The [guide](docs/guide.md) has the quick-add syntax, gestures, templates, asks and troubleshooting. To work on Pocket itself, see [docs/development.md](docs/development.md).
 
 MIT licensed.
