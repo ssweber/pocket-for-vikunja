@@ -333,50 +333,24 @@ async function clip(name, around, shift, act, setup) {
   await writeGif(`pocket-${name}.gif`, top);
 }
 
-if (want('demo')) {
-  await seed();
-  gif = await phone({ scale: 1.5, height: 760 });
-  const { page } = gif;
-
-  await snap(1800); // Today, with the oat milk order as a card folded down to its next step
-  // 1. Open a card. The tab under its top row lists every open subtask, and the rows below move down.
-  await tap('.day-card:has-text("Order oat milk") .card-more[aria-expanded=false]');
-  await page.waitForSelector('.day-card:has-text("Order oat milk") .card-more[aria-expanded=true]');
-  await page.waitForTimeout(250);
-  await snap(1500);
-  // 2. Quick add. The words it reads are highlighted, and chips show what will be saved.
+// The README's first clip: the bottom of Today, where three ways of recording work fit in one square.
+await clip('demo', '#capture', 0, async page => {
+  // Swipe right on a task nobody has claimed. Its ring fills to 50%, and "+ me" becomes Alex's initial.
+  await swipe('.row:has-text("Post next week")');
+  await page.waitForSelector('.row:has-text("Post next week") .claim.mine');
+  hold(1000);
+  // A ticked row stays in place for 3 seconds, then leaves.
+  await tap('.row:has-text("Pick up change from the bank") .check', 3600);
+  // Log a job already done. Quick add highlights the words it reads before the task is sent.
   await tap('#in-capture');
-  for (const ch of 'Order 6 bags of house blend at 4 +orders !3') {
+  for (const ch of 'x Fixed the dripping tap') {
     await page.keyboard.type(ch);
     await snap(ch === ' ' ? 40 : 75);
   }
   hold(1500);
   await tap('#f-capture .go');
-  await page.waitForSelector('.row .title:has-text("Order 6 bags")');
-  await page.locator('#in-capture').blur();
-  await page.waitForTimeout(150); // the box's help disappears with the keyboard
-  await film(1500);
-  hold(800); // the new row is highlighted, then fades
-  // 3. Progress. Swipe right on a task nobody has claimed. The ring in the green space it uncovers fills to 25%, then
-  //    50%. On release the row springs back with its tick half filled, and "+ me" becomes Alex's initial A.
-  await swipe('.row:has-text("Post next week")');
-  await page.waitForSelector('.row:has-text("Post next week") .claim.mine');
-  hold(1000);
-  // 4. Done. A ticked row stays in place, ticked, and leaves the list 3 seconds later. The rows below close up once, after it leaves.
-  await tap('.row:has-text("Pick up change from the bank") .check');
-  await page.waitForSelector('.row.done:has-text("Pick up change from the bank")');
-  await page.waitForTimeout(200);
-  await snap();
-  {
-    const t = Date.now();
-    await page.waitForTimeout(2300);
-    hold(Date.now() - t);
-  }
-  await film(1200);
-  hold(1800);
-  await gif.context.close();
-  await writeGif('pocket-demo.gif');
-}
+  await film(1500, () => page.locator('#in-capture').blur()); // the box's help goes with the keyboard
+});
 
 // ---------- the checklist GIF: opening up the café, with the checklist's row and ring, the square step boxes and the timed steps ----------
 /* Create a template in the café the way Pocket does. It has the label "template", its steps are marked done, then the
