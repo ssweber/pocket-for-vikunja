@@ -1012,13 +1012,14 @@ button.check::after {
 }
 /* Today's project chips stay on one line, which scrolls sideways when they don't fit, so they take one line of
    Today's height. Each chip is 36px tall, with a 44px tap area, and a long title is cut with "…". A chip showing only
-   the user's tasks has their 18px picture on its top-right corner, over the end of the title. The row's padding
-   leaves room for the picture and the tap area, which the scrolling would otherwise clip. */
+   the user's tasks has their picture in place of the project's dot, at 18px so it doesn't look like a row's picture.
+   The row's 4px padding keeps the tap area from being clipped by the scrolling. The first heading sits 12px under
+   the chips, where the tap area of Move all to today, 12px above the heading, stops short of them. */
 .today-chips {
   display: flex;
   gap: 8px;
-  margin: 6px calc(-1 * var(--pad)) -6px;
-  padding: 8px var(--pad);
+  margin: 2px calc(-1 * var(--pad)) -10px;
+  padding: 4px var(--pad);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -1034,6 +1035,9 @@ button.check::after {
   font-size: 15px;
   cursor: pointer;
 }
+.today-chips .chip.only-mine {
+  padding-left: 10px;
+}
 .today-chips .chip::after {
   content: '';
   position: absolute;
@@ -1042,12 +1046,6 @@ button.check::after {
 .today-chips .chip .t {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.today-chips .pic {
-  position: absolute;
-  top: -4px;
-  right: 3px;
-  pointer-events: none;
 }
 .today-chips .pic .av {
   width: 18px;
