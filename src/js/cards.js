@@ -11,6 +11,8 @@ export const openSubs = t => (t?.related_tasks?.subtask || []).filter(s => !s.do
 // A subtask's parent, as Vikunja's short copy that has its id and project, or null.
 const parentOf = t => t?.related_tasks?.parenttask?.[0] || null;
 const yours = (t, me) => (t.assignees || []).some(u => u.id === me?.id);
+// A task assigned to the user or added by them. A task still waiting to be sent has no created_by yet.
+export const ownTask = (t, me) => !!t.pending || yours(t, me) || (!!me && t.created_by?.id === me.id);
 const earlier = (a, b) => (!a ? b : !b ? a : Date.parse(b) < Date.parse(a) ? b : a);
 const later = (a, b) => (!a ? b : !b ? a : Date.parse(b) > Date.parse(a) ? b : a);
 

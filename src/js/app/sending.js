@@ -717,9 +717,13 @@ export default {
      (sameGroup), so its rows have nothing to redraw. */
   get listGroups() {
     const hidden = this.hiddenRows,
-      only = this.route.name === 'today' && this.only?.id,
-      // While Today is narrowed to a label, a moved row's gap shows with its task
-      shows = t => !only || hasLabel(isMovedGap(t) ? this.tasks[t.gapOf] : t, only),
+      today = this.route.name === 'today',
+      only = today && this.only?.id,
+      // While Today is narrowed to a label, a moved row's gap shows with its task. Done today lists only what the user
+      // did, so a project's chip doesn't change it.
+      shows = (t, g) =>
+        (!only || hasLabel(isMovedGap(t) ? this.tasks[t.gapOf] : t, only)) &&
+        (!today || g.key === 'donetoday' || this.todayShows(t)),
       order = this.route.name === 'project' ? positionOrder(this.positions) : null,
       can = screenRows(this.route.name);
     let before = 0;
@@ -728,7 +732,7 @@ export default {
         ...g,
         ...can,
         ...nestSubtasks(
-          g.tasks.filter(t => !hidden.has(t.id) && shows(t)),
+          g.tasks.filter(t => !hidden.has(t.id) && shows(t, g)),
           g.key === 'open' ? order : null,
           t => this.hasOwnOrder(t),
         ),

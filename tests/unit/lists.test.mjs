@@ -42,6 +42,7 @@ import auth from '../../src/js/app/auth.js';
 import actions from '../../src/js/app/actions.js';
 import leaving from '../../src/js/app/leaving.js';
 import cards from '../../src/js/app/cards.js';
+import alerts from '../../src/js/app/alerts.js';
 import { fingers } from './actions-helpers.mjs';
 import { noConnection, sender } from './ops-helpers.mjs';
 import { sync, uuid7 } from '../../src/js/sync.js';
@@ -530,7 +531,7 @@ test('Today narrowed to a label shows and counts only the tasks with it, and a m
     c = t(3, [errands, phone]),
     d = t(4, [phone], { done: true, done_at: new Date().toISOString() }),
     e = t(5, [errands], { done: true, done_at: new Date().toISOString() });
-  const app = component(views, sending, lines);
+  const app = component(views, sending, lines, cards);
   Object.assign(app, {
     route: { name: 'today' },
     pending: [],
@@ -562,6 +563,135 @@ test('Today narrowed to a label shows and counts only the tasks with it, and a m
   app.route = { name: 'today' };
   app.narrowToday(null);
   assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] }, 'Show all');
+});
+
+/* Tapping a project's chip on Today switches the project off (toggleTodayProject). Today then shows only the user's
+   own tasks from it: assigned to them, added by them, or still waiting to be sent, and a card with an open subtask
+   of theirs. Done today lists only what the user did, so the chip leaves it alone. */
+test('a project switched off on Today shows only the user’s own tasks from it, and Move all and the badge skip the rest', t0 => {
+  t0.after(() => localStorage.removeItem('pocket.today.off'));
+  const me = { id: 1 },
+    bob = { id: 2 },
+    soon = h => new Date(Date.now() + h * 36e5).toISOString(),
+    late = new Date(Date.now() - 36e5).toISOString(),
+    t = (id, project_id, f = {}) => ({
+      id,
+      project_id,
+      title: 'Task ' + id,
+      due_date: soon(id),
+      created_by: bob,
+      ...f,
+    });
+  const inbox = t(1, 1),
+    theirs = t(2, 2, { due_date: late }),
+    assigned = t(3, 2, { due_date: late, assignees: [me] }),
+    added = t(4, 2, { created_by: me }),
+    waiting = { id: 'p-5', pending: true, project_id: 2, title: 'Task 5', due_date: soon(5) },
+    mineSub = t(9, 2, { assignees: [me] }),
+    bobSub = t(10, 2, { assignees: [bob] }),
+    myCard = t(6, 2, { related_tasks: { subtask: [mineSub] } }),
+    bobCard = t(7, 2, { related_tasks: { subtask: [bobSub] } }),
+    done = t(8, 2, { done: true, done_at: new Date().toISOString() });
+  const app = component(views, sending, lines, cards);
+  Object.assign(app, {
+    user: me,
+    route: { name: 'today' },
+    pending: [],
+    positions: {},
+    cardOf: () => null,
+    subRow: s => app.tasks[s.id] || s,
+    projects: [
+      { id: 1, title: 'Inbox' },
+      { id: 2, title: 'Team' },
+    ],
+    tasks: Object.fromEntries([inbox, theirs, assigned, added, mineSub, bobSub, myCard, bobCard].map(x => [x.id, x])),
+    movedGaps: { today: [{ id: 'moved-2', gapOf: 2, after: null, at: 0 }] },
+    view: {
+      cards: { 6: {}, 7: {} },
+      groups: [
+        { key: 'overdue', tasks: [theirs, assigned] },
+        { key: 'today', tasks: [inbox, added, waiting, myCard, bobCard] },
+        { key: 'donetoday', tasks: [done] },
+      ],
+    },
+  });
+  app.projById = new Map(app.projects.map(p => [p.id, p]));
+  const shown = () => Object.fromEntries(app.listGroups.filter(g => g.tasks.length).map(g => [g.key, ids(g.tasks)]));
+  const all = { overdue: [2, 3], today: ['moved-2', 1, 4, 'p-5', 6, 7], donetoday: [8] };
+  assert.deepEqual(shown(), all);
+  assert.deepEqual(
+    app.todayChips.map(c => [c.title, c.off]),
+    [
+      ['Inbox', false],
+      ['Team', false],
+    ],
+  );
+  assert.equal(app.todayOffNote, '');
+  app.toggleTodayProject(2);
+  assert.equal(localStorage.getItem('pocket.today.off'), '{"2":true}', 'kept on the phone');
+  assert.deepEqual(shown(), { overdue: [3], today: [1, 4, 'p-5', 6], donetoday: [8] });
+  assert.deepEqual(
+    app.todayChips.map(c => [c.title, c.off]),
+    [
+      ['Inbox', false],
+      ['Team', true],
+    ],
+    'an off chip stays, with its tasks still on Today',
+  );
+  assert.equal(app.todayOffNote, 'From Team, Today shows only tasks assigned to you or added by you.');
+  assert.deepEqual(ids(app.overdueTasks), [3], 'Move all to today leaves the hidden task alone');
+  let badge = null;
+  Object.defineProperty(navigator, 'setAppBadge', { value: n => ((badge = n), Promise.resolve()), configurable: true });
+  t0.after(() => delete navigator.setAppBadge);
+  app.setBadge = alerts.setBadge;
+  app.setBadge(app.view.groups[0].tasks);
+  assert.equal(badge, 1, 'the badge counts only what Today shows');
+  theirs.assignees = [me];
+  assert.deepEqual(shown().overdue, [2, 3], 'assigning the user brings a task back at once');
+  theirs.assignees = [];
+  app.toggleTodayProject(2);
+  assert.equal(localStorage.getItem('pocket.today.off'), '{}');
+  assert.deepEqual(shown(), all);
+});
+
+test('Today has project chips only when more than one project has tasks there, or a project is off', () => {
+  const app = component(views, sending, cards);
+  const t = (id, project_id, f = {}) => ({ id, project_id, title: 'Task ' + id, ...f });
+  Object.assign(app, {
+    route: { name: 'today' },
+    pending: [],
+    projects: [
+      { id: 1, title: 'Inbox' },
+      { id: 3, title: 'Kitchen', parent_project_id: 4 },
+      { id: 4, title: 'Café' },
+    ],
+    view: {
+      cards: {},
+      groups: [
+        { key: 'today', tasks: [t(1, 3)] },
+        { key: 'donetoday', tasks: [t(2, 1)] },
+      ],
+    },
+  });
+  app.projById = new Map(app.projects.map(p => [p.id, p]));
+  assert.deepEqual(app.todayChips, [], 'one project, and Done today doesn’t count');
+  app.todayOff = { 3: true };
+  assert.deepEqual(
+    app.todayChips.map(c => c.title),
+    ['Kitchen'],
+    'an off project keeps its chip',
+  );
+  app.todayOff = {};
+  app.view.groups[0].tasks.push(t(5, 4), t(6, 1));
+  assert.deepEqual(
+    app.todayChips.map(c => c.title),
+    ['Inbox', 'Café', 'Kitchen'],
+    'in the Projects tab’s order, a project under its parent',
+  );
+  app.todayOff = { 1: true, 3: true };
+  assert.equal(app.todayOffNote, 'From Inbox and Kitchen, Today shows only tasks assigned to you or added by you.');
+  app.route = { name: 'project', id: 1 };
+  assert.deepEqual(app.todayChips, [], 'only on Today');
 });
 
 test('leaving Today shows every task on it again', async t => {

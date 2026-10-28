@@ -11,6 +11,7 @@
 // POCKET_URL if Pocket is served from somewhere else.
 // ASSIGNEE=<username> to test @assignee.
 // ASSIGNEE_PROJECT=<name> of a project shared with that user.
+// OTHER_USER and OTHER_PASSWORD, that user's sign-in, to add a task that isn't the test user's (project chips on Today).
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium).
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
@@ -46,6 +47,8 @@ import {
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE; // optional username to assign
 const ASSIGNEE_PROJECT = process.env.ASSIGNEE_PROJECT; // a project shared with ASSIGNEE (default: the default project)
+const OTHER = process.env.OTHER_USER,
+  OTHER_PASSWORD = process.env.OTHER_PASSWORD;
 const TOKEN = process.env.VIKUNJA_TOKEN,
   USER = process.env.VIKUNJA_USER,
   PASSWORD = process.env.VIKUNJA_PASSWORD;
@@ -3734,6 +3737,54 @@ try {
       await noDone.evaluate(el => el.remove());
       await page.setViewportSize({ width: 390, height: 844 });
       for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+  /* Tapping a project's chip on Today switches the project off on this phone. Today then shows only the user's own
+     tasks from it, and the chip stays off after a reload. A task the user didn't add needs a second account. */
+  await step('a-project-chip-on-today-leaves-only-the-users-own-tasks', async () => {
+    const team = projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    if (!team || !OTHER || !OTHER_PASSWORD) {
+      console.log('  (no ASSIGNEE_PROJECT, OTHER_USER and OTHER_PASSWORD: project chips not checked)');
+      return;
+    }
+    const { token } = await (
+      await fetch(SERVER + '/api/v2/login', {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ username: OTHER, password: OTHER_PASSWORD }),
+      })
+    ).json();
+    const theirs = await (
+      await fetch(`${SERVER}/api/v2/projects/${team.id}/tasks`, {
+        method: 'POST',
+        headers: { ...json, Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ title: `Pocket smoke chip theirs ${stamp}`, due_date: todayAt(21) }),
+      })
+    ).json();
+    const mine = await make(`Pocket smoke chip mine ${stamp}`, { due_date: todayAt(21) }, team.id);
+    const chip = page.locator('.today-chip-row .chip', { hasText: new RegExp(`^${team.title}$`) }),
+      T = rowOf(theirs.title),
+      M = rowOf(mine.title);
+    try {
+      await refreshToday();
+      await expect(page.locator(T)).toBeVisible({ timeout: 15000 });
+      await chip.click();
+      await expect(chip).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator('.today-off-note')).toHaveText(
+        `From ${team.title}, Today shows only tasks assigned to you or added by you.`,
+      );
+      await expect(page.locator(T)).toHaveCount(0);
+      await expect(page.locator(M)).toBeVisible();
+      await page.reload();
+      await expect(page.locator(M)).toBeVisible({ timeout: 15000 });
+      await expect(chip).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.locator(T)).toHaveCount(0);
+      await chip.click();
+      await expect(page.locator(T)).toBeVisible();
+      await expect(page.locator('.today-off-note')).toHaveCount(0);
+    } finally {
+      await page.evaluate(() => localStorage.removeItem('pocket.today.off'));
+      for (const t of [theirs, mine]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
   /* Swiping progress on a task that no one is doing claims it for the user. Their picture appears, and the claim is

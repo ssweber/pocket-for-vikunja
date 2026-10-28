@@ -140,6 +140,13 @@ export default () => ({
       return {};
     }
   })(), // project id -> Getting started hidden
+  todayOff: (() => {
+    try {
+      return JSON.parse(store.get('today.off')) || {};
+    } catch {
+      return {};
+    }
+  })(), // project id -> its chip on Today is off (todayShows)
   capPhotos: [], // photos to attach to the task in the add box (File objects)
   // Highlight tasks just added, just due or new on refresh. Index each kind by task id so one highlight redraws
   // only that row.

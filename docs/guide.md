@@ -85,6 +85,7 @@ Every gesture is also in the task's **⋯** menu. Right-click a row, or press Sh
 - A task with a date and no time becomes overdue when that day ends.
 - **Move to another project**, in a task's **⋯**, takes its subtasks with it.
 - Today shows what is due this week. Tap a label there to show only its tasks. Search for `*label` to find every open task with it.
+- Tap a project's chip at the top of Today to switch it off. Today then shows only the tasks from it that are assigned to you or that you added. Each phone keeps its own choice.
 - **Copy**, beside **⋯**, copies a list's progress as text. **Copy as a Markdown list** makes text that pastes back into the add box as the same tasks.
 - Alt+Up and Alt+Down move the add box through the rows.
 
