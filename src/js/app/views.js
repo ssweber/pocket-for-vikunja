@@ -37,7 +37,6 @@ import {
   offlineFor,
   projectNotSaved,
   SAID,
-  todayOffText,
 } from '../messages.js';
 import { listViewOf } from '../order.js';
 import { waitingPositions } from '../ops/index.js';
@@ -301,9 +300,10 @@ export default {
     this.only = l && { id: l.id, title: l.title, hex_color: l.hex_color };
     if (l && scrollY) scrollTo(0, 0);
   },
-  /* Today's project chips, one for each project with a task on Today, in the Projects tab's order, as
-     {id, title, hex_color, off}. None while only one project has tasks there and none is off. Done today doesn't
-     count, because it lists only what the user did. */
+  /* Today's project chips, one for each project with a task on Today that someone else can see, in the Projects tab's
+     order, as {id, title, hex_color, off}. A project only the user can see holds only their own tasks, so its chip
+     would hide nothing. It keeps its chip while it is off, so it can be switched back on. Done today doesn't count,
+     because it lists only what the user did. */
   get todayChips() {
     if (this.route.name !== 'today') return [];
     const ids = new Set(
@@ -311,16 +311,11 @@ export default {
         .filter(g => g.key !== 'donetoday')
         .flatMap(g => g.tasks.filter(t => !isMovedGap(t)).map(t => t.project_id)),
     );
-    const chips = this.tree
-      .filter(r => ids.has(r.p.id))
+    return this.tree
+      .filter(({ p }) => ids.has(p.id) && (!this.onlyYou(p.id) || this.todayOff[p.id]))
       .map(({ p }) => ({ id: p.id, title: p.title, hex_color: p.hex_color, off: !!this.todayOff[p.id] }));
-    return chips.length > 1 || chips.some(c => c.off) ? chips : [];
   },
-  get todayOffNote() {
-    const off = this.todayChips.filter(c => c.off);
-    return off.length ? todayOffText(off.map(c => c.title)) : '';
-  },
-  // Switch project `pid` on or off on Today. The choice is kept on this phone.
+  // Show only the user's own tasks from project `pid` on Today, or all of them again. The choice is kept on this phone.
   toggleTodayProject(pid) {
     const off = { ...this.todayOff };
     if (off[pid]) delete off[pid];

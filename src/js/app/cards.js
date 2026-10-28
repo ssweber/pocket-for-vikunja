@@ -405,7 +405,7 @@ export default {
       { duration: 200, easing: 'ease-out' },
     );
   },
-  /* Whether Today shows task `t` (listGroups). From a project whose chip is off, it shows only the user's own tasks,
+  /* Whether Today shows task `t` (listGroups). From a project whose chip is tapped, it shows only the user's own tasks,
      and a card with an open subtask of theirs. A moved row's gap goes with its task. view.groups still holds the
      hidden tasks, so whatever acts on Today's tasks (Move all, the badge, due alerts) asks this too. */
   todayShows(t) {

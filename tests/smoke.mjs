@@ -3665,8 +3665,9 @@ try {
         body: JSON.stringify({ user_id: other.id }),
       });
     // Done today's heading, under the last row once earlier tests have ticked tasks, would leave room below that row.
-    // It is hidden here, so the last row sits by the add box.
-    const noDone = await page.addStyleTag({ content: '#view .done-sec{display:none}' });
+    // It is hidden here, so the last row sits by the add box. The project chips are hidden too, so the first row sits
+    // right under the header.
+    const noDone = await page.addStyleTag({ content: '#view .done-sec,#view .today-chips{display:none}' });
     try {
       await toastGone();
       await page.setViewportSize({ width: 390, height: 420 });
@@ -3762,26 +3763,24 @@ try {
       })
     ).json();
     const mine = await make(`Pocket smoke chip mine ${stamp}`, { due_date: todayAt(21) }, team.id);
-    const chip = page.locator('.today-chip-row .chip', { hasText: new RegExp(`^${team.title}$`) }),
+    const chip = page.getByRole('button', { name: `${team.title}, only your tasks`, exact: true }),
       T = rowOf(theirs.title),
       M = rowOf(mine.title);
     try {
       await refreshToday();
       await expect(page.locator(T)).toBeVisible({ timeout: 15000 });
       await chip.click();
-      await expect(chip).toHaveAttribute('aria-pressed', 'false');
-      await expect(page.locator('.today-off-note')).toHaveText(
-        `From ${team.title}, Today shows only tasks assigned to you or added by you.`,
-      );
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
+      await expect(chip.locator('.pic.mine')).toBeVisible();
       await expect(page.locator(T)).toHaveCount(0);
       await expect(page.locator(M)).toBeVisible();
       await page.reload();
       await expect(page.locator(M)).toBeVisible({ timeout: 15000 });
-      await expect(chip).toHaveAttribute('aria-pressed', 'false');
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
       await expect(page.locator(T)).toHaveCount(0);
       await chip.click();
       await expect(page.locator(T)).toBeVisible();
-      await expect(page.locator('.today-off-note')).toHaveCount(0);
+      await expect(chip.locator('.pic')).toHaveCount(0);
     } finally {
       await page.evaluate(() => localStorage.removeItem('pocket.today.off'));
       for (const t of [theirs, mine]) await api('/tasks/' + t.id, { method: 'DELETE' });
@@ -7127,7 +7126,8 @@ ${footName('Hooks')}`);
     ).json();
     createdProjects.push(proj.id);
     await make(long, { due_date: todayAt(23) }, proj.id);
-    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line.
+    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line, and the
+    // chips in Today's chip row, which scrolls sideways.
     const past = () =>
       page.evaluate(() => {
         const w = document.documentElement.clientWidth;
@@ -7136,7 +7136,7 @@ ${footName('Hooks')}`);
             el =>
               el.offsetParent !== null &&
               el.getBoundingClientRect().right > w + 1 &&
-              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title'),
+              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title, .today-chips'),
           )
           .map(
             el =>

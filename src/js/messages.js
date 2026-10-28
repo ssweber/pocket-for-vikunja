@@ -158,9 +158,6 @@ export const movedToProject = (project, n = 0) =>
   (!n ? '' : n === 1 ? ', with its subtask' : `, with its ${n} subtasks`);
 // A day's name inside a sentence: "today", "tomorrow", "Friday".
 export const dayWord = day => (/^(Today|Tomorrow)$/.test(day) ? day.toLowerCase() : day);
-// The line under Today's project chips while some are off (todayOffNote): "From Team and Kitchen, Today shows …".
-export const todayOffText = names =>
-  `From ${names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.at(-1) : names[0]}, Today shows only tasks assigned to you or added by you.`;
 
 /* The message in a row after the user ticks a task done, when `closed` of its `open` subtasks were closed with it.
    Returns {text, title, more}. With no subtasks it reads "Done: Pack the van". With all subtasks closed it reads

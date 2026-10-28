@@ -1010,31 +1010,49 @@ button.check::after {
   position: absolute;
   inset: calc(50% - 22px) -3px;
 }
-/* Today's project chips wrap onto more lines rather than scroll sideways, because sideways is for acting on a row.
-   Each chip is 36px tall, with a 44px tap area. The lines are 8px apart, so the areas meet without overlapping. */
+/* Today's project chips stay on one line, which scrolls sideways when they don't fit, so they take one line of
+   Today's height. Each chip is 36px tall, with a 44px tap area, and a long title is cut with "…". A chip showing only
+   the user's tasks has their 18px picture on its top-right corner, over the end of the title. The row's padding
+   leaves room for the picture and the tap area, which the scrolling would otherwise clip. */
 .today-chips {
-  margin: 14px 0 2px;
-}
-.today-chip-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
+  margin: 6px calc(-1 * var(--pad)) -6px;
+  padding: 8px var(--pad);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.today-chip-row .chip {
+.today-chips::-webkit-scrollbar {
+  display: none;
+}
+.today-chips .chip {
   position: relative;
+  flex: none;
+  max-width: 70%;
   min-height: 36px;
   padding: 0 14px;
   font-size: 15px;
   cursor: pointer;
 }
-.today-chip-row .chip::after {
+.today-chips .chip::after {
   content: '';
   position: absolute;
   inset: -4px 0;
 }
-.today-off-note {
-  margin: 8px 0 0;
-  font-size: 13px;
+.today-chips .chip .t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-chips .pic {
+  position: absolute;
+  top: -4px;
+  right: 3px;
+  pointer-events: none;
+}
+.today-chips .pic .av {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
 }
 .only-bar {
   display: flex;
