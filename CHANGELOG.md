@@ -14,6 +14,20 @@ is a new 0.x.y.
 
 ## Unreleased
 
+## 0.4.0 (2026-10-30)
+
+### Added
+
+- Tapping a project on a Today row shows only that project's tasks, as tapping a label does
+  ([guide](docs/guide.md#tasks)).
+- While Today shows one project or label, a chip at the top sets what Today shows from it from then on: **All**,
+  **Yours** (the tasks assigned to you or that you added) or **None**, and each phone keeps its own choice.
+
+### Changed
+
+- On Today, a row's project is a pill in the line under its title, which you can tap.
+- While Today shows one project, a task added in the box goes into that project.
+
 ## 0.3.1 (2026-10-27)
 
 ### Fixed
