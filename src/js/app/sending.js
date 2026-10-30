@@ -35,7 +35,7 @@ import { fileEntry, held, itemsOf, older, slowness, sync, uuid7 } from '../sync.
 import {
   dayGroup,
   gapIndex,
-  hasLabel,
+  inOnly,
   intoGroup,
   intoKeys,
   isMovedGap,
@@ -718,11 +718,11 @@ export default {
   get listGroups() {
     const hidden = this.hiddenRows,
       today = this.route.name === 'today',
-      only = today && this.only?.id,
-      // While Today is narrowed to a label, a moved row's gap shows with its task. Done today lists only what the user
-      // did, so a project's chip doesn't change it.
+      only = today && this.only,
+      // While Today is narrowed, a moved row's gap shows with its task. Done today lists only what the user did, so
+      // the settings don't change it.
       shows = (t, g) =>
-        (!only || hasLabel(isMovedGap(t) ? this.tasks[t.gapOf] : t, only)) &&
+        (!only || inOnly(isMovedGap(t) ? this.tasks[t.gapOf] : t, only)) &&
         (!today || g.key === 'donetoday' || this.todayShows(t)),
       order = this.route.name === 'project' ? positionOrder(this.positions) : null,
       can = screenRows(this.route.name);

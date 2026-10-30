@@ -284,6 +284,12 @@ export const viewKey = r =>
 export const isMovedGap = t => t.gapOf !== undefined;
 // Whether task `t` has the label with id `id`.
 export const hasLabel = (t, id) => !!t?.labels?.some(l => l.id === id);
+/* Today can be narrowed to a project or a label (`only`, {kind: 'project' | 'label', id, title, hex_color}), and each
+   can be set to show all, only the user's or none of its tasks there (`todayFilter`). todayKey names one in
+   todayFilter: "p2" for project 2, "l5" for label 5. */
+export const todayKey = o => (o.kind === 'project' ? 'p' : 'l') + o.id;
+// Whether task `t` is in project or label `o`.
+export const inOnly = (t, o) => (o.kind === 'project' ? t?.project_id === o.id : hasLabel(t, o.id));
 /* The label a search is for, without its *: "errands" for "*errands" or `*"on hold"`, "" for "*" alone, and null for
    a search of titles and notes. */
 export const searchedLabel = q => {

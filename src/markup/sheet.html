@@ -36,6 +36,9 @@
       </div></template>
       <!-- On a project's list, this moves the add box under the task's row to add a subtask, as nudging does -->
       <template x-if="canAddHere"><button role="menuitem" id="d-add-here" @click="sheet.menu = false; addSubtaskHere()">Add a subtask here</button></template>
+      <!-- On Today, the project's pill on a row narrows Today to the project. A screen reader can't reach a control inside
+           the row's button, so the menu offers the same. -->
+      <template x-for="p in route.name === 'today' && sheetTask ? [projById.get(sheetTask.project_id)].filter(Boolean) : []" :key="p.id"><button role="menuitem" id="d-today-project" @click="narrowToProject(sheetTask); closeSheet()" x-text="'Show only ' + p.title + ' on Today'"></button></template>
       <!-- For a subtask. It becomes a separate task in the same project (ownTask). Not for a checklist's step or a
            template's step. -->
       <template x-if="canOwn"><button role="menuitem" id="d-own-task" @click="sheet.menu = false; ownTask()">Turn into its own task</button></template>

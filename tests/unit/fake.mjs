@@ -337,7 +337,7 @@ export function component(...parts) {
     opsOn: {},
     slideClaim: {},
     stepClock: 0,
-    todayOff: {},
+    todayFilter: {},
     dropping: [],
     failed: [],
     notify(msg, action) {

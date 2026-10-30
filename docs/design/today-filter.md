@@ -19,8 +19,9 @@ Projects and labels use the same three settings. A task is hidden when any proje
 `todayShows` (`src/js/app/cards.js`) applies the rule, so Move all to today, the badge and due alerts follow it, as they
 follow the project chips now. Done today is not filtered.
 
-The settings are kept on the phone under a new key, `today.filter`, as `{"p<id>": "yours" | "none", "l<id>": ...}`. The
-old `today.off` key is ignored.
+The settings are kept on the phone under a new key, `today.filter`, as `{"p<id>" | "l<id>": {kind, id, title,
+hex_color, set}}`. The name and colour are kept because Pocket loads the labels only when needed. The old `today.off`
+key is ignored.
 
 ## A row's project
 

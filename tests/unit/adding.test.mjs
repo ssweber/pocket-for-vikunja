@@ -1960,11 +1960,12 @@ test('a label Vikunja does not have yet says so on its chip, once the labels hav
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*urgent', '*urg · new label']);
 });
 
-const ERRANDS = { id: 1, title: 'errands', hex_color: 'e5a50a' };
+const ERRANDS = { id: 1, title: 'errands', hex_color: 'e5a50a' },
+  ONLY_ERRANDS = { kind: 'label', ...ERRANDS };
 const labelsOfLines = (app, w) => app.boxParsedLines(w).map(p => [p.title, p.labels, p.tags?.map(l => l.id)]);
 test('while Today is narrowed to a label, its add boxes give each line that label, with a chip that leaves it off', () => {
   const app = boxes();
-  Object.assign(app, { route: { name: 'today' }, only: ERRANDS });
+  Object.assign(app, { route: { name: 'today' }, only: ONLY_ERRANDS });
   app.cap.text = 'Buy stamps';
   assert.deepEqual(chipsOf(app, 'cap'), ['Café', '*errands']);
   assert.deepEqual(labelsOfLines(app, 'cap'), [['Buy stamps', ['errands'], [1]]]);
@@ -1999,7 +2000,7 @@ test('a task added while Today is narrowed to a label shows there at once, and V
   v.labels.push({ ...ERRANDS });
   Object.assign(app, {
     route: { name: 'today' },
-    only: ERRANDS,
+    only: ONLY_ERRANDS,
     labels: [ERRANDS],
     cardAdded: {},
     loadLabels: views.loadLabels,

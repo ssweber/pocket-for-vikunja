@@ -405,12 +405,16 @@ export default {
       { duration: 200, easing: 'ease-out' },
     );
   },
-  /* Whether Today shows task `t` (listGroups). From a project whose chip is tapped, it shows only the user's own tasks,
-     and a card with an open subtask of theirs. A moved row's gap goes with its task. view.groups still holds the
-     hidden tasks, so whatever acts on Today's tasks (Move all, the badge, due alerts) asks this too. */
+  /* Whether Today shows task `t` (listGroups), by the settings of its project and labels (todayFilter). None hides it.
+     Yours keeps only the user's own tasks, and a card with an open subtask of theirs. A moved row's gap goes with its
+     task. view.groups still holds the hidden tasks, so whatever acts on Today's tasks (Move all, the badge, due
+     alerts) asks this too. */
   todayShows(t) {
     if (isMovedGap(t)) t = this.tasks[t.gapOf] || t;
-    if (!this.todayOff[t.project_id] || ownTask(t, this.user)) return true;
+    const f = this.todayFilter,
+      sets = [f['p' + t.project_id]?.set, ...(t.labels || []).map(l => f['l' + l.id]?.set)];
+    if (sets.includes('none')) return false;
+    if (!sets.includes('yours') || ownTask(t, this.user)) return true;
     return !!this.view.cards?.[t.id] && this.cardSubs(t).some(s => !s.done && ownTask(s, this.user));
   },
   // The tasks that Move all to today moves: each overdue row Today shows (todayShows), and for an overdue card the task

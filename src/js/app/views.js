@@ -13,7 +13,6 @@ import {
   drawnOf,
   FIRST_ROWS,
   FOUND_PART,
-  isMovedGap,
   keptGroups,
   nextBatch,
   opened,
@@ -25,6 +24,7 @@ import {
   soonestFirst,
   TODAY_DAYS,
   todayGroups,
+  todayKey,
   viewKey,
 } from '../lists.js';
 import { cardGroup, countdown, openSubs } from '../cards.js';
@@ -51,6 +51,7 @@ export let renderSeq = 0;
 export const dropLoads = () => renderSeq++;
 let behindTimer,
   preloadTimer,
+  shrinkTimer,
   preloading = false,
   drawSeq = 0,
   nearEnd = null,
@@ -126,6 +127,9 @@ export default {
   },
   defaultProjectId() {
     if (this.route.name === 'project' && this.projById.has(this.route.id)) return this.route.id;
+    // While Today is narrowed to a project, a new task goes there, so it shows.
+    const o = this.route.name === 'today' && this.only;
+    if (o?.kind === 'project' && this.projById.has(o.id)) return o.id;
     const d = this.user?.settings?.default_project_id;
     if (d && this.projById.has(d)) return d;
     return this.projects[0]?.id;
@@ -191,15 +195,19 @@ export default {
     });
   },
   get emptyText() {
+    const hides = Object.keys(this.todayFilter).length ? ' Tap a chip above to show what it hides.' : '';
     if (this.route.name === 'today' && this.only)
       return {
-        title: `Nothing due this week has *${this.only.title}.`,
-        body: 'Search finds the tasks due later or with no date.',
+        title:
+          this.only.kind === 'project'
+            ? `Nothing from ${this.only.title} is due this week.`
+            : `Nothing due this week has *${this.only.title}.`,
+        body: 'Search finds the tasks due later or with no date.' + hides,
       };
     if (this.route.name === 'today')
       return {
         title: 'Nothing due this week.',
-        body: `Today is ${this.todayDate}. Add a task below — try “Call the plumber tomorrow !3”.`,
+        body: `Today is ${this.todayDate}. Add a task below — try “Call the plumber tomorrow !3”.` + hides,
       };
     const name = this.route.name === 'search' && searchedLabel(this.searchQ.trim());
     if (typeof name === 'string') {
@@ -247,9 +255,11 @@ export default {
   /* Open the item a row stands for. A checklist step's title selects its card, the sheet's own title edits in place,
      and a sheet subtask opens its task. A list row opens a task, a checklist, or the Start sheet of an open template.
      A pending row has no saved task to open. */
-  tapRow(t, g) {
+  tapRow(t, g, e) {
     if (g.run) return this.showStep(t.i, true);
     if (g.step) return this.sheet.kind === 'newtpl' || this.canEdit ? this.editStep(t) : null;
+    // The project's pill on a Today row is inside the row's button, so its tap arrives here (rowMeta).
+    if (e?.target.closest?.('.proj')) return this.narrowToProject(t);
     if (t.pending) return;
     if (g.own) return this.editTitle();
     return g.sheet || g.top ? this.openTask(t.id) : this.openRow(t);
@@ -282,6 +292,10 @@ export default {
       said: said.join(', '),
     };
   },
+  // On Today a row's project `p` is a pill in its colour, and a tap on it narrows Today to the project (tapRow).
+  projPill(p) {
+    return this.route.name === 'today' ? { cls: 'lab-pill proj', lc: colorOf(p.hex_color) } : {};
+  },
   // The labels on a row's own line under the title, without `template`. A checklist's steps show none.
   rowLabels(t) {
     return t.labels?.length && this.stepRun(t) == null ? t.labels.filter(l => !isTemplateLabel(l)) : NO_LABELS;
@@ -294,35 +308,67 @@ export default {
   labelSaid(l) {
     return (this.route.name === 'today' ? 'Show only ' : 'Search for ') + l.title;
   },
-  /* Show only the tasks with label `l` on Today, or every task with null. One label at a time. Leaving Today shows
-     every task again (render). The page goes to its top, where the bar says what Today shows. */
-  narrowToday(l) {
-    this.only = l && { id: l.id, title: l.title, hex_color: l.hex_color };
-    if (l && scrollY) scrollTo(0, 0);
+  /* Show only the tasks in project or label `o` (`kind`) on Today, or every task with null. One at a time. Its chip
+     opens with the settings (wideOnly). Leaving Today shows every task again (render). The page goes to its top, where
+     the chip is. */
+  narrowToday(o, kind = 'label') {
+    this.only = o && { kind, id: o.id, title: o.title, hex_color: o.hex_color };
+    this.wideOnly(!!o);
+    if (o && scrollY) scrollTo(0, 0);
   },
-  /* Today's project chips, one for each project with a task on Today that someone else can see, in the Projects tab's
-     order, as {id, title, hex_color, off}. A project only the user can see holds only their own tasks, so its chip
-     would hide nothing. It keeps its chip while it is off, so it can be switched back on. Done today doesn't count,
-     because it lists only what the user did. */
+  // Narrow Today to task `t`'s project, from the pill on its row or its ⋯ menu.
+  narrowToProject(t) {
+    const p = this.projById.get(t.project_id);
+    if (p) this.narrowToday(p, 'project');
+  },
+  /* Open or shrink the chip of what Today is narrowed to. Open, it shows the settings. It shrinks 3 seconds after the
+     last touch (holdOnly), so the other chips show again. Both sizes are one line, so no row moves. */
+  wideOnly(open) {
+    clearTimeout(shrinkTimer);
+    this.onlyWide = open;
+    if (open) shrinkTimer = setTimeout(() => (this.onlyWide = false), 3000);
+  },
+  // A finger on the page (`down`) keeps the open chip open until it lifts, so a setting can't shrink away under it.
+  holdOnly(down) {
+    if (!this.onlyWide) return;
+    if (down) clearTimeout(shrinkTimer);
+    else this.wideOnly(true);
+  },
+  // What Today shows from project or label `o`: 'all', 'yours' or 'none' (todayShows).
+  todaySet(o) {
+    return this.todayFilter[todayKey(o)]?.set || 'all';
+  },
+  // Set what Today shows from project or label `o` (todaySet). The choice is kept on this phone.
+  setToday(o, set) {
+    const f = { ...this.todayFilter },
+      key = todayKey(o);
+    delete f[key];
+    if (set !== 'all') f[key] = { kind: o.kind, id: o.id, title: o.title, hex_color: o.hex_color, set };
+    this.todayFilter = f;
+    store.set('today.filter', JSON.stringify(f));
+    this.setBadge(this.view.groups.find(g => g.key === 'overdue')?.tasks || []);
+  },
+  // A setting tapped on the open chip applies at once, and Today shows every project and label again.
+  pickToday(set) {
+    this.setToday(this.only, set);
+    this.narrowToday(null);
+  },
+  /* The chips at the top of Today after the narrowed one: each project and label set to Yours or None, in the order
+     they were set, as todayFilter has them with their `key`. A chip stays while nothing of its project or label is on
+     Today, so it can always be set back to All. It shows the current name and colour, when Pocket has them. */
   get todayChips() {
     if (this.route.name !== 'today') return [];
-    const ids = new Set(
-      this.listBase
-        .filter(g => g.key !== 'donetoday')
-        .flatMap(g => g.tasks.filter(t => !isMovedGap(t)).map(t => t.project_id)),
-    );
-    return this.tree
-      .filter(({ p }) => ids.has(p.id) && (!this.onlyYou(p.id) || this.todayOff[p.id]))
-      .map(({ p }) => ({ id: p.id, title: p.title, hex_color: p.hex_color, off: !!this.todayOff[p.id] }));
+    const at = this.only && todayKey(this.only);
+    return Object.entries(this.todayFilter)
+      .filter(([key]) => key !== at)
+      .map(([key, c]) => {
+        const now = (c.kind === 'project' ? this.projById.get(c.id) : this.labels.find(l => l.id === c.id)) || c;
+        return { ...c, key, title: now.title, hex_color: now.hex_color };
+      });
   },
-  // Show only the user's own tasks from project `pid` on Today, or all of them again. The choice is kept on this phone.
-  toggleTodayProject(pid) {
-    const off = { ...this.todayOff };
-    if (off[pid]) delete off[pid];
-    else off[pid] = true;
-    this.todayOff = off;
-    store.set('today.off', JSON.stringify(off));
-    this.setBadge(this.view.groups.find(g => g.key === 'overdue')?.tasks || []);
+  // A project or label's name on a chip: a label's with *, as search writes it.
+  onlyName(o) {
+    return (o.kind === 'label' ? '*' : '') + o.title;
   },
   // Open search for the tasks with label `title`, without the keyboard, which would cover them.
   searchLabel(title) {
@@ -464,7 +510,8 @@ export default {
             : 'Checklist, not due yet',
       });
       const tp = this.projById.get(t.project_id);
-      if (tp && this.route.name !== 'project') out.push({ key: 'p', color: colorOf(tp.hex_color), text: tp.title });
+      if (tp && this.route.name !== 'project')
+        out.push({ key: 'p', color: colorOf(tp.hex_color), text: tp.title, ...this.projPill(tp) });
       return out;
     }
     // Avoid repeating the project of a card, or of a group in search by label, except on a row in another project.
@@ -481,7 +528,7 @@ export default {
       this.stepRun(t) &&
       t.related_tasks.parenttask[0];
     if (run) out.push({ key: 'run', icon: 'checklist', text: run.title, label: 'Step of ' + run.title });
-    else if (p) out.push({ key: 'p', color: colorOf(p.hex_color), text: p.title });
+    else if (p) out.push({ key: 'p', color: colorOf(p.hex_color), text: p.title, ...this.projPill(p) });
     // Name an absent parent so an isolated subtask can be identified.
     const up = !card && !run && p && !g?.depth?.[t.id] && t.related_tasks?.parenttask?.[0];
     if (up) out.push({ key: 'up', text: '↳ ' + up.title, label: 'Subtask of ' + up.title });

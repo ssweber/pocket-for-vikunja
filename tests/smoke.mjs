@@ -3490,18 +3490,22 @@ try {
       await page.mouse.up();
       await expect(page.getByRole('dialog', { name: `Move “${a.title}” to another day` })).toBeVisible();
       await page.keyboard.press('Escape');
-      // Tapping the label narrows Today to it. The bar says so, the one group left counts only its task, and Move all
-      // to today is hidden. Show all, or leaving Today, shows every task again.
+      // Tapping the label narrows Today to it. Its chip opens with the settings, the one group left counts only its
+      // task, and Move all to today is hidden. The chip shrinks 3 seconds after the last tap, and a tap opens it again.
+      // ✕, or leaving Today, shows every task again.
       const narrow = async () => {
         await page.locator(LAB).click();
-        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^Only\\s*\\*${l.title}\\s*Show all$`));
+        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^\\*${l.title}\\s*All.*Yours\\s*None$`));
       };
       await narrow();
       await expect(page.locator('#view .list > .row, #view .item > .row')).toHaveCount(1);
       await expect(page.locator('#view .sec .n')).toHaveText(['1']);
       await expect(page.locator('#btn-overdue-today')).toHaveCount(0);
-      await page.click('#btn-show-all');
+      await expect(page.locator('#btn-only')).toHaveText('*' + l.title, { timeout: 6000 });
       await expect(page.locator('.only-bar')).toHaveCount(0);
+      await page.click('#btn-only');
+      await page.click('#btn-show-all');
+      await expect(page.locator('.today-chips')).toHaveCount(0);
       await expect(page.locator('#view .sec').first()).toBeVisible();
       if ((await page.locator('#view .list > .row, #view .item > .row').count()) < 2)
         throw new Error('Show all left one row');
@@ -3509,7 +3513,7 @@ try {
       await page.click('nav.tabs a[data-tab=projects]');
       await page.click('nav.tabs a[data-tab=today]');
       await expect(page.locator(R)).toBeVisible();
-      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('.today-chips')).toHaveCount(0);
       // With nothing this week left with the label, Today says so and offers a search for it
       await narrow();
       await api(`/tasks/${a.id}/labels/${l.id}`, { method: 'DELETE' });
@@ -3545,7 +3549,7 @@ try {
       await page.fill('#in-search', `*nolabel${stamp}`);
       await expect(page.locator('#view .empty > b')).toHaveText(`No label is called “nolabel${stamp}”.`);
       await page.click('#btn-search-cancel');
-      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('.today-chips')).toHaveCount(0);
     } finally {
       for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' });
       await api('/labels/' + l.id, { method: 'DELETE' });
@@ -3740,12 +3744,13 @@ try {
       for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
-  /* Tapping a project's chip on Today switches the project off on this phone. Today then shows only the user's own
-     tasks from it, and the chip stays off after a reload. A task the user didn't add needs a second account. */
-  await step('a-project-chip-on-today-leaves-only-the-users-own-tasks', async () => {
+  /* Tapping a row's project on Today narrows Today to it. Yours then leaves only the user's own tasks from it, and
+     None hides them all. Each stays set after a reload, as a chip that a tap sets back to All. A task the user didn't
+     add needs a second account. */
+  await step('a-rows-project-on-today-sets-what-today-shows-from-it', async () => {
     const team = projects2.find(p => p.title === ASSIGNEE_PROJECT);
     if (!team || !OTHER || !OTHER_PASSWORD) {
-      console.log('  (no ASSIGNEE_PROJECT, OTHER_USER and OTHER_PASSWORD: project chips not checked)');
+      console.log('  (no ASSIGNEE_PROJECT, OTHER_USER and OTHER_PASSWORD: Today’s settings not checked)');
       return;
     }
     const { token } = await (
@@ -3763,26 +3768,37 @@ try {
       })
     ).json();
     const mine = await make(`Pocket smoke chip mine ${stamp}`, { due_date: todayAt(21) }, team.id);
-    const chip = page.getByRole('button', { name: `${team.title}, only your tasks`, exact: true }),
-      T = rowOf(theirs.title),
-      M = rowOf(mine.title);
+    const T = rowOf(theirs.title),
+      M = rowOf(mine.title),
+      chip = set =>
+        page.getByRole('button', {
+          name: `${team.title}, ${set === 'yours' ? 'only your tasks' : 'hidden'}. Tap to show all.`,
+          exact: true,
+        });
     try {
       await refreshToday();
       await expect(page.locator(T)).toBeVisible({ timeout: 15000 });
-      await chip.click();
-      await expect(chip).toHaveAttribute('aria-pressed', 'true');
-      await expect(chip.locator('.pic.mine')).toBeVisible();
+      await page.locator(`${M} .meta .proj`).click();
+      await expect(page.locator('#btn-today-all')).toHaveAttribute('aria-pressed', 'true');
+      await page.click('#btn-today-yours');
+      await expect(chip('yours').locator('.pic.mine')).toBeVisible();
       await expect(page.locator(T)).toHaveCount(0);
       await expect(page.locator(M)).toBeVisible();
       await page.reload();
       await expect(page.locator(M)).toBeVisible({ timeout: 15000 });
-      await expect(chip).toHaveAttribute('aria-pressed', 'true');
+      await expect(chip('yours')).toBeVisible();
       await expect(page.locator(T)).toHaveCount(0);
-      await chip.click();
+      await page.locator(`${M} .meta .proj`).click();
+      await expect(page.locator('#btn-today-yours')).toHaveAttribute('aria-pressed', 'true');
+      await page.click('#btn-today-none');
+      await expect(page.locator(M)).toHaveCount(0);
+      await expect(chip('none')).toHaveClass(/\boff\b/);
+      await chip('none').click();
       await expect(page.locator(T)).toBeVisible();
-      await expect(chip.locator('.pic')).toHaveCount(0);
+      await expect(page.locator(M)).toBeVisible();
+      await expect(page.locator('.today-chips')).toHaveCount(0);
     } finally {
-      await page.evaluate(() => localStorage.removeItem('pocket.today.off'));
+      await page.evaluate(() => localStorage.removeItem('pocket.today.filter'));
       for (const t of [theirs, mine]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });

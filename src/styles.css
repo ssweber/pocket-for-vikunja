@@ -821,6 +821,18 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   line-height: 18px;
   white-space: nowrap;
 }
+/* On Today a row's project is a pill in its time line (projPill), at the line's own height, so the row keeps its height.
+   Its tap area is 44px tall, reaching mostly into the row's padding below, so a tap on the title still opens the task. */
+.meta .proj {
+  position: relative;
+  height: 19px;
+  font-size: inherit;
+}
+.meta .proj::after {
+  content: '';
+  position: absolute;
+  inset: -8px -4px -17px;
+}
 :is(.lab, .lab-pill) .dot {
   width: 7px;
   height: 7px;
@@ -1010,11 +1022,11 @@ button.check::after {
   position: absolute;
   inset: calc(50% - 22px) -3px;
 }
-/* Today's project chips stay on one line, which scrolls sideways when they don't fit, so they take one line of
-   Today's height. Each chip is 36px tall, with a 44px tap area, and a long title is cut with "…". A chip showing only
-   the user's tasks has their picture in place of the project's dot, at 18px so it doesn't look like a row's picture.
-   The row's 4px padding keeps the tap area from being clipped by the scrolling. The first heading sits 12px under
-   the chips, where the tap area of Move all to today, 12px above the heading, stops short of them. */
+/* Today's chip line stays on one line, which scrolls sideways when the chips don't fit, so it takes one line of
+   Today's height. Each chip is 36px tall, with a 44px tap area, and a long title is cut with "…". A chip set to Yours
+   has the user's picture in place of the dot, at 18px so it doesn't look like a row's picture. The line's 4px padding
+   keeps the tap areas from being clipped by the scrolling. The first heading sits 12px under the chips, where the tap
+   area of Move all to today, 12px above the heading, stops short of them. */
 .today-chips {
   display: flex;
   gap: 8px;
@@ -1035,10 +1047,13 @@ button.check::after {
   font-size: 15px;
   cursor: pointer;
 }
-.today-chips .chip.only-mine {
+.today-chips .chip.yours {
   padding-left: 10px;
 }
-.today-chips .chip::after {
+.today-chips .chip.narrowed {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+:is(.today-chips .chip, .only-bar .seg button, .only-bar .only-clear)::after {
   content: '';
   position: absolute;
   inset: -4px 0;
@@ -1052,26 +1067,59 @@ button.check::after {
   height: 18px;
   font-size: 9px;
 }
+/* The open chip of the project or label Today is narrowed to fills the line, at a chip's height, so shrinking it moves
+   no row. The settings sit beside the name, and a long name is cut with "…". */
 .only-bar {
+  flex: 0 0 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 14px 0 2px;
-  padding-left: 14px;
-  border-radius: var(--r-row);
+  gap: 4px;
+  height: 36px;
+  padding-left: 6px;
+  border-radius: var(--r-chip);
   background: var(--accent-soft);
   color: var(--ink);
-  font-size: 15px;
 }
-.only-rule {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.only-rule .lab-pill {
+.only-bar > .lab-pill {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
+}
+.only-bar > .lab-pill > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.only-bar .seg {
+  flex: none;
+  margin: 0 0 0 auto;
+  padding: 2px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.only-bar .seg button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-chip);
+  font-size: 14px;
+}
+.only-bar .only-clear {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 36px;
+  padding: 0;
+}
+.only-bar .only-clear .i {
+  width: 20px;
+  height: 20px;
 }
 .only-clear,
 .empty-act {

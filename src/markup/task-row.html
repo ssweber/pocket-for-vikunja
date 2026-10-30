@@ -53,7 +53,7 @@
     <!-- include markup/sheet/step-edit.html -->
   </template>
   <!-- /only -->
-  <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g)">
+  <button class="body" x-show="g.step ? sheet.stepEdit?.id !== t.id : !g.own || !sheet.titleEdit" @click="tapRow(t, g, $event)">
     <!-- only run sheet -->
     <template x-if="g.sheet || g.run"><div class="title" x-text="g.step ? stepShown(t).title : t.title"></div></template><template x-if="g.sheet && rowNotes(t, g)"><span class="has-notes"><svg class="i" aria-hidden="true"><use href="#i-notes"/></svg><span class="sr">, has notes</span></span></template>
     <!-- /only -->
@@ -68,7 +68,7 @@
       <template x-if="w && (w.prio || w.due || w.color)"><span class="when" aria-hidden="true"><template x-if="w.prio"><span class="bars" :class="'p' + w.prio"><i></i><i></i><i></i><i></i><i></i></span></template><template x-if="w.due"><span class="due num" :class="w.due.cls" x-text="w.due.text"></span></template><template x-if="w.color"><i class="dot" x-style="{background: w.color}"></i></template></span></template></div></template>
     <!-- /only -->
     <template x-if="!g.line"><div class="meta" x-show="rowMeta(t, g).length">
-      <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
+      <template x-for="m in rowMeta(t, g)" :key="m.key"><span :class="m.cls" :aria-label="m.label" x-style="m.lc && {'--lc': m.lc}"><template x-if="m.color"><i class="dot" x-style="{background: m.color}"></i></template><template x-if="m.icon"><svg class="i"><use :href="'#i-' + m.icon"/></svg></template><template x-if="m.prio"><span class="bars" :class="'p' + m.prio"><i></i><i></i><i></i><i></i><i></i></span></template><span x-text="m.text"></span></span></template>
     </div></template>
     <!-- A step added after the checklist started shows its Added mark on a separate line in the checklist's sheet -->
     <!-- only sheet -->

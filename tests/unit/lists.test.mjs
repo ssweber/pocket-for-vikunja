@@ -34,6 +34,7 @@ import { watching } from './reactive.mjs';
 import checklists from '../../src/js/app/checklists.js';
 import runs from '../../src/js/app/runs.js';
 import views, { renderSeq } from '../../src/js/app/views.js';
+import core from '../../src/js/app/core.js';
 import tasks, { copyOf, started } from '../../src/js/app/tasks.js';
 import { TASK } from '../../src/js/tasks.js';
 import sending from '../../src/js/app/sending.js';
@@ -554,7 +555,7 @@ test('Today narrowed to a label shows and counts only the tasks with it, and a m
     );
   assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] });
   app.narrowToday(errands);
-  assert.deepEqual(app.only, { id: 1, title: 'errands', hex_color: 'e5a50a' });
+  assert.deepEqual(app.only, { kind: 'label', id: 1, title: 'errands', hex_color: 'e5a50a' });
   assert.equal(scrollY, 0, 'the page goes to its top, where the bar is');
   assert.deepEqual(shown(), { today: [[1, 3], 2], donetoday: [[5], 1] });
   app.narrowToday(phone);
@@ -566,13 +567,14 @@ test('Today narrowed to a label shows and counts only the tasks with it, and a m
   assert.deepEqual(shown(), { today: [['moved-1', 1, 2, 3], 4], donetoday: [[4, 5], 2] }, 'Show all');
 });
 
-/* Tapping a project's chip on Today switches the project off (toggleTodayProject). Today then shows only the user's
-   own tasks from it: assigned to them, added by them, or still waiting to be sent, and a card with an open subtask
-   of theirs. Done today lists only what the user did, so the chip leaves it alone. */
-test('a project switched off on Today shows only the user’s own tasks from it, and Move all and the badge skip the rest', t0 => {
-  t0.after(() => localStorage.removeItem('pocket.today.off'));
+/* What Today shows from a project or label (todayFilter, todayShows): All, Yours or None. Yours keeps the user's own
+   tasks: assigned to them, added by them, or still waiting to be sent, and a card with an open subtask of theirs.
+   None hides every task with it. Done today lists only what the user did, so the settings leave it alone. */
+test('Yours and None hide tasks on Today by project and by label, and Move all and the badge skip them', t0 => {
+  t0.after(() => localStorage.removeItem('pocket.today.filter'));
   const me = { id: 1 },
     bob = { id: 2 },
+    someday = { id: 7, title: 'someday', hex_color: '8a8a8a' },
     soon = h => new Date(Date.now() + h * 36e5).toISOString(),
     late = new Date(Date.now() - 36e5).toISOString(),
     t = (id, project_id, f = {}) => ({
@@ -592,11 +594,11 @@ test('a project switched off on Today shows only the user’s own tasks from it,
     bobSub = t(10, 2, { assignees: [bob] }),
     myCard = t(6, 2, { related_tasks: { subtask: [mineSub] } }),
     bobCard = t(7, 2, { related_tasks: { subtask: [bobSub] } }),
-    done = t(8, 2, { done: true, done_at: new Date().toISOString() });
+    done = t(8, 2, { done: true, done_at: new Date().toISOString(), labels: [someday] }),
+    later = t(11, 1, { labels: [someday], created_by: me });
   const app = component(views, sending, lines, cards, claims);
   Object.assign(app, {
     user: me,
-    seenBy: { 1: 1, 2: 1 },
     route: { name: 'today' },
     pending: [],
     positions: {},
@@ -606,39 +608,29 @@ test('a project switched off on Today shows only the user’s own tasks from it,
       { id: 1, title: 'Inbox' },
       { id: 2, title: 'Team' },
     ],
-    tasks: Object.fromEntries([inbox, theirs, assigned, added, mineSub, bobSub, myCard, bobCard].map(x => [x.id, x])),
+    tasks: Object.fromEntries(
+      [inbox, theirs, assigned, added, mineSub, bobSub, myCard, bobCard, later].map(x => [x.id, x]),
+    ),
     movedGaps: { today: [{ id: 'moved-2', gapOf: 2, after: null, at: 0 }] },
     view: {
       cards: { 6: {}, 7: {} },
       groups: [
         { key: 'overdue', tasks: [theirs, assigned] },
-        { key: 'today', tasks: [inbox, added, waiting, myCard, bobCard] },
+        { key: 'today', tasks: [inbox, added, waiting, myCard, bobCard, later] },
         { key: 'donetoday', tasks: [done] },
       ],
     },
   });
   app.projById = new Map(app.projects.map(p => [p.id, p]));
+  const team = { kind: 'project', id: 2, title: 'Team' },
+    label = { kind: 'label', ...someday };
   const shown = () => Object.fromEntries(app.listGroups.filter(g => g.tasks.length).map(g => [g.key, ids(g.tasks)]));
-  const all = { overdue: [2, 3], today: ['moved-2', 1, 4, 'p-5', 6, 7], donetoday: [8] };
+  const all = { overdue: [2, 3], today: ['moved-2', 1, 4, 'p-5', 6, 7, 11], donetoday: [8] };
   assert.deepEqual(shown(), all);
-  assert.deepEqual(
-    app.todayChips.map(c => [c.title, c.off]),
-    [
-      ['Inbox', false],
-      ['Team', false],
-    ],
-  );
-  app.toggleTodayProject(2);
-  assert.equal(localStorage.getItem('pocket.today.off'), '{"2":true}', 'kept on the phone');
-  assert.deepEqual(shown(), { overdue: [3], today: [1, 4, 'p-5', 6], donetoday: [8] });
-  assert.deepEqual(
-    app.todayChips.map(c => [c.title, c.off]),
-    [
-      ['Inbox', false],
-      ['Team', true],
-    ],
-    'an off chip stays, with its tasks still on Today',
-  );
+  app.setToday(team, 'yours');
+  assert.equal(app.todaySet(team), 'yours');
+  assert.deepEqual(JSON.parse(localStorage.getItem('pocket.today.filter')), { p2: { ...team, set: 'yours' } });
+  assert.deepEqual(shown(), { overdue: [3], today: [1, 4, 'p-5', 6, 11], donetoday: [8] });
   assert.deepEqual(ids(app.overdueTasks), [3], 'Move all to today leaves the hidden task alone');
   let badge = null;
   Object.defineProperty(navigator, 'setAppBadge', { value: n => ((badge = n), Promise.resolve()), configurable: true });
@@ -649,48 +641,115 @@ test('a project switched off on Today shows only the user’s own tasks from it,
   theirs.assignees = [me];
   assert.deepEqual(shown().overdue, [2, 3], 'assigning the user brings a task back at once');
   theirs.assignees = [];
-  app.toggleTodayProject(2);
-  assert.equal(localStorage.getItem('pocket.today.off'), '{}');
+  app.setToday(label, 'none');
+  assert.deepEqual(
+    shown(),
+    { overdue: [3], today: [1, 4, 'p-5', 6], donetoday: [8] },
+    'None hides even the user’s own task with the label, and either setting can hide a task',
+  );
+  app.setToday(team, 'none');
+  assert.deepEqual(shown(), { today: [1], donetoday: [8] });
+  app.setToday(team, 'all');
+  app.setToday(label, 'all');
+  assert.equal(localStorage.getItem('pocket.today.filter'), '{}');
   assert.deepEqual(shown(), all);
 });
 
-/* A project only the user can see holds only their own tasks, so switching it off would hide nothing. Its chip shows
-   only while it is off, so it can be switched back on. A project not yet known to be shared gets a chip (onlyYou). */
-test('Today has a chip for each project someone else can see with a task there, in the Projects tab’s order', () => {
-  const app = component(views, sending, cards, claims);
-  const t = (id, project_id, f = {}) => ({ id, project_id, title: 'Task ' + id, ...f });
+/* Tapping a project or label on a Today row narrows Today to it, and its chip opens with All · Yours · None. Tapping a
+   setting keeps it and shows every task again. ✕ ends the narrowing and keeps the setting. The open chip shrinks 3
+   seconds after the last touch, and not while a finger is on the page. */
+test('narrowing Today opens its chip, a setting ends the narrowing, and the chip shrinks 3 seconds after a touch', t0 => {
+  t0.mock.timers.enable({ apis: ['setTimeout'] });
+  Object.assign(globalThis, { scrollY: 0, scrollTo() {} });
+  t0.after(() => {
+    delete globalThis.scrollY;
+    delete globalThis.scrollTo;
+    localStorage.removeItem('pocket.today.filter');
+  });
+  const team = { id: 2, title: 'Team', hex_color: '3d7be8' },
+    mine = { id: 1, project_id: 2, title: 'Call the roaster', assignees: [{ id: 1 }] },
+    theirs = { id: 2, project_id: 2, title: 'Fix the till drawer' },
+    other = { id: 3, project_id: 1, title: 'Order oat milk' };
+  const app = component(views, sending, lines, cards);
   Object.assign(app, {
+    user: { id: 1 },
     route: { name: 'today' },
     pending: [],
-    seenBy: { 1: 0, 3: 2 },
-    projects: [
-      { id: 1, title: 'Inbox' },
-      { id: 3, title: 'Kitchen', parent_project_id: 4 },
-      { id: 4, title: 'Café' },
-      { id: 5, title: 'Garden' },
-    ],
-    view: {
-      cards: {},
-      groups: [
-        { key: 'today', tasks: [t(1, 3), t(2, 1)] },
-        { key: 'donetoday', tasks: [t(3, 5)] },
-      ],
+    positions: {},
+    cardOf: () => null,
+    tasks: { 1: mine, 2: theirs, 3: other },
+    projById: new Map([[2, team]]),
+    view: { cards: {}, groups: [{ key: 'today', tasks: [mine, theirs, other] }] },
+  });
+  const shown = () => app.listGroups.flatMap(g => ids(g.tasks));
+  const pill = { target: { closest: sel => (sel === '.proj' ? {} : null) } };
+  app.tapRow(mine, {}, pill);
+  assert.deepEqual(app.only, { kind: 'project', id: 2, title: 'Team', hex_color: '3d7be8' }, 'the pill on its row');
+  assert.equal(app.onlyWide, true);
+  assert.equal(app.todaySet(app.only), 'all');
+  assert.deepEqual(shown(), [1, 2]);
+  assert.equal(app.emptyText.title, 'Nothing from Team is due this week.');
+  app.projects = [{ id: 1 }, team];
+  assert.equal(app.defaultProjectId(), 2, 'a task typed now goes to Team, so it shows');
+  t0.mock.timers.tick(2999);
+  app.holdOnly(true);
+  t0.mock.timers.tick(5000);
+  assert.equal(app.onlyWide, true, 'not while a finger is on the page');
+  app.holdOnly(false);
+  t0.mock.timers.tick(2999);
+  assert.equal(app.onlyWide, true);
+  t0.mock.timers.tick(1);
+  assert.equal(app.onlyWide, false, '3 seconds after the finger lifts');
+  assert.deepEqual(shown(), [1, 2], 'shrunk, Today stays narrowed');
+  app.wideOnly(true);
+  app.pickToday('yours');
+  assert.deepEqual([app.only, app.onlyWide], [null, false]);
+  assert.deepEqual(shown(), [1, 3], 'every project again, with the setting applied');
+  app.narrowToday(team, 'project');
+  assert.equal(app.todaySet(app.only), 'yours');
+  assert.deepEqual(shown(), [1]);
+  assert.match(app.emptyText.body, /Tap a chip above to show what it hides.$/);
+  app.narrowToday(null);
+  assert.equal(app.todaySet({ kind: 'project', id: 2 }), 'yours', '✕ keeps the setting');
+  assert.equal(app.defaultProjectId(), 1);
+  let opened = null;
+  app.openRow = x => (opened = x);
+  app.tapRow(mine, {}, { target: { closest: () => null } });
+  assert.equal(opened, mine, 'a tap beside the pill opens the task');
+  assert.deepEqual(app.projPill(team), { cls: 'lab-pill proj', lc: '#3d7be8' });
+  app.route = { name: 'search' };
+  assert.deepEqual(app.projPill(team), {}, 'only Today has the pill');
+});
+
+/* The chips after the narrowed one: each project and label set to Yours or None, in the order they were set, with the
+   current name. A chip stays while nothing of it is on Today. The settings are kept under today.filter, and the
+   project chips' old today.off is ignored. */
+test('Today’s chips list each Yours and None setting after the narrowed one, and only today.filter is read back', t0 => {
+  t0.after(() => ['today.filter', 'today.off'].forEach(k => localStorage.removeItem('pocket.' + k)));
+  const app = component(views);
+  Object.assign(app, {
+    route: { name: 'today' },
+    labels: [],
+    projById: new Map([[2, { id: 2, title: 'Team room', hex_color: '3d7be8' }]]),
+    todayFilter: {
+      p2: { kind: 'project', id: 2, title: 'Team', hex_color: '3d7be8', set: 'yours' },
+      l7: { kind: 'label', id: 7, title: 'someday', hex_color: '8a8a8a', set: 'none' },
     },
   });
-  app.projById = new Map(app.projects.map(p => [p.id, p]));
-  const titles = () => app.todayChips.map(c => c.title);
-  assert.deepEqual(titles(), ['Kitchen'], 'Inbox is seen by no one else, and Done today doesn’t count');
-  app.todayOff = { 1: true };
-  assert.deepEqual(titles(), ['Inbox', 'Kitchen'], 'a project switched off keeps its chip');
-  app.todayOff = {};
-  app.view.groups[0].tasks.push(t(5, 4));
-  assert.deepEqual(
-    titles(),
-    ['Café', 'Kitchen'],
-    'not known yet counts as shared, and a project sits under its parent',
-  );
-  app.route = { name: 'project', id: 1 };
+  const chips = () => app.todayChips.map(c => [app.onlyName(c), c.set]);
+  assert.deepEqual(chips(), [
+    ['Team room', 'yours'],
+    ['*someday', 'none'],
+  ]);
+  app.labels = [{ id: 7, title: 'one day', hex_color: '8a8a8a' }];
+  app.only = { kind: 'project', id: 2, title: 'Team room' };
+  assert.deepEqual(chips(), [['*one day', 'none']], 'the narrowed one has its own chip');
+  app.route = { name: 'project', id: 2 };
   assert.deepEqual(app.todayChips, [], 'only on Today');
+  localStorage.setItem('pocket.today.off', '{"2":true}');
+  assert.deepEqual(core().todayFilter, {});
+  localStorage.setItem('pocket.today.filter', JSON.stringify(app.todayFilter));
+  assert.deepEqual(core().todayFilter, app.todayFilter);
 });
 
 test('leaving Today shows every task on it again', async t => {

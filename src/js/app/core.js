@@ -112,7 +112,8 @@ export default () => ({
   refreshing: false,
   headerTucked: false, // the header has slid away while scrolling down
   searchQ: '',
-  only: null, // the label Today is narrowed to, as {id, title, hex_color} (narrowToday, views.js)
+  only: null, // the project or label Today is narrowed to, as {kind, id, title, hex_color} (narrowToday, views.js)
+  onlyWide: false, // the chip of the project or label Today is narrowed to shows its settings (wideOnly, views.js)
   searchFrom: '', // what's typed in the search box, and the screen to go back to
   // Quick add and the sheet's subtask box share the same state and parsing methods.
   cap: newBox(),
@@ -140,13 +141,13 @@ export default () => ({
       return {};
     }
   })(), // project id -> Getting started hidden
-  todayOff: (() => {
+  todayFilter: (() => {
     try {
-      return JSON.parse(store.get('today.off')) || {};
+      return JSON.parse(store.get('today.filter')) || {};
     } catch {
       return {};
     }
-  })(), // project id -> Today shows only the user's tasks from it (todayShows)
+  })(), // todayKey -> {kind, id, title, hex_color, set: 'yours' | 'none'}, what Today shows from it (todayShows)
   capPhotos: [], // photos to attach to the task in the add box (File objects)
   // Highlight tasks just added, just due or new on refresh. Index each kind by task id so one highlight redraws
   // only that row.
