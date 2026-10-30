@@ -822,7 +822,8 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   white-space: nowrap;
 }
 /* On Today a row's project is a pill in its time line (projPill), at the line's own height, so the row keeps its height.
-   Its tap area is 44px tall, reaching mostly into the row's padding below, so a tap on the title still opens the task. */
+   Its tap area reaches down to the row's edge, 35px tall in all. It stops 1px under the title line, because a tap on
+   the middle of a row, which is the title's lower edge, must open the task. */
 .meta .proj {
   position: relative;
   height: 19px;
@@ -831,7 +832,7 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 .meta .proj::after {
   content: '';
   position: absolute;
-  inset: -8px -4px -17px;
+  inset: -2px -4px -14px;
 }
 :is(.lab, .lab-pill) .dot {
   width: 7px;

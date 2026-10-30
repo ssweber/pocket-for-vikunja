@@ -3778,6 +3778,12 @@ try {
     try {
       await refreshToday();
       await expect(page.locator(T)).toBeVisible({ timeout: 15000 });
+      // A tap on the middle of the row reaches the row, not the pill under the title
+      const middle = await page.locator(`${M} > .body`).evaluate(b => {
+        const r = b.getBoundingClientRect();
+        return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.proj');
+      });
+      if (middle) throw new Error('a tap on the middle of a row lands on its project');
       await page.locator(`${M} .meta .proj`).click();
       await expect(page.locator('#btn-today-all')).toHaveAttribute('aria-pressed', 'true');
       await page.click('#btn-today-yours');
