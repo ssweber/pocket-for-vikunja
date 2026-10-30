@@ -53,7 +53,10 @@ export default {
     }
     this.groupedAt = now;
     this.regroupSoon();
-    const dated = this.view.groups.filter(g => ['overdue', 'today', 'week'].includes(g.key)).flatMap(g => g.tasks);
+    const dated = this.view.groups
+      .filter(g => ['overdue', 'today', 'week'].includes(g.key))
+      .flatMap(g => g.tasks)
+      .filter(t => this.todayShows(t));
     const passed = at => at > since && at <= now;
     const due = [],
       reminded = [];
@@ -92,9 +95,11 @@ export default {
     }
     for (const g of [overdue, today, week, nodate]) g.tasks.sort(order[g.key]);
     this.groupedAt = +now;
-    this.setBadge(overdue.tasks.length);
+    this.setBadge(overdue.tasks);
   },
-  setBadge(n) {
+  // Show on the app icon how many of the overdue tasks `tasks` Today shows.
+  setBadge(tasks) {
+    const n = tasks.filter(t => this.todayShows(t)).length;
     try {
       (n ? navigator.setAppBadge?.(n) : navigator.clearAppBadge?.())?.catch(() => {});
     } catch {}

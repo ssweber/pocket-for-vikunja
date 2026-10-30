@@ -11,6 +11,7 @@
 // POCKET_URL if Pocket is served from somewhere else.
 // ASSIGNEE=<username> to test @assignee.
 // ASSIGNEE_PROJECT=<name> of a project shared with that user.
+// OTHER_USER and OTHER_PASSWORD, that user's sign-in, to add a task that isn't the test user's (project chips on Today).
 // BROWSER_CHANNEL=msedge|chrome (default: Playwright's Chromium).
 // OUT=<dir> for screenshots.
 import { mkdir } from 'node:fs/promises';
@@ -46,6 +47,8 @@ import {
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const ASSIGNEE = process.env.ASSIGNEE; // optional username to assign
 const ASSIGNEE_PROJECT = process.env.ASSIGNEE_PROJECT; // a project shared with ASSIGNEE (default: the default project)
+const OTHER = process.env.OTHER_USER,
+  OTHER_PASSWORD = process.env.OTHER_PASSWORD;
 const TOKEN = process.env.VIKUNJA_TOKEN,
   USER = process.env.VIKUNJA_USER,
   PASSWORD = process.env.VIKUNJA_PASSWORD;
@@ -3487,18 +3490,22 @@ try {
       await page.mouse.up();
       await expect(page.getByRole('dialog', { name: `Move “${a.title}” to another day` })).toBeVisible();
       await page.keyboard.press('Escape');
-      // Tapping the label narrows Today to it. The bar says so, the one group left counts only its task, and Move all
-      // to today is hidden. Show all, or leaving Today, shows every task again.
+      // Tapping the label narrows Today to it. Its chip opens with the settings, the one group left counts only its
+      // task, and Move all to today is hidden. The chip shrinks 3 seconds after the last tap, and a tap opens it again.
+      // ✕, or leaving Today, shows every task again.
       const narrow = async () => {
         await page.locator(LAB).click();
-        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^Only\\s*\\*${l.title}\\s*Show all$`));
+        await expect(page.locator('.only-bar')).toHaveText(new RegExp(`^\\*${l.title}\\s*All.*Yours\\s*None$`));
       };
       await narrow();
       await expect(page.locator('#view .list > .row, #view .item > .row')).toHaveCount(1);
       await expect(page.locator('#view .sec .n')).toHaveText(['1']);
       await expect(page.locator('#btn-overdue-today')).toHaveCount(0);
-      await page.click('#btn-show-all');
+      await expect(page.locator('#btn-only')).toHaveText('*' + l.title, { timeout: 6000 });
       await expect(page.locator('.only-bar')).toHaveCount(0);
+      await page.click('#btn-only');
+      await page.click('#btn-show-all');
+      await expect(page.locator('.today-chips')).toHaveCount(0);
       await expect(page.locator('#view .sec').first()).toBeVisible();
       if ((await page.locator('#view .list > .row, #view .item > .row').count()) < 2)
         throw new Error('Show all left one row');
@@ -3506,7 +3513,7 @@ try {
       await page.click('nav.tabs a[data-tab=projects]');
       await page.click('nav.tabs a[data-tab=today]');
       await expect(page.locator(R)).toBeVisible();
-      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('.today-chips')).toHaveCount(0);
       // With nothing this week left with the label, Today says so and offers a search for it
       await narrow();
       await api(`/tasks/${a.id}/labels/${l.id}`, { method: 'DELETE' });
@@ -3542,7 +3549,7 @@ try {
       await page.fill('#in-search', `*nolabel${stamp}`);
       await expect(page.locator('#view .empty > b')).toHaveText(`No label is called “nolabel${stamp}”.`);
       await page.click('#btn-search-cancel');
-      await expect(page.locator('.only-bar')).toHaveCount(0);
+      await expect(page.locator('.today-chips')).toHaveCount(0);
     } finally {
       for (const t of [a, b]) await api('/tasks/' + t.id, { method: 'DELETE' });
       await api('/labels/' + l.id, { method: 'DELETE' });
@@ -3662,8 +3669,9 @@ try {
         body: JSON.stringify({ user_id: other.id }),
       });
     // Done today's heading, under the last row once earlier tests have ticked tasks, would leave room below that row.
-    // It is hidden here, so the last row sits by the add box.
-    const noDone = await page.addStyleTag({ content: '#view .done-sec{display:none}' });
+    // It is hidden here, so the last row sits by the add box. The project chips are hidden too, so the first row sits
+    // right under the header.
+    const noDone = await page.addStyleTag({ content: '#view .done-sec,#view .today-chips{display:none}' });
     try {
       await toastGone();
       await page.setViewportSize({ width: 390, height: 420 });
@@ -3734,6 +3742,70 @@ try {
       await noDone.evaluate(el => el.remove());
       await page.setViewportSize({ width: 390, height: 844 });
       for (const t of [first, last]) await api('/tasks/' + t.id, { method: 'DELETE' });
+    }
+  });
+  /* Tapping a row's project on Today narrows Today to it. Yours then leaves only the user's own tasks from it, and
+     None hides them all. Each stays set after a reload, as a chip that a tap sets back to All. A task the user didn't
+     add needs a second account. */
+  await step('a-rows-project-on-today-sets-what-today-shows-from-it', async () => {
+    const team = projects2.find(p => p.title === ASSIGNEE_PROJECT);
+    if (!team || !OTHER || !OTHER_PASSWORD) {
+      console.log('  (no ASSIGNEE_PROJECT, OTHER_USER and OTHER_PASSWORD: Today’s settings not checked)');
+      return;
+    }
+    const { token } = await (
+      await fetch(SERVER + '/api/v2/login', {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ username: OTHER, password: OTHER_PASSWORD }),
+      })
+    ).json();
+    const theirs = await (
+      await fetch(`${SERVER}/api/v2/projects/${team.id}/tasks`, {
+        method: 'POST',
+        headers: { ...json, Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ title: `Pocket smoke chip theirs ${stamp}`, due_date: todayAt(21) }),
+      })
+    ).json();
+    const mine = await make(`Pocket smoke chip mine ${stamp}`, { due_date: todayAt(21) }, team.id);
+    const T = rowOf(theirs.title),
+      M = rowOf(mine.title),
+      chip = set =>
+        page.getByRole('button', {
+          name: `${team.title}, ${set === 'yours' ? 'only your tasks' : 'hidden'}. Tap to show all.`,
+          exact: true,
+        });
+    try {
+      await refreshToday();
+      await expect(page.locator(T)).toBeVisible({ timeout: 15000 });
+      // A tap on the middle of the row reaches the row, not the pill under the title
+      const middle = await page.locator(`${M} > .body`).evaluate(b => {
+        const r = b.getBoundingClientRect();
+        return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.proj');
+      });
+      if (middle) throw new Error('a tap on the middle of a row lands on its project');
+      await page.locator(`${M} .meta .proj`).click();
+      await expect(page.locator('#btn-today-all')).toHaveAttribute('aria-pressed', 'true');
+      await page.click('#btn-today-yours');
+      await expect(chip('yours').locator('.pic.mine')).toBeVisible();
+      await expect(page.locator(T)).toHaveCount(0);
+      await expect(page.locator(M)).toBeVisible();
+      await page.reload();
+      await expect(page.locator(M)).toBeVisible({ timeout: 15000 });
+      await expect(chip('yours')).toBeVisible();
+      await expect(page.locator(T)).toHaveCount(0);
+      await page.locator(`${M} .meta .proj`).click();
+      await expect(page.locator('#btn-today-yours')).toHaveAttribute('aria-pressed', 'true');
+      await page.click('#btn-today-none');
+      await expect(page.locator(M)).toHaveCount(0);
+      await expect(chip('none')).toHaveClass(/\boff\b/);
+      await chip('none').click();
+      await expect(page.locator(T)).toBeVisible();
+      await expect(page.locator(M)).toBeVisible();
+      await expect(page.locator('.today-chips')).toHaveCount(0);
+    } finally {
+      await page.evaluate(() => localStorage.removeItem('pocket.today.filter'));
+      for (const t of [theirs, mine]) await api('/tasks/' + t.id, { method: 'DELETE' });
     }
   });
   /* Swiping progress on a task that no one is doing claims it for the user. Their picture appears, and the claim is
@@ -4748,7 +4820,8 @@ try {
   await step('back-closes-the-sheet-and-keeps-the-draft', async () => {
     const t = `Pocket smoke tick A ${stamp}`;
     await refreshToday();
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    // The task has a label by now, so the middle of its row is the line with its project pill. The title opens it.
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     await page.fill('#d-cin', 'written before Back');
     await page.waitForSelector('#sheet.show'); // wait for the sheet to slide in, because Back closes only a sheet that is showing
     await page.goBack(); // the phone's Back
@@ -4756,7 +4829,7 @@ try {
     if (!(await page.evaluate(() => location.hash)).startsWith('#/today'))
       throw new Error('Back left Today: ' + (await page.evaluate(() => location.href)));
     await page.reload(); // the draft survives even after Pocket is closed
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     if ((await page.inputValue('#d-cin')) !== 'written before Back')
       throw new Error('comment: ' + (await page.inputValue('#d-cin')));
     await page.fill('#d-cin', '');
@@ -4766,7 +4839,7 @@ try {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.waitForFunction(() => location.hash === '#/projects');
     await page.click('nav.tabs a[data-tab=today]');
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.goBack();
@@ -7076,7 +7149,8 @@ ${footName('Hooks')}`);
     ).json();
     createdProjects.push(proj.id);
     await make(long, { due_date: todayAt(23) }, proj.id);
-    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line.
+    // Finds elements on screen that reach past the right edge. It skips text inside a title cut to one line, and the
+    // chips in Today's chip row, which scrolls sideways.
     const past = () =>
       page.evaluate(() => {
         const w = document.documentElement.clientWidth;
@@ -7085,7 +7159,7 @@ ${footName('Hooks')}`);
             el =>
               el.offsetParent !== null &&
               el.getBoundingClientRect().right > w + 1 &&
-              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title'),
+              !el.parentElement.closest('.one-line .title, .clamp .title, .card-title, .today-chips'),
           )
           .map(
             el =>

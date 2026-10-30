@@ -118,7 +118,9 @@ export default {
   /* The label Today is narrowed to, which each line typed in quick add's box or a box under a row on Today gets, so
      the new task shows there. Null elsewhere. */
   boxOnly(w) {
-    return (w === 'cap' || w === 'under') && this.route.name === 'today' ? this.only : null;
+    return (w === 'cap' || w === 'under') && this.route.name === 'today' && this.only?.kind === 'label'
+      ? this.only
+      : null;
   },
   /* The cache for one box, keyed by its text, the chips tapped off, nesting, quick add mode and due time. Chips,
      highlights and sending ask for the same data many times while rendering, so each part is parsed once, when first

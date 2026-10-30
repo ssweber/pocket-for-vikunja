@@ -9,7 +9,7 @@ import { allPages, NetError } from '../api.js';
 import { dueInfo, isLate, isSet, repeats, shortDue } from '../dates.js';
 import { parseStep, runWithoutDay, stepsOf, whereNext } from '../checklists.js';
 import { pctOf, workedOut } from '../progress.js';
-import { cardRows, countdown, openSubs, runTop, urgentFirst } from '../cards.js';
+import { cardRows, countdown, openSubs, ownTask, runTop, urgentFirst } from '../cards.js';
 import { listViewOf, positionOrder } from '../order.js';
 import { isMovedGap } from '../lists.js';
 import { completeAsk, headText, ringSaid } from '../messages.js';
@@ -405,15 +405,29 @@ export default {
       { duration: 200, easing: 'ease-out' },
     );
   },
-  // The tasks that Move all to today moves: each overdue row, and for an overdue card the task and its overdue open
-  // subtasks. A checklist card moves nothing, because the checklist times its own steps. A done task's date no longer
+  /* Whether Today shows task `t` (listGroups), by the settings of its project and labels (todayFilter). None hides it.
+     Yours keeps only the user's own tasks, and a card with an open subtask of theirs. A moved row's gap goes with its
+     task. view.groups still holds the hidden tasks, so whatever acts on Today's tasks (Move all, the badge, due
+     alerts) asks this too. */
+  todayShows(t) {
+    if (isMovedGap(t)) t = this.tasks[t.gapOf] || t;
+    const f = this.todayFilter,
+      sets = [f['p' + t.project_id]?.set, ...(t.labels || []).map(l => f['l' + l.id]?.set)];
+    if (sets.includes('none')) return false;
+    if (!sets.includes('yours') || ownTask(t, this.user)) return true;
+    return !!this.view.cards?.[t.id] && this.cardSubs(t).some(s => !s.done && ownTask(s, this.user));
+  },
+  // The tasks that Move all to today moves: each overdue row Today shows (todayShows), and for an overdue card the task
+  // and its overdue open subtasks. A checklist card moves nothing, because the checklist times its own steps. A done task's date no longer
   // places it, so it stays as it is.
   get overdueTasks() {
     const g = this.view.groups.find(x => x.key === 'overdue'),
       late = x => !x.done && isSet(x.due_date) && isLate(x.due_date);
-    return (g?.tasks || []).flatMap(t =>
-      !this.view.cards?.[t.id] ? [t] : this.isRunTask(t) ? [] : [t, ...this.cardSubs(t, false)].filter(late),
-    );
+    return (g?.tasks || [])
+      .filter(t => this.todayShows(t))
+      .flatMap(t =>
+        !this.view.cards?.[t.id] ? [t] : this.isRunTask(t) ? [] : [t, ...this.cardSubs(t, false)].filter(late),
+      );
   },
 
   /* Read what Today's cards need beyond what Today already read (`known`): each card's task, and its open subtasks
