@@ -829,6 +829,20 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
   height: 19px;
   font-size: inherit;
 }
+/* A long project name is cut short with "…" on the time line. A flex basis of 0 keeps the pill from wrapping onto a
+   line of its own before it shrinks. */
+.meta .proj.lab-pill {
+  flex: 1 1 0;
+  max-width: max-content;
+}
+.meta .proj.lab-pill > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta .proj.lab-pill > .dot {
+  flex: none;
+}
 .meta .proj::after {
   content: '';
   position: absolute;

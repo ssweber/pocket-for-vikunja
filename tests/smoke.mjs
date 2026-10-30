@@ -4820,7 +4820,8 @@ try {
   await step('back-closes-the-sheet-and-keeps-the-draft', async () => {
     const t = `Pocket smoke tick A ${stamp}`;
     await refreshToday();
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    // The task has a label by now, so the middle of its row is the line with its project pill. The title opens it.
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     await page.fill('#d-cin', 'written before Back');
     await page.waitForSelector('#sheet.show'); // wait for the sheet to slide in, because Back closes only a sheet that is showing
     await page.goBack(); // the phone's Back
@@ -4828,7 +4829,7 @@ try {
     if (!(await page.evaluate(() => location.hash)).startsWith('#/today'))
       throw new Error('Back left Today: ' + (await page.evaluate(() => location.href)));
     await page.reload(); // the draft survives even after Pocket is closed
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     if ((await page.inputValue('#d-cin')) !== 'written before Back')
       throw new Error('comment: ' + (await page.inputValue('#d-cin')));
     await page.fill('#d-cin', '');
@@ -4838,7 +4839,7 @@ try {
     await page.click('nav.tabs a[data-tab=projects]');
     await page.waitForFunction(() => location.hash === '#/projects');
     await page.click('nav.tabs a[data-tab=today]');
-    await page.click(`${rowOf(t)} > .body`, { timeout: 15000 });
+    await page.click(`${rowOf(t)} .title`, { timeout: 15000 });
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
     await page.goBack();
