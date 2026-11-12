@@ -502,11 +502,13 @@ export default {
       ? `This template is due ${on}, then ${repeatWords(t)}. Today lists it from a week before. Starting a checklist on or after the due day moves it to its next date.`
       : `This template is due ${on}, once. Today lists it from a week before. ${startMarksDone(templateName(t.title), true)} Choose Repeats to make it repeat.`;
   },
-  // The open template's settings for its checklists, {wait, order}, read from its notes (runRules).
+  // The open template's settings for its checklists, {wait, order, who}, read from its notes (runRules).
   get templateRules() {
-    return this.checklistRole === 'template' ? runRules(this.sheetTask?.description) : { wait: false, order: false };
+    return this.checklistRole === 'template'
+      ? runRules(this.sheetTask?.description)
+      : { wait: false, order: false, who: false };
   },
-  // Turn one of the open template's settings ('wait' or 'order') on or off. The switch shows the change at once.
+  // Turn one of the open template's settings ('wait', 'order' or 'who') on or off. The switch shows the change at once.
   setTemplateRule(key, on) {
     const t = this.sheetTask;
     if (t && this.canEdit) this.act({ op: 'edit', task: t.id, run: null, rebase: 'rules', rules: { [key]: on } });

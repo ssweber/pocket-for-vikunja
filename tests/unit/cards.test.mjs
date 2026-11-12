@@ -1223,7 +1223,8 @@ const runScreen = (time = 'T#30m', rules = '') => {
 const stepsOn = app => app.view.shownRun.steps.map(id => app.tasks[id]);
 // A checklist's settings lines (runRules).
 const WAIT = '<p>pocket:wait</p>',
-  IN_ORDER = '<p>pocket:in-order</p>';
+  IN_ORDER = '<p>pocket:in-order</p>',
+  WHO = '<p>pocket:assignees</p>';
 
 /* A checklist's screen holds ids and reads the checklist and its steps from tasks, the objects every list shows. So a
    step ticked on Today shows on the screen at once, and the screen is saved as its ids. */
@@ -1444,7 +1445,7 @@ test('a step that waits for its time: Done counts down to the second, Skip works
   app.tasks[51].done = false; // A is not done any more
   assert.deepEqual(
     [b().lockText, b().dueText, b().lock],
-    ['Waiting for A', 'Due 30m after “A”', { icon: 'hourglass', at: null, from: 'A' }],
+    ['Waiting for A', 'Due 30m after “A”', { icon: 'hourglass', at: null, from: 'A', who: null, skip: true }],
     'before A is done, the button names A',
   );
 });
@@ -1464,7 +1465,7 @@ test('on Today a step that waits for its time shows an hourglass, and a tap on i
   const b = app.tasks[52],
     g = { depth: {} },
     due = Date.parse(app.tasks[51].done_at) + 30 * 6e4;
-  assert.deepEqual(app.stepLock(b), { icon: 'hourglass', at: due, from: 'A' });
+  assert.deepEqual(app.stepLock(b), { icon: 'hourglass', at: due, from: 'A', who: null, skip: true });
   assert.deepEqual([app.rowLock(b, g), app.rowLock(app.tasks[53], g)], ['hourglass', ''], 'only B has an hourglass');
   app.tickRow(b, g, null);
   assert.deepEqual(
@@ -1531,7 +1532,7 @@ test('with "Enforce step order", Done names the nearest open step above, Skip wo
   const [, b, c, d] = app.runView.steps;
   assert.deepEqual(
     [b.lock, c.lock, c.lockText, d.lockText],
-    [null, { icon: 'lock', at: null, from: 'B' }, 'After B', 'After C'],
+    [null, { icon: 'lock', at: null, from: 'B', who: null, skip: true }, 'After B', 'After C'],
     'B has no time lock, because only "Enforce step order" is on, and D names C, the nearest open step',
   );
   assert.equal(await app.tickStep(c, 'done'), false, 'Done does nothing');
@@ -1567,6 +1568,63 @@ test('on Today a step locked by order shows a padlock until the step above it is
   );
   app.tasks[52].done = true;
   assert.deepEqual([app.rowLock(c, g), app.rowLock(app.tasks[54], g)], ['', 'lock']);
+});
+
+/* With "Enforce step assignees" on, C is assigned to bob, so the user can't tick or skip it. Done is grey and names bob,
+   and a tap on Done or Skip says who can tick C. D has nobody on it and ticks as usual. */
+test(`with "Enforce step assignees", only the step's assignee can tick or skip it, and a step with nobody on it ticks`, async () => {
+  const app = runScreen('T#30m', WHO),
+    acts = [],
+    bob = { id: 2, username: 'bob' };
+  Object.assign(app, {
+    route: { name: 'run' },
+    runDrafts: {},
+    unlockSound() {},
+    takeAnswers: () => '', // the asks module isn't loaded, and no step here asks anything
+    act: async f => (acts.push(f.op), { status: 'sent' }),
+  });
+  app.tasks[53].assignees = [bob];
+  const [, , c, d] = app.runView.steps;
+  assert.deepEqual(
+    [c.lock, c.lockText, d.lock],
+    [{ icon: 'lock', at: null, from: null, who: ['bob'], skip: false }, 'Only bob', null],
+  );
+  assert.equal(await app.tickStep(c, 'done'), false, 'Done does nothing');
+  assert.equal(app.toast.msg, 'Only bob can tick “C”');
+  app.toast.msg = '';
+  assert.equal(await app.tickStep(c, 'skip'), false, 'Skip does nothing either');
+  assert.deepEqual([acts, app.toast.msg], [[], 'Only bob can tick “C”']);
+  await app.tickStep(d, 'done');
+  assert.deepEqual(acts, ['done'], 'a step with nobody on it ticks');
+  app.tasks[53].assignees = [bob, me];
+  assert.equal(app.runView.steps[2].lock, null, 'any one of its assignees can tick it');
+});
+
+// On Today a step assigned to someone else shows the padlock, and a tap on its tick says who can tick it.
+test('on Today a step only its assignee can tick shows a padlock, and a tap on it names who can', () => {
+  const app = runScreen('T#30m', WHO),
+    ticked = [];
+  Object.assign(app, {
+    route: { name: 'today' },
+    stepRun: t => ([51, 52, 53, 54].includes(t.id) ? 50 : null),
+    toggleDone: t => ticked.push(t.id),
+    unmark: () => false,
+  });
+  app.tasks[50].related_tasks = { subtask: [51, 52, 53, 54].map(id => ({ id })) };
+  app.tasks[53].assignees = [
+    { id: 2, username: 'bob', name: 'Bob' },
+    { id: 3, username: 'sam' },
+  ];
+  const g = { depth: {} },
+    c = app.tasks[53];
+  assert.deepEqual(
+    [52, 53, 54].map(id => app.rowLock(app.tasks[id], g)),
+    ['', 'lock', ''],
+  );
+  app.tickRow(c, g, null);
+  assert.deepEqual([ticked, app.toast.msg], [[], 'Only Bob or sam can tick “C”']);
+  app.tasks[53].assignees = [me];
+  assert.equal(app.rowLock(c, g), '', "the step is the user's own");
 });
 
 // A checklist reads only its own settings lines, so one started without them never locks a step, whatever its template

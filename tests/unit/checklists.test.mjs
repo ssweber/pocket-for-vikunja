@@ -74,14 +74,18 @@ test('a timed step counts from the previous step, a named earlier step, or the s
 /* A checklist's settings are lines in its notes. The order line, "pocket:order", is not "pocket:in-order". Writing a
    setting leaves the notes and Pocket's other lines as they are. */
 test("a checklist's settings are read from its own lines, and writing one keeps the rest of its notes", () => {
-  assert.deepEqual(runRules('<p>Wear gloves</p><p>pocket:order 3 4</p>'), { wait: false, order: false });
-  assert.deepEqual(runRules('<p>pocket:wait</p><p>pocket:in-order</p>'), { wait: true, order: true });
-  assert.deepEqual(runRules(''), { wait: false, order: false });
+  const off = { wait: false, order: false, who: false };
+  assert.deepEqual(runRules('<p>Wear gloves</p><p>pocket:order 3 4</p>'), off);
+  assert.deepEqual(runRules('<p>pocket:wait</p><p>pocket:in-order</p>'), { ...off, wait: true, order: true });
+  assert.deepEqual(runRules('<p>pocket:assignees</p>'), { ...off, who: true });
+  assert.deepEqual(runRules(''), off);
   assert.equal(
     withRules('<p>Wear gloves</p><p>pocket:order 3 4</p>', { order: true }),
     '<p>Wear gloves</p><p>pocket:order 3 4</p><p>pocket:in-order</p>',
   );
   assert.equal(withRules('<p>pocket:wait</p><p>pocket:in-order</p>', { wait: false }), '<p>pocket:in-order</p>');
+  assert.equal(withRules('<p>Wear gloves</p>', { who: true }), '<p>Wear gloves</p><p>pocket:assignees</p>');
+  assert.equal(withRules('<p>pocket:assignees</p><p>pocket:wait</p>', { who: false }), '<p>pocket:wait</p>');
 });
 
 /* The rules for when a step can be ticked (lockOf). Mix the dough is done at t0. Shape the loaves is due 20 minutes
@@ -114,6 +118,15 @@ const locks = (steps, rules, now) => {
   return steps.map((s, i) => {
     const l = lockOf(steps, i, times, rules, now);
     return l && [l.icon, l.at, l.from.title];
+  });
+};
+// Each step's lock for user `me` as [who it waits for, whether Skip works], with `people` on each step by index.
+const whoLocks = (steps, rules, me, people) => {
+  const times = stepTimes(steps),
+    on = steps.map((s, i) => ({ ...s, people: people[i] || [] }));
+  return on.map((s, i) => {
+    const l = lockOf(on, i, times, rules, 0, me);
+    return l && [l.who ? l.who.map(u => u.username).join(' ') : l.from.title, l.skip];
   });
 };
 
@@ -180,6 +193,43 @@ test('a step added during a checklist counts where it was put for "Enforce step 
     ['lock', null, 'Bake'],
     ['lock', null, 'Take the loaves out'],
   ]);
+});
+
+test(`"Enforce step assignees": only a step's assignees can tick or skip it, and a step with nobody on it is open`, () => {
+  const { steps } = bread();
+  const bob = { id: 2, username: 'bob' },
+    sam = { id: 3, username: 'sam' },
+    dev = { id: 1, username: 'dev' };
+  const who = { wait: false, order: false, who: true },
+    people = [[], [bob], [dev], [bob, dev]];
+  assert.deepEqual(whoLocks(steps, who, dev.id, people), [null, ['bob', false], null, null]);
+  assert.deepEqual(
+    whoLocks(steps, who, bob.id, people),
+    [null, null, ['dev', false], null],
+    'any one of them is enough',
+  );
+  assert.deepEqual(whoLocks(steps, who, dev.id, [[], [], [bob, sam]]).slice(1, 3), [null, ['bob sam', false]]);
+  assert.deepEqual(
+    whoLocks(steps, { ...who, who: false }, dev.id, people),
+    [null, null, null, null],
+    'with the setting off, assignees lock nothing',
+  );
+  steps[1].done = true;
+  assert.equal(whoLocks(steps, who, dev.id, people)[1], null, 'a done step is never locked');
+});
+
+test('with "Enforce step order" too, a step waits for its assignees first, and only an order lock lets Skip through', () => {
+  const { steps } = bread();
+  const bob = { id: 2, username: 'bob' },
+    both = { wait: false, order: true, who: true },
+    people = [[], [], [bob], []];
+  assert.deepEqual(whoLocks(steps, both, 1, people), [
+    null,
+    null,
+    ['bob', false], // Shape the loaves is open above it, but the person lasts longer
+    ['Bake', true],
+  ]);
+  assert.deepEqual(whoLocks(steps, both, bob.id, people)[2], ['Shape the loaves', true], 'bob still waits for order');
 });
 
 test("a template's steps are shown with when each is due, its name, and any problem", () => {

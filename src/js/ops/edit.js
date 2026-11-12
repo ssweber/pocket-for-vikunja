@@ -141,8 +141,8 @@ const REBASES = {
     merge: (older, newer) => ({ ...newer }),
     invert: () => null,
   },
-  /* A template's settings for its checklists (`rules`, {wait} or {order}, see runRules), as lines in the notes Vikunja
-     has. A switch flipped back is its own Undo, so the edit has none. */
+  /* A template's settings for its checklists (`rules`, {wait}, {order} or {who}, see runRules), as lines in the notes
+     Vikunja has. A switch flipped back is its own Undo, so the edit has none. */
   rules: {
     field: 'description',
     apply: (t, a) => ({ ...t, description: withRules(t.description, a.rules) }),

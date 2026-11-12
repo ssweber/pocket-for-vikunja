@@ -753,6 +753,9 @@ export const tickableAt = (title, at, from) =>
 // The Done button, and a tap on the tick, of a step that waits for `from`, the nearest open step above it.
 export const doneAfter = from => `After ${from}`;
 export const tickableAfter = (title, from) => `“${title}” can be ticked after “${from}”`;
+// The Done button, and a tap on Done, Skip or the tick, of a step that only its assignees, by `names`, can tick.
+export const onlyFor = names => `Only ${andList(names, 'or')}`;
+export const onlyTicks = (names, title) => `${onlyFor(names)} can tick “${title}”`;
 // The tasks whose due time (`due`) or reminder (`reminded`) just passed, by `titles`, as a screen reader hears them.
 export const dueSaid = (titles, due, reminded) =>
   titles.length === 1

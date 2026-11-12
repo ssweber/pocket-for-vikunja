@@ -14,6 +14,16 @@ is a new 0.x.y.
 
 ## Unreleased
 
+### Added
+
+- A template's third switch, **Enforce step assignees**, lets only a step's assignee tick or skip it
+  ([guide](docs/guide.md#checklists)).
+
+### Changed
+
+- A task's title in a message is drawn as a chip, so it stands apart from the words around it.
+- Tapping Done on a locked step says why it is locked.
+
 ## 0.4.0 (2026-10-30)
 
 ### Added
