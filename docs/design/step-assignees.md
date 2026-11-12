@@ -14,8 +14,9 @@ title chip, option B).
 - A step with no assignee stays open to anyone who can write to the project. So does a step added during the checklist,
   unless it was typed with `@user`.
 - Skip is locked too, unlike under the other two switches. Otherwise a teammate could skip the sign-off.
-- The assignee can release their step, and then anyone can tick it. That is how a step is handed off. Nobody else can
-  take over a step that has someone on it in Pocket, as now.
+- The lock follows whoever is assigned when the step is ticked. The assignee can release the step or hand it to
+  someone else, and a teammate who changes the step's assignees in a task's sheet can take it over. For a small team,
+  reassigning a step to close it out is fine, so the switch adds no rule on who changes a step's assignees.
 - No override for the template's author or a project admin. A stuck step is fixed in Vikunja's web app.
 - Finishing a checklist early leaves its open steps open, so it needs no rule.
 - Vikunja's web app ignores the switch, as it ignores the other two. The ✅ reaction records who ticked.
