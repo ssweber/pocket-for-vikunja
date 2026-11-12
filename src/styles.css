@@ -2329,6 +2329,25 @@ button.ring::after {
 #sheet-body > .place-line {
   margin: 0 0 12px;
 }
+/* A title inside a message (markup/title-text.html), drawn as a chip so it reads apart from the words around it. Its
+   colour is set by the message's background: a place line, a row line or the toast. A long title wraps with each line
+   in its own chip. */
+.ttl {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--ttl);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.place-line {
+  --ttl: var(--surface);
+}
+.row-line {
+  --ttl: var(--sunk);
+}
+#toast {
+  --ttl: color-mix(in srgb, var(--bg) 20%, transparent);
+}
 .sr {
   position: absolute;
   width: 1px;

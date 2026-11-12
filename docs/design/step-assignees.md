@@ -23,29 +23,12 @@ title chip, option B).
 - In a message, a task's title is drawn as a white chip in the app's font (option B), in every message that names a
   task. It replaces the curly quotes.
 
-## Part 1: titles in messages as chips
+## Part 1: titles in messages as chips (built)
 
-A message is a string from `messages.js`, drawn as text in three places: a place line (`markup/place-line.html`), a
-row line (`markup/row-line.html`) and the toast (`#toast-msg` in `index.html`).
-
-- `messages.js` gets one helper that marks a title inside a message, by wrapping it in U+2068 and U+2069. These are
-  Unicode's isolate marks, so they also keep a right-to-left title from reordering the sentence around it. A screen
-  reader skips them. Every message that names a task, step, checklist or project uses the helper, in place of `“…”`
-  or a bare `${title}`.
-- A helper splits a message into parts, `{text, title}`. The three places draw the parts with `x-for`, a title part
-  as `<span class="ttl">`. The row line's struck-through title stays as it is.
-- `.ttl`: `background: var(--ttl-bg)`, `border-radius: 6px`, `padding: 1px 6px`, `box-decoration-break: clone`, so a
-  long title wraps with each line in its chip. `--ttl-bg` is `--surface` on a place line and a row line. The toast is
-  dark (`--ink`), so it gets its own value there. Dark mode needs a check on all three.
-- Button labels ("After Check the count") and the texts only a screen reader hears keep plain titles.
-- `scripts/check.mjs` fails on a curly quote around a `${…}` in `messages.js`, so a title can't be quoted by hand
-  again. The other files that build `“${…}”` (`cards.js`, `outbox.js`, `runs.js`) move their sentences into
-  `messages.js` if a message renderer draws them. Chips on the add box (`quickadd.js`) keep their quotes.
-- The order and time lock messages (`tickableAfter`, `tickableAt`, `waitingFor`) get the chip in this part.
-
-Tests: unit tests for the split (no marks, one title, two titles, a title holding `“`), and a check that
-`tickableAfter` marks both titles. An e2e test that compares a message's whole text sees the marks. If one fails on
-them, `tests/helpers.mjs` gets a helper that reads a message without them.
+Messages already put titles in curly quotes. `titleParts` (`messages.js`) splits a message at its outermost pairs of
+quotes, and `markup/title-text.html` draws each title as a chip in the row line, the place line and the toast. The
+quotes stay in the text, hidden, so screen readers, confirm dialogs and the tests read them as before. The lock
+messages now quote their titles too.
 
 ## Part 2: the switch
 

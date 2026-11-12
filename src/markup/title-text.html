@@ -1,0 +1,3 @@
+<!-- A message's text (`msg`), with each title in it drawn as a chip (titleParts). The chip keeps the title's quotes for
+     a screen reader, but hides them. -->
+<template x-for="(p, i) in titleParts(msg)" :key="i"><span :class="p.title && 'ttl'"><span class="sr" x-text="p.title ? '“' : ''"></span><span x-text="p.text"></span><span class="sr" x-text="p.title ? '”' : ''"></span></span></template>

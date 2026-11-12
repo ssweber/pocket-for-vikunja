@@ -1431,7 +1431,7 @@ test('a step that waits for its time: Done counts down to the second, Skip works
   assert.equal(await app.tickStep(b(), 'done'), false, 'Done does nothing');
   app.tickRow(b(), app.runRows);
   assert.deepEqual(
-    [acts, app.toast.msg.startsWith('B can be ticked at '), app.toast.row, app.toast.place],
+    [acts, app.toast.msg.startsWith('“B” can be ticked at '), app.toast.row, app.toast.place],
     [[], true, null, ['sheet:top', 'step', 'run']],
     "a tap on B's tick says so on the step card, because the screen's rows have no messages",
   );
@@ -1469,13 +1469,13 @@ test('on Today a step that waits for its time shows an hourglass, and a tap on i
   app.tickRow(b, g, null);
   assert.deepEqual(
     [ticked, app.toast.msg, app.toast.row],
-    [[], 'B can be ticked at ' + fmtTime(new Date(due)), { id: 52, stays: true }],
+    [[], '“B” can be ticked at ' + fmtTime(new Date(due)), { id: 52, stays: true }],
   );
   app.tickRow(app.tasks[53], g, null);
   assert.deepEqual(ticked, [53], 'C has no time, so its tick ticks it');
   app.tasks[51].done = false;
   app.tickRow(b, g, null);
-  assert.equal(app.toast.msg, 'Waiting for A', 'before A is done, the tap names A');
+  assert.equal(app.toast.msg, 'Waiting for “A”', 'before A is done, the tap names A');
 });
 
 /* Today's rows read the time once a minute (rowNow). Within a minute of a step's time, before or after, tickSteps moves
@@ -1536,7 +1536,7 @@ test('with "Enforce step order", Done names the nearest open step above, Skip wo
   );
   assert.equal(await app.tickStep(c, 'done'), false, 'Done does nothing');
   app.tickRow(c, app.runRows);
-  assert.deepEqual([acts, app.toast.msg], [[], 'C can be ticked after B']);
+  assert.deepEqual([acts, app.toast.msg], [[], '“C” can be ticked after “B”']);
   await app.tickStep(c, 'skip');
   assert.deepEqual(acts, ['skip'], 'Skip still works');
   app.tasks[52].done = true; // B is ticked
@@ -1561,7 +1561,10 @@ test('on Today a step locked by order shows a padlock until the step above it is
     ['hourglass', 'lock', 'lock'],
   );
   app.tickRow(c, g, null);
-  assert.deepEqual([ticked, app.toast.msg, app.toast.row], [[], 'C can be ticked after B', { id: 53, stays: true }]);
+  assert.deepEqual(
+    [ticked, app.toast.msg, app.toast.row],
+    [[], '“C” can be ticked after “B”', { id: 53, stays: true }],
+  );
   app.tasks[52].done = true;
   assert.deepEqual([app.rowLock(c, g), app.rowLock(app.tasks[54], g)], ['', 'lock']);
 });
