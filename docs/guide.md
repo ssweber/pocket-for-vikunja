@@ -143,7 +143,13 @@ In Vikunja's web app, the timer is part of the step's title:
 
 Units are `d`, `h`, `m`, `s` and `ms`, and they combine: `T#1h30m`. [Timers](data.md#timers) has the rest of the rules.
 
-**Enforcing.** Three switches under a template's steps are off at first. **Enforce step times** stops a timed step being ticked early. **Enforce step order** stops a step being ticked while one above it is open. **Skip** still works under these two. **Enforce step assignees** lets only a step's assignee tick or skip it, and a step with no assignee stays open to anyone. Together with step order, this makes a sign-off: assign the last step to the person who checks the work. Vikunja's web app ignores all three.
+**Enforcing.** Three switches under a template's steps are off at first.
+
+- **Enforce step times** stops a timed step being ticked early. **Skip** still works.
+- **Enforce step order** stops a step being ticked while one above it is open. **Skip** still works.
+- **Enforce step assignees** lets only a step's assignee tick or skip it. A step with no assignee stays open to anyone.
+- Step assignees and step order together make a sign-off. Assign the last step to the person who checks the work.
+- Vikunja's web app ignores all three.
 
 ## Asks
 
