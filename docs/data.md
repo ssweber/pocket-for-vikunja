@@ -17,7 +17,7 @@ How Pocket's templates, checklists, timers and answers look in Vikunja, for anyo
 - A checklist is a copy of the template, named like "Opening up · Oct 4 · #3". A name given when it starts, such as "Saturday", replaces the number.
 - A checklist's steps are its subtasks. A step's notes, photos and asks are copied from the template's step, as are the template's own notes, attachments, labels and assignees.
 - In Pocket, only the template's creator or an admin of its project can change it, delete it, or make a task into a template. Vikunja's web app doesn't know this rule, so anyone with write access can change a template there.
-- The web app doesn't know the template's switches either, so a step can be ticked there at any time.
+- The web app doesn't know the template's switches either, so anyone can tick a step there at any time.
 
 ## Pocket's lines in descriptions
 
@@ -29,13 +29,14 @@ Pocket keeps its own records as lines in descriptions. Pocket hides any line sta
 | `pocket:order 12 15 13` | A template's or checklist's description | The step order, by task id. Steps it doesn't list sort last. |
 | `pocket:wait` | A template's or checklist's description | **Enforce step times** is on. |
 | `pocket:in-order` | A template's or checklist's description | **Enforce step order** is on. |
+| `pocket:assignees` | A template's or checklist's description | **Enforce step assignees** is on. |
 | `pocket:run` | A checklist's description | The task is a checklist. |
 | `pocket:step Preheat T#10m` | A checklist step's description | The template step it was copied from. |
 | `pocket:added` | A checklist step's description | The step was added or repeated on this checklist, not copied from the template. |
 | `pocket:ask …` | A step's description | An ask. See [Asks](#asks). |
 | `pocket:answer` | The last line of a comment | The comment holds answers. See [Answers](#answers). |
 
-A checklist copies `pocket:wait` and `pocket:in-order` when it starts, so changing the template's switches changes only later checklists.
+A checklist copies `pocket:wait`, `pocket:in-order` and `pocket:assignees` when it starts, so changing the template's switches changes only later checklists.
 
 ## Timers
 

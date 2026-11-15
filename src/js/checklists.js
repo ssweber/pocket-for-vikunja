@@ -108,19 +108,26 @@ export const withRunMark = html => withLine(html, RUN_LINE, 'pocket:run');
 export const withStepLine = (html, title) => withLine(html, STEP_LINE, title === null ? null : 'pocket:step ' + title);
 export const withAdded = html => withLine(html, ADDED_LINE, 'pocket:added');
 /* A template's settings for its checklists, as lines in its description. "pocket:wait" stops a timed step being ticked
-   before its time. "pocket:in-order" stops a step being ticked while a step above it is open. A checklist gets a copy
+   before its time. "pocket:in-order" stops a step being ticked while a step above it is open. "pocket:assignees" lets
+   only a step's assignees tick or skip it. A checklist gets a copy
    of the lines when it starts and reads only its own, so changing the template changes only checklists started later.
    "pocket:in-order" is not "pocket:order", which holds the step ids. */
 const WAIT_LINE = /^pocket:wait$/i,
-  IN_ORDER_LINE = /^pocket:in-order$/i;
+  IN_ORDER_LINE = /^pocket:in-order$/i,
+  WHO_LINE = /^pocket:assignees$/i;
 export function runRules(html) {
   const root = parseFragment(html || '');
-  return { wait: !!markLines(root, WAIT_LINE).length, order: !!markLines(root, IN_ORDER_LINE).length };
+  return {
+    wait: !!markLines(root, WAIT_LINE).length,
+    order: !!markLines(root, IN_ORDER_LINE).length,
+    who: !!markLines(root, WHO_LINE).length,
+  };
 }
-// The description with the settings `rules` sets ({wait, order}, either may be left out) written as lines.
+// The description with the settings `rules` sets ({wait, order, who}, any may be left out) written as lines.
 export function withRules(html, rules) {
   if ('wait' in rules) html = withLine(html, WAIT_LINE, rules.wait ? 'pocket:wait' : null);
   if ('order' in rules) html = withLine(html, IN_ORDER_LINE, rules.order ? 'pocket:in-order' : null);
+  if ('who' in rules) html = withLine(html, WHO_LINE, rules.who ? 'pocket:assignees' : null);
   return html;
 }
 // Any line of Pocket's, including one that a newer Pocket writes and this one does not know. An older copy still
@@ -467,19 +474,24 @@ export function stepTimes(steps) {
   });
 }
 /* Whether step `i` of a run can't be ticked yet, under the run's settings (`rules`, runRules). `steps` are the run's
-   steps in order and `times` what stepTimes gave them. With `order`, a step waits while a step above it is open (a
-   skipped step is done), and the nearest such step is named. With `wait`, a timed step waits for the step it counts
-   from, then for its time. A step added during the run has no time, so it never waits for one. Returns null when the
-   step can be ticked, else {icon: 'lock' or 'hourglass', at: when it can be ticked, or null while it waits on a step,
-   from: that step}. */
-export function lockOf(steps, i, times, rules, now) {
+   steps in order and `times` what stepTimes gave them. With `who`, a step whose people (`steps[i].people`) don't
+   include user `me` waits for them, and is checked first because it lasts. With `order`, a step waits while a step
+   above it is open (a skipped step is done), and the nearest such step is named. With `wait`, a timed step waits for
+   the step it counts from, then for its time. A step added during the run has no time, so it never waits for one.
+   Returns null when the step can be ticked, else {icon: 'lock' or 'hourglass', at: when it can be ticked, or null
+   while it waits on a step or a person, from: that step, who: those people, skip: whether Skip still works}. */
+export function lockOf(steps, i, times, rules, now, me = null) {
   if (steps[i].done) return null;
+  const people = steps[i].people || [];
+  if (rules.who && people.length && !people.some(u => u.id === me))
+    return { icon: 'lock', at: null, from: null, who: people, skip: false };
   if (rules.order)
-    for (let j = i - 1; j >= 0; j--) if (!steps[j].done) return { icon: 'lock', at: null, from: steps[j] };
+    for (let j = i - 1; j >= 0; j--)
+      if (!steps[j].done) return { icon: 'lock', at: null, from: steps[j], who: null, skip: true };
   const at = times[i];
   if (!rules.wait || at.time?.offset == null) return null;
-  if (at.from && !at.from.done) return { icon: 'hourglass', at: null, from: at.from };
-  return at.due && +at.due > now ? { icon: 'hourglass', at: +at.due, from: at.from } : null;
+  if (at.from && !at.from.done) return { icon: 'hourglass', at: null, from: at.from, who: null, skip: true };
+  return at.due && +at.due > now ? { icon: 'hourglass', at: +at.due, from: at.from, who: null, skip: true } : null;
 }
 /* A step's time typed as a phrase: "in 20 min", "after an hour", "20 minutes later", "1h 30m after". It is saved as
    T#20m. Instructions like "for 2 minutes" or "rest 10 minutes" aren't read as times. */

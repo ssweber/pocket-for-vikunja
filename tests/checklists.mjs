@@ -2610,8 +2610,8 @@ try {
   /* "Enforce step times", turned on by tapping its row in the template's sheet, writes pocket:wait in the template's
      notes, and an hourglass shows beside each step's time. In a checklist started then, Shape the loaves waits for Mix
      the dough, then for its time. Its Done button counts down, and its tick on the checklist's screen and on Today's
-     card shows the hourglass. A tap on the tick says when it can be ticked, a tap on Done does nothing, and a swipe
-     right springs back. Skip still works, here on Bake. At its time Shape the loaves is ticked as any step. */
+     card shows the hourglass. A tap on the tick or on Done says when it can be ticked, and a swipe right springs
+     back. Skip still works, here on Bake. At its time Shape the loaves is ticked as any step. */
   let bread = null,
     breadRun = null;
   await step('a-template-that-waits-for-step-times', async () => {
@@ -2660,7 +2660,7 @@ try {
       done = '#step-done';
     await page.waitForSelector(`${row(shape)} > button.check.locked use[href="#i-hourglass"]`, { timeout: 15000 });
     await page.click(`${row(shape)} > button.check`);
-    await said('step', 'Waiting for Mix the dough');
+    await said('step', 'Waiting for “Mix the dough”');
     await page.click(`${row(bake)} .body`);
     await expect(page.locator(done)).toHaveText('Waiting for Shape the loaves');
     await page.click('#step-skip');
@@ -2671,8 +2671,9 @@ try {
     await expect(page.locator(done)).toHaveText(/^Waiting (2:00|1:[0-5]\d)$/);
     await expect(page.locator(done)).toHaveAttribute('aria-disabled', 'true');
     await page.locator(done).dispatchEvent('click'); // aria-disabled, which Playwright won't click
+    await said('step', '“Shape the loaves” can be ticked at ');
     await page.click(`${row(shape)} > button.check`);
-    await said('step', 'Shape the loaves can be ticked at ');
+    await said('step', '“Shape the loaves” can be ticked at ');
     await swipeRow(page, row(shape), 100);
     await later(3000);
     await synced(page);
@@ -2684,7 +2685,7 @@ try {
     const card = `.day-card[data-id="${run}"] .row[data-id="${shape}"] > button.check`;
     await page.waitForSelector(`${card}.locked`, { timeout: 15000 });
     await page.click(card);
-    await expect(rowLine(page, 'Shape the loaves can be ticked at ')).toBeVisible();
+    await expect(rowLine(page, '“Shape the loaves” can be ticked at ')).toBeVisible();
     await page.evaluate(id => {
       location.hash = '#/run/' + id;
     }, run);
@@ -2746,7 +2747,7 @@ try {
     await page.click(`${row(bake)} .body`);
     await expect(page.locator(done)).toHaveText('After Shape the loaves');
     await page.click(`${row(bake)} > button.check`);
-    await said('step', 'Bake can be ticked after Shape the loaves');
+    await said('step', '“Bake” can be ticked after “Shape the loaves”');
     await page.click(`${row(shape)} .body`);
     await expect(page.locator(done)).toHaveText('After Mix the dough');
     await page.click('#step-skip');
@@ -2758,6 +2759,73 @@ try {
     await expect(page.locator(done)).toHaveText('Done');
     await page.click(done);
     await until('Bake was never done', async () => (await task(bake)).done);
+  });
+
+  /* "Enforce step assignees" turned on in a template of its own. On a checklist started from it, a step with no
+     assignee ticks as any step. A step assigned to someone else is locked: its Done names them, and a tap on Done, on
+     Skip or on its tick says who can tick it and changes nothing in Vikunja. */
+  await step('a-template-with-step-assignees', async () => {
+    const label = (await api('/labels?s=template')).items?.find(l => l.title === 'template');
+    const make = async (title, done) =>
+      api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, done }) });
+    const name = `Close the till ${stamp}`,
+      tpl = await make(name, false);
+    for (const title of ['Count the cash', 'Check the count']) {
+      const st = await make(title, true);
+      await api(`/tasks/${tpl.id}/relations`, {
+        method: 'POST',
+        body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }),
+      });
+    }
+    await api(`/tasks/${tpl.id}/labels`, { method: 'POST', body: JSON.stringify({ label_id: label.id }) });
+    await api('/tasks/' + tpl.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
+    await page.evaluate(() => {
+      location.hash = '#/today';
+    });
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    await page.click(`.cl-tpl:has(.title:text-is("${name}")) .body`, { timeout: 15000 });
+    await expect(page.locator('#d-who')).not.toBeChecked({ timeout: 15000 });
+    await page.click('#d-rules b:text-is("Enforce step assignees")');
+    await expect(page.locator('#d-who')).toBeChecked();
+    await until('the template never got its pocket:assignees line', async () =>
+      /<p>pocket:assignees<\/p>/.test((await api('/tasks/' + tpl.id)).description),
+    );
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+    await page.click(`.cl-tpl:has(.title:text-is("${name}")) .cl-start`, { timeout: 15000 });
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    await page.click('#start-go');
+    await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+    const run = +(await page.evaluate(() => location.hash)).split('/').pop();
+    runs.push(run);
+    if (!/<p>pocket:assignees<\/p>/.test((await api('/tasks/' + run)).description))
+      throw new Error('the checklist did not copy pocket:assignees');
+    const [count, check] = (await subtasks(run)).map(x => x.id),
+      row = id => `#run-steps .row[data-id="${id}"]`,
+      done = '#step-done';
+    if (other) {
+      const who = other.name || other.username,
+        message = `Only ${who} can tick “Check the count”`;
+      await api(`/tasks/${check}/assignees`, { method: 'POST', body: JSON.stringify({ user_id: other.id }) });
+      await page.reload();
+      await page.waitForSelector(`${row(check)} > button.check.locked use[href="#i-lock"]`, { timeout: 15000 });
+      await page.click(`${row(check)} .body`);
+      await expect(page.locator(done)).toHaveText(`Only ${who}`);
+      await page.locator(done).dispatchEvent('click'); // aria-disabled, which Playwright won't click
+      await said('step', message);
+      await expect(page.locator('#step-skip')).toHaveAttribute('aria-disabled', 'true');
+      await page.locator('#step-skip').dispatchEvent('click');
+      await said('step', message);
+      await page.click(`${row(check)} > button.check`);
+      await said('step', message);
+      await later(3000);
+      await synced(page);
+      if ((await task(check)).done) throw new Error("someone other than the step's assignee ticked it");
+    }
+    await page.click(`${row(count)} > button.check`);
+    await until('Count the cash was never done', async () => (await task(count)).done);
   });
 
   await step('asks-on-a-step', async () => {

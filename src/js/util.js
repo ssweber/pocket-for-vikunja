@@ -57,8 +57,8 @@ export function sizeLimit(text) {
 export const fmtSize = n =>
   !n ? '' : n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 // Join words into a list in a sentence, with commas between items and "and" before the last.
-export const andList = words =>
-  words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+export const andList = (words, and = 'and') =>
+  words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ` ${and} ` + words[words.length - 1];
 export const PRIOS = [
   { n: 0, label: 'No priority' },
   { n: 1, label: 'Low' },

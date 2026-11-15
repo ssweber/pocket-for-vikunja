@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   waitingText,
+  titleParts,
+  tickableAfter,
   addedPart,
   addedSubs,
   addedWhere,
@@ -124,6 +126,30 @@ import toastPart, { UNDO_MS } from '../../src/js/app/toast.js';
 /* The row at the end of a list of done tasks that is shown a part at a time. It offers the next part and says how many
    tasks are left. When fewer than a full part are left, it offers the last of them. When none are left, there is no
    row. */
+test('a message splits into its words and the titles it quotes, so each title can be drawn as a chip', () => {
+  const T = text => ({ text, title: true }),
+    W = text => ({ text, title: false });
+  assert.deepEqual(titleParts('Saved offline'), [W('Saved offline')]);
+  assert.deepEqual(titleParts('“Mop” is due now'), [T('Mop'), W(' is due now')]);
+  assert.deepEqual(titleParts(tickableAfter('Lock the safe', 'Check the count')), [
+    T('Lock the safe'),
+    W(' can be ticked after '),
+    T('Check the count'),
+  ]);
+  assert.deepEqual(
+    titleParts('Deleted “Order 6 “house blend” bags”'),
+    [W('Deleted '), T('Order 6 “house blend” bags')],
+    'a title holding its own pair of quotes stays one title',
+  );
+  assert.deepEqual(
+    titleParts('Deleted “Fix the 6” pipe”'),
+    [W('Deleted '), T('Fix the 6'), W(' pipe”')],
+    'a title holding a lone closing quote ends its chip early, and the rest stays as words',
+  );
+  assert.deepEqual(titleParts('Waiting for “Mop'), [W('Waiting for “Mop')], 'a quote left open ends no title');
+  assert.deepEqual(titleParts('It is 6” wide'), [W('It is 6” wide')], 'a closing quote alone is a word');
+  assert.deepEqual(titleParts(''), []);
+});
 test('the row for more done tasks names what a tap shows and how many tasks are left', () => {
   assert.deepEqual(moreDone(2900, 100), {
     title: 'Show 100 done earlier',

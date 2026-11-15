@@ -32,7 +32,9 @@
      out by itself. -->
 <div id="said" class="sr" aria-live="polite" x-text="said"></div>
 <div id="toasts">
-  <div id="toast" role="status" :class="{show: toast.show}"><span id="toast-msg" x-text="toast.msg"></span><button id="toast-act" :hidden="!toast.action" x-text="toast.action?.label" @click="runToastAction()" hidden></button><button id="toast-act2" :hidden="!toast.more" x-text="toast.more?.label" @click="runToastAction(true)" hidden></button></div>
+  <div id="toast" role="status" :class="{show: toast.show}"><span id="toast-msg"><template x-for="msg in [toast.msg]" :key="0">
+    <!-- include markup/title-text.html -->
+  </template></span><button id="toast-act" :hidden="!toast.action" x-text="toast.action?.label" @click="runToastAction()" hidden></button><button id="toast-act2" :hidden="!toast.more" x-text="toast.more?.label" @click="runToastAction(true)" hidden></button></div>
 </div>
 
 <script type="module" src="js/main.js"></script>

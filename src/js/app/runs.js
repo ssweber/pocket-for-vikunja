@@ -61,6 +61,8 @@ import {
   waitText,
   tickableAt,
   tickableAfter,
+  onlyFor,
+  onlyTicks,
   doneAfter,
   waitingFor,
   waitingText,
@@ -585,6 +587,7 @@ export default {
         doneAt,
         slot,
         by,
+        people,
         pct,
         added: s.added || '',
         pending: s.pending || null,
@@ -611,20 +614,22 @@ export default {
               : `when “${from.title}” is done`;
       const left = due ? due - now : 0,
         soon = Math.abs(left) < 864e5,
-        lock = lockOf(steps, i, times, rules, now);
+        lock = lockOf(steps, i, times, rules, now, me?.id);
       s.late = !!due && (s.done ? new Date(s.doneAt) > due : left < 0);
       s.counting = !s.done && time?.offset != null && !!due && soon; // a countdown: pinned at the top while it runs
       s.dueAt = due ? +due : Infinity;
       s.countText = s.counting ? countText(left) : '';
       // A step that can't be ticked yet (lockOf). Its Done button says why, counting a time down to the second.
-      s.lock = lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
+      s.lock = lock && this.lockShown(lock);
       s.lockText = !lock
         ? ''
-        : lock.icon === 'lock'
-          ? doneAfter(lock.from.title)
-          : lock.at === null
-            ? waitingFor(lock.from.title)
-            : waitingText(left);
+        : lock.who
+          ? onlyFor(s.lock.who)
+          : lock.icon === 'lock'
+            ? doneAfter(lock.from.title)
+            : lock.at === null
+              ? waitingFor(lock.from.title)
+              : waitingText(left);
       s.dueText = waitsOn
         ? 'Due ' + waitsOn
         : s.counting
@@ -861,19 +866,35 @@ export default {
   storedLock(t, now) {
     const run = this.tasks[this.stepRun(this.tasks[t.id] || t)],
       rules = runRules(run?.description);
-    if (!rules.order && (!rules.wait || parseStep(plainStep(this.tasks[t.id] || t).tpl || '').offset === null))
+    if (
+      !rules.order &&
+      !rules.who &&
+      (!rules.wait || parseStep(plainStep(this.tasks[t.id] || t).tpl || '').offset === null)
+    )
       return null;
+    // Vikunja leaves assignees out of a checklist's steps, so only this step's own people are read, from its row.
     const steps = stepsOf(run)
       .map(x => this.tasks[x.id] || x)
       .filter(x => !this.beingDeleted(x.id))
       .map(x => {
         const s = plainStep(x),
-          { tick, doneAt } = this.doneOf(s);
-        return { ...s, title: parseStep(s.title).title, doneAt, waiting: !!tick };
+          { tick, doneAt } = this.doneOf(s),
+          people = x.id === t.id ? this.peopleOf(t.id, (this.tasks[t.id] || t).assignees) : [];
+        return { ...s, title: parseStep(s.title).title, doneAt, waiting: !!tick, people };
       });
     const i = steps.findIndex(s => s.id === t.id),
-      lock = i < 0 ? null : lockOf(steps, i, stepTimes(steps), rules, now);
-    return lock && { icon: lock.icon, at: lock.at, from: lock.from?.title ?? null };
+      lock = i < 0 ? null : lockOf(steps, i, stepTimes(steps), rules, now, this.user?.id);
+    return lock && this.lockShown(lock);
+  },
+  // A step's lock (lockOf) as the screen shows it: the step it waits for by title, and the people by name.
+  lockShown(lock) {
+    return {
+      icon: lock.icon,
+      at: lock.at,
+      from: lock.from?.title ?? null,
+      who: lock.who && lock.who.map(u => this.nameOf(u)),
+      skip: lock.skip,
+    };
   },
   /* The icon a step's tick shows in place of its tick, 'lock' or 'hourglass', or '' when the step can be ticked. A
      checklist's screen checks each second (runNow), and Today each minute, or each second near a step's time (stepNow).
@@ -883,15 +904,23 @@ export default {
     if (!g.run && this.stepRun(t) == null) return '';
     return this.stepLock(t, serverTime(g.run ? this.runNow : this.stepNow()))?.icon || '';
   },
-  /* A tap on the tick of a step that can't be ticked yet says when it can, and ticks nothing. A list or a sheet says it
-     on the step's row. A checklist's screen (`run`) has no messages on its rows, so it says it on the step card. */
+  /* A tap on the tick of a step that can't be ticked yet says when it can, or who can, and ticks nothing. So does a
+     tap on its Done or Skip. A list or a sheet says it on the step's row. A checklist's screen (`run`) has no messages
+     on its rows, so it says it on the step card. */
   lockedTap(t, run = false) {
     const lock = this.stepLock(t);
     if (lock)
-      this.say(lock.icon === 'lock' ? tickableAfter(t.title, lock.from) : tickableAt(t.title, lock.at, lock.from), {
-        row: run ? null : { id: t.id, stays: true },
-        place: ['sheet:top', 'step', 'run'],
-      });
+      this.say(
+        lock.who
+          ? onlyTicks(lock.who, t.title)
+          : lock.icon === 'lock'
+            ? tickableAfter(t.title, lock.from)
+            : tickableAt(t.title, lock.at, lock.from),
+        {
+          row: run ? null : { id: t.id, stays: true },
+          place: ['sheet:top', 'step', 'run'],
+        },
+      );
     return !!lock;
   },
   /* When step `s` (plainStep) was done, by this phone's clock for a tick made here (keptTicks), and the tick of it still
@@ -926,7 +955,13 @@ export default {
   async tickStep(s, op, felt = false) {
     const r = this.view.shownRun;
     if (!r) return;
-    if (op === 'done' && this.stepLock(s)) return false; // the Done button of a step that can't be ticked yet does nothing
+    // A step that can't be ticked yet says why and ticks nothing. Skip still works, unless only the step's assignees can
+    // tick it, so that nobody skips a sign-off that isn't theirs.
+    const lock = op !== 'undone' && this.stepLock(s);
+    if (lock && (op === 'done' || !lock.skip)) {
+      this.lockedTap(s, true);
+      return false;
+    }
     const current = this.runView?.step?.id === s.id;
     let html = '';
     // Send this step's draft as a Skip reason or a Done note. Each step keeps its own draft.

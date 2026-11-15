@@ -1,6 +1,6 @@
 // Every sentence Pocket shows, asks or announces, with one wording for each situation. lines.js decides where each is
 // shown. These functions only build the text, so the unit tests can check it. Lint fails on such a sentence written
-// anywhere else (eslint.config.js).
+// anywhere else (eslint.config.js). A title goes in curly quotes, and the markup draws it as a chip (titleParts).
 import { andList, PRIOS } from './util.js';
 import { NetError, nextTry } from './api.js';
 import { dayName, dueInfo, fmtTime, isSet, repeats } from './dates.js';
@@ -9,6 +9,28 @@ import { htmlToText } from './html.js';
 import { answerLines, textLines } from './asks.js';
 
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+
+/* A message split into its parts, [{text, title}], so the markup can draw each title as a chip. A title is what a
+   message puts in curly quotes, without them. Quotes nest, because an iPhone turns a typed " into “ or ”, so a title
+   can hold a pair of its own. A quote left open ends no title, and its text stays as it is. */
+export function titleParts(text) {
+  const out = [],
+    s = String(text ?? '');
+  let depth = 0,
+    from = 0,
+    open = 0;
+  const push = (t, title) => t && out.push({ text: t, title });
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '“' && depth++ === 0) open = i;
+    else if (s[i] === '”' && depth > 0 && --depth === 0) {
+      push(s.slice(from, open), false);
+      push(s.slice(open + 1, i), true);
+      from = i + 1;
+    }
+  }
+  push(s.slice(from), false);
+  return out;
+}
 
 /* The row at the end of a list of done tasks that shows `per` tasks at a time, most recently done first (a project's
    Done, the done matches in search). `left` is how many are not shown yet. Returns {title, note}, or null when none are
@@ -727,10 +749,13 @@ export const waitingText = left => {
 };
 // A tap on the tick of a step that waits for its time. `at` is when it can be ticked, or null while it waits on `from`.
 export const tickableAt = (title, at, from) =>
-  at === null ? waitingFor(from) : `${title} can be ticked at ${fmtTime(new Date(at))}`;
+  at === null ? waitingFor(`“${from}”`) : `“${title}” can be ticked at ${fmtTime(new Date(at))}`;
 // The Done button, and a tap on the tick, of a step that waits for `from`, the nearest open step above it.
 export const doneAfter = from => `After ${from}`;
-export const tickableAfter = (title, from) => `${title} can be ticked after ${from}`;
+export const tickableAfter = (title, from) => `“${title}” can be ticked after “${from}”`;
+// The Done button, and a tap on Done, Skip or the tick, of a step that only its assignees, by `names`, can tick.
+export const onlyFor = names => `Only ${andList(names, 'or')}`;
+export const onlyTicks = (names, title) => `${onlyFor(names)} can tick “${title}”`;
 // The tasks whose due time (`due`) or reminder (`reminded`) just passed, by `titles`, as a screen reader hears them.
 export const dueSaid = (titles, due, reminded) =>
   titles.length === 1

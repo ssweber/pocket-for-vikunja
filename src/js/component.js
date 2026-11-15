@@ -6,7 +6,7 @@ import { fromLocalInput, isSet, toLocalInput } from './dates.js';
 import { RICH, sanitize } from './html.js';
 import { addedText, commentShown, durText } from './checklists.js';
 import { runTitle } from './sync.js';
-import { NO_SIGN_IN } from './messages.js';
+import { NO_SIGN_IN, titleParts } from './messages.js';
 import { isMovedGap, rowGestures, RUN_ROW, SHEET_ROW } from './lists.js';
 import { quarterOn, QUARTERS } from './progress.js';
 import core from './app/core.js';
@@ -54,6 +54,7 @@ export const globals = {
   runTitle,
   sanitize,
   SHEET_ROW,
+  titleParts,
   toLocalInput,
   ZERO,
 };

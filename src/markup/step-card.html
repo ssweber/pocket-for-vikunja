@@ -44,8 +44,8 @@
          thumb. A note under the comment says the comment is sent with them. -->
     <!-- A step that can't be ticked yet (runView.step.lock) has a grey Done with the lock's icon, which says what the
          step waits for. A tap on it does nothing. -->
-    <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" :class="{locked: !!runView.step.lock}" :aria-disabled="String(!!runView.step.lock)" @click="runView.step.lock || tickStep(runView.step, 'done')"><svg class="i"><use :href="'#i-' + (runView.step.lock?.icon || 'check')"/></svg><span class="num" x-text="runView.step.lockText || 'Done'"></span></button></template>
-    <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" @click="tickStep(runView.step, 'skip')">Skip</button></template>
+    <template x-if="!runView.step.done"><button class="btn go-on" id="step-done" :class="{locked: !!runView.step.lock}" :aria-disabled="String(!!runView.step.lock)" @click="tickStep(runView.step, 'done')"><svg class="i"><use :href="'#i-' + (runView.step.lock?.icon || 'check')"/></svg><span class="num" x-text="runView.step.lockText || 'Done'"></span></button></template>
+    <template x-if="!runView.step.done"><button class="btn ghost" id="step-skip" :class="{locked: runView.step.lock?.skip === false}" :aria-disabled="String(runView.step.lock?.skip === false)" @click="tickStep(runView.step, 'skip')">Skip</button></template>
     <template x-if="runView.step.done"><button class="btn ghost go-on" id="step-undo" @click="tickStep(runView.step, 'undone')">Not done</button></template>
   </div>
   <!-- Photos and Vikunja comments on this step. Without a connection, photos wait on the phone, as everywhere in
