@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addDays,
+  doneWeek,
   dueInfo,
   fromLocalInput,
   isLate,
@@ -220,4 +221,16 @@ test('a due date moved to another day keeps its time of day, and a time already 
     false,
     'the moved task is not late at 11:59 PM that day',
   );
+});
+
+test('Copy week covers Monday to today, and on a Monday the week before', () => {
+  const week = d => {
+    const w = doneWeek(new Date(2026, 10, d, 9, 30));
+    return [w.from.getDate(), w.to.getDate(), w.last];
+  };
+  assert.deepEqual(week(18), [16, 19, false], 'on Wednesday, Monday to the end of Wednesday');
+  assert.deepEqual(week(22), [16, 23, false], 'on Sunday, the whole week');
+  assert.deepEqual(week(17), [16, 18, false], 'on Tuesday, Monday and Tuesday');
+  assert.deepEqual(week(16), [9, 16, true], 'on Monday, last Monday to the end of Sunday');
+  assert.equal(+doneWeek(new Date(2026, 10, 18, 9)).from, +new Date(2026, 10, 16), 'from the start of Monday');
 });

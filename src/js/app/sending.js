@@ -715,6 +715,11 @@ export default {
      (listItems). `before` is the number of rows above the group on the screen, so a long screen can be drawn a batch
      at a time (drawn, views.js). A group that is unchanged since the last call is returned as the same object
      (sameGroup), so its rows have nothing to redraw. */
+  /* Whether the screen draws group `g`: it has rows, or it is folded with rows behind it. Done today's heading is drawn
+     with none, so Copy week is there before anything is done today. */
+  groupShows(g) {
+    return g.tasks.length || (g.fold && g.count !== 0) || g.key === 'donetoday';
+  },
   get listGroups() {
     const hidden = this.hiddenRows,
       today = this.route.name === 'today',

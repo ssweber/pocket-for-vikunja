@@ -950,13 +950,14 @@ export function startedText(who, at, { now = new Date(), day = false } = {}) {
 
 // The message shown after the user copies something, by what was copied: progress as text (where there is no share
 // sheet), a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, or a comment.
-// `failed` is for when the browser didn't allow the copy.
+// `failed` is for when the browser didn't allow the copy, and `unread` for when Copy week couldn't read the week.
 export const COPIED = {
   text: 'Copied. Paste it into a message',
   markdown: "Copied as a Markdown list. Paste it into your notes, or into Pocket's add box to make the same tasks",
   notes: 'Copied the notes',
   comment: 'Copied the comment',
   failed: "Not copied. This browser didn't allow it",
+  unread: "Not copied. Vikunja didn't answer. Try again when you're online",
 };
 
 // Names in a sentence: "A", "A and B", "A, B and C". Past `most` names, it lists the first `most` and counts the rest:

@@ -1,18 +1,34 @@
 // Gathers what is on screen for share.js, which writes the text. It shares the progress of a task, a project or a
 // checklist, copies a task or a project as a Markdown list that Pocket can read back (not a checklist, see share.js),
 // builds links to Vikunja's web app, and copies a task's notes or a comment.
+import { doneWeek } from '../dates.js';
 import { htmlToText } from '../html.js';
 import { parseStep, stepsOf } from '../checklists.js';
 import { positionOrder } from '../order.js';
 import { pctOf, workedOut } from '../progress.js';
 import { COPIED } from '../messages.js';
 import { notesText } from '../ops/index.js';
-import { doneTodayText, markdownText, shareText } from '../share.js';
+import { doneText, markdownText, shareText } from '../share.js';
 import { copyOf } from './tasks.js';
 
 /* Copy `text` to the clipboard. Where the Clipboard API isn't allowed (an older browser, a page not in focus), it
-   selects the text in a hidden textarea and copies with execCommand instead. Returns whether it worked. */
+   selects the text in a hidden textarea and copies with execCommand instead. Returns whether it worked. `text` may be
+   a promise. Safari allows a copy only during the tap, so text still loading goes in a ClipboardItem, which may finish
+   later. */
 async function toClipboard(text) {
+  if (typeof text !== 'string') {
+    const blob = text.then(x => new Blob([x], { type: 'text/plain' }));
+    blob.catch(() => {}); // a failed read is reported below, not as an unhandled rejection
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      return true;
+    } catch {}
+    try {
+      text = await text;
+    } catch {
+      return false;
+    }
+  }
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -187,19 +203,37 @@ export default {
     const doc = this.shareDoc(what);
     if (doc) return this.copyOut(shareText(doc), place, COPIED.text);
   },
-  /* Copy Done today's done tasks as text, each with its project. A row unticked there since it loaded is left out. It
-     reads listBase, as the screen does, so a copy of Today saved yesterday doesn't copy yesterday's tasks. */
+  /* Copy Done today's done tasks as text, by project. A row unticked there since it loaded is left out. It reads
+     listBase, as the screen does, so a copy of Today saved yesterday doesn't copy yesterday's tasks. */
   copyDoneToday() {
     const g = this.listBase.find(x => x.key === 'donetoday');
     if (!g) return;
-    const items = g.tasks
-      .filter(t => t.done)
-      .map(t => ({
-        title: this.shareTitle(t),
-        project: this.projById.get(t.project_id)?.title,
-        ring: this.shareRing(t),
-      }));
-    return this.copyOut(doneTodayText(items), 'donetoday', COPIED.text);
+    return this.copyOut(doneText(g.tasks.filter(t => t.done).map(t => this.doneItem(t))), 'donetoday', COPIED.text);
+  },
+  // Copy the week's done tasks the same way. They are read as the button is tapped, so opening Today reads no more.
+  copyDoneWeek() {
+    const week = doneWeek(),
+      text = this.readDoneWeek(week).then(list =>
+        doneText(
+          list.map(t => this.doneItem(t)),
+          { week },
+        ),
+      );
+    return this.copyOut(text, 'donetoday', COPIED.text);
+  },
+  // Copy week reads "Copy last week" on a Monday, when it copies the week before.
+  get doneWeekLabel() {
+    return doneWeek(new Date(this.rowNow())).last ? 'Copy last week' : 'Copy week';
+  },
+  // A done task as an item of doneText. A subtask names its parent, which Vikunja gives with the task.
+  doneItem(t) {
+    const up = t.related_tasks?.parenttask?.[0]?.title;
+    return {
+      title: (up ? up + ' › ' : '') + this.shareTitle(t),
+      project: this.projById.get(t.project_id)?.title,
+      ring: this.shareRing(t),
+      at: t.done_at,
+    };
   },
   // Copy the open task, or the project on screen, as a Markdown list that Pocket can read back. It is written in quick
   // add's syntax, with the user's own prefixes and default due time.
@@ -224,8 +258,15 @@ export default {
   copyComment(c) {
     return this.copyOut(htmlToText(c.comment), 'sheet:comments', COPIED.comment);
   },
+  // `text` may be a promise. When it fails, the message says the text couldn't be read rather than copied.
   async copyOut(text, place, said) {
-    const ok = await toClipboard(text);
-    this.say(ok ? said : COPIED.failed, { place, cls: ok ? '' : 'failed' });
+    const ok = await toClipboard(text),
+      read =
+        ok ||
+        (await Promise.resolve(text).then(
+          () => true,
+          () => false,
+        ));
+    this.say(ok ? said : read ? COPIED.failed : COPIED.unread, { place, cls: ok ? '' : 'failed' });
   },
 };
