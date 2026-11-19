@@ -12,7 +12,7 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
-## Unreleased
+## 0.6.0 (2026-11-19)
 
 ### Added
 
@@ -22,6 +22,7 @@ is a new 0.x.y.
 ### Changed
 
 - Done today's copy groups the tasks by project, and its heading stays on Today when nothing is done yet.
+- After a copy, the message says what was copied, such as "Copied today's done tasks".
 
 ## 0.5.0 (2026-11-15)
 
