@@ -16,7 +16,7 @@
           <!-- include markup/my-pic.html -->
         </template><template x-if="c.set === 'none'"><i class="dot" x-style="{background: colorOf(c.hex_color)}"></i></template><span class="t" x-text="onlyName(c)"></span></button></template>
       </div></template>
-      <template x-for="g in shownGroups.filter(g => g.tasks.length || (g.fold && g.count !== 0) || placeLines(g.key).length)" :key="g.key"><div>
+      <template x-for="g in shownGroups.filter(g => groupShows(g) || placeLines(g.key).length)" :key="g.key"><div>
         <!-- When no tasks are open, the empty message is shown above the Done section -->
         <template x-if="g.fold && !listGroups.some(x => !x.fold && x.tasks.length)">
           <!-- include markup/empty.html -->
@@ -26,8 +26,9 @@
           <template x-if="g.key === 'overdue' && overdueMovable && !only"><button type="button" class="sec-act" id="btn-overdue-today" :disabled="movingOverdue" @click="moveOverdueToToday()" x-text="movingOverdue ? 'Moving…' : 'Move all to today'"></button></template></div></template>
         <template x-if="g.fold"><div class="sec" :class="g.cls"><button type="button" class="sec-fold" :id="'sec-' + g.key" :aria-expanded="String(g.open)" @click="toggleDoneSection()">
           <span x-text="g.title + (typeof g.count === 'number' ? ' (' + g.count.toLocaleString() + ')' : '')"></span><svg class="i chev"><use href="#i-chev"/></svg></button>
-          <!-- Copies what was done today as text, folded or not -->
-          <template x-if="g.key === 'donetoday'"><button type="button" class="sec-act" id="btn-copy-done" @click="copyDoneToday()">Copy</button></template></div></template>
+          <!-- Copy what was done today, or this week, as text, folded or not -->
+          <template x-if="g.key === 'donetoday' && g.count"><button type="button" class="sec-act" id="btn-copy-done" @click="copyDoneToday()">Copy today</button></template>
+          <template x-if="g.key === 'donetoday'"><button type="button" class="sec-act" id="btn-copy-week" @click="copyDoneWeek()" x-text="doneWeekLabel"></button></template></div></template>
         <!-- Messages about the list as a whole, under its heading, such as what Move all to today did -->
         <template x-for="line in placeLines(g.key)" :key="line.n">
           <!-- include markup/place-line.html -->
@@ -51,7 +52,7 @@
           </template>
         </div></template>
       </div></template>
-      <template x-if="!listGroups.some(g => g.tasks.length || (g.fold && g.count !== 0))">
+      <template x-if="!listGroups.some(g => groupShows(g))">
         <!-- include markup/empty.html -->
       </template>
     </div></template>

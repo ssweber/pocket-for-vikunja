@@ -1529,3 +1529,11 @@ test('a reload whose answer arrives while a finger is down changes the lists onl
     'then the reload shows what it read',
   );
 });
+
+test("Today draws Done today's heading with nothing done today, so Copy week is there", () => {
+  const app = component(sending),
+    empty = key => ({ key, fold: true, count: 0, tasks: [] });
+  assert.ok(app.groupShows(empty('donetoday')));
+  assert.ok(!app.groupShows(empty('done')), "a project's Done with no tasks isn't drawn");
+  assert.ok(app.groupShows({ ...empty('done'), count: 3 }), 'a folded Done with tasks behind it is');
+});

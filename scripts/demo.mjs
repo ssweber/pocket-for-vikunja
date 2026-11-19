@@ -166,6 +166,12 @@ async function phone({ scale = 2, height = 844 } = {}) {
     isMobile: true,
   });
   await hintSeen(context); // keeps the one-time hint out of the pictures
+  // The relay refuses an Idempotency-Key whose time is two months off the server's, as the fixed clock makes every
+  // key. So a keyed write goes straight to Vikunja's API, without its key.
+  await context.route(/\/api\/v1\/plugins\/pocket\/v2\//, route => {
+    const { 'idempotency-key': _, ...headers } = route.request().headers();
+    return route.continue({ url: route.request().url().replace('/api/v1/plugins/pocket/v2/', '/api/v2/'), headers });
+  });
   // Alex has hidden the Checklists screen's Getting started card for the café, as anyone who uses it for long has.
   await context.addInitScript(id => {
     try {

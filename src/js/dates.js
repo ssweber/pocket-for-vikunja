@@ -12,6 +12,14 @@ export const addDays = (d, n) => {
   x.setDate(x.getDate() + n);
   return x;
 };
+/* The days Copy week covers, from the start of `from` to the start of `to`: Monday to today. On a Monday it is the
+   week before (`last`), because this week so far would be just today. */
+export function doneWeek(now = new Date()) {
+  const t0 = startOfDay(now),
+    back = (t0.getDay() + 6) % 7,
+    last = !back;
+  return { from: addDays(t0, last ? -7 : -back), to: last ? t0 : addDays(t0, 1), last };
+}
 export const fmtTime = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 // A due date at midnight has no time of its own, which is how Vikunja's web app sets a date alone.
 const noTime = d => !d.getHours() && !d.getMinutes();

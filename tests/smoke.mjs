@@ -1916,13 +1916,25 @@ try {
       await expect(fold).toContainText(/Done today \(\d+\)/);
       await fold.click();
       await expect(page.locator(R)).toBeVisible();
-      // Copy gives the day, then each done task with its project.
+      // Copy today gives the day, then the done tasks under each project.
       await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(APP).origin });
+      const copied = () =>
+        page.evaluate(() => navigator.clipboard.readText()).then(x => x.replace(/\r\n/g, '\n').split('\n'));
       await page.click('#btn-copy-done');
-      await placeSays(page, 'donetoday', 'Copied. Paste it into a message');
-      const text = await page.evaluate(() => navigator.clipboard.readText()).then(x => x.replace(/\r\n/g, '\n'));
-      if (!text.startsWith('Done today · ') || !text.split('\n').includes(`✓ ${t.title} · ${home.title}`))
-        throw new Error('the copied text: ' + text);
+      await placeSays(page, 'donetoday', "Copied today's done tasks");
+      const text = await copied(),
+        p = text.findIndex(l => l.startsWith(home.title + ' · '));
+      if (!text[0].startsWith('Done today · ') || p < 0 || !text.slice(p).includes(`✓ ${t.title}`))
+        throw new Error('the copied text: ' + text.join('\n'));
+      // Copy week reads the week as it is tapped. On a Monday it copies last week, which the task isn't in.
+      const monday = new Date().getDay() === 1,
+        weekday = new Date().toLocaleDateString([], { weekday: 'short' });
+      await expect(page.locator('#btn-copy-week')).toHaveText(monday ? 'Copy last week' : 'Copy week');
+      await page.click('#btn-copy-week');
+      await expect.poll(async () => (await copied())[0]).toMatch(monday ? /^Done last week · / : /^Done this week · /);
+      await placeSays(page, 'donetoday', monday ? "Copied last week's done tasks" : "Copied this week's done tasks");
+      const week = await copied();
+      if (week.includes(`✓ ${t.title} · ${weekday}`) === monday) throw new Error('the copied week: ' + week.join('\n'));
       // Unticking it there leaves it in place, open, and takes the ✅ off. The copy leaves it out.
       await page.getByRole('button', { name: 'Mark not done: ' + t.title, exact: true }).click();
       await expect(page.locator(`${R} .check`)).toHaveAttribute('aria-label', 'Mark done: ' + t.title);
@@ -6299,7 +6311,7 @@ ${footName('Hooks')}`);
       navigator.share = undefined;
     });
     await (await menu()).getByRole('menuitem', { name: 'Share as text' }).click();
-    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
+    await placeSays(page, 'sheet:top', 'Copied the progress');
     await expect.poll(clip).toBe(text);
     // Copy beside ⋯ copies the same text in one tap, with no share sheet.
     await page.evaluate(() => {
@@ -6311,7 +6323,7 @@ ${footName('Hooks')}`);
     });
     await page.click('#d-copy');
     await expect.poll(clip).toBe(text);
-    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
+    await placeSays(page, 'sheet:top', 'Copied the progress');
     expect(await page.evaluate(() => window.shared)).toEqual([]);
     await page.evaluate(() => {
       navigator.share = undefined;
@@ -6393,7 +6405,7 @@ ${footName('Hooks')}`);
     await page.click('#btn-sheet-close');
     // Copy beside the project's ⋯ copies the shared text, and says so under the project's title.
     await page.click('#btn-copy');
-    await placeSays(page, 'project', 'Copied. Paste it into a message');
+    await placeSays(page, 'project', 'Copied the progress');
     await expect.poll(clip).toBe(await page.evaluate(() => window.shared[0].text));
   });
   /* A copied task can be pasted back. Its Markdown, pasted into quick add's box, makes the same task again with the

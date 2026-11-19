@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import {
   bar,
-  doneTodayText,
+  doneText,
   dueStamp,
   dueWords,
   firstName,
@@ -17,7 +17,7 @@ import {
   shareText,
 } from '../../src/js/share.js';
 import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignees } from '../../src/js/quickadd.js';
-import { component, outboxOf } from './fake.mjs';
+import { component, fakeVikunja, outboxOf } from './fake.mjs';
 import sharing from '../../src/js/app/sharing.js';
 import cards from '../../src/js/app/cards.js';
 import runs from '../../src/js/app/runs.js';
@@ -27,6 +27,7 @@ import views from '../../src/js/app/views.js';
 import sending from '../../src/js/app/sending.js';
 import tasks from '../../src/js/app/tasks.js';
 import { todayGroups } from '../../src/js/lists.js';
+import { addDays, doneWeek, startOfDay } from '../../src/js/dates.js';
 
 const NOW = new Date(2026, 9, 7, 14, 20);
 const on = (d, h = 0) => new Date(2026, 9, d, h).toISOString();
@@ -812,7 +813,7 @@ test("the text shared from a checklist's screen matches its ring, counting a tic
   assert.equal(head, `Closing up  ▰▰▱▱ ${ring.pct}%`);
 });
 
-test("Done today's Copy leaves out a task done yesterday, in a copy of Today saved then, as the screen does", () => {
+test('Copy today leaves out a task done yesterday, in a copy of Today saved then, as the screen does', () => {
   const app = component(sending, sharing),
     yesterday = new Date(Date.now() - 864e5).toISOString();
   Object.assign(app, {
@@ -830,25 +831,133 @@ test("Done today's Copy leaves out a task done yesterday, in a copy of Today sav
       { id: 1, title: 'Fix the till', done: true, done_at: yesterday },
       { id: 2, title: 'Order the cups', done: true, done_at: new Date().toISOString() },
     );
-  assert.deepEqual(app.copyDoneToday().split('\n').slice(1), ['✓ Order the cups']);
+  assert.deepEqual(app.copyDoneToday().split('\n').slice(1), ['', 'Other · 1', '✓ Order the cups']);
 });
 
-test("Done today's Copy gives the day, then each done task with its project, and a checklist with its steps done of all", () => {
-  const text = doneTodayText(
+const head = d => d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+test('Copy today gives the day and the count, then the tasks by project, most first, oldest first within each', () => {
+  const text = doneText(
     [
-      { title: 'Fix the till drawer', project: 'Café' },
-      { title: 'Opening up · Oct 14', project: 'Checklists', ring: { done: 9, total: 11, pct: 82 } },
-      { title: 'No project' },
+      { title: 'Clean the grinder', project: 'Café', at: on(7, 11) },
+      { title: 'Post the invoice', project: 'Errands', at: on(7, 9) },
+      { title: 'Fix the till drawer', project: 'Café', at: on(7, 10) },
+      { title: 'Opening up · Oct 7', project: 'Checklists', ring: { done: 9, total: 11, pct: 82 }, at: on(7, 8) },
+      { title: 'Ticked just now' },
     ],
-    new Date(2026, 9, 14, 15),
+    { now: NOW },
   );
+  assert.deepEqual(text.split('\n'), [
+    `Done today · ${head(NOW)} · 5 tasks`,
+    '',
+    'Café · 2',
+    '✓ Fix the till drawer',
+    '✓ Clean the grinder',
+    '',
+    'Checklists · 1',
+    '✓ Opening up · Oct 7 · 9 of 11 done',
+    '',
+    'Errands · 1',
+    '✓ Post the invoice',
+    '',
+    'Other · 1',
+    '✓ Ticked just now',
+  ]);
+});
+
+test('Copy week names the week and its dates, and gives the day each task was done', () => {
+  const items = [{ title: 'Fix the till drawer', project: 'Café', at: on(6, 10) }],
+    lines = week => doneText(items, { week }).split('\n');
+  assert.deepEqual(lines(doneWeek(new Date(2026, 9, 12, 9))), [
+    `Done last week · ${head(new Date(2026, 9, 5))} – ${head(new Date(2026, 9, 11))} · 1 task`,
+    '',
+    'Café · 1',
+    `✓ Fix the till drawer · ${day(6)}`,
+  ]);
   assert.equal(
-    text,
-    [
-      'Done today · Wed, Oct 14',
-      '✓ Fix the till drawer · Café',
-      '✓ Opening up · Oct 14 · Checklists · 9 of 11 done',
-      '✓ No project',
-    ].join('\n'),
+    lines(doneWeek(NOW))[0],
+    `Done this week · ${head(new Date(2026, 9, 5))} – ${head(NOW)} · 1 task`,
+    'on a Wednesday, Monday to today',
   );
+});
+
+test('Copy week reads the done tasks of its days, keeps the ones Done today would list, and adds ticks not yet sent', async () => {
+  const me = { id: 1 },
+    mate = { id: 2 },
+    t0 = startOfDay(),
+    at = h => new Date(+addDays(t0, -1) + h * 36e5).toISOString();
+  const v = fakeVikunja([
+    { id: 1, title: 'Fix the till drawer', project_id: 10, done: true, done_at: at(10), reactions: { '✅': [me] } },
+    { id: 2, title: 'Mop the floor', project_id: 10, done: true, done_at: at(11), reactions: { '✅': [mate] } },
+    { id: 3, title: 'Call the supplier', project_id: 11, done: true, done_at: at(12), assignees: [me] },
+    { id: 4, title: 'Order the cups', project_id: 11, done: true, done_at: at(13), reactions: { '✅': [me] } },
+  ]);
+  const app = component(sending, sharing, views);
+  Object.assign(app, {
+    user: me,
+    seenBy: {},
+    checklistIds: new Set(),
+    isRunTask: () => false,
+    route: { name: 'today' },
+    pending: [],
+    view: { groups: todayGroups(), cards: {} },
+  });
+  app.tasks[4] = { id: 4, done: false }; // unticked in Pocket, and the untick not yet sent
+  app.view.groups
+    .find(g => g.key === 'donetoday')
+    .tasks.push(
+      { id: 5, title: 'Post the invoice', project_id: 12, done: true, done_at: new Date().toISOString() },
+      { id: 1, title: 'Fix the till drawer', project_id: 10, done: true, done_at: at(10) },
+    );
+  const ids = async week => (await app.readDoneWeek(week)).map(t => t.id);
+  const week = { from: addDays(t0, -1), to: addDays(t0, 1), last: false };
+  assert.deepEqual(await ids(week), [1, 3, 5], "a teammate's tick and a task unticked here are left out");
+  assert.equal(
+    v.requests.findLast(r => r.path === '/tasks').query.get('filter'),
+    `done = true && done_at >= '${week.from.toISOString()}' && done_at < '${week.to.toISOString()}'`,
+  );
+  assert.deepEqual(
+    await ids({ from: addDays(t0, -1), to: t0, last: true }),
+    [1, 3],
+    "a week that ended before today doesn't get Done today's rows",
+  );
+});
+
+test("Copy week names a subtask's parent, and says when it couldn't read the week", async () => {
+  const app = component(sending, sharing),
+    said = [];
+  Object.assign(app, {
+    projById: new Map([[11, { title: 'Supplies' }]]),
+    shareTitle: t => t.title,
+    shareRing: () => null,
+    say: msg => said.push(msg),
+  });
+  const sub = { id: 3, title: 'Call the supplier', project_id: 11, done_at: on(6, 10) };
+  assert.equal(
+    app.doneItem({ ...sub, related_tasks: { parenttask: [{ id: 9, title: 'Restock' }] } }).title,
+    'Restock › Call the supplier',
+  );
+  assert.equal(app.doneItem(sub).title, 'Call the supplier');
+  app.readDoneWeek = async () => {
+    throw new TypeError('Failed to fetch');
+  };
+  await app.copyDoneWeek();
+  assert.deepEqual(said, ["Not copied. Vikunja didn't answer. Try again when you're online"]);
+});
+
+// Copy today and Copy week sit side by side, so each message names the copy the user tapped.
+test('Copy today and Copy week each say what they copied', async t => {
+  const app = component(sending, sharing),
+    said = [];
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true });
+  t.after(() => delete navigator.clipboard);
+  Object.defineProperty(app, 'listBase', { value: [{ key: 'donetoday', tasks: [] }] });
+  app.say = msg => said.push(msg);
+  await app.copyDoneToday();
+  let read;
+  app.readDoneWeek = async week => ((read = week), []);
+  await app.copyDoneWeek();
+  assert.deepEqual(said, [
+    "Copied today's done tasks",
+    read.last ? "Copied last week's done tasks" : "Copied this week's done tasks",
+  ]);
 });

@@ -89,7 +89,7 @@ Every gesture is also in the task's **⋯** menu. Right-click a row, or press Sh
 - **Copy**, beside **⋯**, copies a list's progress as text. **Copy as a Markdown list** makes text that pastes back into the add box as the same tasks.
 - Alt+Up and Alt+Down move the add box through the rows.
 
-**Done today**, at the bottom of Today, lists what you finished today. **Copy** copies it as text. Vikunja doesn't record who ticks a task, so Pocket adds your ✅ to each one you tick. A task ticked in Vikunja's web app is listed only if it's assigned to you or in a project only you can see.
+**Done today**, at the bottom of Today, lists what you finished today. **Copy today** copies it as text, grouped by project. **Copy week** does the same for everything since Monday, with the day each task was done. On a Monday it reads **Copy last week** and copies the week before. Vikunja doesn't record who ticks a task, so Pocket adds your ✅ to each one you tick. A task ticked in Vikunja's web app is listed only if it's assigned to you or in a project only you can see. A repeating task isn't listed, because Vikunja moves it to its next date instead of marking it done.
 
 <img src="screenshots/pocket-done.gif" width="240" alt="Ticking the last task on Today; Done today appears under the list, opens to show the task, and Copy copies it">
 

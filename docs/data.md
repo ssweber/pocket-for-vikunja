@@ -94,7 +94,7 @@ Vikunja doesn't record who ticked a task, so Pocket records it with reactions.
 
 - A checklist step done in Pocket gets a ✅ reaction from the person who ticked it, and a skipped step gets ⏭️. The web app shows "Done by … at 4:46 PM".
 - A comment typed on a step before **Skip** is the reason it was skipped.
-- Any task ticked in Pocket gets the ticker's ✅. **Done today** lists the tasks with your ✅, tasks assigned to you, tasks in projects only you can see, and checklists you started. A task ticked in the web app gets no ✅.
+- Any task ticked in Pocket gets the ticker's ✅. **Done today** and **Copy week** list the tasks with your ✅, tasks assigned to you, tasks in projects only you can see, and checklists you started. A task ticked in the web app gets no ✅.
 - Vikunja lets people remove only their own reactions. Un-ticking someone else's step in Pocket asks first, and leaves their reaction in place.
 
 ## What the plugin writes

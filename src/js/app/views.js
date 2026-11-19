@@ -81,6 +81,17 @@ const doneOpen = {
    omitted the total. */
 const counted = (part, skip, was) => (part.total == null ? was : Math.max(0, part.total - skip));
 
+// Done tasks from `from`, and before `to` if given, newest first, with the reactions doneByMe reads.
+const doneQuery = (from, to) =>
+  new URLSearchParams([
+    ['filter', `done = true && done_at >= '${from.toISOString()}'` + (to ? ` && done_at < '${to.toISOString()}'` : '')],
+    ['filter_timezone', TZ],
+    ['sort_by', 'done_at'],
+    ['order_by', 'desc'],
+    ['expand', 'reactions'],
+    ['expand', 'comment_count'],
+  ]);
+
 export default {
   async loadProjects() {
     const list = await allPages('/projects?is_archived=false');
@@ -1115,14 +1126,7 @@ export default {
       filter_timezone: TZ,
       expand: 'comment_count',
     });
-    const qDone = new URLSearchParams([
-      ['filter', `done = true && done_at >= '${t0.toISOString()}'`],
-      ['filter_timezone', TZ],
-      ['sort_by', 'done_at'],
-      ['order_by', 'desc'],
-      ['expand', 'reactions'],
-      ['expand', 'comment_count'],
-    ]);
+    const qDone = doneQuery(t0);
     const counted = putting(TASK_COUNT);
     const [all, allAdded, { index: runs, mine, open = [] }, claimed, doneAll] = await Promise.all([
       allPages('/tasks?' + q).then(counted),
@@ -1142,6 +1146,17 @@ export default {
       ? await this.readCards(cards, [...all, ...allAdded, ...mine, ...claimed, ...open])
       : { parents: [], steps: [], positions: {} };
     return { rows, cards, done: this.withoutTemplates(doneAll, true).filter(t => this.doneByMe(t)), ...read };
+  },
+  /* The tasks Copy week lists: those Done today would have listed on each day of `week` (doneWeek). A tick or an
+     untick not yet sent counts as made. So a task unticked in Pocket is left out, and when the week includes today,
+     Done today's rows are added. */
+  async readDoneWeek({ from, to }) {
+    const read = this.withoutTemplates(await allPages('/tasks?' + doneQuery(from, to)), true).filter(
+        t => this.doneByMe(t) && this.tasks[t.id]?.done !== false,
+      ),
+      ids = new Set(read.map(t => t.id)),
+      today = to > Date.now() ? this.listBase.find(g => g.key === 'donetoday')?.tasks || [] : [];
+    return [...read, ...today.filter(t => t.done && !ids.has(t.id))];
   },
   /* Whether Done today lists `t`, a task done today. Vikunja doesn't record who ticked a task, so Pocket puts the
      user's ✅ on what they tick (mark, ops/stages.js), as on a checklist's step. A task ticked in Vikunja's web app has

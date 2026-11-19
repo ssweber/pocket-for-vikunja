@@ -16,7 +16,7 @@ Pocket is a phone app that runs inside Vikunja as a plugin. Your team opens a li
 
 ### Record the work as you do it
 
-Swipe right to show progress. Tap the circle when a task is done. Start a new task with `x ` to log a job you already did. Quick add shows what it read before you send it. **Done today** lists everything you finished, ready to paste into a message. [Quick add](docs/guide.md#quick-add) · [Tasks](docs/guide.md#tasks)
+Swipe right to show progress. Tap the circle when a task is done. Start a new task with `x ` to log a job you already did. Quick add shows what it read before you send it. **Done today** lists everything you finished. Copy the day or the week, grouped by project, and paste it into a message. [Quick add](docs/guide.md#quick-add) · [Tasks](docs/guide.md#tasks)
 
 ### See who's on it
 

@@ -12,6 +12,7 @@
    - `items` are the subtasks or steps under it.
    - `subs` is {done, total}, for when `items` leaves out the done ones.
    - `ring` is a parent's calculated progress, {pct, done, total}. */
+import { addDays } from './dates.js';
 import { parseCapture, QUICK_ADD_PREFIXES, readList, removeAssignees } from './quickadd.js';
 
 // The text names a person by the first word of their name, or by their username if they have no name.
@@ -151,20 +152,43 @@ export function shareText(doc, now = new Date()) {
   return [head, ...textLines(items, 0, { long: count(items) > COLLAPSE.lines, bars: false, now })].join('\n');
 }
 
-/* What was done today, for Done today's Copy. Each item is {title, project, ring}, in the order Done today shows them.
-   A checklist says how many steps were done, as its ring does. For example:
-     Done today · Wed, Oct 14
-     ✓ Fix the till drawer · Café
-     ✓ Opening up · Oct 14 · 9 of 11 done */
-export function doneTodayText(items, now = new Date()) {
-  const day = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+/* What was done, for Done today's Copy today and Copy week. Each item is {title, ring, project, at}, `at` being when
+   it was done. The tasks are grouped by project, the project with the most first, and run oldest first within it. A
+   checklist says how many steps were done, as its ring does. `week` is the range Copy week covers (doneWeek), and
+   adds the day to each line. For example:
+     Done today · Wed, Nov 18 · 3 tasks
+
+     Café · 2
+     ✓ Fix the till drawer
+     ✓ Opening up · Nov 18 · 9 of 11 done
+
+     Errands · 1
+     ✓ Post the invoice */
+export function doneText(items, { now = new Date(), week = null } = {}) {
+  const day = d => d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+    at = it => new Date(it.at || now),
+    projects = new Map();
+  for (const it of [...items].sort((a, b) => at(a) - at(b))) {
+    const p = it.project || 'Other';
+    projects.set(p, [...(projects.get(p) || []), it]);
+  }
+  const line = it =>
+    '✓ ' +
+    [
+      it.title,
+      it.ring && `${it.ring.done} of ${it.ring.total} done`,
+      week && at(it).toLocaleDateString([], { weekday: 'short' }),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  const head = week
+    ? `Done ${week.last ? 'last' : 'this'} week · ${day(week.from)} – ${day(addDays(week.to, -1))}`
+    : `Done today · ${day(now)}`;
   return [
-    `Done today · ${day}`,
-    ...items.map(
-      it =>
-        '✓ ' +
-        [it.title, it.project, it.ring && `${it.ring.done} of ${it.ring.total} done`].filter(Boolean).join(' · '),
-    ),
+    `${head} · ${items.length === 1 ? '1 task' : `${items.length.toLocaleString()} tasks`}`,
+    ...[...projects]
+      .sort((a, b) => b[1].length - a[1].length)
+      .flatMap(([p, its]) => ['', `${p} · ${its.length.toLocaleString()}`, ...its.map(line)]),
   ].join('\n');
 }
 
