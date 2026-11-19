@@ -1921,7 +1921,7 @@ try {
       const copied = () =>
         page.evaluate(() => navigator.clipboard.readText()).then(x => x.replace(/\r\n/g, '\n').split('\n'));
       await page.click('#btn-copy-done');
-      await placeSays(page, 'donetoday', 'Copied. Paste it into a message');
+      await placeSays(page, 'donetoday', "Copied today's done tasks");
       const text = await copied(),
         p = text.findIndex(l => l.startsWith(home.title + ' · '));
       if (!text[0].startsWith('Done today · ') || p < 0 || !text.slice(p).includes(`✓ ${t.title}`))
@@ -1932,6 +1932,7 @@ try {
       await expect(page.locator('#btn-copy-week')).toHaveText(monday ? 'Copy last week' : 'Copy week');
       await page.click('#btn-copy-week');
       await expect.poll(async () => (await copied())[0]).toMatch(monday ? /^Done last week · / : /^Done this week · /);
+      await placeSays(page, 'donetoday', monday ? "Copied last week's done tasks" : "Copied this week's done tasks");
       const week = await copied();
       if (week.includes(`✓ ${t.title} · ${weekday}`) === monday) throw new Error('the copied week: ' + week.join('\n'));
       // Unticking it there leaves it in place, open, and takes the ✅ off. The copy leaves it out.
@@ -6310,7 +6311,7 @@ ${footName('Hooks')}`);
       navigator.share = undefined;
     });
     await (await menu()).getByRole('menuitem', { name: 'Share as text' }).click();
-    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
+    await placeSays(page, 'sheet:top', 'Copied the progress');
     await expect.poll(clip).toBe(text);
     // Copy beside ⋯ copies the same text in one tap, with no share sheet.
     await page.evaluate(() => {
@@ -6322,7 +6323,7 @@ ${footName('Hooks')}`);
     });
     await page.click('#d-copy');
     await expect.poll(clip).toBe(text);
-    await placeSays(page, 'sheet:top', 'Copied. Paste it into a message');
+    await placeSays(page, 'sheet:top', 'Copied the progress');
     expect(await page.evaluate(() => window.shared)).toEqual([]);
     await page.evaluate(() => {
       navigator.share = undefined;
@@ -6404,7 +6405,7 @@ ${footName('Hooks')}`);
     await page.click('#btn-sheet-close');
     // Copy beside the project's ⋯ copies the shared text, and says so under the project's title.
     await page.click('#btn-copy');
-    await placeSays(page, 'project', 'Copied. Paste it into a message');
+    await placeSays(page, 'project', 'Copied the progress');
     await expect.poll(clip).toBe(await page.evaluate(() => window.shared[0].text));
   });
   /* A copied task can be pasted back. Its Markdown, pasted into quick add's box, makes the same task again with the

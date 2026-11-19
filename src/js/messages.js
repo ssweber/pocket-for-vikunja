@@ -948,11 +948,15 @@ export function startedText(who, at, { now = new Date(), day = false } = {}) {
   );
 }
 
-// The message shown after the user copies something, by what was copied: progress as text (where there is no share
-// sheet), a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, or a comment.
-// `failed` is for when the browser didn't allow the copy, and `unread` for when Copy week couldn't read the week.
+// The message shown after the user copies something, by what was copied: progress as text, Done today's done tasks
+// for the day or the week, a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, or
+// a comment. Copy today and Copy week sit side by side, so each message names its own copy. `failed` is for when the
+// browser didn't allow the copy, and `unread` for when Copy week couldn't read the week.
 export const COPIED = {
-  text: 'Copied. Paste it into a message',
+  progress: 'Copied the progress',
+  today: "Copied today's done tasks",
+  week: "Copied this week's done tasks",
+  lastWeek: "Copied last week's done tasks",
   markdown: "Copied as a Markdown list. Paste it into your notes, or into Pocket's add box to make the same tasks",
   notes: 'Copied the notes',
   comment: 'Copied the comment',

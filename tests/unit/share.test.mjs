@@ -943,3 +943,21 @@ test("Copy week names a subtask's parent, and says when it couldn't read the wee
   await app.copyDoneWeek();
   assert.deepEqual(said, ["Not copied. Vikunja didn't answer. Try again when you're online"]);
 });
+
+// Copy today and Copy week sit side by side, so each message names the copy the user tapped.
+test('Copy today and Copy week each say what they copied', async t => {
+  const app = component(sending, sharing),
+    said = [];
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true });
+  t.after(() => delete navigator.clipboard);
+  Object.defineProperty(app, 'listBase', { value: [{ key: 'donetoday', tasks: [] }] });
+  app.say = msg => said.push(msg);
+  await app.copyDoneToday();
+  let read;
+  app.readDoneWeek = async week => ((read = week), []);
+  await app.copyDoneWeek();
+  assert.deepEqual(said, [
+    "Copied today's done tasks",
+    read.last ? "Copied last week's done tasks" : "Copied this week's done tasks",
+  ]);
+});

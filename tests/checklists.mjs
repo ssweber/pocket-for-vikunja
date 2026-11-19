@@ -976,7 +976,7 @@ try {
       .context()
       .grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
     await page.click('#btn-copy');
-    await placeSays(page, 'run', 'Copied. Paste it into a message');
+    await placeSays(page, 'run', 'Copied the progress');
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()).then(t => t.replace(/\r\n/g, '\n')))
       .toBe(await page.evaluate(() => window.shared[0].text));

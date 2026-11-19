@@ -196,19 +196,19 @@ export default {
         if (e?.name === 'AbortError') return;
       } // the user closed the share sheet. Any other error falls back to copying
     }
-    await this.copyOut(text, 'sheet:top', COPIED.text);
+    await this.copyOut(text, 'sheet:top', COPIED.progress);
   },
   // Copy the same text straight to the clipboard, from the Copy button beside ⋯. A message says so at `place`.
   copyProgress(what, place) {
     const doc = this.shareDoc(what);
-    if (doc) return this.copyOut(shareText(doc), place, COPIED.text);
+    if (doc) return this.copyOut(shareText(doc), place, COPIED.progress);
   },
   /* Copy Done today's done tasks as text, by project. A row unticked there since it loaded is left out. It reads
      listBase, as the screen does, so a copy of Today saved yesterday doesn't copy yesterday's tasks. */
   copyDoneToday() {
     const g = this.listBase.find(x => x.key === 'donetoday');
     if (!g) return;
-    return this.copyOut(doneText(g.tasks.filter(t => t.done).map(t => this.doneItem(t))), 'donetoday', COPIED.text);
+    return this.copyOut(doneText(g.tasks.filter(t => t.done).map(t => this.doneItem(t))), 'donetoday', COPIED.today);
   },
   // Copy the week's done tasks the same way. They are read as the button is tapped, so opening Today reads no more.
   copyDoneWeek() {
@@ -219,7 +219,7 @@ export default {
           { week },
         ),
       );
-    return this.copyOut(text, 'donetoday', COPIED.text);
+    return this.copyOut(text, 'donetoday', week.last ? COPIED.lastWeek : COPIED.week);
   },
   // Copy week reads "Copy last week" on a Monday, when it copies the week before.
   get doneWeekLabel() {
