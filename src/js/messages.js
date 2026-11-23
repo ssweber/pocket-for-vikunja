@@ -705,11 +705,17 @@ export const doneRepeats = (title, next = '') => `Done: ${title}. It repeats${ne
 // The same in a task's sheet, where the title is on screen already.
 export const repeatsNext = next => (next ? 'Repeats · ' + next : 'Done — repeats');
 // A checklist finished, named by `title` where nothing else on screen names it. `wait` is sendActs' result when the
-// finish waits (sentLater).
-export const finishedText = (title = '', wait = null) => {
-  const said = title ? 'Finished ' + title : 'Finished';
+// finish waits (sentLater). `asOf` is the earlier day it was finished on (finishDay).
+export const finishedText = (title = '', wait = null, asOf = null) => {
+  const said = (title ? 'Finished ' + title : 'Finished') + (asOf ? ', as ' + finishDayText(asOf) : '');
   return wait ? sentLater(said, wait.reached) : said;
 };
+// The earlier day a checklist can be finished on (finishDay), and its buttons: "Sun, Nov 22".
+export const finishDayText = d =>
+  new Date(d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+export const mostDoneOn = d => `Most steps were done ${finishDayText(d)}.`;
+export const finishAs = d => 'Finish as ' + finishDayText(d);
+export const FINISH_TODAY = 'Finish today';
 // A step ticked while it waits (sentLater), named by `title` where nothing else on screen names it.
 export const doneLater = (title = '', reached = false) => sentLater(title ? tickSaid(true, title) : 'Done', reached);
 // Progress set with a swipe, on task `title`, or in the task's own sheet without one.
@@ -975,14 +981,16 @@ export function namesText(names, most = 3) {
    many subtasks repeat and stay as they are. For a checklist (`run`), the question is whether to finish it and leave
    the steps in `names` not done. The names are written into a sentence, not a list, so they aren't mistaken for boxes
    to pick from. */
-export function completeAsk({ title, run = false, names = [], stay = 0 }) {
+export function completeAsk({ title, run = false, names = [], stay = 0, asOf = null }) {
   const n = names.length,
     which = namesText(names);
   if (run)
     return {
-      head: `Finish this checklist with ${plural(n, 'step')} not done?`,
-      yes: 'Finish checklist',
-      body: `${n === 1 ? 'This step stays' : `These ${n} steps stay`} not done: ${which}.`,
+      head: n ? `Finish this checklist with ${plural(n, 'step')} not done?` : 'Finish this checklist?',
+      yes: asOf ? finishAs(asOf) : 'Finish checklist',
+      body: n ? `${n === 1 ? 'This step stays' : `These ${n} steps stay`} not done: ${which}.` : '',
+      note: asOf ? mostDoneOn(asOf) : '',
+      today: asOf ? FINISH_TODAY : '',
     };
   const stays = !stay
     ? ''

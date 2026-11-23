@@ -2,11 +2,11 @@
 // change to a subtask or a step changes its parent's progress, so `figure` writes that last, in the same entry: the
 // progress of the parent `up`, or of the step's checklist.
 import { ApiError } from '../api.js';
-import { isSet, plainReminders, repeats } from '../dates.js';
+import { addDays, isSet, plainReminders, repeats, startOfDay } from '../dates.js';
 import { pctOf } from '../progress.js';
 import { CANCEL } from '../sync.js';
 import { ZERO } from '../util.js';
-import { DONE_MARK, SKIP_MARK } from '../checklists.js';
+import { DONE_MARK, SKIP_MARK, stepsOf } from '../checklists.js';
 import { FINISHED_MEANWHILE, OP_WORDS } from '../messages.js';
 import { MOVED } from '../tasks.js';
 import { backOf, changed, comment, figure, mark, patch, tick, unmark, untick } from './stages.js';
@@ -172,16 +172,38 @@ export const undone = {
   deletes: null,
   replyOnly: null,
 };
+/* A checklist finished on the day most of its steps were done (`asOf`, finishDay) gets the time the last step was done
+   on that day, as Vikunja has it, read once. Vikunja ignores a done_at an app sends, so the plugin's relay writes it
+   (setDoneAt, pocket/main.go). A plugin without that route answers 404, and the checklist stays finished as Vikunja
+   marked it. */
+const backdate = async (a, c) => {
+  if (!a.asOf) return;
+  const body = await c.once('asOf', async () => {
+    const from = +startOfDay(new Date(a.asOf)),
+      to = +addDays(from, 1),
+      times = stepsOf(await c.read('/tasks/' + a.task))
+        .filter(s => s.done && isSet(s.done_at))
+        .map(s => Date.parse(s.done_at))
+        .filter(t => t >= from && t < to);
+    return times.length ? { done_at: new Date(Math.max(...times)).toISOString() } : null;
+  });
+  if (!body) return;
+  try {
+    c.task = (await c.send(`/tasks/${a.task}/done_at`, { method: 'PUT', body })) || c.task;
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+};
 // finishRun and reopenRun redraw the checklist's screen themselves. Each is the other's Undo.
 export const finish = {
-  apply: doneBy(DONE_MARK),
-  stages: [tick, mark(DONE_MARK)],
+  apply: (t, a) => ({ ...doneBy(DONE_MARK)(t, a), ...(a.asOf && { done_at: a.asOf }) }),
+  stages: [tick, mark(DONE_MARK), backdate],
   answered: () => {},
   invert: a => ({ op: 'reopen', task: a.task, run: a.run ?? null }),
   merge: cancels('reopen'),
   refusal: gone,
   ...OP_WORDS.finish,
-  asks: [],
+  asks: ['asOf'],
   saw: ['label'],
   on: null,
   keepReads: null,

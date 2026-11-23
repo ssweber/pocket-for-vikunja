@@ -5,9 +5,9 @@
    the screen, collapses it again. ../cards.js decides which tasks are cards on Today. readCards reads what the cards
    need once per project, not once per card. */
 import { colorOf, motion, PRIOS, TZ } from '../util.js';
-import { allPages, NetError } from '../api.js';
+import { allPages, NetError, serverTime } from '../api.js';
 import { dueInfo, isLate, isSet, repeats, shortDue } from '../dates.js';
-import { parseStep, runWithoutDay, stepsOf, whereNext } from '../checklists.js';
+import { finishDay, parseStep, runWithoutDay, stepsOf, whereNext } from '../checklists.js';
 import { pctOf, workedOut } from '../progress.js';
 import { cardRows, countdown, openSubs, ownTask, runTop, urgentFirst } from '../cards.js';
 import { listViewOf, positionOrder } from '../order.js';
@@ -216,6 +216,8 @@ export default {
     if (t.done) return this.isRunTask(t) ? this.tickRunTask(t, el) : this.toggleDone(t, el, sheet ? { sheet } : {});
     const closable = r.run ? [] : this.closable(t);
     if (r.open && (r.run || r.open > 1 || closable.length !== 1) && !repeats(t)) return this.askComplete(t, sheet);
+    // A checklist with every step done finishes at once, unless it can be finished on an earlier day.
+    if (r.run && this.runAsOf(t)) return this.askComplete(t, sheet);
     return this.closeParent(t, el, { sheet, close: !!closable.length });
   },
   // The open subtasks that close with the task. A repeating subtask is left out, because marking it done would only
@@ -225,9 +227,10 @@ export default {
   },
   /* Close a parent, and its open subtasks if `close` is true. Its card or row shows as done in place until the batch
      clears, and tapping its ring undoes it, as for a ticked row. From its sheet, or with no row on screen, a message
-     offers the undo instead. The task stays a card until then (closing). A checklist is finished instead. */
-  async closeParent(t, el, { sheet = false, close = false } = {}) {
-    if (this.isRunTask(t)) return this.tickRunTask(t, sheet ? null : el);
+     offers the undo instead. The task stays a card until then (closing). A checklist is finished instead, on the earlier
+     day `asOf` if the user chose it. */
+  async closeParent(t, el, { sheet = false, close = false, asOf = null } = {}) {
+    if (this.isRunTask(t)) return this.tickRunTask(t, sheet ? null : el, asOf);
     closing.add(t.id);
     try {
       await this.toggleDone(t, sheet ? null : el, { close, sheet: sheet || !el });
@@ -248,7 +251,8 @@ export default {
       stays: !run && repeats(s),
     }));
     const n = run ? open.length : this.closable(t).length,
-      title = run ? runWithoutDay(t.title, t.created) : t.title;
+      title = run ? runWithoutDay(t.title, t.created) : t.title,
+      asOf = run ? this.runAsOf(t) : null;
     this.openSheet('complete');
     this.sheet.complete = {
       id: t.id,
@@ -259,18 +263,32 @@ export default {
       open,
       n,
       stay: open.length - n,
-      ask: completeAsk({ title, run, names: open.filter(s => !s.stays).map(s => s.title), stay: open.length - n }),
+      asOf,
+      ask: completeAsk({
+        title,
+        run,
+        names: open.filter(s => !s.stays).map(s => s.title),
+        stay: open.length - n,
+        asOf,
+      }),
     };
   },
-  // The user confirmed: complete the parent and its open subtasks, or finish the checklist. If the question came from
-  // the checklist's own screen (`screen`), the checklist finishes as the Finish button does.
-  async confirmComplete() {
+  // The earlier day checklist `t` can be finished on (finishDay), from its steps as their rows show them, or null.
+  runAsOf(t) {
+    const steps = this.cardSubs(t, true).map(s => ({ done: this.subDone(s), doneAt: s.done_at }));
+    return finishDay(steps, serverTime(Date.now()))?.toISOString() ?? null;
+  },
+  /* The user confirmed: complete the parent and its open subtasks, or finish the checklist, on the earlier day the
+     sheet offered unless `onDay` is false (Finish today). If the question came from the checklist's own screen
+     (`screen`), the checklist finishes as the Finish button does. */
+  async confirmComplete(onDay = true) {
     const c = this.sheet.complete;
     if (!c) return;
-    const t = this.tasks[c.id] || c.task;
+    const t = this.tasks[c.id] || c.task,
+      asOf = onDay ? (c.asOf ?? null) : null;
     this.closeSheet(true);
-    if (c.screen) return this.finishRun();
-    await this.closeParent(t, this.rowEl(t.id), { close: !c.run });
+    if (c.screen) return this.finishRun(asOf);
+    await this.closeParent(t, this.rowEl(t.id), { close: !c.run, asOf });
   },
   cancelComplete() {
     const c = this.sheet.complete;

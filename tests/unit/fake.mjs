@@ -35,7 +35,8 @@ const lost = () => new TypeError('network error');
 
    A write to the plugin's relay (/api/v1/plugins/pocket/v2/<path>, with an Idempotency-Key) is answered as
    /api/v2/<path> would be, and the answer is kept by key, as relay.go keeps it. The same key again gets that answer,
-   with Idempotent-Replayed, and changes nothing. With a different request it gets 422.
+   with Idempotent-Replayed, and changes nothing. With a different request it gets 422. PUT /tasks/:id/done_at is
+   answered as the relay makes it itself (setDoneAt): a done task's done_at moves back to a done subtask's time.
 
    Every request is recorded in `requests`, with its `key`, and `replayed` when the relay answered it from what it
    kept. `trouble(request)` makes a request fail: 'offline' (it never reaches Vikunja), 'lost' (it reaches Vikunja but
@@ -118,7 +119,8 @@ export function fakeVikunja(tasks = []) {
       label = id =>
         v.labels.find(l => l.id === id) ?? [...v.tasks.values()].flatMap(t => t.labels || []).find(l => l.id === id);
     const attach = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/attachments$/) || [])[1]),
-      source = req.path.match(/^\/tasks\/(\d+)\/duplicate$/);
+      source = req.path.match(/^\/tasks\/(\d+)\/duplicate$/),
+      dated = v.tasks.get(+(req.path.match(/^\/tasks\/(\d+)\/done_at$/) || [])[1]);
     const noLabel = () => reply({ message: 'The label does not exist.' }, 404),
       noAccess = () => reply({ code: 7003, message: 'The user does not have access to the project.' }, 403);
     let res;
@@ -175,6 +177,17 @@ export function fakeVikunja(tasks = []) {
       (talk.comments ||= []).push(c);
       talk.updated = c.created;
       res = reply(c);
+    } else if (dated && method === 'PUT') {
+      const sec = x => Math.floor(Date.parse(x) / 1000),
+        sub = (dated.related_tasks?.subtask || [])
+          .map(r => v.tasks.get(r.id))
+          .find(s => s?.done && sec(s.done_at) === sec(req.body.done_at));
+      if (!dated.done || !sub || sec(sub.done_at) > sec(dated.done_at))
+        res = reply({ message: "done_at must be the time one of the task's done subtasks was marked done" }, 409);
+      else {
+        dated.done_at = sub.done_at;
+        res = reply(withSubtasks(dated));
+      }
     } else if (placed && method === 'PUT') {
       placed.position = req.body.position;
       res = reply({ task_id: placed.id, project_view_id: req.body.project_view_id, position: req.body.position });

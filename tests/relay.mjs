@@ -292,6 +292,77 @@ try {
     await relay('POST', `/projects/${team.id}/tasks`, me, { title: `Relay staged ${run}` }, newKey() + ':2:1'),
   );
   check('a key with a stage and part after its UUID is read by that UUID', staged.status === 201, brief(staged));
+
+  // PUT tasks/<id>/done_at isn't forwarded, because Vikunja ignores done_at. The relay moves a done task's done_at back
+  // to when one of its done subtasks was done, for a checklist finished the day after most of it was done.
+  const task = async (token, project, title) =>
+    keep(await relay('POST', `/projects/${project}/tasks`, token, { title }, newKey())).json;
+  const tick = (token, id) => relay('PATCH', `/tasks/${id}`, token, { done: true }, newKey());
+  const doneAt = async (token, id) => (await v2('GET', `/tasks/${id}`, token)).json?.done_at;
+  const second = () => new Promise(ok => setTimeout(ok, 1100)); // Vikunja keeps times in whole seconds
+  const parent = await task(me, team.id, `Relay done_at ${run}`),
+    steps = [await task(me, team.id, `Relay done_at step 1 ${run}`), await task(me, team.id, `Relay step 2 ${run}`)];
+  for (const s of steps)
+    await relay(
+      'POST',
+      `/tasks/${parent.id}/relations`,
+      me,
+      { other_task_id: s.id, relation_kind: 'subtask' },
+      newKey(),
+    );
+  await tick(me, steps[0].id);
+  await second();
+  await tick(me, steps[1].id);
+  await second();
+  const early = await doneAt(me, steps[0].id);
+  const open = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: early }, newKey());
+  check('done_at on a task that is not done gets 409', open.status === 409, brief(open));
+  await tick(me, parent.id);
+  const finished = await doneAt(me, parent.id),
+    k10 = newKey();
+  const moved = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: early }, k10);
+  check(
+    "done_at moves back to a done subtask's time, and the answer is the task",
+    moved.status === 200 && moved.json?.id === parent.id && Date.parse(moved.json.done_at) === Date.parse(early),
+    brief(moved),
+  );
+  check("Vikunja's copy has the subtask's time", Date.parse(await doneAt(me, parent.id)) === Date.parse(early));
+  const movedAgain = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: early }, k10);
+  check('the same key gets the stored answer', movedAgain.status === 200 && movedAgain.replayed, brief(movedAgain));
+  const between = new Date(Date.parse(early) + 500).toISOString(),
+    offTime = new Date(Date.parse(early) - 3600e3).toISOString();
+  const off = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: offTime }, newKey());
+  check("a time that isn't a done subtask's gets 409", off.status === 409, brief(off));
+  const later = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: finished }, newKey());
+  check('done_at never moves later than it was', later.status === 409, brief(later));
+  const sameSecond = await relay('PUT', `/tasks/${parent.id}/done_at`, me, { done_at: between }, newKey());
+  check('the time is compared to the second', sameSecond.status === 200, brief(sameSecond));
+  const none = await relay('PUT', `/tasks/${parent.id}/done_at`, me, {}, newKey());
+  check('a body without done_at gets 400', none.status === 400, brief(none));
+
+  // Another user's project, which the user can't edit. And an API token, whose permissions can't cover this write.
+  const closed = (await v2('POST', '/projects', other, { title: `Relay done_at other's ${run}` })).json;
+  try {
+    const theirsDone = await task(other, closed.id, `Relay done_at theirs ${run}`);
+    await tick(other, theirsDone.id);
+    const no = await relay('PUT', `/tasks/${theirsDone.id}/done_at`, me, { done_at: early }, newKey());
+    check("done_at on a task the user can't edit is refused", no.status === 403 || no.status === 404, brief(no));
+  } finally {
+    await v2('DELETE', '/projects/' + closed.id, other);
+  }
+  const tokenOnly = (
+    await v2('POST', '/tokens', me, {
+      title: `Relay done_at ${run}`,
+      permissions: { plugins: ['pocket_v2_*'] },
+      expires_at: new Date(Date.now() + 36e5).toISOString(),
+    })
+  ).json;
+  try {
+    const no = await relay('PUT', `/tasks/${parent.id}/done_at`, tokenOnly?.token, { done_at: early }, newKey());
+    check('an API token gets no done_at write', no.status === 403 || no.status === 401, brief(no));
+  } finally {
+    if (tokenOnly?.id) await v2('DELETE', '/tokens/' + tokenOnly.id, me);
+  }
 } finally {
   for (const id of new Set(made)) await v2('DELETE', '/tasks/' + id, me);
 }

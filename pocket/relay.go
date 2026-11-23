@@ -6,6 +6,9 @@
 // relay stores the answer under (user, key). A request sent again with that key gets the stored answer, and Vikunja
 // sees it once. When Vikunja supports the header, Pocket sends to /api/v2 again and this file is deleted.
 //
+// One write isn't forwarded, because Vikunja's API ignores it: PUT tasks/<id>/done_at, which moves a finished
+// checklist's done_at back to when one of its steps was done (relayDoneAt). It is keyed and stored like the others.
+//
 // As the draft says:
 //   - no key: 400;
 //   - a key whose first request is still running: 409, with Retry-After;
@@ -27,8 +30,8 @@
 
 // Vikunja evaluates every .go file in this folder into one package, in name order, so main.go comes first. A second
 // import of a package main.go imports fails to load ("redeclared in this block"). So this file imports only what
-// main.go doesn't, and uses main.go's imports for the rest (io, net/http, strconv, strings, sync, time, db, log,
-// plugins, echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
+// main.go doesn't, and uses main.go's imports for the rest (encoding/json, io, net/http, regexp, strconv, strings,
+// sync, time, db, log, models, plugins, echo, viper, xorm). Vikunja asks main.go for NewPlugin, and this file for the routes and the table.
 //go:build ignore
 
 package main
@@ -194,7 +197,7 @@ func relayWrite(c *echo.Context) error {
 
 	// The phone may hang up while this runs. The forward doesn't use the request's context, so it finishes and its
 	// answer is stored for the retry.
-	code, h, out, sent, err := relayForward(c.Request(), target, body)
+	code, h, out, sent, err := relayMake(c, u, rest, target, body)
 	if err != nil && !sent {
 		relayRelease(u.ID, key)
 		log.Errorf("pocket: relay couldn't reach Vikunja: %s", err)
@@ -262,6 +265,59 @@ func relayAnswer(c *echo.Context, code int, ct string, body []byte) error {
 	c.Response().WriteHeader(code)
 	_, err := c.Response().Write(body)
 	return err
+}
+
+var relayDoneAtPath = regexp.MustCompile(`^tasks/(\d+)/done_at$`)
+
+// relayMake makes the write and returns what relayForward returns: the write the relay makes itself, or any other
+// forwarded to Vikunja.
+func relayMake(c *echo.Context, u *user.User, rest, target string, body []byte) (int, http.Header, []byte, bool, error) {
+	if m := relayDoneAtPath.FindStringSubmatch(rest); m != nil && c.Request().Method == http.MethodPut {
+		return relayDoneAt(c, u, m[1], body)
+	}
+	return relayForward(c.Request(), target, body)
+}
+
+// relayDoneAt sets a done task's done_at to the time in the body (setDoneAt), and answers with the task as Vikunja's
+// API returns it. An API token is refused, because no token permission covers a write Vikunja's API doesn't have.
+func relayDoneAt(c *echo.Context, u *user.User, idText string, body []byte) (int, http.Header, []byte, bool, error) {
+	refuse := func(code int, msg string) (int, http.Header, []byte, bool, error) {
+		out, _ := json.Marshal(map[string]string{"message": msg})
+		return code, http.Header{"Content-Type": {"application/json"}}, out, true, nil
+	}
+	if _, token := c.Get("api_user").(*user.User); token {
+		return refuse(http.StatusForbidden, "an API token can't set done_at")
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil {
+		return refuse(http.StatusBadRequest, "the task id isn't a number")
+	}
+	in := struct {
+		DoneAt time.Time `json:"done_at"`
+	}{}
+	if err := json.Unmarshal(body, &in); err != nil || in.DoneAt.IsZero() {
+		return refuse(http.StatusBadRequest, "send done_at, the time one of the task's done subtasks was marked done")
+	}
+	s := db.NewSession()
+	can, err := (&models.Task{ID: id}).CanUpdate(s, u)
+	s.Close()
+	if models.IsErrTaskDoesNotExist(err) {
+		return refuse(http.StatusNotFound, "the task doesn't exist")
+	}
+	if err != nil {
+		return 0, nil, nil, false, err
+	}
+	if !can {
+		return refuse(http.StatusForbidden, "you can't edit this task")
+	}
+	code, msg, err := setDoneAt(id, in.DoneAt)
+	if err != nil {
+		return 0, nil, nil, false, err
+	}
+	if code != http.StatusOK {
+		return refuse(code, msg)
+	}
+	return relayForward(&http.Request{Method: http.MethodGet, Header: c.Request().Header}, "/api/v2/tasks/"+idText, nil)
 }
 
 // relayForward sends the request to Vikunja itself, at the address it listens on, as the same user, and returns its

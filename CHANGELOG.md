@@ -12,6 +12,13 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
+## 0.7.0 (2026-11-23)
+
+### Added
+
+- A checklist whose steps were mostly done on an earlier day offers **Finish as** that day, which the plugin records
+  as the checklist's done time ([guide](docs/guide.md#checklists)).
+
 ## 0.6.0 (2026-11-19)
 
 ### Added

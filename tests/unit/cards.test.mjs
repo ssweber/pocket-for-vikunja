@@ -1769,6 +1769,49 @@ test('a checklist’s own row asks to finish it from its ring, shows who it is f
   assert.match(app.runView.summary, /^Started by Priya at /);
 });
 
+/* A checklist whose steps were mostly done on an earlier day can be finished on that day (finishDay). The finish card
+   offers it with Finish today under it, and the ring asks instead of finishing at once, so the choice isn't skipped. */
+test('a checklist mostly done yesterday offers that day on its finish card and from its ring', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 23, 12) }); // Monday
+  const app = runScreen(),
+    calls = [],
+    sunday = h => new Date(2026, 10, 22, h).toISOString();
+  Object.assign(app, {
+    sheet: {},
+    route: { name: 'run' },
+    openSheet: k => {
+      app.sheet = { kind: k };
+    },
+    closeSheet: () => {},
+    finishRun: asOf => calls.push(asOf),
+  });
+  stepsOn(app).forEach((s, i) => Object.assign(s, { done: i < 3, done_at: i < 3 ? sunday(9 + i) : s.done_at }));
+  assert.deepEqual(
+    [app.runView.asOf, app.runView.finishAsk.yes],
+    [sunday(11), 'Finish as Sun, Nov 22'],
+    '3 of 4 steps on Sunday: the card offers Sunday, at the time of its last step',
+  );
+  app.rowRing(app.runOwn, RUN_ROW).tap();
+  assert.deepEqual(
+    [app.sheet.complete.ask.head, app.sheet.complete.ask.note, app.sheet.complete.ask.today],
+    ['Finish this checklist with 1 step not done?', 'Most steps were done Sun, Nov 22.', 'Finish today'],
+  );
+  await app.confirmComplete();
+  app.rowRing(app.runOwn, RUN_ROW).tap();
+  await app.confirmComplete(false);
+  assert.deepEqual(calls, [sunday(11), null], 'Finish as sends the day, and Finish today sends none');
+  Object.assign(stepsOn(app)[3], { done: true, done_at: new Date().toISOString() });
+  app.rowRing(app.runOwn, RUN_ROW).tap();
+  assert.deepEqual(
+    [calls.length, app.sheet.complete.ask.head],
+    [2, 'Finish this checklist?'],
+    'with every step done, the ring asks instead of finishing at once',
+  );
+  stepsOn(app).forEach((s, i) => Object.assign(s, { done_at: i < 2 ? sunday(9 + i) : new Date().toISOString() }));
+  assert.equal(app.runView.asOf, null, '2 of 4 steps on Monday: no earlier day is offered');
+  assert.equal(app.runView.finishAsk.yes, 'Finish checklist');
+});
+
 test('a checklist’s add box adds after the last step, or after the step it is under, and then moves under what was added', async () => {
   const app = runScreen(),
     added = [],
@@ -2091,6 +2134,35 @@ test('the ring of a checklist with steps not done asks first and leaves them not
     'tapping the ring of a done parent that has an open subtask opens the parent again',
   );
   assert.equal(v.task(11).done, false);
+});
+
+/* Under Checklists, a checklist with every step done finishes from its ring at once. When most of its steps were done
+   on an earlier day, the ring asks, and the checklist can be finished on that day or today. */
+test('the ring of a checklist mostly done yesterday asks, and Finish as moves its done time back to its last step', async c => {
+  c.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date(2026, 10, 23, 12) }); // Monday
+  const sunday = h => new Date(2026, 10, 22, h).toISOString(),
+    monday = new Date(2026, 10, 23, 8).toISOString();
+  const finished = async onDay => {
+    const kids = [
+      kid(11, { done: true, done_at: sunday(9) }),
+      kid(12, { done: true, done_at: sunday(10) }),
+      kid(13, { done: true, done_at: monday }),
+    ];
+    const { v, app } = ringed(null, [parentOf(...kids), ...kids]);
+    app.isRunTask = t => t.id === 10;
+    await app.ringTap(app.tasks[10], ROW);
+    assert.deepEqual(
+      [app.sheet.kind, app.sheet.complete.ask.yes, v.task(10).done],
+      ['complete', 'Finish as Sun, Nov 22', false],
+      'the ring asks, and nothing is done yet',
+    );
+    await app.confirmComplete(onDay);
+    return v.task(10);
+  };
+  const asSunday = await finished(true);
+  assert.deepEqual([asSunday.done, asSunday.done_at], [true, sunday(10)], "Finish as: Sunday's last step's time");
+  const today = await finished(false);
+  assert.equal(today.done && Date.parse(today.done_at) > Date.parse(monday), true, 'Finish today: the time of the tap');
 });
 
 /* Keeps a change waiting to be sent from redrawing every row (rule 10, docs/development.md). A ring reads its steps'
