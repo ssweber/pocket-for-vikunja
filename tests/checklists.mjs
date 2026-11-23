@@ -1767,6 +1767,47 @@ try {
     }
   });
 
+  /* A checklist whose steps were done yesterday offers to finish on that day. Finish as moves the checklist's done
+     time back to its last step's, through the relay. To make today's ticks look like yesterday's, the page clock runs
+     a day ahead, and so does the Date header of every reply, which Pocket reads Vikunja's clock from. */
+  await step('a-checklist-mostly-done-yesterday-finishes-on-that-day', async () => {
+    const { id } = await startRun(),
+      day = 864e5;
+    try {
+      for (const x of await subtasks(id))
+        await api('/tasks/' + x.id, { method: 'PATCH', body: JSON.stringify({ done: true }) });
+      // Vikunja keeps times to the second, so the finish must fall in a later second than the ticks to show a move.
+      await new Promise(r => setTimeout(r, 1100));
+      await page.route(/\/api\//, async r => {
+        const response = await r.fetch(),
+          headers = { ...response.headers(), date: new Date(Date.now() + day).toUTCString() };
+        delete headers['content-encoding'];
+        delete headers['content-length'];
+        await r.fulfill({ response, headers });
+      });
+      await page.clock.setSystemTime(Date.now() + day);
+      await page.reload();
+      await loaded(page);
+      await expect(page.locator('#finish-day')).toHaveText(/^Most steps were done \w+, \w+ \d+\.$/, {
+        timeout: 15000,
+      });
+      await expect(page.locator('#run-finish')).toHaveText(/^Finish as \w+, \w+ \d+$/);
+      await expect(page.locator('#run-finish-today')).toHaveText('Finish today');
+      await page.click('#run-finish');
+      await until('the checklist was never finished', async () => (await api('/tasks/' + id)).done);
+      const last = Math.max(...(await subtasks(id)).map(x => Date.parse(x.done_at)));
+      await until(
+        "the checklist's done time never moved back to its last step's",
+        async () => Date.parse((await api('/tasks/' + id)).done_at) === last,
+      );
+    } finally {
+      await page.unrouteAll();
+      await page.clock.setSystemTime(Date.now());
+      for (const x of await subtasks(id)) await api('/tasks/' + x.id, { method: 'DELETE' }).catch(() => {});
+      await api('/tasks/' + id, { method: 'DELETE' }).catch(() => {});
+    }
+  });
+
   /* Templates and their steps stay out of search. They live on Checklists, and as Vikunja tasks marked done they would
      fill Done, with their times written raw. A checklist step found in search has no 🔔, because its reminder
      belongs to Pocket and drives the countdown its row shows. */
