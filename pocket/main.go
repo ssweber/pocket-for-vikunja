@@ -17,6 +17,10 @@
 //     signed-in user, so Vikunja checks and records them as it does any request. It keeps Vikunja's answer to each in
 //     pocket_relay for 31 days, so a change sent twice is made once. The answers include the tasks they changed.
 //     Vikunja creates the table, as one of its migrations, when it starts with the plugin.
+//   - When a user finishes a checklist on the day most of its steps were done, the time it was marked done. Vikunja
+//     sets done_at itself and ignores the one an app sends, so the relay writes it instead of forwarding it. It writes
+//     only done_at, only on a done task the user may edit, and only to the time one of its done subtasks was marked
+//     done, never later than the task's own. This is all in setDoneAt.
 //   - With step times turned on, one thing. When a step of a checklist run is marked done, it sets the due date of the
 //     steps in that run that are timed from it (T#40m in their template step means 40 minutes after). It writes only
 //     due_date, and the time of those steps' reminders that count from their due date (Vikunja works those out only
@@ -404,7 +408,7 @@ func clearStepDueDates(stepID int64) error {
 	return writeStepDueDates(s, step)
 }
 
-// writeStepDueDates is the only place the plugin writes to Vikunja's data. It takes a step of a checklist run and sets
+// writeStepDueDates is where step times write to Vikunja's data. It takes a step of a checklist run and sets
 // the due date of each step in the same run that is timed from it. The date is when the step was done (or when the last
 // of its repeats was done) plus the offset in the timed step's template step title. If none of them is done, the date
 // is cleared. It writes only due_date (not even "updated") and the time of the timed step's reminders that count from
@@ -590,6 +594,45 @@ func writeStepDueDates(s *xorm.Session, step *models.Task) error {
 		return nil
 	}
 	return s.Commit()
+}
+
+// setDoneAt moves the time task id was marked done back to at, for a checklist finished a day after most of its steps
+// were done. The relay checks that the user may edit the task first. at must be the time one of the task's done
+// subtasks was marked done, to the second, so the time can only move to when part of the work was done. It writes only
+// done_at, not even the time the task was last changed. It returns the HTTP status and message of a refusal, or 200.
+func setDoneAt(id int64, at time.Time) (int, string, error) {
+	s := db.NewSession()
+	defer s.Close()
+	t := &models.Task{}
+	if has, err := s.ID(id).Get(t); err != nil || !has {
+		return http.StatusNotFound, "the task doesn't exist", err
+	}
+	if !t.Done {
+		return http.StatusConflict, "the task isn't done", nil
+	}
+	if at.Unix() == t.DoneAt.Unix() {
+		return http.StatusOK, "", nil
+	}
+	if at.After(t.DoneAt) {
+		return http.StatusConflict, "done_at can only move earlier", nil
+	}
+	subIDs, err := relatedIDs(s, id, "subtask")
+	if err != nil || len(subIDs) == 0 {
+		return http.StatusConflict, "the task has no subtasks", err
+	}
+	subs := []*models.Task{}
+	if err := s.In("id", subIDs).Find(&subs); err != nil {
+		return 0, "", err
+	}
+	for _, sub := range subs {
+		if sub.Done && sub.DoneAt.Unix() == at.Unix() {
+			if _, err := s.ID(id).Cols("done_at").NoAutoTime().Update(&models.Task{DoneAt: sub.DoneAt}); err != nil {
+				return 0, "", err
+			}
+			return http.StatusOK, "", s.Commit()
+		}
+	}
+	return http.StatusConflict, "done_at must be the time one of the task's done subtasks was marked done", nil
 }
 
 // taskIn returns the task if it is in the project, or nil if it is not.
