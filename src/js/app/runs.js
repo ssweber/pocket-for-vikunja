@@ -13,6 +13,7 @@ import {
   countText,
   DONE_MARK,
   durText,
+  finishDay,
   inBatches,
   nextAfter,
   noteOf,
@@ -660,7 +661,8 @@ export default {
       didCount = doneCount - skippedN;
     // Show who started the run in its summary and menu. The top row's slot shows who the run is for.
     const started = startedText(this.runStarter(run), run.created, { now: new Date(now) });
-    const finished = !!run.done;
+    const finished = !!run.done,
+      asOf = finished ? null : (finishDay(steps, now)?.toISOString() ?? null);
     // Show the finish card when the run is finished or every step is done. Tapping a listed step can still open
     // its card.
     const step = (allDone || finished) && r.at === null ? null : steps[at] || null;
@@ -674,6 +676,9 @@ export default {
       at,
       step,
       finished,
+      // The earlier day it can be finished on (finishDay), and the finish card's words.
+      asOf,
+      finishAsk: completeAsk({ title: '', run: true, asOf }),
       timers: steps.filter(s => s.counting && s !== step).sort((a, b) => a.dueAt - b.dueAt),
       summary: [
         started,
@@ -731,7 +736,8 @@ export default {
       v = this.runView;
     if (!run || !v || !this.canWrite(run.project_id)) return;
     if (v.finished) return this.reopenRun(run.id);
-    if (v.allDone) return this.finishRun();
+    // With every step done it finishes at once, unless it can be finished on an earlier day, which the sheet offers.
+    if (v.allDone && !v.asOf) return this.finishRun();
     const open = v.steps.filter(s => !s.done).map(s => s.title),
       title = runWithoutDay(run.title, run.created);
     this.openSheet('complete');
@@ -745,7 +751,8 @@ export default {
       open,
       n: open.length,
       stay: 0,
-      ask: completeAsk({ title, run: true, names: open }),
+      asOf: v.asOf,
+      ask: completeAsk({ title, run: true, names: open, asOf: v.asOf }),
     };
   },
   // The notes made on this step in the last finished checklist of the same template.
@@ -998,14 +1005,15 @@ export default {
     this.runDrafts[task] = '';
     await this.act({ op: 'note', task, html: textToHtml(text) });
   },
-  async finishRun() {
+  // Finish the checklist on its screen, on the earlier day `asOf` if the user chose it (finishDay).
+  async finishRun(asOf = null) {
     const run = this.runTask;
     if (!run) return;
-    const r = await this.act({ op: 'finish', task: run.id });
+    const r = await this.act({ op: 'finish', task: run.id, ...(asOf && { asOf }) });
     if (r.status === 'error') return;
     // Show the message as a toast, because the previous screen that Back returns to has no place for it.
     if (!r.behind)
-      this.notify(r.status === 'offline' ? finishedText('', r) : finishedText(run.title), {
+      this.notify(r.status === 'offline' ? finishedText('', r, asOf) : finishedText(run.title, null, asOf), {
         label: UNDO,
         fn: () => this.reopenRun(run.id),
       });

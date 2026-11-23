@@ -920,8 +920,30 @@ test("the question a parent's ring asks lists the tasks that close with it, nami
     head: 'Finish this checklist with 2 steps not done?',
     body: 'These 2 steps stay not done: Mop and Lock up.',
     yes: 'Finish checklist',
+    note: '',
+    today: '',
   });
   assert.equal(completeAsk({ title: 'Closing up', run: true, names: ['Mop'] }).body, 'This step stays not done: Mop.');
+});
+
+test('a checklist mostly done on an earlier day is offered that day, and its finish says so', () => {
+  const sunday = new Date(2026, 10, 22, 16, 40).toISOString();
+  assert.deepEqual(completeAsk({ title: 'Closing up', run: true, names: ['Lock up'], asOf: sunday }), {
+    head: 'Finish this checklist with 1 step not done?',
+    body: 'This step stays not done: Lock up.',
+    yes: 'Finish as Sun, Nov 22',
+    note: 'Most steps were done Sun, Nov 22.',
+    today: 'Finish today',
+  });
+  assert.deepEqual(completeAsk({ title: 'Closing up', run: true, asOf: sunday }), {
+    head: 'Finish this checklist?',
+    body: '',
+    yes: 'Finish as Sun, Nov 22',
+    note: 'Most steps were done Sun, Nov 22.',
+    today: 'Finish today',
+  });
+  assert.equal(finishedText('Closing up', null, sunday), 'Finished Closing up, as Sun, Nov 22');
+  assert.equal(finishedText('Closing up'), 'Finished Closing up');
 });
 
 test('moving a task to another project names the project and counts the subtasks that went with it', () => {

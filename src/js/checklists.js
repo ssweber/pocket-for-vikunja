@@ -2,7 +2,7 @@
 // Pocket marks its own data with lines in task descriptions, and these functions read and write those lines.
 import { allPages, ApiError, serverTime } from './api.js';
 import { htmlToText, parseFragment } from './html.js';
-import { isSet } from './dates.js';
+import { addDays, isSet, startOfDay } from './dates.js';
 import { notesOf, NUMBER_WORDS } from './quickadd.js';
 
 /* Checklists live in a project with the line "pocket:checklists" in its description. A template is a task in that
@@ -417,6 +417,27 @@ export function whereNext(steps, now, from = null) {
   const k = from ? steps.findIndex(x => x.id === from.id) : -1;
   const open = steps.map((x, i) => ({ x, i })).filter(({ x }) => !x.done && x.id !== from?.id);
   return (open.find(({ x }) => x.counting && x.dueAt <= now) || open.find(o => o.i > k) || open[0])?.i ?? -1;
+}
+/* The earlier day a checklist can be finished on, for one whose last steps or Finish came a day after most of the
+   work. `steps` are {done, doneAt}, and a skipped step counts as done. The day is the one with the most steps done,
+   the later one on a tie. It is offered only before today, and only if at most max(1, steps / 10) steps were done
+   after it or are still open, so a checklist half done the day before isn't finished on that day. Returns when the
+   last step was done on that day, as a Date, or null. */
+export function finishDay(steps, now = Date.now()) {
+  const days = new Map();
+  for (const s of steps)
+    if (s.done && isSet(s.doneAt)) {
+      const d = +startOfDay(new Date(s.doneAt));
+      days.set(d, [...(days.get(d) || []), Date.parse(s.doneAt)]);
+    }
+  let day = null;
+  for (const [d, times] of days)
+    if (day === null || times.length > days.get(day).length || (times.length === days.get(day).length && d > day))
+      day = d;
+  if (day === null || day >= +startOfDay(new Date(now))) return null;
+  const end = +addDays(day, 1),
+    after = steps.filter(s => !s.done || !isSet(s.doneAt) || Date.parse(s.doneAt) >= end).length;
+  return after <= Math.max(1, Math.floor(steps.length / 10)) ? new Date(Math.max(...days.get(day))) : null;
 }
 // The index of the step a timed step counts from. It is -1 for the start of the run, and null when the step has no
 // time or names a step that isn't earlier.

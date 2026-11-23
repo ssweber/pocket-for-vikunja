@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   durText,
+  finishDay,
   inOrder,
   lockOf,
   placeBefore,
@@ -672,4 +673,44 @@ test("a template's step being edited isn't saved when the user's access arrives 
   await app.saveStepEdit(0);
   assert.deepEqual([saves, app.sheet.stepEdit, step.title], [[], null, 'Mop']);
   assert.equal(app.toast.msg, 'Not changed. Only the person who made this template or a project admin can change it.');
+});
+
+test('a checklist is offered the earlier day most of its steps were done, when only its last step or two came later', () => {
+  // Monday, Nov 23 2026, noon, local time. `at(d, h)` is d days before at hour h.
+  const now = new Date(2026, 10, 23, 12).getTime(),
+    at = (d, h, m = 0) => new Date(2026, 10, 23 - d, h, m).toISOString(),
+    done = (d, h, m) => ({ done: true, doneAt: at(d, h, m) }),
+    open = { done: false, doneAt: null },
+    day = steps => finishDay(steps, now)?.toISOString() ?? null;
+  assert.equal(day([done(1, 9), done(1, 10), done(0, 8)]), at(1, 10), '2 of 3 on Sunday, the last on Monday');
+  assert.equal(day([done(1, 9), done(1, 10), open]), at(1, 10), '2 of 3 on Sunday, the last still open');
+  assert.equal(day([done(1, 9), done(1, 9, 30), done(1, 10)]), at(1, 10), 'all on Sunday, Finish on Monday');
+  assert.equal(day([done(0, 9), done(0, 10), done(0, 11)]), null, 'all today: nothing earlier to offer');
+  const ten = (sunday, monday) => [
+    ...Array.from({ length: sunday }, (_, i) => done(1, 8, i)),
+    ...Array.from({ length: monday }, (_, i) => done(0, 8, i)),
+    ...Array.from({ length: 10 - sunday - monday }, () => open),
+  ];
+  assert.equal(day(ten(9, 1)), at(1, 8, 8), '9 of 10 on Sunday, 1 on Monday');
+  assert.equal(day(ten(8, 2)), null, '8 of 10 on Sunday, 2 on Monday: more than one step came later');
+  assert.equal(day(ten(6, 4)), null, '6 of 10 on Sunday, 4 on Monday');
+  assert.equal(day(ten(8, 1)), null, '8 of 10 on Sunday, 1 on Monday, 1 still open');
+  const twenty = [...Array.from({ length: 18 }, (_, i) => done(1, 8, i)), done(0, 9), open];
+  assert.equal(day(twenty), at(1, 8, 17), '18 of 20 on Sunday: 2 may come later');
+  assert.equal(
+    day([done(2, 9), done(2, 10), done(1, 9), done(1, 10), done(0, 9)]),
+    at(1, 10),
+    'a tie between Saturday and Sunday goes to Sunday. Saturday is before it, so only Monday came later',
+  );
+  assert.equal(
+    day([done(2, 9), done(1, 9), done(1, 10), done(1, 11)]),
+    at(1, 11),
+    'a step on an earlier day counts for neither',
+  );
+  assert.equal(
+    day([{ done: true, skipped: true, doneAt: at(1, 9) }, done(1, 10), open]),
+    at(1, 10),
+    'a skipped step counts as done',
+  );
+  assert.equal(day([]), null, 'no steps');
 });

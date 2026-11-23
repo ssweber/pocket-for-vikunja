@@ -10,7 +10,10 @@
       <template x-if="runView.finished"><div class="card finish-card"><h3>Finished</h3><p class="note" style="margin:0" x-text="runView.summary"></p></div></template>
       <template x-if="!runView.finished && runView.allDone"><div class="card finish-card" id="finish-card">
         <h3 x-text="runView.skippedN ? 'Every step done or skipped' : 'All steps done'"></h3><p class="note" style="margin:0" x-text="runView.summary"></p>
-        <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun()">Finish checklist</button>
+        <!-- Most steps done on an earlier day (finishDay): finish on that day, or today -->
+        <template x-if="runView.asOf"><p class="note" id="finish-day" style="margin:10px 0 0" x-text="runView.finishAsk.note"></p></template>
+        <button class="btn block" id="run-finish" style="margin-top:14px" @click="finishRun(runView.asOf)" x-text="runView.finishAsk.yes"></button>
+        <template x-if="runView.asOf"><button class="btn ghost block" id="run-finish-today" style="margin-top:10px" @click="finishRun()" x-text="runView.finishAsk.today"></button></template>
       </div></template>
 
       <!-- Countdowns running on steps other than the one on the card, so the user doesn't miss one -->

@@ -214,23 +214,26 @@ export default {
   },
   /* Finish or reopen a checklist through the outbox, leaving its steps as they are. The ring asks before finishing
      a checklist that has open steps. A list row is marked until the batch clears, and tapping the ring undoes it. A
-     reopened row is marked only when it moves. */
-  async tickRunTask(t, rowEl) {
+     reopened row is marked only when it moves. `asOf` finishes it on the earlier day most of its steps were done. */
+  async tickRunTask(t, rowEl, asOf = null) {
     const was = t.done,
       head = was && this.isHead(t),
-      f = { id: uuid7(), op: was ? 'reopen' : 'finish', task: t.id, run: t.id };
+      f = { id: uuid7(), op: was ? 'reopen' : 'finish', task: t.id, run: t.id, ...(!was && asOf && { asOf }) };
     const r = await this.act(f);
     if (r.status === 'error') return;
     // A finished checklist shown above steps that are still open (isHead) stays in place when reopened. It only
     // leaves Done.
     if (head) return this.outOfDone(t.id);
     const offline = r.status === 'offline' && !r.behind,
-      said = was ? tickSaid(false, t.title) : finishedText(t.title, offline && r);
+      said = was ? tickSaid(false, t.title) : finishedText(t.title, offline && r, f.asOf);
     const undo = () => this.undoTicks([f]);
     // Without a visible row, show Undo at the top of the sheet, or in a toast.
     if (!rowEl) {
       if (!was && !r.behind)
-        this.say(offline ? finishedText('', r) : said, { place: 'sheet:top', action: { label: UNDO, fn: undo } });
+        this.say(offline ? finishedText('', r, f.asOf) : said, {
+          place: 'sheet:top',
+          action: { label: UNDO, fn: undo },
+        });
       return;
     }
     if (was && !this.moves(t)) {

@@ -6,7 +6,8 @@ export const ME = { id: 1, username: 'me', name: '' },
   FLOOR = { id: 600, title: 'floor' },
   TEMPLATE = { id: 601, title: 'template' },
   ZERO = '0001-01-01T00:00:00Z',
-  D9 = '2026-10-09T09:00:00.000Z';
+  D9 = '2026-10-09T09:00:00.000Z',
+  D10 = '2026-10-09T10:00:00.000Z';
 export const task = (id, title, more = {}) => ({
   id,
   title,
@@ -93,10 +94,11 @@ export const SAMPLES = {
     made: v => v.task(2).comments.length === 1,
     cannot: ['partly done'],
   },
+  // Both steps were done the day before, and the checklist is finished on that day (asOf).
   finish: {
-    tasks: checklist(),
-    fields: { op: 'finish', task: 1, run: 1 },
-    made: v => v.task(1).done && v.task(1).reactions['✅'].length === 1,
+    tasks: checklist({ 2: { done: true, done_at: D9 }, 3: { done: true, done_at: D10 } }),
+    fields: { op: 'finish', task: 1, run: 1, asOf: D10 },
+    made: v => v.task(1).done && v.task(1).reactions['✅'].length === 1 && v.task(1).done_at === D10,
   },
   reopen: {
     tasks: checklist({ 1: { done: true, reactions: { '✅': [ME] } } }),

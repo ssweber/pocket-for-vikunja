@@ -3,12 +3,15 @@
          The subtasks are named in a sentence (completeAsk, messages.js) and not listed as rows, because rows looked
          like boxes to pick from. For a checklist, the question is whether to finish it. Steps that are not done stay
          not done, because steps are ticked on the checklist's screen, which records who did each. The checklist can
-         be opened to work through them, except when the question came from its own screen. Cancel goes back to where
+         be opened to work through them, except when the question came from its own screen. When most steps were done on an
+         earlier day (finishDay), the checklist can be finished on that day or today. Cancel goes back to where
          the question came from: the parent's sheet, the list or the checklist's screen. -->
     <template x-if="sheet.kind === 'complete' && sheet.complete"><div id="complete">
       <div class="d-title"><h2 x-text="sheet.complete.ask.head"></h2></div>
-      <p class="note complete-note" id="complete-note" x-text="sheet.complete.ask.body"></p>
+      <template x-if="sheet.complete.ask.body"><p class="note complete-note" id="complete-note" x-text="sheet.complete.ask.body"></p></template>
+      <template x-if="sheet.complete.ask.note"><p class="note complete-note" id="complete-day" x-text="sheet.complete.ask.note"></p></template>
       <button class="btn block" id="complete-yes" @click="confirmComplete()" x-text="sheet.complete.ask.yes"></button>
+      <template x-if="sheet.complete.ask.today"><button class="btn ghost block" id="complete-today" style="margin-top:10px" @click="confirmComplete(false)" x-text="sheet.complete.ask.today"></button></template>
       <template x-if="sheet.complete.run && !sheet.complete.screen"><button class="btn ghost block" id="complete-open-run" style="margin-top:10px" @click="openRun(sheet.complete.id)">Open the checklist</button></template>
       <button class="btn ghost block" id="complete-no" style="margin-top:10px" @click="cancelComplete()">Cancel</button>
     </div></template>
