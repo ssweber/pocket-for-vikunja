@@ -126,6 +126,7 @@ A template is a procedure your team repeats. Starting it creates a checklist, wh
 - The box under the steps adds a step to this checklist only. **↻** repeats the step above it.
 - Template steps can be skipped, not removed.
 - Tap the checklist's ring to finish early.
+- When most steps were done on an earlier day, Pocket offers to finish the checklist on that day.
 
 **In Vikunja's web app.** A template is a task labeled `template`, and a checklist is a copy of it. A ✅ reaction on a step says who did it. Lines starting with `pocket:` are Pocket's records, so leave them in place. [What Pocket stores in Vikunja](data.md) has the details.
 

@@ -99,7 +99,8 @@ Vikunja doesn't record who ticked a task, so Pocket records it with reactions.
 
 ## What the plugin writes
 
-The plugin passes Pocket's changes to Vikunja's API as the signed-in user, so Vikunja checks permissions as it does for any request. It writes two things of its own:
+The plugin passes Pocket's changes to Vikunja's API as the signed-in user, so Vikunja checks permissions as it does for any request. It writes three things of its own:
 
 - **The `pocket_relay` table.** It keeps Vikunja's answer to each change for 31 days, so a change sent twice is made once. The answers include the tasks they changed. Removing the plugin leaves the table in place, and it can be dropped.
 - **Step due dates**, with `steptimes: true`. When a step is marked done, the plugin sets the due date and a reminder on each step timed from it, at the completion time plus the timer. Marking the step incomplete clears them. It writes only incomplete steps of that checklist, only when the date changes, and leaves the task's modified time alone. The code is `writeStepDueDates` in [`pocket/main.go`](../pocket/main.go). The [guide](guide.md#step-times) lists its limits.
+- **A checklist's done time**, when the user finishes a checklist on the day most of its steps were done. The plugin moves the checklist's `done_at` back to the time its last step on that day was marked done. Vikunja's API can't set `done_at`. The plugin moves it only earlier, only on a done task the user can edit, and only to the time of one of its done subtasks. The code is `setDoneAt` in [`pocket/main.go`](../pocket/main.go).
