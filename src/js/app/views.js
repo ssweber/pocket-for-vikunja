@@ -1482,7 +1482,9 @@ export default {
       this.searchQ ||
       this.movingOverdue ||
       this.starting ||
-      this.pending.length;
+      this.pending.length ||
+      this.untouched() || // a finger on the screen, or a scroll still moving
+      document.querySelector('.row-red.open'); // a row resting open on Delete
     if (!busy) location.reload();
   },
   async refresh() {

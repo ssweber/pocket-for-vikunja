@@ -9,7 +9,7 @@ const page = id => `<!doctype html><html><head><meta charset="utf-8"><meta name=
 
 /* Runs one check from a copy of Pocket built as "aaa", with `answer` as the reply to its request for the page.
    Returns whether the page reloaded and the headers the request carried. */
-async function check(answer, typed = '') {
+async function check(answer, typed = '', { touched = null, open = null } = {}) {
   const app = component(views);
   Object.assign(app, {
     screen: 'app',
@@ -21,12 +21,14 @@ async function check(answer, typed = '') {
     movingOverdue: false,
     starting: false,
     pending: [],
+    untouched: () => touched,
   });
   const query = document.querySelector,
     fetchBefore = globalThis.fetch;
   let reloaded = false,
     sent = null;
-  document.querySelector = s => (s === 'meta[name="pocket-build"]' ? { content: 'aaa' } : null);
+  document.querySelector = s =>
+    s === 'meta[name="pocket-build"]' ? { content: 'aaa' } : s === '.row-red.open' ? open : null;
   Object.assign(location, { href: 'http://pocket.test/api/v1/plugins/pocket/', reload: () => (reloaded = true) });
   globalThis.fetch = async (url, { headers = {} } = {}) => {
     sent = headers;
@@ -49,6 +51,12 @@ test('Pocket reloads when the server sends a page from another build', async () 
 
 test("Pocket doesn't reload over typed text", async () => {
   assert.equal((await check(() => new Response(page('bbb')), 'half-typed')).reloaded, false);
+});
+
+test("Pocket doesn't reload under a finger, or with a row open on Delete", async () => {
+  const newer = () => new Response(page('bbb'));
+  assert.equal((await check(newer, '', { touched: new Promise(() => {}) })).reloaded, false);
+  assert.equal((await check(newer, '', { open: {} })).reloaded, false);
 });
 
 test("Pocket doesn't reload when the check fails or finds the same build", async () => {
