@@ -1174,3 +1174,25 @@ for (const [where, route, start, open] of [
       app = await again();
       assert.deepEqual([open(app), app.tasks[1].done], [untouched, false], 'after a reopen');
     });
+
+test('the outbox opens its database again after iOS drops the connection', async () => {
+  const db = await sync.open(),
+    real = db.transaction;
+  const count = () => sync.tx(['outbox'], 'readonly', s => s('outbox').getAll()).then(all => Array.isArray(all));
+  // A dropped connection that never said so refuses a transaction, once.
+  let refused = 0;
+  db.transaction = function (...args) {
+    if (!refused++) throw new DOMException('The database connection is closing.', 'InvalidStateError');
+    return real.apply(this, args);
+  };
+  try {
+    assert.equal(await count(), true);
+    assert.equal(refused, 2);
+  } finally {
+    db.transaction = real;
+  }
+  // One that says so is opened again by the next transaction.
+  db.onclose();
+  assert.equal(sync.db, null);
+  assert.equal(await count(), true);
+});
