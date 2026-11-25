@@ -1298,6 +1298,15 @@ try {
         });
         await page.reload(); // so Pocket lists the new project
         await loaded(page);
+        // Pocket remembers the project only once it knows ASSIGNEE can see it.
+        await expect
+          .poll(
+            () => page.evaluate(k => Alpine.$data(document.body).access[k], `${shed.id}:${ASSIGNEE.toLowerCase()}`),
+            {
+              timeout: 15000,
+            },
+          )
+          .toBe(true);
         const first = `Pocket smoke remembered ${stamp}`,
           next = `Pocket smoke remembered again ${stamp}`;
         await page.fill('#in-capture', `${first} tomorrow @${ASSIGNEE} +${shed.title}`);

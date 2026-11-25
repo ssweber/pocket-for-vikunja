@@ -1879,6 +1879,10 @@ test('in quick add, someone who could move the task to more than one project is 
   app.chips('cap')[1].action();
   app.cap.focus = false;
   assert.ok(chipsOf(app, 'cap').includes('Type a +project @bot-claude can see'));
+  // With two people, it names both, since the project must suit them both.
+  type('cap', 'Water the beans @carol @bot-claude');
+  app.cap.focus = false;
+  assert.ok(chipsOf(app, 'cap').includes('Type a +project @carol and @bot-claude can see'));
   // Typing + lists the projects the bot can see first.
   type('cap', 'Water the beans @bot-claude +');
   assert.deepEqual(chipsOf(app, 'cap').slice(0, 3), ['+Garden  ↵', '+Shed', '+Café']);
@@ -1917,6 +1921,10 @@ test('in quick add, the project the last task for someone went to wins over seve
   // Typing + offers it first, so Enter keeps it.
   type('cap', 'Water the beans @bot-claude +');
   assert.equal(chipsOf(app, 'cap')[0], '+Shed  ↵');
+  // Unless its chip was tapped off, to keep the task where it is.
+  app.cap.ignore = { autoProject: true };
+  assert.equal(chipsOf(app, 'cap')[0], '+Garden  ↵');
+  app.cap.ignore = {};
   type('cap', 'Water the beans @bot-claude');
   app.cap.focus = false;
   // Once the bot can't see it, or the user can only read it, the remembered project no longer fits.
@@ -2065,6 +2073,10 @@ test('sending one line from quick add remembers its project for each person assi
   assert.deepEqual([app.goesTo, saved.get('goesTo')], [{ 'bot-claude': 7 }, { 'bot-claude': 7 }]);
   // A pasted list goes to one project for every line, so it remembers nothing.
   app.cap.text = 'Sweep the path +Garden @bot-claude\nRake the leaves';
+  await app.submitCapture();
+  assert.deepEqual(app.goesTo, { 'bot-claude': 7 });
+  // Nor does a project whose access hasn't been looked up, which could replace one that fits with one that doesn't.
+  app.cap.text = 'Weed the beds +Garden @bot-claude';
   await app.submitCapture();
   assert.deepEqual(app.goesTo, { 'bot-claude': 7 });
 });

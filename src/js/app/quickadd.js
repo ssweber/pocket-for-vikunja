@@ -345,7 +345,7 @@ export default {
   /* Returns {auto, warn} from the access already loaded. When quick add has no typed +project and some mentioned
      user can't see the default project, `auto` is the project the task moves to (fitFor), if any. `warn` lists the
      users who can't see the target project. When the task could move but no project fits, one warning says instead
-     to pick a project they can see, in words short enough to keep the chips on one row. */
+     to pick a project everyone mentioned can see, in words short enough to keep the chips on one row. */
   accessHints(w) {
     const out = { auto: null, warn: [] };
     if (!this.accessQuery(w)) return out;
@@ -362,7 +362,7 @@ export default {
       out.auto = fit;
     }
     if (moves && !out.auto)
-      out.warn.push(`Type a ${this.prefixes.project}project ${andList(blocked.map(n => at + n))} can see`);
+      out.warn.push(`Type a ${this.prefixes.project}project ${andList(known.map(n => at + n))} can see`);
     else if (!out.auto || this.box(w).ignore?.autoProject)
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
@@ -381,9 +381,10 @@ export default {
     const kept = names.map(n => fits.find(p => p.id === this.goesTo[n.toLowerCase()])).find(Boolean);
     return kept || (unknown ? undefined : fits.length === 1 ? fits[0] : null);
   },
-  // Remember the project a task assigned to `names` went to, for each of them who can see it (fitFor).
+  // Remember the project a task assigned to `names` went to, for each of them known to see it (fitFor). A guess could
+  // replace a project that fits with one that doesn't.
   rememberGoesTo(names, pid) {
-    const seen = names.filter(n => this.sees(pid, n) !== false);
+    const seen = names.filter(n => this.sees(pid, n) === true);
     for (const n of seen) this.goesTo[n.toLowerCase()] = pid;
     if (seen.length) saved.set('goesTo', this.goesTo);
   },
@@ -497,7 +498,7 @@ export default {
     } else if (tk.kind === 'project') {
       // The project the task would move to comes first, so Enter keeps it. Then the others everyone mentioned can see.
       const { names: named } = this.boxPeople(w),
-        moved = this.accessHints(w).auto,
+        moved = this.boxMoves(w) && this.accessHints(w).auto,
         seen = p => this.allSee(p.id, named);
       out = this.projects
         .filter(p => this.canWrite(p.id))
