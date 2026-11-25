@@ -8,6 +8,7 @@ import { isLate, isSet, startOfDay } from '../dates.js';
 import { dayGroup, todayAt, todayOrder } from '../lists.js';
 import { runShows } from '../checklists.js';
 import { dueNow, dueSaid } from '../messages.js';
+import { haptic } from '../haptics.js';
 
 let sound = null; // the AudioContext, made on a tap so the browser lets it play
 let wakeLock = null,
@@ -142,7 +143,7 @@ export default {
       if (alerted.has(k)) continue;
       alerted.add(k);
       this.chime();
-      navigator.vibrate?.([200, 100, 200]);
+      haptic('alert');
       this.notify(dueNow(s.title));
     }
   },
