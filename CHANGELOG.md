@@ -14,6 +14,12 @@ is a new 0.x.y.
 
 ## Unreleased
 
+### Added
+
+- When a tap hits a bug in Pocket, a message says so and offers Reload, instead of the tap doing nothing. The account
+  sheet keeps the last few errors for a week, and **Copy error details** copies them for a bug report. Nothing is
+  sent anywhere.
+
 ### Changed
 
 - Pressing Enter straight after `@`, `+` or `*` takes the suggestion marked ↵, instead of sending the task.

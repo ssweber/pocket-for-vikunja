@@ -215,6 +215,7 @@ With `steptimes: true` in `config.yml` (or `VIKUNJA_PLUGINS_POCKET_STEPTIMES=tru
 - **Vikunja's page stays open after single sign-on.** Signing in from the home-screen app ends on Vikunja's page. Close it to return to Pocket.
 - **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
 - **"@user can't see Inbox" or "Type a +project @user can see".** Share the project with them, or add a `+project` they can access.
+- **"Something went wrong. Reload Pocket and try again".** A tap hit a bug in Pocket. Tap Reload. Then tap the person icon and **Copy error details**, and paste them into a bug report. The details stay on the phone until you copy them.
 
 ## Privacy and security
 

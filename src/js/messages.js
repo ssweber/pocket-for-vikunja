@@ -955,8 +955,8 @@ export function startedText(who, at, { now = new Date(), day = false } = {}) {
 }
 
 // The message shown after the user copies something, by what was copied: progress as text, Done today's done tasks
-// for the day or the week, a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, or
-// a comment. Copy today and Copy week sit side by side, so each message names its own copy. `failed` is for when the
+// for the day or the week, a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, a
+// comment, or the errors the account sheet keeps. Copy today and Copy week sit side by side, so each message names its own copy. `failed` is for when the
 // browser didn't allow the copy, and `unread` for when Copy week couldn't read the week.
 export const COPIED = {
   progress: 'Copied the progress',
@@ -968,7 +968,11 @@ export const COPIED = {
   comment: 'Copied the comment',
   failed: "Not copied. This browser didn't allow it",
   unread: "Not copied. Vikunja didn't answer. Try again when you're online",
+  errors: 'Copied the error details. Paste them into a bug report',
 };
+
+// What Pocket says when its own code fails, so a tap that did nothing doesn't look like a missed tap (errors.js).
+export const BROKE = { msg: 'Something went wrong. Reload Pocket and try again', reload: 'Reload' };
 
 // Names in a sentence: "A", "A and B", "A, B and C". Past `most` names, it lists the first `most` and counts the rest:
 // "A, B, C and 2 more".

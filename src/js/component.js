@@ -30,6 +30,7 @@ import lines from './app/lines.js';
 import leaving from './app/leaving.js';
 import sharing from './app/sharing.js';
 import cards from './app/cards.js';
+import errors from './app/errors.js';
 import throwing from './app/throw.js';
 
 // The markup's Alpine expressions use these by name, so main.js makes them globals.
@@ -219,6 +220,7 @@ export const parts = [
   sharing,
   cards,
   throwing,
+  errors,
 ];
 export const pocket = () => {
   const component = core();

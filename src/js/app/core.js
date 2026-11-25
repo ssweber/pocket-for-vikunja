@@ -4,6 +4,7 @@ import { SEND_EVERY, sharedToken } from '../api.js';
 import { currentRoute } from '../routing.js';
 import { saved } from '../lists.js';
 import { noneWaiting } from '../ops/index.js';
+import { keptErrors } from './errors.js';
 
 /* Share mutable state across app modules because a module cannot assign to another module's variable.
    onClosedSheet and closedAt identify a closed sheet's history entry. */
@@ -199,9 +200,11 @@ export default () => ({
   groupedAt: 0, // when Today's tasks were last grouped, for the heading's date
   stepClock: 0, // the time Today's step countdowns and padlocks read, moved each second near a step's time (tickSteps)
   avatars: saved.get('avatars') || {}, // username -> {url, at}: people's pictures (claims.js)
+  errors: keptErrors(), // the last errors in Pocket's own code, oldest first (errors.js)
 
   init() {
     setApp(this);
+    this.watchErrors();
     window.addEventListener('hashchange', () => this.navigated());
     /* Give an open sheet its own history entry so Back closes it and keeps its drafts. When another control closes
        the sheet, mark the entry closed so Back can skip the duplicate screen. */

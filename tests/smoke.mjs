@@ -903,6 +903,34 @@ try {
     await page.click('#btn-sheet-close');
     await page.waitForSelector('#sheet', { state: 'hidden' });
   });
+  await step('an-error-in-pockets-code-says-so-and-the-account-sheet-copies-it', async () => {
+    // The events a bug in a tap raises, sent by hand so the browser doesn't report a real error. One comes from a
+    // browser extension's script, which Pocket ignores.
+    await page.evaluate(() => {
+      const raise = (msg, filename) =>
+        window.dispatchEvent(new ErrorEvent('error', { error: new TypeError(msg), filename }));
+      raise('from an extension', 'chrome-extension://x/content.js');
+      raise('from a test', location.href);
+    });
+    await toast(page, 'Something went wrong. Reload Pocket and try again');
+    await expect(page.locator('#toast-act')).toHaveText('Reload');
+    await toastGoneOn(page);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(APP).origin });
+    await page.click('#btn-account');
+    await page.click('#btn-errors');
+    await placeSays(page, 'sheet:top', 'Copied the error details');
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    if (!copied.includes('TypeError: from a test') || copied.includes('from an extension'))
+      throw new Error('copied ' + copied);
+    // Later steps, and the next run in this browser, start with no errors kept.
+    await page.evaluate(() => {
+      localStorage.removeItem('pocket.saved.errors');
+      Alpine.$data(document.body).errors = [];
+    });
+    await expect(page.locator('#btn-errors')).toHaveCount(0);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
   const parentTitle = `Pocket smoke list ${stamp}`;
   await step('paste-list-with-parent', async () => {
     // Text pasted from an email or note: bullets and checkboxes are removed and the first line becomes the parent.
