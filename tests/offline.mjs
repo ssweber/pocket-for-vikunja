@@ -175,6 +175,46 @@ try {
       .toBe(true);
   });
 
+  await step('a-saved-file-without-a-version-in-its-name-is-saved-again', async () => {
+    // The manifest's name stays the same from one release to the next, so its saved copy is replaced once it is read.
+    // A library's name carries its version, so its saved copy is kept as it is.
+    const read = () =>
+      page.evaluate(async () => {
+        const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
+        const keys = await cache.keys(),
+          text = async re =>
+            (
+              await cache.match(
+                keys.find(r => re.test(r.url)),
+                { ignoreVary: true },
+              )
+            ).text();
+        return [await text(/manifest\.webmanifest$/), await text(/\/alpine-[^/]+\.js$/)];
+      });
+    await page.evaluate(async () => {
+      const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
+      const keys = await cache.keys();
+      for (const re of [/manifest\.webmanifest$/, /\/alpine-[^/]+\.js$/])
+        await cache.put(
+          keys.find(r => re.test(r.url)),
+          new Response('an old copy'),
+        );
+      await fetch('manifest.webmanifest');
+      await fetch(keys.find(r => /\/alpine-[^/]+\.js$/.test(r.url)).url);
+    });
+    await expect.poll(async () => (await read())[0], { timeout: 15000 }).toContain('Pocket for Vikunja');
+    if ((await read())[1] !== 'an old copy') throw new Error('a library was fetched again');
+    // Put the library back, so the steps after this one open Pocket offline. Cache.add skips the service worker, which
+    // would answer with the old copy.
+    await page.evaluate(async () => {
+      const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
+      const key = (await cache.keys()).find(r => /\/alpine-[^/]+\.js$/.test(r.url));
+      await cache.delete(key);
+      await cache.add(key.url);
+    });
+    if ((await read())[1] === 'an old copy') throw new Error('the library was not put back');
+  });
+
   await step('opens-offline-with-last-list', async () => {
     await context.setOffline(true);
     await page.reload();

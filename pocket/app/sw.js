@@ -1,8 +1,9 @@
 // Lets Pocket open offline, and open fast. Opening Pocket shows the saved copy of the page and fetches a new copy in
 // the background for next time. A new version appears on the next opening, or sooner when Pocket finds it
 // (updateIfNew in views.js, whose request for the page always goes to the network). If no copy is saved yet, the page
-// comes from the network, and from the saved copy if the network fails. Libraries and icons have their version in
-// their file name, so their saved copies are never out of date. Only Pocket's own files are handled here. Requests to
+// comes from the network, and from the saved copy if the network fails. The libraries have their version in their
+// file name, so their saved copies are never out of date. The icons, the manifest and the source map don't, so each
+// is answered from its saved copy and saved again behind it. Only Pocket's own files are handled here. Requests to
 // Vikunja's API pass through and nothing from them is stored.
 const CACHE = 'pocket-2';
 const SCOPE = new URL('./', self.registration.scope).pathname;
@@ -67,8 +68,12 @@ self.addEventListener('fetch', event => {
   }
   // ignoreVary is needed because Vikunja answers with "Vary: Origin", and the chrono import is requested with an Origin
   // header that the saved request didn't have. Without it the saved copy is missed offline and quick add finds no dates.
-  event.respondWith(caches.match(event.request, {ignoreVary: true}).then(hit => hit || fetch(event.request).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(event.request, copy)); }
+  const hit = caches.match(event.request, {ignoreVary: true});
+  const save = res => res.ok ? caches.open(CACHE).then(c => c.put(event.request, res)) : null;
+  if (!/\d\.\d/.test(url.pathname.split('/').pop()))
+    event.waitUntil(hit.then(h => h && fetch(event.request).then(save)).catch(() => {}));
+  event.respondWith(hit.then(h => h || fetch(event.request).then(res => {
+    save(res.clone())?.catch(() => {});
     return res;
   })));
 });
