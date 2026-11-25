@@ -17,6 +17,7 @@ import {
   expect,
   finger,
   hintSeen,
+  fillDue,
   laidUnder,
   loaded,
   noToast,
@@ -3382,7 +3383,7 @@ try {
     await page.click(`${dailyRow} .body`, { timeout: 15000 });
     await page.waitForSelector('#d-comes-round');
     const due = minute(Date.now() - 3600e3);
-    await page.fill('#d-due', local(due));
+    await fillDue(page, local(due));
     await page.dispatchEvent('#d-due', 'change');
     await until('setting the date never made the template not done', async () => {
       const t = await api('/tasks/' + daily.id);
@@ -3567,7 +3568,7 @@ try {
     if ((await page.inputValue('#d-repeat')) !== 'day')
       throw new Error('the Repeats field shows ' + (await page.inputValue('#d-repeat')));
     if (await page.isVisible('#d-reminders')) throw new Error("reminders show for a template that doesn't repeat");
-    await page.fill('#d-due', local(due));
+    await fillDue(page, local(due));
     await until(
       'setting the date again did not reopen the template with its repeat',
       async () => {

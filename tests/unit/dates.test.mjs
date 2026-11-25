@@ -6,6 +6,7 @@ import {
   addDays,
   doneWeek,
   dueInfo,
+  dueInputType,
   fromLocalInput,
   isLate,
   isSet,
@@ -175,6 +176,17 @@ test("a due date converts to the date box's value and back", () => {
   assert.equal(fromLocalInput('2026-10-07T09:05'), at(7, 9, 5));
   assert.equal(toLocalInput('0001-01-01T00:00:00Z'), '');
   assert.equal(fromLocalInput(''), '0001-01-01T00:00:00Z');
+  assert.equal(fromLocalInput('2026-10-07'), at(7), 'a date alone is midnight, local time');
+});
+
+test("on a computer, an empty due date's input picks a date alone, and a set one a date and a time", t => {
+  const was = globalThis.matchMedia,
+    pointer = fine => (globalThis.matchMedia = q => ({ matches: q === '(pointer: fine)' && fine }));
+  t.after(() => (globalThis.matchMedia = was));
+  pointer(true);
+  assert.deepEqual([dueInputType('0001-01-01T00:00:00Z'), dueInputType(at(7))], ['date', 'datetime-local']);
+  pointer(false); // a phone
+  assert.equal(dueInputType('0001-01-01T00:00:00Z'), 'datetime-local');
 });
 
 test('a day starts at midnight, and days can be added', () => {

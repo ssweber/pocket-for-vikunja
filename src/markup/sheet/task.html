@@ -82,7 +82,7 @@
            (showPicker). -->
       <template x-if="!ofTemplate || checklistRole === 'template'"><div class="card" id="d-due-card">
         <div class="prop" @click="propTap($event)"><span class="k" x-text="checklistRole === 'template' ? 'Next due' : 'Due'"></span><span class="v">
-          <input type="datetime-local" id="d-due" data-tap :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
+          <input type="datetime-local" :type="dueInputType(dueShown)" id="d-due" data-tap :aria-label="checklistRole === 'template' ? 'Next due' : 'Due date'" :disabled="!canEdit" :value="toLocalInput(dueShown)" @change="setDue(fromLocalInput($event.target.value))">
           <template x-if="isSet(dueShown) && canEdit"><button class="icon-btn plain" id="d-due-clear" aria-label="Clear due date" @click="setDue(ZERO)"><svg class="i"><use href="#i-close"/></svg></button></template>
         </span></div>
         <template x-if="checklistRole === 'template'"><div class="prop sel"><span class="k">Repeats</span><span class="v">

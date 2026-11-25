@@ -11,7 +11,18 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright'; // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, outboxOf, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
+import {
+  expect,
+  fillDue,
+  hintSeen,
+  outboxOf,
+  placeLine,
+  placeSays,
+  signIn,
+  steady,
+  stepper,
+  synced,
+} from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN,
@@ -1189,7 +1200,7 @@ try {
       await page.reload();
       await open();
       await context.setOffline(true);
-      await page.fill('#d-due', local);
+      await fillDue(page, local);
       await page.selectOption('#d-repeat', 'week');
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });

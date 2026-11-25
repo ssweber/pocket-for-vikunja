@@ -101,6 +101,14 @@ export async function loaded(page, timeout = 15000) {
   await expect(page.locator('#view[aria-busy="true"]')).toHaveCount(0, { timeout });
 }
 
+/* Type a date and time (`2026-11-25T10:00`) into the task sheet's Due field. These tests run in desktop Chrome at a
+   phone's size, where an empty due date is a date-only input (dueInputType). The field is made a date-and-time input
+   first, as a phone has it, so one value is saved. smoke.mjs's due-date-on-a-computer checks the date-only input. */
+export async function fillDue(page, value) {
+  await page.locator('#d-due').evaluate(el => (el.type = 'datetime-local'));
+  await page.fill('#d-due', value);
+}
+
 /* A message line (lines.js), found by where Pocket put it (data-place). Examples are under a heading ("overdue"),
    by the add box ("cap"), in a sheet ("sheet:notes") and on a checklist ("step", "run"). The line's action is a
    button with a label: line.getByRole(…). */

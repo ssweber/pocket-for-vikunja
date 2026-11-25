@@ -22,6 +22,7 @@ import { chromium } from 'playwright';
 import { shortTime } from '../src/js/dates.js';
 import {
   expect,
+  fillDue,
   finger,
   hintSeen,
   laidUnder,
@@ -872,11 +873,33 @@ try {
     await page.waitForSelector('#d-comments .comment-form', { timeout: 10000 });
     const d = new Date(Date.now() + 86400000),
       p = n => String(n).padStart(2, '0');
-    await page.fill('#d-due', `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`);
+    await fillDue(page, `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T10:00`);
     await synced(page);
     await page.click('#btn-sheet-close');
     await page.waitForSelector(`div:has(> .sec:has-text("Next 7 days")) ${cardOf(t)}`, { timeout: 15000 });
     if (await page.isVisible(`${noDate} ${cardOf(t)}`)) throw new Error('still under Added today, no date');
+  });
+  await step('due-date-on-a-computer', async () => {
+    // On a computer an empty due date is a date-only input (dueInputType), so picking a day saves it at once, with no
+    // time. The field is then a date-and-time input again, so a time can be added.
+    const t = `Pocket smoke day only ${stamp}`,
+      due = page.locator('#d-due');
+    await page.fill('#in-capture', t);
+    await page.click('#f-capture .go');
+    await page.click(`.row:has(.title:has-text("${t}")) .body`, { timeout: 15000 });
+    await expect(due).toHaveAttribute('type', 'date');
+    const d = new Date(Date.now() + 2 * 86400000),
+      p = n => String(n).padStart(2, '0'),
+      day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    await page.fill('#d-due', day);
+    await expect(due).toHaveAttribute('type', 'datetime-local');
+    await expect(due).toHaveValue(day + 'T00:00');
+    await synced(page);
+    const task = ((await (await api('/tasks?q=' + encodeURIComponent(t))).json()).items || []).find(x => x.title === t),
+      at = new Date(task?.due_date);
+    if (at.getDate() !== d.getDate() || at.getHours() || at.getMinutes()) throw new Error('due ' + task?.due_date);
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
   });
   const parentTitle = `Pocket smoke list ${stamp}`;
   await step('paste-list-with-parent', async () => {
