@@ -581,6 +581,7 @@ class World {
       flush: async () => {},
       // The projects Pocket lists, which a catch-up asks about (findRemoved).
       projById: new Map([[5, { id: 5, title: 'Closing' }]]),
+      loadProjects: async () => {}, // a catch-up reads the project list too, which this model doesn't check
       // Vikunja refuses the search for who can see the project, so a line's person is assigned and Vikunja decides.
       canSee: async () => null,
       findUser: async name => ({ id: 7, username: name }),

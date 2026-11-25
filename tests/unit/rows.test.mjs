@@ -374,7 +374,6 @@ test('the projects for checklists are found when the projects are set, not each 
   const app = component(views, runs, checklists);
   let read = 0;
   Object.assign(app, {
-    loadPerms() {},
     isChecklistProject: p => {
       read++;
       return p.description === 'marked';

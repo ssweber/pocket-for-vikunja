@@ -700,8 +700,8 @@ test("a waiting delete takes its tasks out of their parent's subtasks, once it i
 });
 
 // The parts that send the outbox, on the fake component, signed in as user 1.
-const sender = () => {
-  const app = component(tasks, acts, sending, outbox, runs, actions);
+const sender = (...more) => {
+  const app = component(tasks, acts, sending, outbox, runs, actions, ...more);
   Object.assign(app, {
     user: { id: 1 },
     pending: [],
@@ -1471,7 +1471,8 @@ test('a task is read again once its op stops waiting without an answer this tab 
 });
 
 /* Catching up, as Pocket comes back to the screen. Tasks 1 to 3 are in project 5, which Pocket lists, and on a screen.
-   Vikunja changed none of them since long before the catch-up. */
+   Vikunja changed none of them since long before the catch-up. `gets` leaves out the project list, which each
+   catch-up reads too. */
 const caught = (...more) => {
   const old = '2020-01-01T00:00:00Z',
     v = fakeVikunja([
@@ -1480,11 +1481,13 @@ const caught = (...more) => {
       { id: 3, title: 'Wipe the till', project_id: 5, updated: old },
       ...more,
     ]),
-    app = sender();
-  app.projById = new Map([[5, { id: 5, title: 'Closing' }]]);
+    app = sender(views);
+  v.projects = [{ id: 5, title: 'Closing', max_permission: 1 }];
+  Object.assign(app, { perms: {}, isChecklistProject: () => false });
+  app.setProjects([{ id: 5, title: 'Closing' }]);
   read([...v.tasks.values()].map(t => structuredClone(t)));
   app.view.groups = [{ key: 'open', tasks: [...v.tasks.keys()].map(id => app.row(copyOf(id))) }];
-  return { v, app, gets: () => v.requests.filter(r => r.method === 'GET') };
+  return { v, app, gets: () => v.requests.filter(r => r.method === 'GET' && r.path !== '/projects') };
 };
 const shown = app => app.view.groups[0].tasks.map(t => t.id);
 
@@ -1581,6 +1584,22 @@ test('catching up keeps the tasks of an archived project', async t => {
   );
 });
 
+// Access changed in the web app reaches Pocket at the next catch-up, without Pocket being closed.
+test("catching up reads the project list again, with the user's access to each project", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app } = caught();
+  app.perms[5] = 0; // read only, as Pocket last read it
+  v.projects.push({ id: 6, title: 'Shared since', max_permission: 0 });
+  await app.catchUp();
+  assert.deepEqual([app.canWrite(5), app.canWrite(6), app.projById.get(6).title], [true, false, 'Shared since']);
+  assert.deepEqual(saved.get('perms'), { 5: 1, 6: 0 });
+  assert.deepEqual(
+    v.requests.filter(r => r.path === '/projects').map(r => r.query.getAll('expand')),
+    [['permissions']],
+  );
+  localStorage.clear();
+});
+
 // A user may switch apps often. Coming back to the screen catches up at most once a minute, and a reconnect always.
 test('coming back to the screen catches up at most once a minute, and the connection coming back always', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-18T09:00:00Z') });
@@ -1657,8 +1676,10 @@ test('a catch-up after an offline open finds a change made before the page loade
   await sync.ready;
   const yesterday = new Date(Date.now() - 86400000).toISOString(),
     v = fakeVikunja([{ id: 1, title: 'Mop the floor', project_id: 5, updated: yesterday }]),
-    app = component(tasks);
-  Object.assign(app, { user: { id: 1 }, projById: new Map([[5, { id: 5, title: 'Closing' }]]) });
+    app = component(tasks, views);
+  v.projects = [{ id: 5, title: 'Closing', max_permission: 1 }];
+  Object.assign(app, { user: { id: 1 }, perms: {}, isChecklistProject: () => false });
+  app.setProjects([{ id: 5, title: 'Closing' }]);
   keptOnPhone(structuredClone(v.task(1)));
   saved.set('today', { groups: [{ key: 'today', tasks: [1] }], at: yesterday });
   app.view.groups = [{ key: 'today', tasks: app.rowsOf(app.keptScreen('today').groups[0].tasks) }];

@@ -813,8 +813,8 @@ export default {
     for (const id of ids) if (!keep.has(id)) store.del('saved.task.' + id);
     return !saved.get(key);
   },
-  /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
-     keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
+  /* Read the project list again, and the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's
+     clock, into the copies the store keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
      while a write to its task was in flight is thrown away. Vikunja 2.7 changes `updated` only for a task's own
      fields and a new comment. It misses labels, people, reactions, positions, attachments, a subtask linked or ticked,
      and the step times the plugin writes (docs/design/upstream-task-updated.md asks Vikunja to change that). It also
@@ -835,14 +835,17 @@ export default {
     try {
       const at = started(),
         // Vikunja keeps times in whole seconds, so the second the last catch-up started in is read again.
-        changed = await allPages(
-          '/tasks?' +
-            new URLSearchParams([
-              ['filter', `updated > '${new Date(since - 1000).toISOString()}'`],
-              ['expand', 'reactions'],
-              ['expand', 'comment_count'],
-            ]),
-        );
+        [changed] = await Promise.all([
+          allPages(
+            '/tasks?' +
+              new URLSearchParams([
+                ['filter', `updated > '${new Date(since - 1000).toISOString()}'`],
+                ['expand', 'reactions'],
+                ['expand', 'comment_count'],
+              ]),
+          ),
+          this.loadProjects(), // projects shared, renamed or given other access in the web app
+        ]);
       this.change(w =>
         w.read(
           changed.filter(t => keptCopy(t.id)),
