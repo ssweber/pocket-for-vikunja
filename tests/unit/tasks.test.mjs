@@ -1600,6 +1600,15 @@ test("catching up reads the project list again, with the user's access to each p
   localStorage.clear();
 });
 
+test('a catch-up whose project read fails still shows the tasks changed in Vikunja', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { v, app } = caught();
+  v.trouble = r => (r.path === '/projects' ? 500 : null);
+  Object.assign(v.task(2), { title: 'Lock up twice', updated: new Date().toISOString() });
+  await app.catchUp();
+  assert.equal(app.tasks[2].title, 'Lock up twice');
+});
+
 // A user may switch apps often. Coming back to the screen catches up at most once a minute, and a reconnect always.
 test('coming back to the screen catches up at most once a minute, and the connection coming back always', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-10-18T09:00:00Z') });

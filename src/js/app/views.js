@@ -93,8 +93,8 @@ const doneQuery = (from, to) =>
   ]);
 
 export default {
-  /* Read the projects and the user's access to each (expand=permissions), which costs Vikunja no extra time. Pocket
-     reads them as it opens and as it catches up, so access changed in the web app reaches Pocket within a minute. */
+  /* Read the projects, and the user's access to each in the same request (expand=permissions). Pocket reads them as
+     it opens and as it catches up, so access changed in the web app reaches Pocket within a minute. */
   async loadProjects() {
     const list = await allPages('/projects?is_archived=false&expand=permissions');
     this.setProjects(
