@@ -9,16 +9,34 @@ const SCOPE = new URL('./', self.registration.scope).pathname;
 const PAGE = new URL('index.html', self.registration.scope).href;
 const PAGE_PATH = new URL(PAGE).pathname;
 
-// Save the page and every local file it refers to: scripts, the manifest, icons and the chrono import.
+// The local files a copy of the page refers to: scripts, the manifest, icons and the chrono import.
+const filesOf = html => {
+  const files = new Set();
+  for (const m of html.matchAll(/(?:^|[\s<])(?:src|href)="(?![#/]|[a-z]+:)([^"?#]+)"/g)) files.add(m[1]);
+  for (const m of html.matchAll(/from\s+'\.\/([^']+)'/g)) files.add(m[1]);
+  return [...files];
+};
+
+// Save the page and every local file it refers to.
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   const html = await (await fetch(PAGE, { cache: 'no-cache' })).text();
-  const files = new Set(['index.html']);
-  for (const m of html.matchAll(/(?:^|[\s<])(?:src|href)="(?![#/]|[a-z]+:)([^"?#]+)"/g)) files.add(m[1]);
-  for (const m of html.matchAll(/from\s+'\.\/([^']+)'/g)) files.add(m[1]);
-  await cache.addAll([...files]);
+  await cache.addAll(['index.html', ...filesOf(html)]);
   await self.skipWaiting();
 })()));
+
+// Save a new copy of the page, after the files it names that aren't saved yet. A release that renames a library
+// changes only the page, not this file, so without this the new page would open offline without its library. Only
+// Pocket's page is saved, not a sign-in page a proxy answered with.
+async function keep(res) {
+  const html = await res.clone().text();
+  if (!html.includes('<meta name="pocket-build"')) return;
+  const cache = await caches.open(CACHE);
+  const missing = [];
+  for (const f of filesOf(html)) if (!(await cache.match(f, { ignoreVary: true }))) missing.push(f);
+  await cache.addAll(missing);
+  await cache.put(PAGE, res);
+}
 
 self.addEventListener('activate', event => event.waitUntil((async () => {
   // Delete only Pocket's old caches. Vikunja's web app keeps its own caches at this address too.
@@ -30,11 +48,12 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== location.origin || !url.pathname.startsWith(SCOPE)) return;
   if (url.pathname === SCOPE || url.pathname === PAGE_PATH) {
-    // Fetch the page from the network and save it once it has fully arrived. If the server returns an error instead
-    // of Pocket (a proxy's 502, say), use the saved copy when there is one, because an installed Pocket has no reload
-    // button. A 304 (Pocket asking whether the page changed) passes through unchanged.
+    // Fetch the page from the network and save it once it has fully arrived (keep). A failed save still returns the
+    // new page. If the server returns an error instead of Pocket (a proxy's 502, say), use the saved copy when there is
+    // one, because an installed Pocket has no reload button. A 304 (Pocket asking whether the page changed) passes
+    // through unchanged.
     const fresh = fetch(event.request).then(async res => {
-      if (res.ok) { await (await caches.open(CACHE)).put(PAGE, res.clone()); return res; }
+      if (res.ok) { await keep(res.clone()).catch(() => {}); return res; }
       return res.status >= 500 && (await caches.match(PAGE)) || res;
     });
     event.waitUntil(fresh.catch(() => {}));
