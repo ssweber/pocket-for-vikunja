@@ -16,8 +16,7 @@ is a new 0.x.y.
 
 ### Changed
 
-- While the add box shows suggestions, the keyboard's Enter key says return, and pressing it takes the suggestion
-  marked ↵, even straight after `@`, `+` or `*`.
+- Pressing Enter straight after `@`, `+` or `*` takes the suggestion marked ↵, instead of sending the task.
 
 ## 0.8.0 (2026-11-25)
 
