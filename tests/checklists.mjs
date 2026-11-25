@@ -1504,6 +1504,17 @@ try {
           { timeout: 15000 },
         );
         await expect(p.locator('#d-start')).toHaveCount(0);
+        await p.click('#btn-sheet-close');
+        // Given write access again in the web app. Pocket reads it when it catches up, as it comes back on screen.
+        await api(`/projects/${project.id}/users/${OTHER}`, { method: 'PUT', body: JSON.stringify({ permission: 1 }) });
+        await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await expect
+          .poll(() => p.evaluate(id => JSON.parse(localStorage.getItem('pocket.saved.perms'))?.[id], project.id), {
+            timeout: 15000,
+          })
+          .toBe(1);
+        await open();
+        await expect(p.locator('#d-start')).toBeVisible();
       } catch (e) {
         await p.screenshot({ path: `${OUT}/checklists-fail-lock.png` });
         throw e;
