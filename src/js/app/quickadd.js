@@ -333,6 +333,15 @@ export default {
     const { target, names } = this.boxPeople(w);
     return names.length ? [target, ...names.map(n => n.toLowerCase())].join('|') : '';
   },
+  // Whether @name can see project `pid`: true, false, null when Vikunja refused the search, or undefined until looked up.
+  sees(pid, name) {
+    return this.access[pid + ':' + name.toLowerCase()];
+  },
+  // Whether all `names` can see project `pid`: true, false, or undefined while someone's access isn't looked up yet.
+  allSee(pid, names) {
+    const v = names.map(n => this.sees(pid, n));
+    return v.every(Boolean) || (v.includes(undefined) ? undefined : false);
+  },
   /* Returns {auto, warn} from the access already loaded. When quick add has no typed +project and some mentioned
      user can't see the default project, `auto` is the project the task moves to (fitFor), if any. `warn` lists the
      users who can't see the target project. When the task could move but no project fits, one warning says instead
@@ -340,15 +349,13 @@ export default {
   accessHints(w) {
     const out = { auto: null, warn: [] };
     if (!this.accessQuery(w)) return out;
-    const { target, names, one } = this.boxPeople(w),
-      p = one && this.boxParsed(w),
+    const { target, names } = this.boxPeople(w),
       at = this.prefixes.assignee;
-    const sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
     const known = names.filter(n => this.userKnown[n.toLowerCase()] !== false);
     names.filter(n => this.userKnown[n.toLowerCase()] === false).forEach(n => out.warn.push(`No user ${at}${n}`));
-    const blocked = known.filter(n => sees(target, n) === false);
+    const blocked = known.filter(n => this.sees(target, n) === false);
     if (!blocked.length) return out;
-    const moves = one && !p.project && w === 'cap';
+    const moves = this.mayMove(w);
     if (moves) {
       const fit = this.fitFor(target, known);
       if (fit === undefined) return out; // not looked up yet
@@ -360,56 +367,48 @@ export default {
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
   },
-  /* The project a task for `names` moves to when one of them can't see `target`. That is the project the last task
-     for one of them went to (goesTo), if it still fits them all, or else the one project that fits (oneFit). */
+  /* The project a task for `names` moves to when one of them can't see `target`, from the projects all of them can
+     see and the user can add to. That is the project the last task for one of them went to (goesTo), or else the only
+     one. Null when none or several fit, and undefined while someone's access to a project hasn't been looked up. */
   fitFor(target, names) {
-    const fits = proj =>
-      proj &&
-      proj.id !== target &&
-      this.canWrite(proj.id) &&
-      names.every(n => this.access[proj.id + ':' + n.toLowerCase()]);
-    const kept = names.map(n => this.projById.get(this.goesTo[n.toLowerCase()])).find(fits);
-    return kept || this.oneFit(target, names);
+    const fits = [];
+    let unknown = false;
+    for (const proj of this.movesTo(target)) {
+      const all = this.allSee(proj.id, names);
+      if (all) fits.push(proj);
+      else if (all === undefined) unknown = true;
+    }
+    const kept = names.map(n => fits.find(p => p.id === this.goesTo[n.toLowerCase()])).find(Boolean);
+    return kept || (unknown ? undefined : fits.length === 1 ? fits[0] : null);
   },
   // Remember the project a task assigned to `names` went to, for each of them who can see it (fitFor).
   rememberGoesTo(names, pid) {
-    const seen = names.filter(n => this.access[pid + ':' + n.toLowerCase()] !== false);
-    if (!seen.length) return;
+    const seen = names.filter(n => this.sees(pid, n) !== false);
     for (const n of seen) this.goesTo[n.toLowerCase()] = pid;
-    saved.set('goesTo', this.goesTo);
-  },
-  // The one project other than `target` that all `names` can see and the user can add to. Null when there is none or
-  // more than one, and undefined while someone's access to a project hasn't been looked up.
-  oneFit(target, names) {
-    const fits = [];
-    for (const proj of this.movesTo(target)) {
-      const v = names.map(n => this.access[proj.id + ':' + n.toLowerCase()]);
-      if (v.includes(undefined)) return undefined;
-      if (v.every(Boolean)) fits.push(proj);
-    }
-    return fits.length === 1 ? fits[0] : null;
+    if (seen.length) saved.set('goesTo', this.goesTo);
   },
   // The projects quick add may move a task to instead of `target`: those the user can add to.
   movesTo(target) {
     return this.projects.filter(p => p.id > 0 && p.id !== target && this.canWrite(p.id));
   },
-  /* Only quick add moves a task to the project its @usernames can see, and only for one line with no +project, while
-     that chip is on. The task in any other box stays in the box's project. */
+  /* Only quick add moves a task to the project its @usernames can see, and only for one line with no +project. The
+     task in any other box stays in the box's project. */
+  mayMove(w) {
+    return w === 'cap' && this.boxLines(w).length === 1 && !this.boxParsed(w).project;
+  },
+  // Whether quick add moves the task: it may (mayMove), and the project chip hasn't been tapped off.
   boxMoves(w) {
-    return (
-      w === 'cap' && this.boxLines(w).length === 1 && !this.boxParsed(w).project && !this.box(w).ignore?.autoProject
-    );
+    return this.mayMove(w) && !this.box(w).ignore?.autoProject;
   },
   async checkAccess(w) {
     if (!this.accessQuery(w)) return;
-    const { target, names, one } = this.boxPeople(w),
-      p = one && this.boxParsed(w);
+    const { target, names } = this.boxPeople(w);
     try {
       let blocked = false;
       for (const n of names) if ((await this.canSee(target, n)) === false && (await this.userExists(n))) blocked = true;
       // If someone can't see the target project, look up the other projects too, so a project everyone can see can
       // be picked.
-      if (blocked && one && !p.project && w === 'cap') {
+      if (blocked && this.mayMove(w)) {
         const known = names.filter(n => this.userKnown[n.toLowerCase()] !== false);
         await Promise.all(this.movesTo(target).flatMap(x => known.map(n => this.canSee(x.id, n))));
       }
@@ -499,7 +498,7 @@ export default {
       // The project the task would move to comes first, so Enter keeps it. Then the others everyone mentioned can see.
       const { names: named } = this.boxPeople(w),
         moved = this.accessHints(w).auto,
-        seen = p => named.every(n => this.access[p.id + ':' + n.toLowerCase()]);
+        seen = p => this.allSee(p.id, named);
       out = this.projects
         .filter(p => this.canWrite(p.id))
         .map(p => ({ p, s: score(p.title), rank: p === moved ? 0 : seen(p) ? 1 : 2 }))
@@ -515,14 +514,13 @@ export default {
           action: () => this.useSuggestion(w, tk, p.title),
         }));
     } else {
-      const { target, named, moves } = this.suggestFor(w, q),
-        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
+      const { target, named, moves } = this.suggestFor(w, q);
       // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no
       // project fits them all.
-      const goes = ns => (ns.some(n => sees(target, n) === false) ? this.fitFor(target, ns)?.id || null : target);
+      const goes = ns => (ns.some(n => this.sees(target, n) === false) ? this.fitFor(target, ns)?.id || null : target);
       const now = moves ? goes(named) : target;
       out = (this.people || [])
-        .filter(x => moves || sees(target, x.user.username) !== false)
+        .filter(x => moves || this.sees(target, x.user.username) !== false)
         .map(x => {
           const to = moves ? goes([...named, x.user.username]) : target;
           return { x, to, s: score(x.user.username, x.user.name), rank: !to ? 2 : to === now ? 0 : 1 };
@@ -569,7 +567,6 @@ export default {
         sg = tk?.kind === 'assignee' && this.suggestions(w);
       if (!sg) return;
       const { target, named, moves } = this.suggestFor(w, tk.q.toLowerCase()),
-        sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()],
         people = sg.map(s => s.who);
       if (!asked.has(this.access)) asked.set(this.access, new Set());
       const done = asked.get(this.access),
@@ -579,10 +576,10 @@ export default {
         if (!(key in this.access) && !done.has(key)) ask.set(key, [pid, n]);
       };
       for (const n of [...named, ...people]) need(target, n);
-      // Someone who can't see the box's project moves the task, to the one project they all can see (oneFit).
+      // Someone who can't see the box's project moves the task, to a project they all can see (fitFor).
       if (moves)
         for (const ns of people.map(n => [...named, n]))
-          if (ns.some(m => sees(target, m) === false))
+          if (ns.some(m => this.sees(target, m) === false))
             for (const proj of this.movesTo(target)) ns.forEach(m => need(proj.id, m));
       if (!ask.size) return;
       ask.forEach((x, key) => done.add(key));
@@ -1413,8 +1410,7 @@ export default {
     if (!this.boxLines(w).length) return [];
     const parsed = this.boxParsedLines(w),
       target = parsed.length === 1 ? this.boxPid(w) : this.boxPeople(w).target;
-    const stays = n =>
-      this.userKnown[n.toLowerCase()] === false || (target && this.access[target + ':' + n.toLowerCase()] === false);
+    const stays = n => this.userKnown[n.toLowerCase()] === false || (target && this.sees(target, n) === false);
     const out = [];
     // Offset each line's highlights past its indent, list marker and spaces.
     this.boxList(w).lines.forEach((l, k) => {
