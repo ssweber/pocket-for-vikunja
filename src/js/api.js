@@ -96,7 +96,8 @@ export const upload = (taskId, file, name, key) =>
   api(`/tasks/${taskId}/attachments`, { method: 'POST', body: fileBody(file, name, key), key });
 /* Renew the shared session the way Vikunja's own tabs do. The refresh cookie works once and is replaced on every
    renewal, so renewing takes Vikunja's "vikunja-token-refresh" lock. If another tab renewed while this one waited for
-   the lock, its new token is used instead of spending the cookie again. */
+   the lock, its new token is used instead of spending the cookie again. The request times out like any other, because
+   a stalled one would hold the lock that Vikunja's own tabs wait on too. */
 function refreshSession() {
   if (refreshing) return refreshing;
   const before = sharedToken.get();
@@ -105,7 +106,11 @@ function refreshSession() {
     if (now && now !== before) return true;
     let r, j;
     try {
-      r = await fetch(app.server + '/api/v2/user/token/refresh', { method: 'POST', credentials: 'include' });
+      r = await fetch(app.server + '/api/v2/user/token/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        signal: timeoutSignal(20e3),
+      });
     } catch (e) {
       throw new NetError(e.message);
     }

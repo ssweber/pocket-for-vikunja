@@ -198,6 +198,20 @@ test('a write whose session has expired is sent again with the same key once the
   assert.equal(sent[1][2], 'Bearer tk_new');
 });
 
+test('renewing the session gives up after 20 seconds, like any other request', async () => {
+  component();
+  let signal;
+  globalThis.fetch = async (url, opts = {}) => {
+    if (url.endsWith('/user/token/refresh')) {
+      signal = opts.signal;
+      return new Response(JSON.stringify({ token: 'tk_new' }), { status: 200 });
+    }
+    return new Response('{}', { status: signal ? 200 : 401 });
+  };
+  await api('/tasks/5');
+  assert.ok(signal instanceof AbortSignal, 'the renewal carries a timeout');
+});
+
 test("a refusal gives Vikunja's detail, or else the relay's message, or else the status", async () => {
   component();
   relay([400, { detail: "Vikunja's reason", message: "the relay's reason" }]);
