@@ -24,6 +24,11 @@ is a new 0.x.y.
 - Pocket reads which projects you can add to each time it opens or catches up, so a share changed in Vikunja's web
   app reaches it within a minute.
 - The add box no longer moves a task for someone to a project you can only read.
+- Pocket opens offline after an update that renames one of its libraries, and never saves a proxy's page as its own.
+- Pocket keeps changes made after iOS closed its storage in the background, instead of asking you to keep Pocket
+  open.
+- Claiming a task and a countdown reaching zero vibrate on an iPhone.
+- On a computer, picking a day for a task with no due date saves it at once, without picking a time.
 
 ## 0.7.0 (2026-11-23)
 
