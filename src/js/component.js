@@ -2,7 +2,7 @@
 // them for Pocket's page. The specimen page (scripts/specimen/) builds its own component from them, with made-up tasks.
 import { colorOf, fmtSize, grow, PRIOS, ZERO } from './util.js';
 import { INSTALLED } from './api.js';
-import { fromLocalInput, isSet, toLocalInput } from './dates.js';
+import { dueInputType, fromLocalInput, isSet, toLocalInput } from './dates.js';
 import { RICH, sanitize } from './html.js';
 import { addedText, commentShown, durText } from './checklists.js';
 import { runTitle } from './sync.js';
@@ -37,6 +37,7 @@ export const globals = {
   addedText,
   colorOf,
   commentShown,
+  dueInputType,
   durText,
   fmtSize,
   fromLocalInput,

@@ -374,7 +374,6 @@ test('the projects for checklists are found when the projects are set, not each 
   const app = component(views, runs, checklists);
   let read = 0;
   Object.assign(app, {
-    loadPerms() {},
     isChecklistProject: p => {
       read++;
       return p.description === 'marked';
@@ -1363,6 +1362,7 @@ test('who can see each project is loaded, kept on the phone and loaded again lat
     user: me,
     projects: [{ id: 1 }, { id: 2 }, { id: -1 }],
     access: {},
+    goesTo: {},
     userKnown: {},
     people: null,
     seenBy: {},
@@ -1427,6 +1427,7 @@ test("the user's own bot counts only on the projects it can see, and no more is 
     projects,
     projById: new Map(projects.map(p => [p.id, p])),
     access: {},
+    goesTo: {},
     userKnown: {},
     people: null,
     seenBy: {},

@@ -827,19 +827,6 @@ export default {
       p = full && this.perms[full.project_id];
     return !!full && (p == null || p >= 2 || full.created_by?.id === this.user?.id);
   },
-  /* Load project permissions in small background batches because Vikunja's project list omits them. Cache each
-     result, or reload all with force. */
-  async loadPerms(force = false) {
-    const todo = this.projects.filter(p => p.id > 0 && (force || !(p.id in this.perms)));
-    if (!todo.length) return;
-    try {
-      await inBatches(todo, 4, async p => {
-        const full = await api('/projects/' + p.id);
-        this.perms[p.id] = full.max_permission ?? 1;
-      });
-      saved.set('perms', this.perms);
-    } catch {}
-  },
   // The run a task is a step of, or null.
   stepRun(t) {
     return this.role(t) === 'step' ? t.related_tasks.parenttask[0].id : null;

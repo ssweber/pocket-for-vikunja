@@ -28,7 +28,8 @@ const lost = () => new TypeError('network error');
    does. GET /tasks lists the tasks a filter picks, `updated > '<time>'` or `id in <ids>`, a page at a time, and leaves
    out the tasks of an archived project (`archived`, by project id), as Vikunja does. A task changed by a PATCH or a
    comment gets the time in `updated`. A task's comments, assignees, position and files (POST /tasks/:id/attachments)
-   can be added to, and an assignee removed. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
+   can be added to, and an assignee removed. GET /projects lists `projects`, with the user's access to each
+   (max_permission) only when asked for with expand=permissions. GET and POST /labels list and create labels (`labels`), POST /tasks/:id/labels adds
    one to a task, and DELETE /tasks/:id/labels/:label removes it. PUT /tasks/:id/labels/bulk and /assignees/bulk set a task's labels and people. As in Vikunja, a label
    that doesn't exist or a person who can't see the project (`strangers`, by id) is refused, and a set with one of them
    is refused whole. A label on any task exists, as one a teammate made and put on a shared task does.
@@ -47,6 +48,7 @@ export function fakeVikunja(tasks = []) {
   const v = {
       tasks: new Map(tasks.map(t => [t.id, structuredClone(t)])),
       labels: [],
+      projects: [],
       strangers: new Set(),
       archived: new Set(),
       requests: [],
@@ -127,7 +129,13 @@ export function fakeVikunja(tasks = []) {
     const no = v.refuses(req);
     if (no) res = reply({ message: `HTTP ${no} from Vikunja` }, no);
     else if (req.path === '/labels' && method === 'GET') res = reply({ items: v.labels, total_pages: 1 });
-    else if (req.path === '/labels' && method === 'POST') {
+    else if (req.path === '/projects' && method === 'GET') {
+      const asked = req.query.getAll('expand').includes('permissions');
+      res = reply({
+        items: v.projects.map(p => ({ ...p, max_permission: asked ? p.max_permission : null })),
+        total_pages: 1,
+      });
+    } else if (req.path === '/labels' && method === 'POST') {
       const l = { id: 500 + v.labels.length, title: req.body.title };
       v.labels.push(l);
       res = reply(l);

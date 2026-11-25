@@ -17,6 +17,7 @@ import {
   expect,
   finger,
   hintSeen,
+  fillDue,
   laidUnder,
   loaded,
   noToast,
@@ -1504,6 +1505,17 @@ try {
           { timeout: 15000 },
         );
         await expect(p.locator('#d-start')).toHaveCount(0);
+        await p.click('#btn-sheet-close');
+        // Given write access again in the web app. Pocket reads it when it catches up, as it comes back on screen.
+        await api(`/projects/${project.id}/users/${OTHER}`, { method: 'PUT', body: JSON.stringify({ permission: 1 }) });
+        await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await expect
+          .poll(() => p.evaluate(id => JSON.parse(localStorage.getItem('pocket.saved.perms'))?.[id], project.id), {
+            timeout: 15000,
+          })
+          .toBe(1);
+        await open();
+        await expect(p.locator('#d-start')).toBeVisible();
       } catch (e) {
         await p.screenshot({ path: `${OUT}/checklists-fail-lock.png` });
         throw e;
@@ -3371,7 +3383,7 @@ try {
     await page.click(`${dailyRow} .body`, { timeout: 15000 });
     await page.waitForSelector('#d-comes-round');
     const due = minute(Date.now() - 3600e3);
-    await page.fill('#d-due', local(due));
+    await fillDue(page, local(due));
     await page.dispatchEvent('#d-due', 'change');
     await until('setting the date never made the template not done', async () => {
       const t = await api('/tasks/' + daily.id);
@@ -3556,7 +3568,7 @@ try {
     if ((await page.inputValue('#d-repeat')) !== 'day')
       throw new Error('the Repeats field shows ' + (await page.inputValue('#d-repeat')));
     if (await page.isVisible('#d-reminders')) throw new Error("reminders show for a template that doesn't repeat");
-    await page.fill('#d-due', local(due));
+    await fillDue(page, local(due));
     await until(
       'setting the date again did not reopen the template with its repeat',
       async () => {

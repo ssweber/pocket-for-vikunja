@@ -90,7 +90,13 @@ export const toLocalInput = iso => {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-export const fromLocalInput = v => (v ? new Date(v).toISOString() : ZERO);
+// A date alone ('2026-11-25', from a date-only input) is midnight that day, local time, which Pocket shows as no time.
+export const fromLocalInput = v => (v ? new Date(v.length === 10 ? v + 'T00:00' : v).toISOString() : ZERO);
+/* The type of the due date's input. On a computer, Chrome's date-and-time input reports a change only once the date
+   and the time are both set, so a click on a day saved nothing. There an empty due date is a date-only input, which
+   saves the day at once. Once set, it is a date-and-time input again, so a time can be added. */
+export const dueInputType = iso =>
+  isSet(iso) || !globalThis.matchMedia?.('(pointer: fine)').matches ? 'datetime-local' : 'date';
 export const repeats = t => !!(t.repeat_after || t.repeat_mode === 1);
 export const reminderKey = r =>
   r.relative_to ? r.relative_to + ' ' + (r.relative_period || 0) : +new Date(r.reminder);

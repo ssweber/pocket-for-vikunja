@@ -385,3 +385,17 @@ test('saving a picture drops the pictures not fetched for 30 days', async t => {
   assert.deepEqual(Object.keys(app.avatars).sort(), ['amy', 'zed']);
   saved.set('avatars', {});
 });
+
+// haptic() is what makes an iPhone vibrate, so a claim goes through it rather than navigator.vibrate alone.
+test('claiming a step makes the phone vibrate through haptic()', async t => {
+  const { app, slot } = offlineStep(t),
+    felt = [],
+    was = navigator.vibrate;
+  navigator.vibrate = p => felt.push(p);
+  try {
+    await app.toggleClaim(slot());
+  } finally {
+    navigator.vibrate = was;
+  }
+  assert.deepEqual(felt, [6]);
+});

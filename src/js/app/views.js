@@ -93,14 +93,18 @@ const doneQuery = (from, to) =>
   ]);
 
 export default {
+  /* Read the projects, and the user's access to each in the same request (expand=permissions). Pocket reads them as
+     it opens and as it catches up, so access changed in the web app reaches Pocket within a minute. */
   async loadProjects() {
-    const list = await allPages('/projects?is_archived=false');
+    const list = await allPages('/projects?is_archived=false&expand=permissions');
     this.setProjects(
       list
         .filter(p => p.id > 0 && !p.is_archived)
         .sort((a, b) => (a.position || 0) - (b.position || 0) || a.title.localeCompare(b.title)),
     );
+    for (const p of this.projects) if (typeof p.max_permission === 'number') this.perms[p.id] = p.max_permission;
     saved.set('projects', this.projects);
+    saved.set('perms', this.perms);
   },
   // Index checklist projects once per project change. Parsing each description as HTML on every row would slow
   // long lists.
@@ -109,7 +113,6 @@ export default {
     this.projById = new Map(list.map(p => [p.id, p]));
     this.checklistProjects = list.filter(p => this.isChecklistProject(p));
     this.checklistIds = new Set(this.checklistProjects.map(p => p.id));
-    setTimeout(() => this.loadPerms());
   },
   async loadLabels(force) {
     if (this.labelsLoaded && !force) return this.labels;

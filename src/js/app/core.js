@@ -128,6 +128,7 @@ export default () => ({
   // Cache how many other people can see each project, by project id, so private projects hide claim slots as soon
   // as Today opens. loadPeople refreshes these counts.
   seenBy: saved.get('seenBy') || {},
+  goesTo: saved.get('goesTo') || {}, // username -> the project quick add last sent a task assigned to them to (fitFor)
   sheet: blankSheet(''),
   picker: { open: false, loading: false, error: '', q: '' },
   toast: { show: false, msg: '', action: null, more: null, until: 0 },

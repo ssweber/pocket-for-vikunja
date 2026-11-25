@@ -7,6 +7,7 @@ import { started } from './tasks.js';
 import { TASK } from '../tasks.js';
 import { ME, whoSees } from '../messages.js';
 import { tapMenu } from './throw.js';
+import { haptic } from '../haptics.js';
 
 const loading = new Set(); // usernames whose picture is being fetched
 const tried = new Map(); // username -> when the last picture request failed
@@ -91,7 +92,7 @@ export default {
   // Queue the claim or release, so it shows at once and survives a lost connection.
   async toggleClaim(slot) {
     if (!slot?.can) return;
-    navigator.vibrate?.(10);
+    haptic('tick');
     await this.act({ op: slot.mine ? 'unclaim' : 'claim', task: slot.id, run: slot.run });
     if (this.sheet.open && this.sheet.kind === 'task') this.sheet.dirty = true; // Today shows what's assigned to you, so the list needs a refresh
   },

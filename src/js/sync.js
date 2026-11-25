@@ -66,24 +66,45 @@ export const sync = {
           db.createObjectStore(name, how);
         }
       };
-      // A newer Pocket in another tab may need to upgrade the database. Closing it here keeps that tab from waiting.
+      /* A newer Pocket in another tab may need to upgrade the database. Closing it here keeps that tab from waiting.
+         iOS can also drop the connection while Pocket is in the background. Either way, the next transaction opens
+         the database again, as it does after a failed open. */
       r.onsuccess = () => {
-        r.result.onversionchange = () => r.result.close();
-        ok(r.result);
+        const db = r.result;
+        db.onclose = () => (this.db = null);
+        db.onversionchange = () => {
+          db.close();
+          this.db = null;
+        };
+        ok(db);
       };
-      r.onerror = () => no(r.error);
+      r.onerror = () => {
+        this.db = null;
+        no(r.error);
+      };
     }));
   },
-  // Run `fn` in one transaction over `stores`. Resolves with what `fn` returned once the transaction commits, and
-  // rejects if it doesn't.
-  async tx(stores, mode, fn) {
+  /* Run `fn` in one transaction over `stores`. Resolves with what `fn` returned once the transaction commits, and
+     rejects if it doesn't. A connection iOS dropped without an onclose event refuses a new transaction, and then the
+     database is opened again once. One that fails a transaction with UnknownError is opened again next time. */
+  async tx(stores, mode, fn, again = true) {
     const db = await this.open();
+    let t;
+    try {
+      t = db.transaction(stores, mode);
+    } catch (e) {
+      if (!again || e.name !== 'InvalidStateError') throw e;
+      this.db = null;
+      return this.tx(stores, mode, fn, false);
+    }
     return new Promise((ok, no) => {
-      const t = db.transaction(stores, mode),
-        get = n => t.objectStore(n);
+      const get = n => t.objectStore(n);
       let out;
       t.oncomplete = () => ok(out instanceof IDBRequest ? out.result : out);
-      t.onerror = t.onabort = () => no(t.error || new DOMException('aborted', 'AbortError'));
+      t.onerror = t.onabort = () => {
+        if (t.error?.name === 'UnknownError') this.db = null;
+        no(t.error || new DOMException('aborted', 'AbortError'));
+      };
       try {
         out = fn(get);
       } catch (e) {

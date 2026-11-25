@@ -318,21 +318,23 @@ header.top .behind::after {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -30%;
+  left: 0;
   width: 30%;
   background: var(--accent);
   opacity: 0.7;
+  /* transform, not left, so the line moves off the main thread, which is busy drawing rows while it shows */
+  transform: translateX(-100%);
   animation: behind 1.2s ease-in-out infinite;
 }
 @keyframes behind {
   to {
-    left: 100%;
+    transform: translateX(calc(100% / 0.3)); /* the line's own width is 30% of the header's */
   }
 }
 @media (prefers-reduced-motion: reduce) {
   header.top .behind::after {
     animation: none;
-    left: 0;
+    transform: none;
     width: 100%;
     opacity: 0.35;
   }

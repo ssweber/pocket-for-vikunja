@@ -813,9 +813,10 @@ export default {
     for (const id of ids) if (!keep.has(id)) store.del('saved.task.' + id);
     return !saved.get(key);
   },
-  /* Read the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's clock, into the copies the store
-     keeps, then forget the tasks Vikunja deleted (findRemoved). Each read follows the store's rule, so one that ran
-     while a write to its task was in flight is thrown away. Vikunja 2.7 changes `updated` only for a task's own
+  /* Read the project list again, and the tasks Vikunja changed since the last catch-up, by `updated` on Vikunja's
+     clock, into the copies the store keeps. Then forget the tasks Vikunja deleted (findRemoved). A failed project read
+     doesn't hold back the tasks. Each read follows the store's rule, so one that ran while a write to its task was in
+     flight is thrown away. Vikunja 2.7 changes `updated` only for a task's own
      fields and a new comment. It misses labels, people, reactions, positions, attachments, a subtask linked or ticked,
      and the step times the plugin writes (docs/design/upstream-task-updated.md asks Vikunja to change that). It also
      misses a change to a copy older than `since`, as an op's task on no kept screen, and one made soon after a screen
@@ -832,6 +833,7 @@ export default {
     const from = serverTime(Date.now()),
       was = shownFrom,
       since = Math.min(caughtAt ?? Infinity, was === null ? Infinity : serverTime(was));
+    const projects = this.loadProjects().catch(() => {}); // projects shared, renamed or given other access in the web app
     try {
       const at = started(),
         // Vikunja keeps times in whole seconds, so the second the last catch-up started in is read again.
@@ -850,6 +852,7 @@ export default {
           at,
         ),
       );
+      await projects; // findRemoved asks only about the projects Pocket lists
       await this.findRemoved();
       caughtAt = from;
       if (shownFrom === was) shownFrom = null;

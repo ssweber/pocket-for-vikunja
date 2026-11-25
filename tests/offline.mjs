@@ -11,7 +11,18 @@
 // Every task the test creates has the test run's timestamp in its title and is deleted at the end.
 import { mkdir } from 'node:fs/promises';
 import { chromium, webkit } from 'playwright'; // BROWSER=webkit uses Safari's engine, as an iPhone does
-import { expect, hintSeen, outboxOf, placeLine, placeSays, signIn, steady, stepper, synced } from './helpers.mjs';
+import {
+  expect,
+  fillDue,
+  hintSeen,
+  outboxOf,
+  placeLine,
+  placeSays,
+  signIn,
+  steady,
+  stepper,
+  synced,
+} from './helpers.mjs';
 
 const SERVER = (process.env.VIKUNJA_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.VIKUNJA_TOKEN,
@@ -144,6 +155,24 @@ try {
     await page.reload();
     await expect(page.locator('meta[name="saved-copy"]')).toHaveCount(0);
     await page.waitForSelector(`.row .title:has-text("${T('seed')}")`, { timeout: 15000 });
+  });
+
+  /* A release that renames a library changes only the page. Saving the new page saves the files it names too, so the
+     page opens offline next time. The test deletes the saved library, as if the page named a new one, then fetches
+     the page as the update check does. */
+  await step('saving-a-new-page-saves-the-files-it-names', async () => {
+    const lib = await page.evaluate(async () => {
+      const cache = await caches.open((await caches.keys()).find(k => k.startsWith('pocket-')));
+      const key = (await cache.keys()).find(r => /\/alpine-[^/]+\.js$/.test(r.url));
+      await cache.delete(key);
+      await fetch('index.html', { cache: 'no-cache' });
+      return key.url;
+    });
+    await expect
+      .poll(() => page.evaluate(async url => !!(await caches.match(url, { ignoreVary: true })), lib), {
+        timeout: 15000,
+      })
+      .toBe(true);
   });
 
   await step('opens-offline-with-last-list', async () => {
@@ -1171,7 +1200,7 @@ try {
       await page.reload();
       await open();
       await context.setOffline(true);
-      await page.fill('#d-due', local);
+      await fillDue(page, local);
       await page.selectOption('#d-repeat', 'week');
       await page.click('#btn-sheet-close');
       await page.waitForSelector('#sheet', { state: 'hidden' });
