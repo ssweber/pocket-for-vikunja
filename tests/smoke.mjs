@@ -886,7 +886,9 @@ try {
       due = page.locator('#d-due');
     await page.fill('#in-capture', t);
     await page.click('#f-capture .go');
-    await page.click(`.row:has(.title:has-text("${t}")) .body`, { timeout: 15000 });
+    await page.waitForSelector(`.row .title:has-text("${t}")`, { timeout: 15000 });
+    await synced(page); // a tap while the new row is replaced by Vikunja's copy opens nothing
+    await page.click(`.row:has(.title:has-text("${t}")) .body`);
     await expect(due).toHaveAttribute('type', 'date');
     const d = new Date(Date.now() + 2 * 86400000),
       p = n => String(n).padStart(2, '0'),
