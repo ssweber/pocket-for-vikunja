@@ -1272,6 +1272,55 @@ try {
       if (task?.project_id !== to.id) throw new Error('the task is in project ' + task?.project_id);
       if (!task.assignees?.some(u => u.username === ASSIGNEE)) throw new Error('not assigned');
     });
+  if (ASSIGNEE)
+    await step('assign-remembers-the-project', async () => {
+      // With a second project shared with ASSIGNEE, two projects fit. The one the last task for ASSIGNEE went to wins.
+      const me = await (await api('/user')).json(),
+        home = me.settings?.default_project_id,
+        r = await api(`/projects/${home}/users/search?q=${encodeURIComponent(ASSIGNEE)}`);
+      if (!home || !r.ok || ((await r.json()).items || []).some(u => u.username === ASSIGNEE)) {
+        console.log('  (needs a default project not shared with ' + ASSIGNEE + ': step skipped)');
+        return;
+      }
+      const headers = { 'Content-Type': 'application/json' },
+        shed = await (
+          await api('/projects', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ title: `PocketSmokeShed${stamp}` }),
+          })
+        ).json();
+      try {
+        await api(`/projects/${shed.id}/users`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ username: ASSIGNEE, permission: 1 }),
+        });
+        await page.reload(); // so Pocket lists the new project
+        await loaded(page);
+        const first = `Pocket smoke remembered ${stamp}`,
+          next = `Pocket smoke remembered again ${stamp}`;
+        await page.fill('#in-capture', `${first} tomorrow @${ASSIGNEE} +${shed.title}`);
+        await page.click('#f-capture .go');
+        await page.waitForSelector(`.row .title:has-text("${first}")`, { timeout: 20000 });
+        await synced(page);
+        await page.fill('#in-capture', `${next} tomorrow @${ASSIGNEE}`);
+        await page.waitForSelector(`#cap-chips .chip[data-kind=autoProject]:has-text("${shed.title}")`, {
+          timeout: 15000,
+        });
+        await page.click('#f-capture .go');
+        await page.waitForSelector(`.row .title:has-text("${next}")`, { timeout: 20000 });
+        await synced(page);
+        const task = ((await (await api('/tasks?q=' + encodeURIComponent(next))).json()).items || []).find(
+          x => x.title === next,
+        );
+        if (task?.project_id !== shed.id) throw new Error('the task is in project ' + task?.project_id);
+      } finally {
+        await api('/projects/' + shed.id, { method: 'DELETE' }); // deleting a project deletes its tasks too
+        await page.reload(); // so Pocket stops listing the project, and asks no more about it
+        await loaded(page);
+      }
+    });
   await step('suggest-label-and-person', async () => {
     // Typing *pocket-sm offers the existing label, and tapping it completes the word. The same works for @ and a person who shares a project with you.
     await page.fill('#in-capture', `Pocket smoke suggest ${stamp} *${label.slice(0, 9)}`);

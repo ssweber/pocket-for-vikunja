@@ -1,5 +1,5 @@
 // Parse add boxes, suggest people, labels and projects, check project access, and position the box under its target row.
-import { app, colorOf, esc, userCache } from '../util.js';
+import { andList, app, colorOf, esc, userCache } from '../util.js';
 import { allPages, api, items, NetError, sharedToken } from '../api.js';
 import { inBatches, readStepPhrase, STEP_IGNORE } from '../checklists.js';
 import { parentIds, saved } from '../lists.js';
@@ -334,8 +334,9 @@ export default {
     return names.length ? [target, ...names.map(n => n.toLowerCase())].join('|') : '';
   },
   /* Returns {auto, warn} from the access already loaded. When quick add has no typed +project and some mentioned
-     user can't see the default project, `auto` is the one project all mentioned users can see, if there is exactly
-     one. `warn` lists the users who can't see the target project. */
+     user can't see the default project, `auto` is the project the task moves to (fitFor), if any. `warn` lists the
+     users who can't see the target project. When the task could move but no project fits, one warning says instead
+     to pick a project they can see, in words short enough to keep the chips on one row. */
   accessHints(w) {
     const out = { auto: null, warn: [] };
     if (!this.accessQuery(w)) return out;
@@ -347,14 +348,35 @@ export default {
     names.filter(n => this.userKnown[n.toLowerCase()] === false).forEach(n => out.warn.push(`No user ${at}${n}`));
     const blocked = known.filter(n => sees(target, n) === false);
     if (!blocked.length) return out;
-    if (one && !p.project && w === 'cap') {
-      const fit = this.oneFit(target, known);
+    const moves = one && !p.project && w === 'cap';
+    if (moves) {
+      const fit = this.fitFor(target, known);
       if (fit === undefined) return out; // not looked up yet
       out.auto = fit;
     }
-    if (!out.auto || this.box(w).ignore?.autoProject)
+    if (moves && !out.auto)
+      out.warn.push(`Type a ${this.prefixes.project}project ${andList(blocked.map(n => at + n))} can see`);
+    else if (!out.auto || this.box(w).ignore?.autoProject)
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
+  },
+  /* The project a task for `names` moves to when one of them can't see `target`. That is the project the last task
+     for one of them went to (goesTo), if it still fits them all, or else the one project that fits (oneFit). */
+  fitFor(target, names) {
+    const fits = proj =>
+      proj &&
+      proj.id !== target &&
+      this.canWrite(proj.id) &&
+      names.every(n => this.access[proj.id + ':' + n.toLowerCase()]);
+    const kept = names.map(n => this.projById.get(this.goesTo[n.toLowerCase()])).find(fits);
+    return kept || this.oneFit(target, names);
+  },
+  // Remember the project a task assigned to `names` went to, for each of them who can see it (fitFor).
+  rememberGoesTo(names, pid) {
+    const seen = names.filter(n => this.access[pid + ':' + n.toLowerCase()] !== false);
+    if (!seen.length) return;
+    for (const n of seen) this.goesTo[n.toLowerCase()] = pid;
+    saved.set('goesTo', this.goesTo);
   },
   // The one project other than `target` that all `names` can see and the user can add to. Null when there is none or
   // more than one, and undefined while someone's access to a project hasn't been looked up.
@@ -474,11 +496,15 @@ export default {
         action: () => this.useSuggestion(w, tk, l.title),
       }));
     } else if (tk.kind === 'project') {
+      // The project the task would move to comes first, so Enter keeps it. Then the others everyone mentioned can see.
+      const { names: named } = this.boxPeople(w),
+        moved = this.accessHints(w).auto,
+        seen = p => named.every(n => this.access[p.id + ':' + n.toLowerCase()]);
       out = this.projects
         .filter(p => this.canWrite(p.id))
-        .map(p => ({ p, s: score(p.title) }))
+        .map(p => ({ p, s: score(p.title), rank: p === moved ? 0 : seen(p) ? 1 : 2 }))
         .filter(x => x.s < 9)
-        .sort((a, b) => a.s - b.s || a.p.title.localeCompare(b.p.title))
+        .sort((a, b) => a.rank - b.rank || a.s - b.s || a.p.title.localeCompare(b.p.title))
         .map(({ p }) => ({
           key: 's' + p.id,
           kind: 'suggest',
@@ -491,9 +517,9 @@ export default {
     } else {
       const { target, named, moves } = this.suggestFor(w, q),
         sees = (pid, n) => this.access[pid + ':' + n.toLowerCase()];
-      // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no single
+      // The id of the project the task goes to with people `ns` assigned, as accessHints picks it. Null when no
       // project fits them all.
-      const goes = ns => (ns.some(n => sees(target, n) === false) ? this.oneFit(target, ns)?.id || null : target);
+      const goes = ns => (ns.some(n => sees(target, n) === false) ? this.fitFor(target, ns)?.id || null : target);
       const now = moves ? goes(named) : target;
       out = (this.people || [])
         .filter(x => moves || sees(target, x.user.username) !== false)

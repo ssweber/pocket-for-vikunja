@@ -16,7 +16,7 @@ import views from '../../src/js/app/views.js';
 import cards from '../../src/js/app/cards.js';
 import sheetPart from '../../src/js/app/sheet.js';
 import { newBox } from '../../src/js/app/core.js';
-import { todayGroups } from '../../src/js/lists.js';
+import { saved, todayGroups } from '../../src/js/lists.js';
 import { busyText, photosLater, UNKNOWN, waitText } from '../../src/js/messages.js';
 import { addLines } from '../../src/js/ops/index.js';
 import { packParsed, sync } from '../../src/js/sync.js';
@@ -1068,6 +1068,7 @@ const boxes = () => {
     labels: [],
     people: [],
     access: {},
+    goesTo: {},
     userKnown: {},
     checklistIds: new Set(),
     remindersReach: false,
@@ -1345,6 +1346,7 @@ const underBox = t => {
     labels: [],
     people: [],
     access: {},
+    goesTo: {},
     userKnown: {},
     checklistIds: new Set(),
     remindersReach: false,
@@ -1876,7 +1878,10 @@ test('in quick add, someone who could move the task to more than one project is 
   assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
   app.chips('cap')[1].action();
   app.cap.focus = false;
-  assert.ok(chipsOf(app, 'cap').includes("@bot-claude can't see Café"));
+  assert.ok(chipsOf(app, 'cap').includes('Type a +project @bot-claude can see'));
+  // Typing + lists the projects the bot can see first.
+  type('cap', 'Water the beans @bot-claude +');
+  assert.deepEqual(chipsOf(app, 'cap').slice(0, 3), ['+Garden  ↵', '+Shed', '+Café']);
   // A project whose people haven't loaded yet leaves the project out too.
   delete app.access['7:bot-claude'];
   type('cap', 'Water the beans @');
@@ -1895,6 +1900,31 @@ test('in quick add, a project the user can only read is not one the task moves t
   // Nor is a project whose people Pocket hasn't loaded yet left waiting for, once it is read only.
   delete app.access['7:bot-claude'];
   assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+});
+
+test('in quick add, the project the last task for someone went to wins over several that fit, while it still fits', () => {
+  const { app, type } = offering(),
+    shed = { id: 7, title: 'Shed' };
+  app.projects.push(shed);
+  app.projById.set(7, shed);
+  Object.assign(app.access, { '7:carol': false, '7:bot-claude': true });
+  app.goesTo['bot-claude'] = 7;
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Shed']);
+  type('cap', 'Water the beans @bot-claude');
+  app.cap.focus = false;
+  assert.deepEqual(chipsOf(app, 'cap'), ['Shed', '@bot-claude']);
+  // Typing + offers it first, so Enter keeps it.
+  type('cap', 'Water the beans @bot-claude +');
+  assert.equal(chipsOf(app, 'cap')[0], '+Shed  ↵');
+  type('cap', 'Water the beans @bot-claude');
+  app.cap.focus = false;
+  // Once the bot can't see it, or the user can only read it, the remembered project no longer fits.
+  app.canWrite = pid => pid !== 7;
+  assert.deepEqual(chipsOf(app, 'cap'), ['Garden', '@bot-claude']);
+  app.canWrite = () => true;
+  app.access['7:bot-claude'] = false;
+  assert.deepEqual(chipsOf(app, 'cap'), ['Garden', '@bot-claude']);
 });
 
 test("a box that can't move the task offers only the people who can see its project", () => {
@@ -2005,6 +2035,38 @@ test('while Today is narrowed to a label, its add boxes give each line that labe
   app.route = { name: 'project', id: 5 };
   assert.deepEqual(chipsOf(app, 'cap'), ['Café']);
   assert.deepEqual(labelsOfLines(app, 'cap')[0], ['Buy stamps', [], undefined]);
+});
+
+test('sending one line from quick add remembers its project for each person assigned who can see it', async t => {
+  t.after(clear);
+  const v = fakeVikunja(),
+    app = adding(t),
+    projects = [
+      { id: 5, title: 'Café' },
+      { id: 6, title: 'Garden' },
+      { id: 7, title: 'Shed' },
+    ];
+  Object.assign(app, {
+    route: { name: 'today' },
+    cardAdded: {},
+    projects,
+    projById: new Map(projects.map(p => [p.id, p])),
+    defaultProjectId: () => 5,
+    access: { '7:carol': false, '7:bot-claude': true },
+    userKnown: { carol: true, 'bot-claude': true },
+    goesTo: {},
+    $refs: {},
+    flash() {},
+  });
+  Object.assign(app.cap, newBox());
+  v.trouble = () => 'offline';
+  app.cap.text = 'Oil the hinges +Shed @bot-claude @carol';
+  await app.submitCapture();
+  assert.deepEqual([app.goesTo, saved.get('goesTo')], [{ 'bot-claude': 7 }, { 'bot-claude': 7 }]);
+  // A pasted list goes to one project for every line, so it remembers nothing.
+  app.cap.text = 'Sweep the path +Garden @bot-claude\nRake the leaves';
+  await app.submitCapture();
+  assert.deepEqual(app.goesTo, { 'bot-claude': 7 });
 });
 
 test('a task added while Today is narrowed to a label shows there at once, and Vikunja gives it the label', async t => {

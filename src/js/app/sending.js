@@ -141,6 +141,7 @@ export default {
       this.say(readOnly(this.projById.get(first)?.title), { place: 'cap', cls: 'failed' });
       return;
     }
+    if (lines.length === 1) this.rememberGoesTo(parsed.assignees, first);
     // Parse every line now, so dates mean what they meant when typed. Each line records which line it is under. Lines
     // under another line get positions in the project's List view, each after the line before it, because Vikunja
     // would otherwise put each new one first. When the box has been moved out a level (boxOut, quickadd.js), the

@@ -12,6 +12,19 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
+## Unreleased
+
+### Added
+
+- Assigning someone in the add box who can't see the project moves the task to the project the last task for them
+  went to, and typing `+` lists it first ([guide](docs/guide.md#assigning)).
+
+### Fixed
+
+- Pocket reads which projects you can add to each time it opens or catches up, so a share changed in Vikunja's web
+  app reaches it within a minute.
+- The add box no longer moves a task for someone to a project you can only read.
+
 ## 0.7.0 (2026-11-23)
 
 ### Added

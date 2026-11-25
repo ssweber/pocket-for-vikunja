@@ -99,6 +99,7 @@ Every gesture is also in the task's **⋯** menu. Right-click a row, or press Sh
 - Hold **+ me**, or your picture, to assign someone else.<br><img src="screenshots/pocket-people.gif" width="240" alt="Holding + me opens a menu of the people who can see the project, and tapping one assigns them">
 - **+ me** shows only in shared projects.
 - Only people who can see the project can be assigned. Typing `@` suggests them.
+- Assigning someone in the add box who can't see the project moves the task to a project they can see. That is the project the last task for them went to, or else the only one that fits. Tap the project's chip to undo.
 - Assigning never marks anything done. Whoever ticks the task is recorded.
 - A checklist's row shows who it's for. Change it in the checklist's **⋯**. Vikunja notifies them once, not for each step.
 - To reassign one step, open the checklist's **⋯**, tap **Open as a task**, then tap the step.
@@ -213,7 +214,7 @@ With `steptimes: true` in `config.yml` (or `VIKUNJA_PLUGINS_POCKET_STEPTIMES=tru
 - **The log shows `… is not available to API tokens`.** Vikunja 2.7.1 and later log this at every start. Pocket doesn't use API tokens, so it is unaffected.
 - **Vikunja's page stays open after single sign-on.** Signing in from the home-screen app ends on Vikunja's page. Close it to return to Pocket.
 - **"Too many attempts from here".** 10 sign-in attempts per minute per address. Wait.
-- **"@user can't see Inbox".** Share the project with them, or add a `+project` they can access.
+- **"@user can't see Inbox" or "Type a +project @user can see".** Share the project with them, or add a `+project` they can access.
 
 ## Privacy and security
 

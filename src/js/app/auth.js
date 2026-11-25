@@ -316,6 +316,7 @@ export default {
         saved.clear();
         this.perms = {};
         this.seenBy = {};
+        this.goesTo = {};
       }
       saved.set('user', user);
       if (info) saved.set('info', info);
