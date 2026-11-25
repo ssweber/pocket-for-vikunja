@@ -24,6 +24,12 @@ is a new 0.x.y.
 
 - Pressing Enter straight after `@`, `+` or `*` takes the suggestion marked ↵, instead of sending the task.
 
+### Fixed
+
+- A new version of Pocket no longer reloads the page while a finger is on the screen or a row is open on Delete.
+- Renewing the sign-in gives up after 20 seconds on a stalled connection, so Vikunja's own tabs don't wait on it.
+- Pocket refreshes its saved copies of its icons and app manifest after an update, instead of keeping the first ones.
+
 ## 0.8.0 (2026-11-25)
 
 ### Added
