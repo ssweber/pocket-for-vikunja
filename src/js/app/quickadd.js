@@ -356,17 +356,20 @@ export default {
       blocked.forEach(n => out.warn.push(`${at}${n} can't see ${this.projById.get(target)?.title || 'this project'}`));
     return out;
   },
-  // The one project other than `target` that all `names` can see. Null when there is none or more than one, and
-  // undefined while someone's access to a project hasn't been looked up.
+  // The one project other than `target` that all `names` can see and the user can add to. Null when there is none or
+  // more than one, and undefined while someone's access to a project hasn't been looked up.
   oneFit(target, names) {
     const fits = [];
-    for (const proj of this.projects)
-      if (proj.id > 0 && proj.id !== target) {
-        const v = names.map(n => this.access[proj.id + ':' + n.toLowerCase()]);
-        if (v.includes(undefined)) return undefined;
-        if (v.every(Boolean)) fits.push(proj);
-      }
+    for (const proj of this.movesTo(target)) {
+      const v = names.map(n => this.access[proj.id + ':' + n.toLowerCase()]);
+      if (v.includes(undefined)) return undefined;
+      if (v.every(Boolean)) fits.push(proj);
+    }
     return fits.length === 1 ? fits[0] : null;
+  },
+  // The projects quick add may move a task to instead of `target`: those the user can add to.
+  movesTo(target) {
+    return this.projects.filter(p => p.id > 0 && p.id !== target && this.canWrite(p.id));
   },
   /* Only quick add moves a task to the project its @usernames can see, and only for one line with no +project, while
      that chip is on. The task in any other box stays in the box's project. */
@@ -386,9 +389,7 @@ export default {
       // be picked.
       if (blocked && one && !p.project && w === 'cap') {
         const known = names.filter(n => this.userKnown[n.toLowerCase()] !== false);
-        await Promise.all(
-          this.projects.filter(x => x.id > 0 && x.id !== target).flatMap(x => known.map(n => this.canSee(x.id, n))),
-        );
+        await Promise.all(this.movesTo(target).flatMap(x => known.map(n => this.canSee(x.id, n))));
       }
     } catch {} // offline: no hints, and sending still works
   },
@@ -556,7 +557,7 @@ export default {
       if (moves)
         for (const ns of people.map(n => [...named, n]))
           if (ns.some(m => sees(target, m) === false))
-            for (const proj of this.projects) if (proj.id > 0 && proj.id !== target) ns.forEach(m => need(proj.id, m));
+            for (const proj of this.movesTo(target)) ns.forEach(m => need(proj.id, m));
       if (!ask.size) return;
       ask.forEach((x, key) => done.add(key));
       await inBatches([...ask.values()], 4, ([pid, n]) => this.canSee(pid, n));

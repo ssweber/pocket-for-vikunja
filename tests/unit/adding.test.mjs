@@ -1883,6 +1883,20 @@ test('in quick add, someone who could move the task to more than one project is 
   assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude']);
 });
 
+test('in quick add, a project the user can only read is not one the task moves to', () => {
+  const { app, type } = offering(),
+    shed = { id: 7, title: 'Shed' };
+  app.projects.push(shed);
+  app.projById.set(7, shed);
+  Object.assign(app.access, { '7:carol': false, '7:bot-claude': true });
+  app.canWrite = pid => pid !== 7;
+  type('cap', 'Water the beans @');
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+  // Nor is a project whose people Pocket hasn't loaded yet left waiting for, once it is read only.
+  delete app.access['7:bot-claude'];
+  assert.deepEqual(chipsOf(app, 'cap'), ['Carol @carol  ↵', 'Claude @bot-claude · Garden']);
+});
+
 test("a box that can't move the task offers only the people who can see its project", () => {
   const { app, type } = offering();
   type('sub', 'Stake the beans @');
