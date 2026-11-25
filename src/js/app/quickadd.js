@@ -661,12 +661,11 @@ export default {
     return !this.people || Date.now() - peopleAt > PEOPLE_AGE ? this.loadPeople(true).catch(() => {}) : null;
   },
 
-  /* Enter accepts the first suggestion, if there is one, and otherwise sends the box. In a template's name it moves
-     to the steps box. In a step being edited it saves the step. */
+  /* Enter accepts the first suggestion, the one marked ↵, even after a bare @ or +. Without suggestions it sends the
+     box. In a template's name it moves to the steps box. In a step being edited it saves the step. */
   boxEnter(w) {
-    const tk = this.boxToken(w),
-      sg = tk?.q && this.suggestions(w);
-    if (sg?.length) {
+    const sg = this.suggestions(w);
+    if (sg) {
       sg[0].action();
       return;
     }

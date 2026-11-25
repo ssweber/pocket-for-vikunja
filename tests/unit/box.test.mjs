@@ -106,6 +106,10 @@ const component = () => {
     boxToken() {
       return this.token;
     },
+    shown: null,
+    suggestions() {
+      return this.shown;
+    },
     query: '',
     accessQuery() {
       return this.query;
@@ -253,6 +257,20 @@ test('Enter sends an add box except while a word is being composed, and Shift+En
   assert.equal(app.entered.at(-1), 'ins');
 });
 
+test("while a suggestion is showing, the keyboard's Enter key says return instead of the box's own word", () => {
+  const app = component(),
+    a = alpine(app),
+    el = Object.assign(textarea(), { enterKeyHint: 'send' });
+  a.on('box', el, 'capW', ['lines']);
+  assert.equal(el.enterKeyHint, 'send');
+  app.shown = [{ text: '+Garden  ↵' }];
+  for (const fn of a.running) fn();
+  assert.equal(el.enterKeyHint, 'enter');
+  app.shown = null;
+  for (const fn of a.running) fn();
+  assert.equal(el.enterKeyHint, 'send');
+});
+
 test('a box reports that it has the focus, reports losing it after a short delay, and stops listening when removed from the page', c => {
   c.mock.timers.enable({ apis: ['setTimeout'] });
   const app = component(),
@@ -345,7 +363,7 @@ test('starting an @username or a *label loads suggestions, and a pause in typing
   // effect left running would ask about a box that is no longer on the page, the next time anything changed.
   app.query = '7|sam';
   look();
-  assert.equal(a.running.size, 3);
+  assert.equal(a.running.size, 4);
   a.gone();
   c.mock.timers.tick(500);
   assert.deepEqual([app.checked, a.running.size], [['cap', 'under'], 0]);

@@ -99,7 +99,8 @@ export const directives = Alpine => {
        captured at blur, not whichever box has that name later, because names move. Quick add's box is the
        checklist's box on a checklist's screen.
      - Enter sends the text, or takes the top suggestion (boxEnter). While an input method is composing a word, Enter
-       picks from the input method's own list instead.
+       picks from the input method's own list instead. While a suggestion is showing, the keyboard's Enter key says
+       return, not the box's own enterkeyhint (send, next, done).
      - Typing @ or * loads the people or labels it suggests. The projects that + suggests are already loaded. Each
        letter after @ also looks up the suggested people's access that isn't loaded yet (lookUpSuggested).
      - Half a second after typing pauses, it checks the @usernames in the text (checkAccess). The check finds out
@@ -192,6 +193,10 @@ export const directives = Alpine => {
       if (q) timer = setTimeout(() => app.checkAccess(name()), 500);
     });
     cleanup(() => clearTimeout(timer));
+    const hint = el.enterKeyHint;
+    watch(() => {
+      el.enterKeyHint = app.suggestions(name()) ? 'enter' : hint;
+    });
   });
 };
 

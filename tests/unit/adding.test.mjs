@@ -1823,6 +1823,11 @@ test('typing +project suggests the projects you can add to, Enter takes the firs
   type('cap', 'Buy paint +home_d');
   app.boxEnter('cap');
   assert.equal(app.cap.text, 'Buy paint +"Home Depot" ');
+  // After a bare +, Enter takes the suggestion marked ↵ rather than sending the box.
+  type('cap', 'Buy seeds +');
+  assert.equal(chipsOf(app, 'cap')[0], '+Café  ↵');
+  app.boxEnter('cap');
+  assert.equal(app.cap.text, 'Buy seeds +Café ');
   // A word that names a project exactly shows its chip, not suggestions.
   type('cap', 'Buy seeds +garden');
   assert.equal(chipsOf(app, 'cap')[0], 'Garden');

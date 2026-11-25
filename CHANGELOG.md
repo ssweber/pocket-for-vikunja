@@ -12,6 +12,13 @@ What changed in each release of Pocket. Versions follow [semantic versioning](ht
 release that adds a feature or changes what Pocket writes into Vikunja is a new 0.x.0, and a release with only fixes
 is a new 0.x.y.
 
+## Unreleased
+
+### Changed
+
+- While the add box shows suggestions, the keyboard's Enter key says return, and pressing it takes the suggestion
+  marked ↵, even straight after `@`, `+` or `*`.
+
 ## 0.8.0 (2026-11-25)
 
 ### Added
