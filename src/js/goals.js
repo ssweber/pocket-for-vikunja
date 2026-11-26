@@ -2,7 +2,7 @@
    template's description, "pocket:goal mon-fri 4 since 2026-11-23", `since` being the day the goal was last set. The
    times the template's checklists were finished give the week's score, which its row and Copy goals show, and its
    streak. Days are local, as in dates.js. */
-import { isTemplateLabel, markLines, withLine } from './checklists.js';
+import { markLines, templateName, withLine } from './checklists.js';
 import { addDays, doneWeek, fmtTime, isSet, startOfDay } from './dates.js';
 import { parseFragment } from './html.js';
 import { GOAL } from './messages.js';
@@ -10,7 +10,7 @@ import { GOAL } from './messages.js';
 // The weekdays as the line writes them. A goal's `days` are indexes into this list, so Monday is 0.
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 // The most checklists a day the sheet's stepper sets, so its count fits in two digits.
-export const GOAL_MAX = 99;
+export const GOAL_MAX = 14;
 const weekday = d => (d.getDay() + 6) % 7;
 const two = n => String(n).padStart(2, '0');
 // A day as `since` writes it, "2026-11-23". Two of them compare as strings in the order of their days.
@@ -40,6 +40,9 @@ function writeDays(days) {
   return runs.map(([a, b]) => WEEKDAYS[a] + (b > a ? '-' + WEEKDAYS[b] : '')).join(',');
 }
 export const goalMark = g => `pocket:goal ${writeDays(g.days)} ${g.count} since ${g.since}`;
+// The day a goal counts from: its `since`, or today when `since` is later, as when it was set by a phone whose clock
+// or time zone is ahead.
+const sinceOf = (goal, now) => (goal.since > dayKey(now) ? dayKey(now) : goal.since);
 
 /* The goal in a description, {days, count, since}, or null for none. A line Pocket can't read counts as no goal: an
    unknown day, a count under 1, a date that doesn't exist, or a missing part. */
@@ -62,22 +65,22 @@ export function withGoal(html, goal, now = new Date()) {
   if (!days.length || !Number.isSafeInteger(count) || count < 1) return withLine(html, GOAL_LINE, null);
   const old = readGoal(html),
     same = old?.count === count && writeDays(old.days) === writeDays(days);
-  return withLine(html, GOAL_LINE, goalMark({ days, count, since: same ? old.since : dayKey(now) }));
+  return withLine(html, GOAL_LINE, goalMark({ days, count, since: same ? sinceOf(old, now) : dayKey(now) }));
 }
 
 // How far back Checklists reads finished checklists for the goals: 12 weeks, which is as long as a streak can reach.
 export const GOAL_DAYS = 84;
 /* The checklists finished from a project's templates in the GOAL_DAYS before `now`, read from each template's copies
    as Vikunja lists them (copiedto), so they need no request of their own. Returns {id: {from, at}}, `from` being the
-   template's id and `at` the finish time as Vikunja gives it. A copy counts once it is done and has lost the "template"
-   label, which Pocket removes last when it sets up a checklist. A template duplicated in Vikunja's web app keeps the
-   label, so it doesn't count. */
+   template's id and `at` the finish time as Vikunja gives it. A copy counts once it is done and no longer has a
+   template's title: a checklist is renamed "Walkabout · Nov 26 · #3" as it starts. A template duplicated in Vikunja's
+   web app, or a start that stopped before the rename, keeps "TEMPLATE: …". Vikunja lists copies without labels. */
 export function finishedRuns(templates, now = new Date()) {
   const from = addDays(startOfDay(now), -GOAL_DAYS),
     out = {};
   for (const t of templates || [])
     for (const c of t.related_tasks?.copiedto || [])
-      if (c.done && isSet(c.done_at) && new Date(c.done_at) >= from && !(c.labels || []).some(isTemplateLabel))
+      if (c.done && isSet(c.done_at) && new Date(c.done_at) >= from && templateName(c.title) === String(c.title || ''))
         out[c.id] = { from: t.id, at: c.done_at };
   return out;
 }
@@ -121,12 +124,14 @@ function thisWeek(now) {
    the goal's count on each day scored, today included. */
 export function weekScore(goal, finished, now = new Date(), week = thisWeek(now)) {
   const by = byDay(finished),
-    t0 = startOfDay(now),
+    today = dayKey(now),
+    since = sinceOf(goal, now),
     days = [];
-  for (let d = startOfDay(week.from); d < week.to && d <= t0; d = addDays(d, 1))
-    if (goal.days.includes(weekday(d)) && dayKey(d) >= goal.since) {
+  // Days compare by their dayKey, because where clocks go forward at midnight a day starts at 1:00.
+  for (let d = startOfDay(week.from); d < week.to && dayKey(d) <= today; d = startOfDay(addDays(d, 1)))
+    if (goal.days.includes(weekday(d)) && dayKey(d) >= since) {
       const times = by.get(dayKey(d)) || [];
-      days.push({ day: d, n: Math.min(times.length, goal.count), times, today: +d === +t0 });
+      days.push({ day: d, n: Math.min(times.length, goal.count), times, today: dayKey(d) === today });
     }
   return { goal, days, done: days.reduce((s, x) => s + x.n, 0), total: goal.count * days.length };
 }
@@ -143,7 +148,8 @@ export function streakDays(goal, finished, all, now = new Date()) {
     met = d => (by.get(dayKey(d))?.length || 0) >= goal.count,
     // Before the first day anything was finished, every day is a day off.
     first = [...worked].sort()[0] ?? '9',
-    stop = first > goal.since ? first : goal.since,
+    since = sinceOf(goal, now),
+    stop = first > since ? first : since,
     t0 = startOfDay(now);
   let n = 0;
   for (let d = addDays(t0, -1); dayKey(d) >= stop; d = addDays(d, -1)) {
@@ -151,7 +157,7 @@ export function streakDays(goal, finished, all, now = new Date()) {
     if (!met(d)) break;
     n++;
   }
-  return n + (goal.days.includes(weekday(t0)) && dayKey(t0) >= goal.since && met(t0) ? 1 : 0);
+  return n + (goal.days.includes(weekday(t0)) && dayKey(t0) >= since && met(t0) ? 1 : 0);
 }
 /* A streak of `n` days as words: "3 days in a row", and from two weeks' worth of the goal's days (10 for Mon–Fri) "2
    weeks in a row". A streak under 3 days isn't shown, so this is ''. */

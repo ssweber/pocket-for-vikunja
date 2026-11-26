@@ -644,7 +644,14 @@ test("a finished checklist counts its steps' skips and comments when they have m
 test("a template's row scores its goal from its copies, and counts a checklist just finished on this phone", async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 26, 15) }); // a Thursday
   const at = day => new Date(2026, 10, day, 9).toISOString(),
-    copy = (id, day, more = {}) => ({ id, done: true, done_at: at(day), labels: null, ...more });
+    copy = (id, day, more = {}) => ({
+      id,
+      title: 'Closing up · #' + id,
+      done: true,
+      done_at: at(day),
+      labels: null,
+      ...more,
+    });
   const tpl = {
       id: 99,
       project_id: 7,
@@ -655,7 +662,7 @@ test("a template's row scores its goal from its copies, and counts a checklist j
       related_tasks: {
         copiedto: [
           copy(1, 23),
-          copy(2, 24, { labels: [{ id: 5, title: 'template' }] }), // duplicated in Vikunja's web app
+          copy(2, 24, { title: 'TEMPLATE: Closing up' }), // duplicated in Vikunja's web app
           copy(3, 25),
           copy(4, 26, { done: false, done_at: '0001-01-01T00:00:00Z' }),
         ],

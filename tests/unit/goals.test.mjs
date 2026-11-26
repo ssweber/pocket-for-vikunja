@@ -197,7 +197,11 @@ test("a streak starts at the goal's since day", t => {
   assert.equal(streakDays(goal(1, MON_FRI, '2026-11-23'), days, days), 3);
   assert.equal(streakDays(goal(1, MON_FRI, '2026-11-24'), days, days), 2);
   assert.equal(streakDays(goal(1, MON_FRI, '2026-11-26'), [...days, at(26)], days), 1, 'a goal set today');
-  assert.equal(streakDays(goal(1, MON_FRI, '2026-11-27'), [...days, at(26)], days), 0, 'a goal set tomorrow');
+  assert.equal(
+    streakDays(goal(1, MON_FRI, '2026-11-27'), [...days, at(26)], days),
+    1,
+    'a goal dated tomorrow counts from today',
+  );
 });
 
 test("a day meets the goal only with the goal's count finished", t => {
@@ -294,7 +298,15 @@ test('Copy goals copies last week on a Monday, without a goal set since', t => {
 });
 
 // A copy of a template as Vikunja lists it in the template's copiedto.
-const copy = (id, done_at, more = {}) => ({ id, done: true, done_at: done_at.toISOString(), labels: null, ...more });
+// Vikunja lists copies without their labels.
+const copy = (id, done_at, more = {}) => ({
+  id,
+  title: 'Walkabout · Nov 23 · #1',
+  done: true,
+  done_at: done_at.toISOString(),
+  labels: null,
+  ...more,
+});
 
 test("the goals are scored from each template's copies: finished checklists only, not a duplicate made in the web app", t => {
   clock(t);
@@ -304,10 +316,10 @@ test("the goals are scored from each template's copies: finished checklists only
       related_tasks: {
         copiedto: [
           copy(10, at(23)),
-          copy(11, at(24), { labels: [{ id: 3, title: 'Morning' }] }),
+          copy(11, at(24), { title: 'Walkabout · Saturday' }),
           copy(12, at(25), { done: false }),
           copy(13, at(25), { done_at: '0001-01-01T00:00:00Z' }),
-          copy(14, at(25), { labels: [{ id: 2, title: 'template' }] }), // duplicated in Vikunja's web app
+          copy(14, at(25), { title: 'TEMPLATE: Walkabout' }), // duplicated in Vikunja's web app, or a start that stopped
         ],
       },
     },
@@ -345,4 +357,21 @@ test("a checklist finished on this phone counts before Vikunja's list has it, an
   ];
   assert.deepEqual(finishTimes(runs, shown, 1), [at(23).toISOString(), at(26, 8).toISOString()]);
   assert.deepEqual(finishTimes(runs, shown), [at(23).toISOString(), at(26, 8).toISOString(), at(26, 9).toISOString()]);
+});
+
+test('a day whose midnight is skipped by daylight saving still counts, and so does every day after it', t => {
+  const was = process.env.TZ;
+  process.env.TZ = 'Africa/Cairo'; // Egypt's clocks went forward at midnight on Fri, Apr 24, 2026
+  t.after(() => (process.env.TZ = was === undefined ? '' : was));
+  const now = new Date(2026, 3, 25, 15); // Saturday
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const score = weekScore(goal(1, [0, 1, 2, 3, 4, 5, 6], '2026-04-01'), [new Date(2026, 3, 25, 9)]);
+  assert.deepEqual([score.days.length, score.done, score.days.at(-1).today], [6, 1, true]);
+});
+
+test('saving the same goal again moves a since dated tomorrow back to today', t => {
+  clock(t);
+  const html = withGoal('<p>pocket:goal mon-fri 4 since 2026-11-27</p>', { days: MON_FRI, count: 4 });
+  assert.equal(readGoal(html).since, '2026-11-26');
+  assert.equal(weekScore(readGoal('<p>pocket:goal mon-fri 4 since 2026-11-27</p>')).total, 4, 'scored from today');
 });

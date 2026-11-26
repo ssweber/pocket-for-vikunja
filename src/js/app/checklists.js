@@ -549,6 +549,7 @@ export default {
         pct: (done / total) * 100,
         label: GOAL.ring(t.title, done, total),
         tap: () => this.openTask(t.id),
+        opens: true,
       },
     };
   },
