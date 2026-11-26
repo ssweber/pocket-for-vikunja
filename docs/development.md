@@ -1,8 +1,8 @@
 # Developing Pocket
 
 This file is the map: where things are, the rules that hold across files, and what has tripped people up. What a
-function or a file does is in a comment where it is, and this file does not repeat it. A plan for a feature lives in
-`docs/design/` only while the feature is being built.
+function or a file does is in a comment where it is, not here. A plan for a feature lives in `docs/design/` only
+while it is being built.
 
 ## Where things are
 
@@ -37,8 +37,7 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 | A swipe, a hold, a nudge | `progress.js`, `app/progress.js`, `haptics.js` |
 | Holding a task on Today to change its date | `throw.js`, `app/throw.js` |
 | Ticked or deleted rows leaving together | `batch.js`, `app/leaving.js` |
-| What Pocket says, and where | `messages.js`, `app/lines.js`, `app/toast.js` |
-| Errors in Pocket's own code, and Copy error details | `app/errors.js`, `markup/sheet/account.html` |
+| What Pocket says, and where, and its own errors | `messages.js`, `app/lines.js`, `app/toast.js`, `app/errors.js` |
 | Quick add: parsing a line or a pasted list, the add boxes, the box under a row | `quickadd.js`, `app/quickadd.js`, `app/seat.js` |
 | What is waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js`, `app/acts.js` |
 | A kind of change sent through the outbox: its requests, what it does to the task, its words | `ops/` |
