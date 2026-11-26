@@ -23,6 +23,7 @@ is a new 0.x.y.
 ### Changed
 
 - Pressing Enter straight after `@`, `+` or `*` takes the suggestion marked ↵, instead of sending the task.
+- **Start** in a template's Start sheet sits above the steps, so a long template needs no scrolling to start.
 
 ### Fixed
 

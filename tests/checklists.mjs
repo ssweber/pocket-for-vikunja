@@ -255,6 +255,9 @@ try {
         await page.waitForSelector('#start-steps .prop:nth-of-type(1) .start-who:text-is("For you")', {
           timeout: 15000,
         });
+        // Start sits above the steps, so a long template needs no scrolling to start.
+        const [go, list] = await Promise.all(['#start-go', '#start-steps'].map(s => page.locator(s).boundingBox()));
+        if (go.y > list.y) throw new Error('Start is below the steps');
         await page.click('#start-go');
         await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
         await page.waitForSelector('#step-title:text-is("Turn on the espresso machine")');
