@@ -9,6 +9,7 @@ import { runTitle } from './sync.js';
 import { NO_SIGN_IN, titleParts } from './messages.js';
 import { isMovedGap, rowGestures, RUN_ROW, SHEET_ROW } from './lists.js';
 import { quarterOn, QUARTERS } from './progress.js';
+import { GOAL_MAX } from './goals.js';
 import core from './app/core.js';
 import auth from './app/auth.js';
 import views from './app/views.js';
@@ -42,6 +43,7 @@ export const globals = {
   durText,
   fmtSize,
   fromLocalInput,
+  GOAL_MAX,
   grow,
   INSTALLED,
   isMovedGap,

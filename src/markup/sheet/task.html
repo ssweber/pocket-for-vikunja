@@ -154,6 +154,21 @@
           </template>
         </div>
         <p class="note switches-note">A checklist keeps the settings it started with.</p>
+        <!-- The goal Checklists scores the template's week against (goals.js). With no goal the stepper shows Off and
+             the days are hidden. -->
+        <div class="card switches" id="d-goal">
+          <div class="prop goal"><svg class="i"><use href="#i-checklist"/></svg><span class="v"><b>Goal</b>
+            <span class="note">Checklists to finish a day</span></span>
+            <span class="goal-step"><button type="button" class="btn ghost" id="d-goal-less" aria-label="One fewer a day" :disabled="!canEdit || !templateGoal" @click="stepGoal(-1)">−</button><b class="num" id="d-goal-n" aria-live="polite" x-text="templateGoal ? templateGoal.count : 'Off'"></b><button type="button" class="btn ghost" id="d-goal-more" aria-label="One more a day" :disabled="!canEdit || templateGoal?.count >= GOAL_MAX" @click="stepGoal(1)">+</button></span>
+            <template x-if="templateGoal"><div class="chips" id="d-goal-days" role="group" aria-label="Days">
+              <template x-for="w in goalDays" :key="w.d"><button type="button" class="chip toggle tap" :aria-pressed="String(w.on)" :disabled="!canEdit" @click="toggleGoalDay(w.d)" x-text="w.name"></button></template>
+            </div></template>
+          </div>
+          <template x-for="line in placeLines('sheet:goal')" :key="line.n">
+            <!-- include markup/place-line.html -->
+          </template>
+        </div>
+        <p class="note switches-note">Checklists shows how many were finished each day this week.</p>
       </div></template>
 
       <div class="h3">Details</div>

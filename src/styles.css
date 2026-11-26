@@ -4040,6 +4040,42 @@ body.sheet-open {
 .switches-note {
   margin: -6px 14px 14px;
 }
+/* A template's goal: a stepper for the count on the right, and the weekday chips on a line of their own below. */
+.switches .goal {
+  flex-wrap: wrap;
+  cursor: default;
+}
+.goal-step {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.goal-step .btn {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 22px;
+}
+.goal-step b {
+  min-width: 34px;
+  text-align: center;
+}
+.goal .chips {
+  flex: 1 0 100%;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+}
+.goal .chip {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  justify-content: center;
+  padding: 0;
+}
+.goal .chip:disabled {
+  opacity: 0.55;
+}
 /* An on/off switch, drawn from a checkbox. The knob is a radial gradient, so the switch needs no extra element. */
 .switch {
   flex: none;

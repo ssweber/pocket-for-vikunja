@@ -13,6 +13,7 @@ import { taskDrafts } from '../../src/js/util.js';
 import sheet from '../../src/js/app/sheet.js';
 import checklists from '../../src/js/app/checklists.js';
 import asks from '../../src/js/app/asks.js';
+import { dayKey } from '../../src/js/goals.js';
 
 // A sender whose tasks have rows and copies.
 const listed = (t, list) => {
@@ -210,6 +211,7 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       words({ rebase: 'order' }),
       words({ rebase: 'asks' }),
       words({ rebase: 'rules' }),
+      words({ rebase: 'goal' }),
     ],
     [
       ['Renaming “Wipe the till” to “Wipe the counter”', 'Renaming “Wipe the till”', '“it” keeps its title.'],
@@ -221,6 +223,7 @@ test('an edit names the field it changes in the Outbox, when Vikunja refuses it,
       ['Moving a step in “Wipe the till”', 'Moving a step in “Wipe the till”', '“it” steps stay in their order.'],
       ['Asks on “Wipe the till”', 'Asks on “Wipe the till”', '“it” asks stay as they are.'],
       ['Settings on “Wipe the till”', 'Settings on “Wipe the till”', '“it” settings stay as they are.'],
+      ['Goal on “Wipe the till”', 'Goal on “Wipe the till”', '“it” goal stays as it is.'],
     ],
   );
 });
@@ -324,6 +327,66 @@ test("a step's asks are written over the ask lines Vikunja has when they are sen
   await app.flush();
   await settle(t, () => !sync.all(1).length);
   assert.equal(v.task(7).description, '<p>Use the probe</p><p>pocket:ask number °F</p>');
+});
+
+/* The Goal card in a template's sheet (stepGoal, toggleGoalDay). Quick taps offline wait as one edit, which writes
+   the goal line into the notes Vikunja has when it is sent. The line stays when the notes are edited, and one fewer
+   from 1 a day removes it. */
+test("a template's goal set offline is sent as one edit, survives its notes, and Off removes its line", async t => {
+  const { v, app } = inSheet(t, [{ id: 7, title: 'Walkabout', done: true, description: '<p>Walk the floor</p>' }]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
+  Object.defineProperties(app, { checklistRole: { value: 'template' }, canEdit: { value: true } });
+  const line = `<p>pocket:goal mon-sat 4 since ${dayKey(new Date())}</p>`;
+  noConnection(app, v);
+  for (let i = 0; i < 4; i++) await app.stepGoal(1);
+  await app.toggleGoalDay(5);
+  assert.deepEqual(
+    sync.all(1).map(e => e.goal),
+    [{ days: [0, 1, 2, 3, 4, 5], count: 4 }],
+  );
+  assert.deepEqual(
+    [app.templateGoal.count, app.goalDays.filter(w => w.on).length, app.tasks[7].description],
+    [4, 6, '<p>Walk the floor</p>' + line],
+    'the stepper and the chips show it at once',
+  );
+  v.task(7).description = '<p>Walk the floor and the yard</p>';
+  v.trouble = () => null;
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => !sync.all(1).length);
+  assert.deepEqual(sent(v), [{ description: '<p>Walk the floor and the yard</p>' + line }]);
+  Object.assign(app.sheet, {
+    editingDesc: true,
+    descDraft: 'Walk the yard too',
+    descBase: 'Walk the floor and the yard',
+    descConflict: null,
+  });
+  await app.saveDesc();
+  assert.equal(v.task(7).description, '<p>Walk the yard too</p>' + line, 'editing the notes keeps the goal');
+  noConnection(app, v);
+  for (let i = 0; i < 4; i++) await app.stepGoal(-1);
+  assert.deepEqual([sync.all(1).map(e => e.goal), app.templateGoal], [[null], null]);
+  v.trouble = () => null;
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => !sync.all(1).length);
+  assert.equal(v.task(7).description, '<p>Walk the yard too</p>', 'Off removes the line');
+});
+test("a template's goal set again as it is keeps the day it was set, and its last day can't be turned off", async t => {
+  const was = '<p>pocket:goal wed 2 since 2026-11-02</p>';
+  const { v, app } = inSheet(t, [{ id: 7, title: 'Walkabout', done: true, description: was }]);
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(checklists));
+  Object.defineProperties(app, { checklistRole: { value: 'template' }, canEdit: { value: true } });
+  await app.toggleGoalDay(2);
+  assert.deepEqual([sync.all(1).length, app.templateGoal.days], [0, [2]]);
+  noConnection(app, v);
+  await app.stepGoal(1);
+  await app.stepGoal(-1);
+  v.trouble = () => null;
+  app.offline = false;
+  await app.flush();
+  await settle(t, () => !sync.all(1).length);
+  assert.deepEqual([sent(v), v.task(7).description], [[], was]);
 });
 
 test("a checklist's new name shows at once, waits in the Outbox offline, and goes back when Vikunja refuses it", async t => {

@@ -1,8 +1,8 @@
 # Developing Pocket
 
 This file is the map: where things are, the rules that hold across files, and what has tripped people up. What a
-function or a file does is in a comment where it is, not here. A plan for a feature lives in `docs/design/` only
-while it is being built.
+function or a file does is in a comment where it is. A plan for a feature lives in `docs/design/` only while it is
+being built.
 
 ## Where things are
 
@@ -41,7 +41,7 @@ Each file in `src/js/` starts with a comment saying what it is for. By what you 
 | Quick add: parsing a line or a pasted list, the add boxes, the box under a row | `quickadd.js`, `app/quickadd.js`, `app/seat.js` |
 | What is waiting to be sent, and sending it | `sync.js`, `app/sending.js`, `app/outbox.js`, `app/acts.js` |
 | A kind of change sent through the outbox: its requests, what it does to the task, its words | `ops/` |
-| Checklists: templates, checklists in progress, timed steps | `checklists.js`, `app/checklists.js`, `app/runs.js`, `app/alerts.js` |
+| Checklists: templates, checklists in progress, timed steps, goals | `checklists.js`, `goals.js`, `app/checklists.js`, `app/runs.js`, `app/alerts.js` |
 | What a step asks to record: the fields on its card, the answers, and the editor on a template step | `asks.js`, `app/asks.js` |
 | A task's sheet | `app/sheet.js`, `markup/sheet/` |
 | A project's task order | `order.js` |
@@ -184,7 +184,7 @@ CI runs `lint`, `test:unit` and `test:parse` in one job, and `test:local` in ano
 Every test's name is a sentence saying what it checks, so the files are their own list. A change in behaviour comes
 with a test in the file for its area:
 
-- `tests/unit/*.test.mjs`: the helpers and the component's methods, in Node, with no server, one file per area.
+- `tests/unit/*.test.mjs`: the helpers and the component's methods, with no server, one file per area.
   `fake.mjs` is a pretend Vikunja behind `fetch()` and a pretend component. The other `.mjs` files there are what the
   tests share, each saying what it is in its first comment.
 - `tests/parse.mjs`: how quick add reads about 770 phrases and pasted lists, most adapted from Vikunja's own tests.

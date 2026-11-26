@@ -2817,6 +2817,42 @@ try {
     await until('Bake was never done', async () => (await task(bake)).done);
   });
 
+  /* The Goal card in the same template's sheet. + from Off sets 1 a day, Monday to Friday, and shows the weekday chips.
+     Quick taps reach Vikunja as the last count, and a chip turned on adds its day. One fewer from 1 a day is Off, which
+     hides the chips and removes the line. */
+  await step('a-template-with-a-goal', async () => {
+    if (!bread) throw new Error('needs a-template-that-waits-for-step-times');
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    await page.click(`.cl-tpl:has(.title:text-is("Bread ${stamp}")) .body`, { timeout: 15000 });
+    const n = page.locator('#d-goal-n'),
+      days = page.locator('#d-goal-days');
+    await expect(n).toHaveText('Off', { timeout: 15000 });
+    await expect(days).toHaveCount(0);
+    await expect(page.locator('#d-goal-less')).toBeDisabled();
+    for (let i = 0; i < 3; i++) await page.click('#d-goal-more');
+    await expect(n).toHaveText('3');
+    await expect(days.locator('[aria-pressed="true"]')).toHaveCount(5);
+    await days.getByRole('button', { name: 'Sat' }).click();
+    await expect(days.getByRole('button', { name: 'Sat' })).toHaveAttribute('aria-pressed', 'true');
+    await synced(page);
+    await until('the template never got its goal line', async () =>
+      /<p>pocket:goal mon-sat 3 since \d{4}-\d\d-\d\d<\/p>/.test((await api('/tasks/' + bread.id)).description),
+    );
+    await expect(page.locator('#d-desc')).not.toContainText('pocket:');
+    for (let i = 0; i < 3; i++) await page.click('#d-goal-less');
+    await expect(n).toHaveText('Off');
+    await expect(days).toHaveCount(0);
+    await synced(page);
+    await until(
+      'the goal line was never removed',
+      async () => !/pocket:goal/.test((await api('/tasks/' + bread.id)).description),
+    );
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+  });
+
   /* "Enforce step assignees" turned on in a template of its own. On a checklist started from it, a step with no
      assignee ticks as any step. A step assigned to someone else is locked: its Done names them, and a tap on Done, on
      Skip or on its tick says who can tick it and changes nothing in Vikunja. */

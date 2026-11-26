@@ -360,6 +360,12 @@ const EDITED = {
     dropped: (a, title) => `${it(title)} settings stay as they are.`,
     maybe: (a, title) => still(title, 'have your new settings'),
   },
+  goal: {
+    text: (a, title) => `Goal on ${task(title)}`,
+    refused: title => 'Goal' + on(title),
+    dropped: (a, title) => `${it(title)} goal stays as it is.`,
+    maybe: (a, title) => still(title, 'have your new goal'),
+  },
   order: {
     text: (a, title) => `Moving a step in ${task(title)}`,
     refused: title => 'Moving a step' + (title ? ` in “${named(title)}”` : ''),

@@ -326,6 +326,17 @@ export const SAMPLES = {
     made: v => v.task(7).description === '<p>Lock the back door too.</p><p>pocket:order 8 9</p><p>pocket:wait</p>',
     cannot: ['partly done'],
   },
+  // A template's goal is set to 4 a day, Monday to Friday, beside its order line.
+  'edit, goal': {
+    op: 'edit',
+    tasks: [task(7, 'Walkabout', { description: '<p>Walk the floor.</p><p>pocket:order 8 9</p>' })],
+    fields: { op: 'edit', task: 7, rebase: 'goal', goal: { days: [0, 1, 2, 3, 4], count: 4 }, run: null },
+    made: v =>
+      /^<p>Walk the floor\.<\/p><p>pocket:order 8 9<\/p><p>pocket:goal mon-fri 4 since \d{4}-\d\d-\d\d<\/p>$/.test(
+        v.task(7).description,
+      ),
+    cannot: ['partly done'],
+  },
   // The checklist's second step moves up, in its order line.
   'edit, order': {
     op: 'edit',

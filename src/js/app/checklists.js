@@ -25,6 +25,7 @@ import {
   templateName,
   templateTitle,
 } from '../checklists.js';
+import { GOAL_MAX, readGoal } from '../goals.js';
 import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import {
@@ -35,6 +36,7 @@ import {
   deletedProject,
   deleteProjectAsk,
   directFailed,
+  GOAL,
   notDone,
   removeStepAsk,
   SAID,
@@ -504,6 +506,35 @@ export default {
   setTemplateRule(key, on) {
     const t = this.sheetTask;
     if (t && this.canEdit) this.act({ op: 'edit', task: t.id, run: null, rebase: 'rules', rules: { [key]: on } });
+  },
+  // The open template's goal, {days, count, since}, or null when it has none (readGoal).
+  get templateGoal() {
+    return this.checklistRole === 'template' ? readGoal(this.sheetTask?.description) : null;
+  },
+  // The Goal card's weekday chips, Monday first: {d, name, on}. `d` indexes WEEKDAYS (goals.js). Nov 23, 2026 is a
+  // Monday, so it names them in the user's language.
+  get goalDays() {
+    const on = this.templateGoal?.days || [];
+    return [0, 1, 2, 3, 4, 5, 6].map(d => ({ d, name: GOAL.day(new Date(2026, 10, 23 + d)), on: on.includes(d) }));
+  },
+  /* Set the open template's goal ({days, count}), or remove it with null. The stepper and chips show it at once. A
+     tap while an earlier one waits to be sent replaces it, so offline taps go as one edit. */
+  setTemplateGoal(goal) {
+    const t = this.sheetTask;
+    if (t && this.canEdit) return this.act({ op: 'edit', task: t.id, run: null, rebase: 'goal', goal });
+  },
+  /* One more (`by` 1) or one fewer (-1) checklist a day. One more from no goal is 1 a day, Monday to Friday, and one
+     fewer from 1 a day removes the goal. The days are copied, because Alpine's proxy can't be stored in the outbox. */
+  stepGoal(by) {
+    const g = this.templateGoal,
+      count = Math.min((g?.count || 0) + by, GOAL_MAX);
+    return this.setTemplateGoal(count < 1 ? null : { days: g ? [...g.days] : [0, 1, 2, 3, 4], count });
+  },
+  // Turn weekday `d` of the goal on or off. The last day left stays on, so only the stepper removes a goal.
+  toggleGoalDay(d) {
+    const g = this.templateGoal,
+      days = g?.days.includes(d) ? g.days.filter(x => x !== d) : [...(g?.days || []), d];
+    if (g && days.length) return this.setTemplateGoal({ days, count: g.count });
   },
   // Whether a due template shows on the user's Today. It shows for its assignees. With no assignees, it shows for
   // anyone who can start it.

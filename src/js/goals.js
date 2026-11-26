@@ -9,6 +9,8 @@ import { GOAL } from './messages.js';
 
 // The weekdays as the line writes them. A goal's `days` are indexes into this list, so Monday is 0.
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+// The most checklists a day the sheet's stepper sets, so its count fits in two digits.
+export const GOAL_MAX = 99;
 const weekday = d => (d.getDay() + 6) % 7;
 const two = n => String(n).padStart(2, '0');
 // A day as `since` writes it, "2026-11-23". Two of them compare as strings in the order of their days.

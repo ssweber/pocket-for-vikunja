@@ -1,12 +1,13 @@
 /* Changing a task's own fields: a title or a priority, set as it is (`set`), or notes, notes added to a step,
-   reminders, a template's step order, its settings or a template step's asks, which are made on the copy Vikunja has
-   when the edit is sent (`rebase`). An outbox entry is stored in IndexedDB, which can't hold a function, so `rebase`
-   names one of REBASES, which holds the code for it. */
+   reminders, a template's step order, its settings, its goal or a template step's asks, which are made on the copy
+   Vikunja has when the edit is sent (`rebase`). An outbox entry is stored in IndexedDB, which can't hold a function,
+   so `rebase` names one of REBASES, which holds the code for it. */
 import { ApiError } from '../api.js';
 import { plainReminders, reminderKey } from '../dates.js';
 import { htmlToText, textToHtml } from '../html.js';
 import { notesOnly, problemText, stepProblems, stepsOf, withLinesOf, withOrder, withRules } from '../checklists.js';
 import { withAskLines } from '../asks.js';
+import { withGoal } from '../goals.js';
 import { notDone, OP_WORDS } from '../messages.js';
 import { backOf, changed, patch } from './stages.js';
 
@@ -153,6 +154,19 @@ const REBASES = {
     merge: (older, newer) => ({ ...newer, rules: { ...older.rules, ...newer.rules } }),
     invert: () => null,
   },
+  /* A template's goal (`goal`, {days, count}, or null for none) as its line in the notes Vikunja has. The line's
+     `since` is the day the edit is sent, unless Vikunja has the same goal already (withGoal). The last of quick taps
+     on the stepper wins. */
+  goal: {
+    field: 'description',
+    apply: (t, a) => ({ ...t, description: withGoal(t.description, a.goal) }),
+    body(t, a) {
+      const d = withGoal(t.description, a.goal);
+      return d === t.description ? null : { description: d };
+    },
+    merge: (older, newer) => ({ ...newer }),
+    invert: () => null,
+  },
 };
 
 // The fields an edit changes, which two edits must share for the later to replace the earlier.
@@ -214,9 +228,10 @@ export const edit = {
       order: 'sheet:subtasks',
       asks: 'sheet:asks',
       rules: 'sheet:rules',
+      goal: 'sheet:goal',
     })[a.rebase] ?? 'sheet:top',
   ...OP_WORDS.edit,
-  asks: ['set', 'check', 'rebase', 'text', 'base', 'add', 'drop', 'moves', 'lines', 'rules'],
+  asks: ['set', 'check', 'rebase', 'text', 'base', 'add', 'drop', 'moves', 'lines', 'rules', 'goal'],
   saw: ['label', 'was'],
   on: null,
   keepReads: null,
