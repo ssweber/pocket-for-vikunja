@@ -1,9 +1,11 @@
 // How Pocket's lists are built, sorted and drawn, and the copies saved so Pocket can open without a connection.
 import { store } from './util.js';
+import { sharedToken } from './api.js';
 import { addDays, isLate, isSet, startOfDay } from './dates.js';
 import { stepsOf } from './checklists.js';
 
-// The lists Pocket last loaded, shown when it opens without a connection. Sign-out clears them.
+/* The lists Pocket last loaded, shown when it opens without a connection. Sign-out clears them. Nothing is saved
+   without a session, so a request answered after sign-out can't save its lists again. */
 export const saved = {
   get(k) {
     try {
@@ -13,6 +15,7 @@ export const saved = {
     }
   },
   set(k, v) {
+    if (!sharedToken.get()) return;
     return store.set('saved.' + k, JSON.stringify(v));
   },
   clear() {

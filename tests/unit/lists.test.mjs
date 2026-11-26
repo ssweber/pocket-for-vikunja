@@ -1537,3 +1537,15 @@ test("Today draws Done today's heading with nothing done today, so Copy week is 
   assert.ok(!app.groupShows(empty('done')), "a project's Done with no tasks isn't drawn");
   assert.ok(app.groupShows({ ...empty('done'), count: 3 }), 'a folded Done with tasks behind it is');
 });
+
+test('a list loaded after sign-out is not saved again', () => {
+  saved.set('projects', [{ id: 7 }]);
+  localStorage.removeItem('token');
+  try {
+    saved.clear();
+    saved.set('projects', [{ id: 7 }]); // a request answered after the sign-out
+    assert.equal(saved.get('projects'), null);
+  } finally {
+    localStorage.setItem('token', 'tk_test');
+  }
+});

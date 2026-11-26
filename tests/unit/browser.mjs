@@ -36,6 +36,8 @@ globalThis.localStorage = new Proxy(
       kept.has(k) ? { value: kept.get(k), enumerable: true, configurable: true } : undefined,
   },
 );
+// A signed-in session, since Pocket saves its lists only with one (lists.js).
+localStorage.setItem('token', 'tk_test');
 
 /* Web Locks, as a browser grants them: one holder of a name at a time, in the order asked, each called in a task of its
    own. Node 22 has none. Node 24's calls a free lock's holder before request() returns, which a browser never does. */

@@ -1138,6 +1138,7 @@ for (const [where, route, start, open] of [
         document.querySelectorAll = was;
         for (const x of sync.all(1)) await sync.remove(x.id);
         localStorage.clear();
+        localStorage.setItem('token', 'tk_test'); // the session the other tests run in (browser.mjs)
       });
       const list = [1, 2].map(id => ({
           id,

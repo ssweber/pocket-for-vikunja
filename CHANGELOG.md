@@ -29,6 +29,7 @@ is a new 0.x.y.
 
 ### Fixed
 
+- Signing out while Pocket was reloading the project list no longer leaves the projects saved on the phone.
 - A new version of Pocket no longer reloads the page while a finger is on the screen or a row is open on Delete.
 - Renewing the sign-in gives up after 20 seconds on a stalled connection, so Vikunja's own tabs don't wait on it.
 - Pocket refreshes its saved copies of its icons and app manifest after an update, instead of keeping the first ones.
