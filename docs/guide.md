@@ -120,6 +120,8 @@ A template is a procedure your team repeats. Starting it creates a checklist, wh
 - In Pocket, only the template's creator or a project admin can change it. Everyone with **Read & write** can start checklists from it.
 - Give a template a due date and a repeat interval to make it repeat. Today lists it from a week before. Starting it on or after the due day moves the template to its next date. Missed dates aren't made up.
 
+**Goals.** A template can have a goal: how many checklists to finish a day, on which weekdays. Set it in the template's sheet, under the switches. The template's row on Checklists then shows the week so far, and the streak once the goal has been met 3 days in a row. A day when nobody finished any checklist in the project is a day off, and doesn't break the streak. **Copy goals**, beside the project's name, copies the week as text, with the time each checklist was finished. On a Monday it copies last week.
+
 **During a checklist.**
 
 - A comment typed on a step is posted with **Done**, or saved as the reason with **Skip**.

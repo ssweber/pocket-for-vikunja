@@ -19,6 +19,8 @@ is a new 0.x.y.
 - When a tap hits a bug in Pocket, a message says so and offers Reload, instead of the tap doing nothing. The account
   sheet keeps the last few errors for a week, and **Copy error details** copies them for a bug report. Nothing is
   sent anywhere.
+- A template can have a goal of checklists finished a day, on chosen weekdays. Its row on Checklists shows the week
+  and the streak, and **Copy goals** copies the week with the time each checklist was finished.
 
 ### Changed
 
