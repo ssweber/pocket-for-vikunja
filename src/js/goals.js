@@ -81,7 +81,8 @@ function thisWeek(now) {
 
 /* The score of a template with `goal`, from the times its checklists were finished (`finished`), for `week` ({from,
    to}, from the start of `from` to the start of `to`). By default the week is Monday to today, so on a Monday the
-   score starts again. Only the goal's weekdays are scored, and none after today.
+   score starts again. Only the goal's weekdays are scored, none after today, and none before the goal's `since` day,
+   so a goal set on a Thursday doesn't count Monday to Wednesday as missed.
 
    Returns {goal, days, done, total}. Each of `days` is {day, n, times, today}. `n` counts the checklists finished
    that day, at most the goal's count, and `times` are all of their finish times. The ring shows `done` of `total`,
@@ -91,7 +92,7 @@ export function weekScore(goal, finished, now = new Date(), week = thisWeek(now)
     t0 = startOfDay(now),
     days = [];
   for (let d = startOfDay(week.from); d < week.to && d <= t0; d = addDays(d, 1))
-    if (goal.days.includes(weekday(d))) {
+    if (goal.days.includes(weekday(d)) && dayKey(d) >= goal.since) {
       const times = by.get(dayKey(d)) || [];
       days.push({ day: d, n: Math.min(times.length, goal.count), times, today: +d === +t0 });
     }
@@ -158,6 +159,8 @@ export function goalsText(templates, all, now = new Date()) {
       .flatMap(t => {
         const score = weekScore(t.goal, t.finished, now, week),
           streak = streakText(streakDays(t.goal, t.finished, all, now), t.goal);
+        // A goal set after the week it covers has nothing to say for it.
+        if (!score.days.length) return [];
         return [
           '',
           [t.title, GOAL.finished(score.done, score.total), GOAL.perDay(t.goal.count), streak]

@@ -147,6 +147,13 @@ test('at 1 a day the line names only the days missed, and never today before it 
   assert.equal(scoreLine(weekScore(goal(1), on(23, 24, 25)), 3), '1 a day · none missed · 3 days in a row');
 });
 
+test("a goal set during the week isn't scored before its since day", t => {
+  clock(t);
+  const score = weekScore(goal(1, MON_FRI, '2026-11-25'), on(25));
+  assert.deepEqual([score.days.length, score.done, score.total], [2, 1, 2]);
+  assert.equal(scoreLine(score), '1 a day · none missed');
+});
+
 test('on a Monday the score is for this week, so it starts empty', t => {
   clock(t, at(30, 8));
   const score = weekScore(goal(4), on(23, 24, 25, 26, 27));
@@ -250,11 +257,17 @@ test('Copy goals lists each goal with its score, its streak, and the times on ea
 });
 
 // Nothing was finished on Wednesday, so the streak skips it as a day off, while the list still shows it.
-test('Copy goals copies last week on a Monday', t => {
+test('Copy goals copies last week on a Monday, without a goal set since', t => {
   clock(t, at(30, 8));
   const done = on(23, 24, 26, 27);
   assert.equal(
-    goalsText([{ title: 'Opening up', goal: goal(1), finished: done }], done),
+    goalsText(
+      [
+        { title: 'Opening up', goal: goal(1), finished: done },
+        { title: 'Walkabout', goal: goal(4, MON_FRI, '2026-11-30'), finished: [] },
+      ],
+      done,
+    ),
     [
       'Checklists last week · Mon, Nov 23 – Sun, Nov 29',
       '',
