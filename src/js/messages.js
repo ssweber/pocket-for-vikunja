@@ -954,6 +954,20 @@ export function startedText(who, at, { now = new Date(), day = false } = {}) {
   );
 }
 
+/* The words of a template's goal, which goals.js puts together: the line under the template's title ("4 a day · Mon 4
+   · Tue 2"), its streak, and Copy goals' heading and lines. A day is named as Copy week names it, "Mon". */
+export const GOAL = {
+  perDay: n => `${n.toLocaleString()} a day`,
+  day: d => d.toLocaleDateString([], { weekday: 'short' }),
+  noneOn: days => 'none on ' + days.join(', '),
+  noneMissed: 'none missed',
+  none: 'none',
+  days: n => `${n.toLocaleString()} days in a row`,
+  weeks: n => `${n.toLocaleString()} weeks in a row`,
+  finished: (done, total) => `${done.toLocaleString()} of ${total.toLocaleString()} finished`,
+  head: (last, from, to) => `Checklists ${last ? 'last' : 'this'} week · ${finishDayText(from)} – ${finishDayText(to)}`,
+};
+
 // The message shown after the user copies something, by what was copied: progress as text, Done today's done tasks
 // for the day or the week, a Markdown list (pasting it into Pocket's add box makes the same tasks), a task's notes, a
 // comment, or the errors the account sheet keeps. Copy today and Copy week sit side by side, so each message names its own copy. `failed` is for when the

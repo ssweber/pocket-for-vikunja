@@ -38,7 +38,7 @@ const RUN_LINE = /^pocket:run$/i,
 // The text nodes in a description that match `re` and are outside lists. Such a node is a paragraph, or a line in a
 // paragraph after Shift+Enter in Vikunja's editor. The first match is the one that is read. The others are
 // leftovers, and they are removed when the line is next written.
-function markLines(root, re) {
+export function markLines(root, re) {
   const out = [],
     walk = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n; (n = walk.nextNode());) if (re.test(n.nodeValue.trim()) && !n.parentElement.closest('li')) out.push(n);
@@ -81,7 +81,7 @@ const restOf = n => {
     for (let x = n.nextSibling; x && x.nodeName !== 'BR'; x = x.nextSibling) out.push(x);
   return out;
 };
-function withLine(html, re, text) {
+export function withLine(html, re, text) {
   const root = parseFragment(html || ''),
     [line, ...extra] = markLines(root, re);
   for (const n of text !== null ? extra : [line, ...extra].filter(Boolean)) {
