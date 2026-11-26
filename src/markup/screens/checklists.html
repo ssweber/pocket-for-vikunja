@@ -7,7 +7,7 @@
         <!-- include markup/setup-card.html -->
       </template>
       <template x-for="cl in view.checklists" :key="cl.project.id"><div class="cl" :data-project="cl.project.id">
-        <div class="sec"><span x-text="cl.project.title"></span><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
+        <div class="sec"><span x-text="cl.project.title"></span><template x-if="hasGoals(cl)"><button type="button" class="sec-act" @click="copyGoals(cl)">Copy goals</button></template><a class="sec-act" :href="'#/project/' + cl.project.id">Open project</a></div>
         <!-- Shown to the project's owner until they hide it. It lists the three steps people most often miss when
              setting up checklists. -->
         <template x-if="gettingStarted(cl.project.id)"><div class="card getting-started" :id="'getting-started-' + cl.project.id">
@@ -22,11 +22,16 @@
           <button type="button" class="linkish gs-hide" @click="hideGettingStarted(cl.project.id)">Hide this</button>
         </div></template>
         <div class="list">
-          <template x-for="t in cl.templates" :key="t.id"><div class="row cl-tpl" :data-id="t.id">
-            <button class="body" @click="openTask(t.id)"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg>
-              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num"><span x-text="t.steps + (t.steps === 1 ? ' step' : ' steps')"></span><template x-if="scheduleText(t)"><span class="cl-when" x-text="scheduleText(t)"></span></template></div></div></button>
+          <!-- A template with a goal shows its week (tplGoal): a ring in place of its icon, and the goal's line in place of
+               its step count. The ring is the row's first child, as a tick is, because a button can't hold a button. -->
+          <template x-for="t in cl.templates" :key="t.id"><template x-for="s in [tplGoal(t, cl)]" :key="0"><div class="row cl-tpl" :data-id="t.id">
+            <template x-for="r in [s?.ring].filter(Boolean)" :key="0">
+              <!-- include markup/ring.html -->
+            </template>
+            <button class="body" @click="openTask(t.id)"><template x-if="!s?.ring"><svg class="i" style="color:var(--muted)"><use href="#i-checklist"/></svg></template>
+              <div class="t"><div class="title" x-text="t.title"></div><div class="meta num"><span x-text="s ? s.line : t.steps + (t.steps === 1 ? ' step' : ' steps')"></span><template x-if="scheduleText(t)"><span class="cl-when" x-text="scheduleText(t)"></span></template></div></div></button>
             <template x-if="canWrite(cl.project.id)"><button class="btn cl-start" :aria-label="'Start ' + t.title" @click="openStart(t.id)">Start</button></template>
-          </div></template>
+          </div></template></template>
           <template x-if="!cl.templates.length"><p class="cl-hint">No templates yet. A checklist is started from a template.</p></template>
           <template x-if="!canWrite(cl.project.id)"><p class="cl-hint">Read only. You can see its checklists but not start or work on them.</p></template>
           <div class="row cl-new" x-show="canWrite(cl.project.id)"><button class="body" @click="openNewTemplate(cl.project)"><svg class="i"><use href="#i-plus"/></svg><span class="title">New template</span></button></div>

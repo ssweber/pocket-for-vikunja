@@ -673,7 +673,7 @@ div:has(> .list > .item:last-child > .day-card > .card-more) + div > .sec {
 .row > div.body:not(.step-in) {
   padding: 4px 0 2px;
 }
-/* A template row has no tick. Its icon and text are one line centred on the row, so the rule above leaves it out. */
+/* A template row lays out its icon and text itself (.cl-tpl .body), so the rule above leaves it out. */
 :not(.tree) > .row:is(.cl-tpl, .cl-new) > button.body {
   padding-top: 14px;
 }
@@ -2403,10 +2403,13 @@ button.ring::after {
 }
 
 /* ---------- checklists ---------- */
+/* A template's icon sits in a slot as wide as a goal's ring, so every template's title starts at --title-x. The icon
+   and the ring are centred on the title and the line under it, 37px down the row, and stay there when that line
+   wraps. */
 .cl-tpl .body {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
 }
 .cl-tpl .body .t {
   flex: 1;
@@ -2414,6 +2417,10 @@ button.ring::after {
 }
 .cl-tpl .body > svg.i {
   flex: none;
+  margin: 12px calc((var(--tick) - 22px) / 2) 0;
+}
+.row.cl-tpl > .ring {
+  margin-top: calc(25px - var(--tick) / 2);
 }
 .cl-tpl .body .t .title {
   overflow: hidden;

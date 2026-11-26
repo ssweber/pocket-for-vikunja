@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import { notesOnly } from '../../src/js/checklists.js';
 import { fmtTime } from '../../src/js/dates.js';
 import {
+  finishedRuns,
+  finishTimes,
+  GOAL_DAYS,
   goalMark,
   goalsText,
   readGoal,
@@ -162,6 +165,15 @@ test('on a Monday the score is for this week, so it starts empty', t => {
   assert.equal(scoreLine(weekScore(goal(1), on(23))), '1 a day · none missed');
 });
 
+test('a week with no goal day yet shows only the goal and its streak', t => {
+  clock(t);
+  const weekend = goal(1, [5, 6]),
+    score = weekScore(weekend, on(21, 22));
+  assert.deepEqual([score.days.length, score.total], [0, 0]);
+  assert.equal(scoreLine(score), '1 a day');
+  assert.equal(scoreLine(score, 3), '1 a day · 3 days in a row');
+});
+
 test('a streak runs back from yesterday over the goal days, and today adds to it once met', t => {
   clock(t);
   const days = on(16, 17, 18, 19, 20, 23, 24, 25);
@@ -279,4 +291,58 @@ test('Copy goals copies last week on a Monday, without a goal set since', t => {
       '  Fri ' + times(at(27)),
     ].join('\n'),
   );
+});
+
+// A copy of a template as Vikunja lists it in the template's copiedto.
+const copy = (id, done_at, more = {}) => ({ id, done: true, done_at: done_at.toISOString(), labels: null, ...more });
+
+test("the goals are scored from each template's copies: finished checklists only, not a duplicate made in the web app", t => {
+  clock(t);
+  const runs = finishedRuns([
+    {
+      id: 1,
+      related_tasks: {
+        copiedto: [
+          copy(10, at(23)),
+          copy(11, at(24), { labels: [{ id: 3, title: 'Morning' }] }),
+          copy(12, at(25), { done: false }),
+          copy(13, at(25), { done_at: '0001-01-01T00:00:00Z' }),
+          copy(14, at(25), { labels: [{ id: 2, title: 'template' }] }), // duplicated in Vikunja's web app
+        ],
+      },
+    },
+    { id: 2, related_tasks: { copiedto: [copy(20, at(26, 8))] } },
+    { id: 3, related_tasks: {} },
+  ]);
+  assert.deepEqual(runs, {
+    10: { from: 1, at: at(23).toISOString() },
+    11: { from: 1, at: at(24).toISOString() },
+    20: { from: 2, at: at(26, 8).toISOString() },
+  });
+  assert.deepEqual(finishTimes(runs, [], 1), [at(23).toISOString(), at(24).toISOString()]);
+  assert.deepEqual(finishTimes(runs).length, 3, "`all` holds every template's checklists");
+});
+
+test('the goals read back 12 weeks, from the start of the day', t => {
+  clock(t);
+  const from = new Date(2026, 10, 26 - GOAL_DAYS);
+  const runs = finishedRuns([
+    { id: 1, related_tasks: { copiedto: [copy(10, from), copy(11, new Date(+from - 1)), copy(12, at(26, 8))] } },
+  ]);
+  assert.deepEqual(Object.keys(runs), ['10', '12']);
+  assert.equal(GOAL_DAYS, 84);
+});
+
+test("a checklist finished on this phone counts before Vikunja's list has it, and one reopened here doesn't", t => {
+  clock(t);
+  const runs = finishedRuns([{ id: 1, related_tasks: { copiedto: [copy(10, at(23)), copy(11, at(24))] } }]),
+    from = id => ({ copiedfrom: [{ id }] });
+  const shown = [
+    { id: 11, done: false, related_tasks: from(1) }, // reopened here
+    { id: 12, done: true, done_at: at(26, 8).toISOString(), related_tasks: from(1) }, // finished here, not sent yet
+    { id: 13, done: true, done_at: at(26, 9).toISOString(), related_tasks: from(2) }, // from another template
+    { id: 14, done: false, related_tasks: from(1) }, // still in progress
+  ];
+  assert.deepEqual(finishTimes(runs, shown, 1), [at(23).toISOString(), at(26, 8).toISOString()]);
+  assert.deepEqual(finishTimes(runs, shown), [at(23).toISOString(), at(26, 8).toISOString(), at(26, 9).toISOString()]);
 });

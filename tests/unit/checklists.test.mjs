@@ -641,6 +641,49 @@ test("a finished checklist counts its steps' skips and comments when they have m
   assert.deepEqual(cl.ended[1], { skipped: 1, comments: 59 });
 });
 
+test("a template's row scores its goal from its copies, and counts a checklist just finished on this phone", async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 26, 15) }); // a Thursday
+  const at = day => new Date(2026, 10, day, 9).toISOString(),
+    copy = (id, day, more = {}) => ({ id, done: true, done_at: at(day), labels: null, ...more });
+  const tpl = {
+      id: 99,
+      project_id: 7,
+      title: 'TEMPLATE: Closing up',
+      done: true,
+      description: '<p>pocket:goal mon-sun 1 since 2026-11-23</p>',
+      labels: [{ id: 5, title: 'template' }],
+      related_tasks: {
+        copiedto: [
+          copy(1, 23),
+          copy(2, 24, { labels: [{ id: 5, title: 'template' }] }), // duplicated in Vikunja's web app
+          copy(3, 25),
+          copy(4, 26, { done: false, done_at: '0001-01-01T00:00:00Z' }),
+        ],
+      },
+    },
+    open = { id: 4, project_id: 7, title: 'Closing up · Nov 26 · #3', done: false, description: '' };
+  open.related_tasks = { copiedfrom: [{ id: 99 }] };
+  const app = await loaded(null, [open], (path, query) =>
+    query.get('filter')?.startsWith('labels in')
+      ? { items: [tpl], total_pages: 1 }
+      : query.get('filter')?.startsWith('done = true')
+        ? { items: [], total_pages: 1 }
+        : null,
+  );
+  app.loadLabels = async () => [{ id: 5, title: 'template' }];
+  const [cl] = await app.readChecklists(x => app.row(x));
+  assert.deepEqual(cl.templates[0].goal, { days: [0, 1, 2, 3, 4, 5, 6], count: 1, since: '2026-11-23' });
+  assert.deepEqual(cl.times, { 1: { from: 99, at: at(23) }, 3: { from: 99, at: at(25) } });
+  const row = () => app.tplGoal(cl.templates[0], cl);
+  assert.equal(row().line, '1 a day · none on Tue');
+  assert.deepEqual([row().ring.done, row().ring.total, row().ring.open], [2, 4, 2]);
+  // The checklist in progress is finished on this phone, before Vikunja's list of copies has it.
+  Object.assign(cl.runs[0], { done: true, done_at: new Date().toISOString() });
+  assert.deepEqual([row().ring.done, row().ring.total, row().ring.open], [3, 4, 1]);
+  assert.equal(app.hasGoals(cl), true);
+  assert.equal(app.tplGoal({ id: 98, title: 'Opening up' }, cl), null, 'a template with no goal keeps its row');
+});
+
 test("a template's step being edited isn't saved when the user's access arrives and doesn't let them change the template", async () => {
   const { component } = await import('./fake.mjs'),
     { default: runs } = await import('../../src/js/app/runs.js'),

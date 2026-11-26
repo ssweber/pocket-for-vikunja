@@ -2,7 +2,7 @@
    template's description, "pocket:goal mon-fri 4 since 2026-11-23", `since` being the day the goal was last set. The
    times the template's checklists were finished give the week's score, which its row and Copy goals show, and its
    streak. Days are local, as in dates.js. */
-import { markLines, withLine } from './checklists.js';
+import { isTemplateLabel, markLines, withLine } from './checklists.js';
 import { addDays, doneWeek, fmtTime, isSet, startOfDay } from './dates.js';
 import { parseFragment } from './html.js';
 import { GOAL } from './messages.js';
@@ -63,6 +63,36 @@ export function withGoal(html, goal, now = new Date()) {
   const old = readGoal(html),
     same = old?.count === count && writeDays(old.days) === writeDays(days);
   return withLine(html, GOAL_LINE, goalMark({ days, count, since: same ? old.since : dayKey(now) }));
+}
+
+// How far back Checklists reads finished checklists for the goals: 12 weeks, which is as long as a streak can reach.
+export const GOAL_DAYS = 84;
+/* The checklists finished from a project's templates in the GOAL_DAYS before `now`, read from each template's copies
+   as Vikunja lists them (copiedto), so they need no request of their own. Returns {id: {from, at}}, `from` being the
+   template's id and `at` the finish time as Vikunja gives it. A copy counts once it is done and has lost the "template"
+   label, which Pocket removes last when it sets up a checklist. A template duplicated in Vikunja's web app keeps the
+   label, so it doesn't count. */
+export function finishedRuns(templates, now = new Date()) {
+  const from = addDays(startOfDay(now), -GOAL_DAYS),
+    out = {};
+  for (const t of templates || [])
+    for (const c of t.related_tasks?.copiedto || [])
+      if (c.done && isSet(c.done_at) && new Date(c.done_at) >= from && !(c.labels || []).some(isTemplateLabel))
+        out[c.id] = { from: t.id, at: c.done_at };
+  return out;
+}
+/* The finish times in `runs` (finishedRuns) of the checklists from template `from`, or from any template when `from`
+   is null, with the checklists in `shown` as this phone has them. So a checklist finished here and not yet in
+   Vikunja's list counts, and one reopened here doesn't. */
+export function finishTimes(runs, shown = [], from = null) {
+  const at = new Map();
+  for (const [id, r] of Object.entries(runs || {})) if (from == null || r.from === from) at.set(+id, r.at);
+  for (const t of shown) {
+    if (from != null && t.related_tasks?.copiedfrom?.[0]?.id !== from) continue;
+    if (!t.done) at.delete(t.id);
+    else if (isSet(t.done_at)) at.set(t.id, t.done_at);
+  }
+  return [...at.values()];
 }
 
 // Finish times by day (dayKey), each day's in order. A time may be a Date, an ISO string or milliseconds.
@@ -131,12 +161,14 @@ export function streakText(n, goal) {
 }
 
 /* The line under a template's title: "4 a day · Mon 4 · Tue 2 · Wed 3". At 1 a day it names only the days missed,
-   "1 a day · none on Tue, Wed", or "1 a day · none missed". A streak of `streak` days follows (streakText). */
+   "1 a day · none on Tue, Wed", or "1 a day · none missed". A streak of `streak` days follows (streakText). A week
+   with no goal day yet, as a Wednesday for a weekend goal, has only the goal and the streak. */
 export function scoreLine(score, streak = 0) {
   const { goal, days } = score,
     missed = days.filter(x => !x.today && !x.n).map(x => GOAL.day(x.day));
-  const parts =
-    goal.count > 1
+  const parts = !days.length
+    ? []
+    : goal.count > 1
       ? listed(score).map(x => GOAL.day(x.day) + ' ' + x.n)
       : [missed.length ? GOAL.noneOn(missed) : GOAL.noneMissed];
   return [GOAL.perDay(goal.count), ...parts, streakText(streak, goal)].filter(Boolean).join(' · ');

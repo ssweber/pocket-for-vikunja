@@ -2920,6 +2920,75 @@ try {
     await until('Count the cash was never done', async () => (await task(count)).done);
   });
 
+  /* A template with a goal of 1 a day on every weekday, set since today. Once a checklist from it is finished, its row
+     on Checklists shows the ring at 1/1 in place of its icon, and the goal's line in place of its step count. Tapping
+     the ring opens the template. Copy goals copies the week with the template's title, except on a Monday, when it
+     copies last week, before the goal was set. */
+  await step('a-goals-week-on-its-template-row', async () => {
+    const label = (await api('/labels?s=template')).items?.find(l => l.title === 'template');
+    const make = async (title, done) =>
+      api(`/projects/${project.id}/tasks`, { method: 'POST', body: JSON.stringify({ title, done }) });
+    const name = `Walkabout ${stamp}`,
+      tpl = await make(name, false),
+      st = await make('Wipe the tables', true),
+      d = new Date(),
+      since = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    await api(`/tasks/${tpl.id}/relations`, {
+      method: 'POST',
+      body: JSON.stringify({ other_task_id: st.id, relation_kind: 'subtask' }),
+    });
+    await api(`/tasks/${tpl.id}/labels`, { method: 'POST', body: JSON.stringify({ label_id: label.id }) });
+    await api('/tasks/' + tpl.id, {
+      method: 'PATCH',
+      body: JSON.stringify({ done: true, description: `<p>pocket:goal mon-sun 1 since ${since}</p>` }),
+    });
+    await page.evaluate(() => {
+      location.hash = '#/today';
+    });
+    await page.evaluate(() => {
+      location.hash = '#/checklists';
+    });
+    const row = page.locator(`.cl-tpl:has(.title:text-is("${name}"))`);
+    await expect(row.locator('.meta')).toContainText('1 a day · none missed', { timeout: 15000 });
+    await expect(row.locator('> .ring .n')).toHaveText('0/1');
+    await row.locator('.cl-start').click();
+    await page.waitForSelector('#start-go:not([disabled])', { timeout: 15000 });
+    await page.click('#start-go');
+    await page.waitForFunction(() => /^#\/run\/\d+$/.test(location.hash), null, { timeout: 30000 });
+    runs.push(+(await page.evaluate(() => location.hash)).split('/').pop());
+    await page.waitForSelector('#step-title:text-is("Wipe the tables")', { timeout: 15000 });
+    await page.click('#step-done');
+    await page.waitForSelector('#finish-card');
+    await page.click('#run-finish');
+    await page.waitForFunction(() => location.hash === '#/checklists', null, { timeout: 15000 });
+    await expect(row.locator('> .ring .n')).toHaveText('1/1', { timeout: 15000 });
+    await expect(row.locator('> .ring')).toHaveClass(/\bfull\b/);
+    await expect(row.locator('> .ring')).toHaveAttribute('aria-label', `${name}: 1 of 1 finished this week`);
+    await expect(row.locator('.meta')).toHaveText('1 a day · none missed');
+    await expect(row.locator('.body > svg.i')).toHaveCount(0);
+    // A template with no goal keeps its icon and its step count.
+    await expect(page.locator(`${tplRow} .body > svg.i`)).toHaveCount(1);
+    await expect(page.locator(`${tplRow} .meta`)).toContainText(/^\d+ steps?/);
+    await row.locator('> .ring').click();
+    await expect(page.locator('#d-goal-n')).toHaveText('1', { timeout: 15000 });
+    await page.click('#btn-sheet-close');
+    await page.waitForSelector('#sheet', { state: 'hidden' });
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(APP).origin });
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    const clip = () => page.evaluate(() => navigator.clipboard.readText()).then(t => t.replace(/\r\n/g, '\n'));
+    const monday = await page.evaluate(() => new Date().getDay() === 1);
+    await page.locator(`.cl[data-project="${project.id}"] > .sec`).getByRole('button', { name: 'Copy goals' }).click();
+    await said('checklists', monday ? "Copied last week's goals" : "Copied this week's goals");
+    if (monday) {
+      await expect.poll(clip).toMatch(/^Checklists last week · /);
+      if ((await clip()).includes(name)) throw new Error('last week lists a goal set today');
+    } else {
+      await expect.poll(clip).toMatch(/^Checklists this week · /);
+      await expect.poll(clip).toContain(`\n\n${name} · 1 of 1 finished · 1 a day\n  `);
+    }
+  });
+
   await step('asks-on-a-step', async () => {
     // A template step's asks are written in the step's sheet, as pocket:ask lines in its notes. A checklist started from
     // it shows a field for each ask, Save sends the answers in a comment, and Done sends what changed before the tick.

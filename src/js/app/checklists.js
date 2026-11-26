@@ -1,7 +1,7 @@
 // Checklist projects and templates: reading them, making a template, and writing and editing its steps.
 import { andList, memo, raw, store, taskDrafts, TZ, userCache } from '../util.js';
 import { allPages, api, NetError, passing, why } from '../api.js';
-import { fmtTime, isSet, repeats, startOfDay } from '../dates.js';
+import { doneWeek, fmtTime, isSet, repeats, startOfDay } from '../dates.js';
 import { htmlToText, parseFragment } from '../html.js';
 import {
   allComments,
@@ -25,7 +25,16 @@ import {
   templateName,
   templateTitle,
 } from '../checklists.js';
-import { GOAL_MAX, readGoal } from '../goals.js';
+import {
+  finishedRuns,
+  finishTimes,
+  GOAL_MAX,
+  goalsText,
+  readGoal,
+  scoreLine,
+  streakDays,
+  weekScore,
+} from '../goals.js';
 import { itemsOf, packParsed, randomId, sync, uuid7 } from '../sync.js';
 import { saved } from '../lists.js';
 import {
@@ -33,6 +42,7 @@ import {
   archivedText,
   changedBut,
   checklistsOn,
+  COPIED,
   deletedProject,
   deleteProjectAsk,
   directFailed,
@@ -443,10 +453,10 @@ export default {
           ids = new Set(finished.map(t => t.id));
         for (const s of done) if (!this.isRunTask(s)) own(s);
         for (const s of open) if (s.related_tasks?.parenttask?.some(x => ids.has(x.id))) own(s);
+        const ready = templates.filter(t => this.readyTemplate(t));
         return {
           project: { id: p.id, title: p.title },
-          templates: templates
-            .filter(t => this.readyTemplate(t))
+          templates: ready
             .map(t => ({ ...t, name: templateName(t.title) }))
             .sort((a, b) => a.name.localeCompare(b.name))
             .map(t => {
@@ -454,7 +464,9 @@ export default {
               return {
                 id: t.id,
                 title: t.name,
+                project_id: t.project_id,
                 steps: (t.related_tasks?.subtask || []).length,
+                goal: readGoal(t.description),
                 done: t.done,
                 labels: t.labels,
                 due_date: t.due_date,
@@ -465,6 +477,8 @@ export default {
           runs: open.filter(t => !t.done && this.isRunTask(t)).map(own),
           finished: finished.map(own),
           ended: endedOf(finished, [...done, ...open]),
+          // The checklists finished from these templates in the last 12 weeks, which the goals are scored from.
+          times: finishedRuns(ready),
         };
       }),
     );
@@ -506,6 +520,55 @@ export default {
   setTemplateRule(key, on) {
     const t = this.sheetTask;
     if (t && this.canEdit) this.act({ op: 'edit', task: t.id, run: null, rebase: 'rules', rules: { [key]: on } });
+  },
+  /* A template's goal on Checklists, read from the template as this phone has it, so a goal just set in its sheet
+     shows at once. Before the template's sheet has been opened, it is the goal Checklists loaded. */
+  goalOf(t) {
+    const tpl = this.tasks[t.id];
+    return (tpl ? readGoal(tpl.description) : t.goal) || null;
+  },
+  /* A template's week for its row on Checklists, {line, ring}, or null for a template with no goal. `line` replaces
+     the step count (scoreLine). `ring` counts the week's finished checklists out of the goal so far, and is null until
+     the week has a goal day to score, as on a Wednesday for a weekend goal. Tapping it opens the template, as the row
+     does. The checklists on the screen count as this phone has them (finishTimes). */
+  tplGoal(t, cl) {
+    const goal = this.goalOf(t);
+    if (!goal) return null;
+    const shown = [...(cl.runs || []), ...(cl.finished || [])],
+      finished = finishTimes(cl.times, shown, t.id),
+      score = weekScore(goal, finished),
+      line = scoreLine(score, streakDays(goal, finished, finishTimes(cl.times, shown)));
+    if (!score.total) return { line, ring: null };
+    const { done, total } = score;
+    return {
+      line,
+      ring: {
+        done,
+        total,
+        open: total - done,
+        pct: (done / total) * 100,
+        label: GOAL.ring(t.title, done, total),
+        tap: () => this.openTask(t.id),
+      },
+    };
+  },
+  // Copy goals shows in a project's heading once one of its templates has a goal.
+  hasGoals(cl) {
+    return cl.templates.some(t => this.goalOf(t));
+  },
+  // Copy the week of each goal in project `cl` as text (goalsText). On a Monday it is last week, as with Copy week.
+  copyGoals(cl) {
+    const shown = [...(cl.runs || []), ...(cl.finished || [])],
+      list = cl.templates.map(t => ({
+        title: t.title,
+        goal: this.goalOf(t),
+        finished: finishTimes(cl.times, shown, t.id),
+      }));
+    return this.copyOut(
+      goalsText(list, finishTimes(cl.times, shown)),
+      'checklists',
+      doneWeek().last ? COPIED.lastGoals : COPIED.goals,
+    );
   },
   // The open template's goal, {days, count, since}, or null when it has none (readGoal).
   get templateGoal() {
