@@ -48,6 +48,6 @@ never to a person.
   that day as short.
 - A broken streak just disappears, with no message. Research on streaks finds that showing a broken one makes people
   give up, while showing one that still runs keeps them going.
-- Changing the goal starts a new streak from the goal's `since` date, because Pocket keeps only the current goal.
+- Changing the goal keeps its `since` date. Pocket keeps only the current goal, so it judges every day against it.
   Pocket reads finished checklists back to that date, at most about 12 weeks.
 - No streak freeze for now.

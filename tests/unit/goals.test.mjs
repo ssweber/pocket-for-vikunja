@@ -76,7 +76,7 @@ test('a goal line Pocket cannot read counts as no goal', () => {
   assert.equal(readGoal(undefined), null);
 });
 
-test('setting a goal writes its line with today as since, and the same goal again keeps its since', t => {
+test('setting a goal writes its line with today as since, and changing the goal keeps its since', t => {
   clock(t);
   const html = withGoal('<p>Walk the floor</p><p>pocket:wait</p>', { days: MON_FRI, count: 4 });
   assert.equal(html, '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon-fri 4 since 2026-11-26</p>');
@@ -84,12 +84,17 @@ test('setting a goal writes its line with today as since, and the same goal agai
   assert.equal(withGoal(html, { days: [4, 3, 2, 1, 0, 0], count: 4 }), html, 'saving it again keeps the streak');
   assert.equal(
     withGoal(html, { days: MON_FRI, count: 3 }),
-    '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon-fri 3 since 2026-11-28</p>',
-    'a new count starts a new streak',
+    '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon-fri 3 since 2026-11-26</p>',
+    'a new count keeps the week',
   );
   assert.equal(
     withGoal(html, { days: [0, 2, 4], count: 4 }),
-    '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon,wed,fri 4 since 2026-11-28</p>',
+    '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon,wed,fri 4 since 2026-11-26</p>',
+  );
+  assert.equal(
+    withGoal(withGoal(html, null), { days: MON_FRI, count: 4 }),
+    '<p>Walk the floor</p><p>pocket:wait</p><p>pocket:goal mon-fri 4 since 2026-11-28</p>',
+    'turning the goal off and on again starts from today',
   );
   assert.equal(
     withGoal('<p>pocket:goal someday</p>', { days: [6], count: 1 }),

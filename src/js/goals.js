@@ -1,5 +1,5 @@
 /* A template's goal: how many of its checklists should be finished a day, on which weekdays. It is a line in the
-   template's description, "pocket:goal mon-fri 4 since 2026-11-23", `since` being the day the goal was last set. The
+   template's description, "pocket:goal mon-fri 4 since 2026-11-23", `since` being the day the goal was first set. The
    times the template's checklists were finished give the week's score, which its row and Copy goals show, and its
    streak. Days are local, as in dates.js. */
 import { markLines, templateName, withLine } from './checklists.js';
@@ -57,15 +57,14 @@ export function readGoal(html) {
   return dayKey(new Date(+m[3], m[4] - 1, +m[5])) === since ? { days, count, since } : null;
 }
 /* The description with its goal line set to `goal` ({days, count}), or removed when `goal` is null, has no days, or
-   has a count under 1. The line's `since` becomes today, which starts a new streak. A goal that is the same as the one
-   already there keeps its `since`, so saving it again doesn't end the streak. */
+   has a count under 1. A new goal's `since` is today. Changing a goal keeps its `since`, so the week's earlier days
+   stay on its row, judged against the changed goal. */
 export function withGoal(html, goal, now = new Date()) {
   const days = [...new Set(goal?.days || [])].filter(d => WEEKDAYS[d]).sort((x, y) => x - y),
     count = goal?.count;
   if (!days.length || !Number.isSafeInteger(count) || count < 1) return withLine(html, GOAL_LINE, null);
-  const old = readGoal(html),
-    same = old?.count === count && writeDays(old.days) === writeDays(days);
-  return withLine(html, GOAL_LINE, goalMark({ days, count, since: same ? sinceOf(old, now) : dayKey(now) }));
+  const old = readGoal(html);
+  return withLine(html, GOAL_LINE, goalMark({ days, count, since: old ? sinceOf(old, now) : dayKey(now) }));
 }
 
 // How far back Checklists reads finished checklists for the goals: 12 weeks, which is as long as a streak can reach.
@@ -141,7 +140,7 @@ const listed = score => score.days.filter(x => !x.today || x.times.length);
 /* How many of the goal's days in a row the template met its goal: back from yesterday, plus today once today's goal is
    met. Other weekdays neither add to it nor break it. A day on which no checklist from any template in the project was
    finished is a day off, and is skipped the same way. `all` is the finish times of every checklist in the project.
-   The streak starts at the goal's `since` day, because Pocket keeps only the current goal. */
+   The streak starts at the goal's `since` day. Pocket keeps only the current goal, so every day is judged against it. */
 export function streakDays(goal, finished, all, now = new Date()) {
   const by = byDay(finished),
     worked = new Set([...byDay(all).keys(), ...by.keys()]),

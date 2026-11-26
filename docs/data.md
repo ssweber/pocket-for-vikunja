@@ -30,7 +30,7 @@ Pocket keeps its own records as lines in descriptions. Pocket hides any line sta
 | `pocket:wait` | A template's or checklist's description | **Enforce step times** is on. |
 | `pocket:in-order` | A template's or checklist's description | **Enforce step order** is on. |
 | `pocket:assignees` | A template's or checklist's description | **Enforce step assignees** is on. |
-| `pocket:goal mon-fri 4 since 2026-11-23` | A template's description | The template's goal: 4 checklists finished a day, Monday to Friday, set on Nov 23, 2026. A checklist doesn't copy it. |
+| `pocket:goal mon-fri 4 since 2026-11-23` | A template's description | The template's goal: 4 checklists finished a day, Monday to Friday, first set on Nov 23, 2026. A checklist doesn't copy it. |
 | `pocket:run` | A checklist's description | The task is a checklist. |
 | `pocket:step Preheat T#10m` | A checklist step's description | The template step it was copied from. |
 | `pocket:added` | A checklist step's description | The step was added or repeated on this checklist, not copied from the template. |
